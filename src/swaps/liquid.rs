@@ -556,12 +556,16 @@ impl LBtcSwapTx {
         let address = Address::from_str(output_address)?;
         let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(network_config).await {
             Ok(Some(r)) => r,
-            Ok(None) | Err(_) => swap_script.fetch_lockup_utxo_boltz(
-                network_config,
-                &boltz_url,
-                &swap_id,
-                SwapTxKind::Refund,
-            ).await?,
+            Ok(None) | Err(_) => {
+                swap_script
+                    .fetch_lockup_utxo_boltz(
+                        network_config,
+                        &boltz_url,
+                        &swap_id,
+                        SwapTxKind::Refund,
+                    )
+                    .await?
+            }
         };
 
         let genesis_hash = network_config
