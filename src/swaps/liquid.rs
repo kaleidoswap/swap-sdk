@@ -404,7 +404,10 @@ impl LBtcSwapScript {
     }
 
     /// Fetch utxo for script from Electrum
-    pub fn fetch_utxo(&self, network_config: &ElectrumConfig) -> Result<(OutPoint, TxOut), Error> {
+    pub fn fetch_utxo(
+        &self,
+        network_config: &ElectrumConfig,
+    ) -> Result<Option<(OutPoint, TxOut)>, Error> {
         let electrum_client = network_config.clone().build_client()?;
         let address = self.to_address(network_config.network())?;
         let history = electrum_client.script_get_history(BitcoinScript::from_bytes(
@@ -423,12 +426,10 @@ impl LBtcSwapScript {
             if output.script_pubkey == address.script_pubkey() {
                 let outpoint_0 = OutPoint::new(tx.txid(), vout as u32);
 
-                return Ok((outpoint_0, output));
+                return Ok(Some((outpoint_0, output)));
             }
         }
-        Err(Error::Protocol(
-            "Electrum could not find a Liquid UTXO for script".to_string(),
-        ))
+        Ok(None)
     }
 
     /// Fetch utxo for script from BoltzApi
@@ -532,7 +533,18 @@ impl LBtcSwapTx {
         }
 
         let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(network_config) {
-            Ok(r) => r,
+            Ok(r) => {
+                if r.is_none() {
+                    swap_script.fetch_lockup_utxo_boltz(
+                        network_config,
+                        &boltz_url,
+                        &swap_id,
+                        SwapTxKind::Claim,
+                    )?
+                } else {
+                    r.unwrap()
+                }
+            }
             Err(_) => swap_script.fetch_lockup_utxo_boltz(
                 network_config,
                 &boltz_url,
@@ -570,7 +582,18 @@ impl LBtcSwapTx {
 
         let address = Address::from_str(output_address)?;
         let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(network_config) {
-            Ok(r) => r,
+            Ok(r) => {
+                if r.is_none() {
+                    swap_script.fetch_lockup_utxo_boltz(
+                        network_config,
+                        &boltz_url,
+                        &swap_id,
+                        SwapTxKind::Refund,
+                    )?
+                } else {
+                    r.unwrap()
+                }
+            }
             Err(_) => swap_script.fetch_lockup_utxo_boltz(
                 network_config,
                 &boltz_url,
