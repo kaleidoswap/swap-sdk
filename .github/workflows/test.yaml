@@ -25,3 +25,33 @@ jobs:
         run: make cargo-test
       - name: Run wasm-pack test
         run: make wasm-test
+
+  regtest-test:
+    name: Run regtest tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v2
+      - name: Set up Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+      - name: Set default toolchain
+        run: rustup default nightly
+      - name: Set profile
+        run: rustup set profile minimal
+      - name: Add wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+      - name: Start regtest environment
+        working-directory: regtest
+        run: sh start.sh
+      - name: Run cargo regtest tests
+        run: make cargo-regtest-test
+      - name: Run WASM regtest tests
+        run: make wasm-regtest-test

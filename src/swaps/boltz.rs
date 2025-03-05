@@ -34,7 +34,7 @@ use crate::{BtcSwapScript, LBtcSwapScript};
 
 pub const BOLTZ_TESTNET_URL_V2: &str = "https://api.testnet.boltz.exchange/v2";
 pub const BOLTZ_MAINNET_URL_V2: &str = "https://api.boltz.exchange/v2";
-pub const BOLTZ_REGTEST: &str = "http://127.0.0.1:9001/v2";
+pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
 
 use url::Url;
 
@@ -1468,7 +1468,6 @@ mod tests {
         let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
         let result = client.get_swap(id).await;
-        println!("{:#?}", result);
         assert!(result.is_ok(), "Failed to get swap status");
     }
 }

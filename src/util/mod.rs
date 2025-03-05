@@ -12,14 +12,18 @@ pub mod fees;
 pub mod lnurl;
 pub mod secrets;
 
+static INIT: Once = Once::new();
+
 /// Setup function that will only run once, even if called multiple times.
 pub fn setup_logger() {
-    Once::new().call_once(|| {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    INIT.call_once(|| {
         env_logger::Builder::from_env(
             env_logger::Env::default()
                 .default_filter_or("debug")
                 .default_write_style_or("always"),
         )
+        .filter_module("serial_test", log::LevelFilter::Error)
         // .is_test(true)
         .init();
     });

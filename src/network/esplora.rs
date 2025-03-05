@@ -12,10 +12,12 @@ use std::fmt::format;
 use std::str::FromStr;
 use std::time::Duration;
 
-pub const DEFAULT_TESTNET_NODE: &str = "https://blockstream.info/testnet/api";
 pub const DEFAULT_MAINNET_NODE: &str = "https://blockstream.info/api";
-pub const DEFAULT_LIQUID_TESTNET_NODE: &str = "https://blockstream.info/liquidtestnet/api";
+pub const DEFAULT_TESTNET_NODE: &str = "https://blockstream.info/testnet/api";
+pub const DEFAULT_REGTEST_NODE: &str = "http://localhost:4002/api";
 pub const DEFAULT_LIQUID_MAINNET_NODE: &str = "https://blockstream.info/liquid/api";
+pub const DEFAULT_LIQUID_TESTNET_NODE: &str = "https://blockstream.info/liquidtestnet/api";
+pub const DEFAULT_LIQUID_REGTEST_NODE: &str = "http://localhost:4003/api";
 
 pub const DEFAULT_ESPLORA_TIMEOUT_SECS: u64 = 30;
 
@@ -34,45 +36,38 @@ impl EsploraConfig {
             timeout,
         }
     }
-    pub fn default(chain: Chain, regtest_url: Option<String>) -> Result<Self, Error> {
-        if (chain == Chain::LiquidRegtest || chain == Chain::BitcoinRegtest)
-            && regtest_url.is_none()
-        {
-            return Err(Error::Esplora(
-                "Regtest requires using a custom url".to_string(),
-            ));
-        }
+    pub fn default(chain: Chain, regtest_url: Option<&str>) -> Self {
         match chain {
-            Chain::Bitcoin => Ok(Self::new(
+            Chain::Bitcoin => Self::new(
                 Chain::Bitcoin,
                 DEFAULT_MAINNET_NODE,
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
-            )),
-            Chain::BitcoinTestnet => Ok(Self::new(
+            ),
+            Chain::BitcoinTestnet => Self::new(
                 Chain::BitcoinTestnet,
                 DEFAULT_TESTNET_NODE,
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
-            )),
-            Chain::BitcoinRegtest => Ok(Self::new(
-                Chain::BitcoinTestnet,
-                &regtest_url.unwrap(),
+            ),
+            Chain::BitcoinRegtest => Self::new(
+                Chain::BitcoinRegtest,
+                regtest_url.unwrap_or(DEFAULT_REGTEST_NODE),
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
-            )),
-            Chain::Liquid => Ok(Self::new(
+            ),
+            Chain::Liquid => Self::new(
                 Chain::Liquid,
                 DEFAULT_LIQUID_MAINNET_NODE,
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
-            )),
-            Chain::LiquidTestnet => Ok(Self::new(
+            ),
+            Chain::LiquidTestnet => Self::new(
                 Chain::LiquidTestnet,
                 DEFAULT_LIQUID_TESTNET_NODE,
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
-            )),
-            Chain::LiquidRegtest => Ok(Self::new(
-                Chain::BitcoinTestnet,
-                &regtest_url.unwrap(),
+            ),
+            Chain::LiquidRegtest => Self::new(
+                Chain::LiquidRegtest,
+                regtest_url.unwrap_or(DEFAULT_LIQUID_REGTEST_NODE),
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
-            )),
+            ),
         }
     }
 
@@ -434,7 +429,7 @@ mod tests {
 
     #[macros::async_test_all]
     async fn test_esplora_default_clients() {
-        let network_config = EsploraConfig::default(Chain::Bitcoin, None).unwrap();
+        let network_config = EsploraConfig::default(Chain::Bitcoin, None);
         let esplora_client = network_config.build_bitcoin_client().unwrap();
         assert!(esplora_client
             .get_address_balance(
@@ -445,7 +440,7 @@ mod tests {
             .await
             .is_ok());
 
-        let network_config = EsploraConfig::default(Chain::Liquid, None).unwrap();
+        let network_config = EsploraConfig::default(Chain::Liquid, None);
         let esplora_client = network_config.build_liquid_client().unwrap();
         assert_eq!(
             esplora_client.get_genesis_hash().await.unwrap().to_hex(),
