@@ -1,4 +1,4 @@
-use crate::regtest::TIMEOUT_MS;
+use crate::regtest::WAIT_TIME_MS;
 use crate::utils;
 use bitcoin::{key::rand::thread_rng, PublicKey};
 use boltz_client::boltz::{
@@ -206,7 +206,7 @@ async fn bitcoin_liquid_v2_chain<BC: BitcoinClient, LC: LiquidClient>(
                     if update.status == "transaction.server.confirmed" {
                         log::info!("Server lockup tx is confirmed!");
 
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
                         log::info!("Claiming!");
 
                         let claim_tx = LBtcSwapTx::new_claim(
@@ -267,7 +267,7 @@ async fn bitcoin_liquid_v2_chain<BC: BitcoinClient, LC: LiquidClient>(
                     // This means the funding transaction was rejected by Boltz for whatever reason, and we need to get
                     // fund back via refund.
                     if update.status == "transaction.lockupFailed" {
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
                         log::info!("REFUNDING!");
                         refund_bitcoin_liquid_v2_chain(
                             lockup_script.clone(),
@@ -524,7 +524,7 @@ async fn liquid_bitcoin_v2_chain<BC: BitcoinClient, LC: LiquidClient>(
                     if update.status == "transaction.server.confirmed" {
                         log::info!("Server lockup tx is confirmed!");
 
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
                         log::info!("Claiming!");
 
                         let claim_tx = BtcSwapTx::new_claim(
@@ -584,7 +584,7 @@ async fn liquid_bitcoin_v2_chain<BC: BitcoinClient, LC: LiquidClient>(
                     // This means the funding transaction was rejected by Boltz for whatever reason, and we need to get
                     // fund back via refund.
                     if update.status == "transaction.lockupFailed" {
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
                         log::info!("REFUNDING!");
                         let refund_tx = LBtcSwapTx::new_refund(
                             lockup_script.clone(),

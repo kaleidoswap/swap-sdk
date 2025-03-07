@@ -3,4 +3,4 @@ mod bitcoin;
 mod chain_swaps;
 mod liquid;
 
-const TIMEOUT_MS: i32 = 5_000;
+const WAIT_TIME_MS: i32 = 5_000;

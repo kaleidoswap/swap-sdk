@@ -18,7 +18,7 @@ use boltz_client::{
     Bolt11Invoice, BtcSwapScript, BtcSwapTx, Secp256k1,
 };
 
-use crate::regtest::TIMEOUT_MS;
+use crate::regtest::WAIT_TIME_MS;
 use crate::utils;
 use bitcoin::{
     hashes::{sha256, Hash},
@@ -232,7 +232,7 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient>(bitcoin_client: &BC, underpay: 
                     if update.status == "transaction.lockupFailed"
                         || update.status == "invoice.failedToPay"
                     {
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
                         let swap_tx = BtcSwapTx::new_refund(
                             swap_script.clone(),
                             &refund_address,
@@ -418,7 +418,7 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient>(bitcoin_client: BC) {
                     if update.status == "transaction.mempool" {
                         log::info!("Boltz broadcasted funding tx");
 
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
 
                         let claim_tx = BtcSwapTx::new_claim(
                             swap_script.clone(),
@@ -596,7 +596,7 @@ async fn bitcoin_v2_reverse_script_path<BC: BitcoinClient>(bitcoin_client: BC) {
                     if update.status == "transaction.mempool" {
                         log::info!("Boltz broadcasted funding tx");
 
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
 
                         let claim_tx = BtcSwapTx::new_claim(
                             swap_script.clone(),

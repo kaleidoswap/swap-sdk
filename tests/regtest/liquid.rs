@@ -17,7 +17,7 @@ use boltz_client::{
 };
 use std::str::FromStr;
 
-use crate::regtest::TIMEOUT_MS;
+use crate::regtest::WAIT_TIME_MS;
 use crate::utils;
 use bitcoin::{
     hashes::{sha256, Hash},
@@ -237,7 +237,7 @@ async fn liquid_v2_submarine<LC: LiquidClient>(liquid_client: &LC, underpay: boo
                     if update.status == "transaction.lockupFailed"
                         || update.status == "invoice.failedToPay"
                     {
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
                         let swap_tx = LBtcSwapTx::new_refund(
                             swap_script.clone(),
                             &refund_address,
@@ -441,7 +441,7 @@ async fn liquid_v2_reverse<LC: LiquidClient>(liquid_client: &LC, lowball: bool) 
                     if update.status == "transaction.mempool" {
                         log::info!("Boltz broadcasted funding tx");
 
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
 
                         let claim_tx = LBtcSwapTx::new_claim(
                             swap_script.clone(),
@@ -640,7 +640,7 @@ async fn liquid_v2_reverse_script_path<LC: LiquidClient>(liquid_client: &LC, low
                     if update.status == "transaction.mempool" {
                         log::info!("Boltz broadcasted funding tx");
 
-                        async_sleep(TIMEOUT_MS).await;
+                        async_sleep(WAIT_TIME_MS).await;
 
                         let claim_tx = LBtcSwapTx::new_claim(
                             swap_script.clone(),
