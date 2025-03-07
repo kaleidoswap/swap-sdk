@@ -29,7 +29,7 @@ use bitcoin::{
 use boltz_client::boltz::BOLTZ_REGTEST;
 use boltz_client::fees::Fee;
 use boltz_client::network::esplora::async_sleep;
-use boltz_client::network::{LiquidClient, LiquidNetworkConfig};
+use boltz_client::network::LiquidClient;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use tokio_tungstenite_wasm::Message;
@@ -44,9 +44,11 @@ const CHAIN: Chain = Chain::LiquidRegtest;
 #[cfg(feature = "electrum")]
 async fn liquid_v2_submarine_electrum() {
     setup_logger();
-    let liquid_network_config = ElectrumConfig::default(CHAIN, None);
-    liquid_v2_submarine(&liquid_network_config, false).await;
-    liquid_v2_submarine(&liquid_network_config, true).await;
+    let liquid_client = ElectrumConfig::default(CHAIN, None)
+        .build_liquid_client()
+        .unwrap();
+    liquid_v2_submarine(&liquid_client, false).await;
+    liquid_v2_submarine(&liquid_client, true).await;
 }
 
 #[macros::async_test_all]
@@ -54,15 +56,14 @@ async fn liquid_v2_submarine_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_submarine_esplora() {
     setup_logger();
-    let liquid_network_config = EsploraConfig::default(CHAIN, None);
-    liquid_v2_submarine(&liquid_network_config, false).await;
-    liquid_v2_submarine(&liquid_network_config, true).await;
+    let liquid_client = EsploraConfig::default(CHAIN, None)
+        .build_liquid_client()
+        .unwrap();
+    liquid_v2_submarine(&liquid_client, false).await;
+    liquid_v2_submarine(&liquid_client, true).await;
 }
 
-async fn liquid_v2_submarine<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
-    liquid_network_config: &LN,
-    underpay: bool,
-) {
+async fn liquid_v2_submarine<LC: LiquidClient>(liquid_client: &LC, underpay: bool) {
     let secp = Secp256k1::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
     let refund_public_key = PublicKey {
@@ -188,7 +189,7 @@ async fn liquid_v2_submarine<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
                         let swap_tx = LBtcSwapTx::new_refund(
                             swap_script.clone(),
                             &refund_address,
-                            liquid_network_config,
+                            liquid_client,
                             boltz_url.to_string(),
                             create_swap_response.clone().id,
                         )
@@ -240,7 +241,7 @@ async fn liquid_v2_submarine<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
                         let swap_tx = LBtcSwapTx::new_refund(
                             swap_script.clone(),
                             &refund_address,
-                            liquid_network_config,
+                            liquid_client,
                             boltz_url.to_string(),
                             create_swap_response.clone().id,
                         )
@@ -263,10 +264,7 @@ async fn liquid_v2_submarine<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
                             .await
                             .unwrap();
 
-                        let txid = swap_tx
-                            .broadcast(&tx, liquid_network_config, None)
-                            .await
-                            .unwrap();
+                        let txid = swap_tx.broadcast(&tx, liquid_client, None).await.unwrap();
                         log::info!("Cooperative Refund Successfully broadcasted: {}", txid);
 
                         // Non cooperative refund requires expired swap
@@ -277,7 +275,7 @@ async fn liquid_v2_submarine<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
                             .await
                             .unwrap();
                         let txid = swap_tx
-                            .broadcast(&tx, liquid_network_config, None)
+                            .broadcast(&tx, liquid_client, None)
                             .await
                             .unwrap();
                         log::info!("Non-cooperative Refund Successfully broadcasted: {}", txid);
@@ -315,9 +313,11 @@ async fn liquid_v2_submarine<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
 #[cfg(feature = "electrum")]
 async fn liquid_v2_reverse_electrum() {
     setup_logger();
-    let liquid_network_config = ElectrumConfig::default(CHAIN, None);
-    liquid_v2_reverse(&liquid_network_config, false).await;
-    liquid_v2_reverse(&liquid_network_config, true).await;
+    let liquid_client = ElectrumConfig::default(CHAIN, None)
+        .build_liquid_client()
+        .unwrap();
+    liquid_v2_reverse(&liquid_client, false).await;
+    liquid_v2_reverse(&liquid_client, true).await;
 }
 
 #[macros::async_test_all]
@@ -325,15 +325,14 @@ async fn liquid_v2_reverse_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_reverse_esplora() {
     setup_logger();
-    let liquid_network_config = EsploraConfig::default(CHAIN, None);
-    liquid_v2_reverse(&liquid_network_config, false).await;
-    liquid_v2_reverse(&liquid_network_config, true).await;
+    let liquid_client = EsploraConfig::default(CHAIN, None)
+        .build_liquid_client()
+        .unwrap();
+    liquid_v2_reverse(&liquid_client, false).await;
+    liquid_v2_reverse(&liquid_client, true).await;
 }
 
-async fn liquid_v2_reverse<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
-    liquid_network_config: &LN,
-    lowball: bool,
-) {
+async fn liquid_v2_reverse<LC: LiquidClient>(liquid_client: &LC, lowball: bool) {
     let secp = Secp256k1::new();
     let preimage = Preimage::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
@@ -447,7 +446,7 @@ async fn liquid_v2_reverse<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
                         let claim_tx = LBtcSwapTx::new_claim(
                             swap_script.clone(),
                             claim_address.clone(),
-                            liquid_network_config,
+                            liquid_client,
                             BOLTZ_REGTEST.to_string(),
                             swap_id.clone(),
                         )
@@ -474,20 +473,13 @@ async fn liquid_v2_reverse<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
                         match lowball {
                             true => {
                                 claim_tx
-                                    .broadcast(
-                                        &tx,
-                                        liquid_network_config,
-                                        Some((&boltz_api_v2, CHAIN)),
-                                    )
+                                    .broadcast(&tx, liquid_client, Some((&boltz_api_v2, CHAIN)))
                                     .await
                                     .unwrap();
                                 log::info!("Successfully broadcasted claim tx using lowball!");
                             }
                             false => {
-                                claim_tx
-                                    .broadcast(&tx, liquid_network_config, None)
-                                    .await
-                                    .unwrap();
+                                claim_tx.broadcast(&tx, liquid_client, None).await.unwrap();
                                 log::info!("Successfully broadcasted claim tx!");
                             }
                         }
@@ -520,9 +512,11 @@ async fn liquid_v2_reverse<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
 #[cfg(feature = "electrum")]
 async fn liquid_v2_reverse_script_path_electrum() {
     setup_logger();
-    let liquid_network_config = ElectrumConfig::default(CHAIN, None);
-    liquid_v2_reverse_script_path(&liquid_network_config, false).await;
-    liquid_v2_reverse_script_path(&liquid_network_config, true).await;
+    let liquid_client = ElectrumConfig::default(CHAIN, None)
+        .build_liquid_client()
+        .unwrap();
+    liquid_v2_reverse_script_path(&liquid_client, false).await;
+    liquid_v2_reverse_script_path(&liquid_client, true).await;
 }
 
 #[macros::async_test_all]
@@ -530,15 +524,14 @@ async fn liquid_v2_reverse_script_path_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_reverse_script_path_esplora() {
     setup_logger();
-    let liquid_network_config = EsploraConfig::default(CHAIN, None);
-    liquid_v2_reverse_script_path(&liquid_network_config, false).await;
-    liquid_v2_reverse_script_path(&liquid_network_config, true).await;
+    let liquid_client = EsploraConfig::default(CHAIN, None)
+        .build_liquid_client()
+        .unwrap();
+    liquid_v2_reverse_script_path(&liquid_client, false).await;
+    liquid_v2_reverse_script_path(&liquid_client, true).await;
 }
 
-async fn liquid_v2_reverse_script_path<LC: LiquidClient, LN: LiquidNetworkConfig<LC>>(
-    liquid_network_config: &LN,
-    lowball: bool,
-) {
+async fn liquid_v2_reverse_script_path<LC: LiquidClient>(liquid_client: &LC, lowball: bool) {
     let secp = Secp256k1::new();
     let preimage = Preimage::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
@@ -652,7 +645,7 @@ async fn liquid_v2_reverse_script_path<LC: LiquidClient, LN: LiquidNetworkConfig
                         let claim_tx = LBtcSwapTx::new_claim(
                             swap_script.clone(),
                             claim_address.clone(),
-                            liquid_network_config,
+                            liquid_client,
                             BOLTZ_REGTEST.to_string(),
                             swap_id.clone(),
                         )
@@ -667,20 +660,13 @@ async fn liquid_v2_reverse_script_path<LC: LiquidClient, LN: LiquidNetworkConfig
                         match lowball {
                             true => {
                                 claim_tx
-                                    .broadcast(
-                                        &tx,
-                                        liquid_network_config,
-                                        Some((&boltz_api_v2, CHAIN)),
-                                    )
+                                    .broadcast(&tx, liquid_client, Some((&boltz_api_v2, CHAIN)))
                                     .await
                                     .unwrap();
                                 log::info!("Successfully broadcasted claim tx using lowball!");
                             }
                             false => {
-                                claim_tx
-                                    .broadcast(&tx, liquid_network_config, None)
-                                    .await
-                                    .unwrap();
+                                claim_tx.broadcast(&tx, liquid_client, None).await.unwrap();
                                 log::info!("Successfully broadcasted claim tx!");
                             }
                         }

@@ -30,7 +30,7 @@ use bitcoin::{
 use boltz_client::boltz::BOLTZ_REGTEST;
 use boltz_client::fees::Fee;
 use boltz_client::network::esplora::async_sleep;
-use boltz_client::network::{BitcoinClient, BitcoinNetworkConfig};
+use boltz_client::network::BitcoinClient;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use tokio_tungstenite_wasm::Message;
@@ -44,26 +44,27 @@ const CHAIN: Chain = Chain::BitcoinRegtest;
 #[serial]
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_submarine_electrum() {
-    let bitcoin_network_config = ElectrumConfig::default(CHAIN, None);
-    bitcoin_v2_submarine(&bitcoin_network_config, false).await;
-    bitcoin_v2_submarine(&bitcoin_network_config, true).await;
+    setup_logger();
+    let bitcoin_client = ElectrumConfig::default(CHAIN, None)
+        .build_bitcoin_client()
+        .unwrap();
+    bitcoin_v2_submarine(&bitcoin_client, false).await;
+    bitcoin_v2_submarine(&bitcoin_client, true).await;
 }
 
 #[macros::async_test_all]
 #[serial]
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_submarine_esplora() {
-    let bitcoin_network_config = EsploraConfig::default(CHAIN, None);
-    bitcoin_v2_submarine(&bitcoin_network_config, false).await;
-    bitcoin_v2_submarine(&bitcoin_network_config, true).await;
+    setup_logger();
+    let bitcoin_client = EsploraConfig::default(CHAIN, None)
+        .build_bitcoin_client()
+        .unwrap();
+    bitcoin_v2_submarine(&bitcoin_client, false).await;
+    bitcoin_v2_submarine(&bitcoin_client, true).await;
 }
 
-async fn bitcoin_v2_submarine<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
-    bitcoin_network_config: &BN,
-    underpay: bool,
-) {
-    setup_logger();
-
+async fn bitcoin_v2_submarine<BC: BitcoinClient>(bitcoin_client: &BC, underpay: bool) {
     let secp = bitcoin::secp256k1::Secp256k1::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
 
@@ -183,7 +184,7 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
                         let swap_tx = BtcSwapTx::new_refund(
                             swap_script.clone(),
                             &refund_address,
-                            bitcoin_network_config,
+                            bitcoin_client,
                             BOLTZ_REGTEST.to_owned(),
                             swap_id.to_owned(),
                         )
@@ -235,7 +236,7 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
                         let swap_tx = BtcSwapTx::new_refund(
                             swap_script.clone(),
                             &refund_address,
-                            bitcoin_network_config,
+                            bitcoin_client,
                             BOLTZ_REGTEST.to_owned(),
                             swap_id.to_owned(),
                         )
@@ -256,10 +257,7 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
                             .await
                             .unwrap();
 
-                        let txid = swap_tx
-                            .broadcast(&tx, bitcoin_network_config)
-                            .await
-                            .unwrap();
+                        let txid = swap_tx.broadcast(&tx, bitcoin_client).await.unwrap();
                         log::info!("Cooperative Refund Successfully broadcasted: {}", txid);
 
                         // Non cooperative refund requires expired swap
@@ -271,7 +269,7 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
                             .await
                             .unwrap();
                         let txid = swap_tx
-                            .broadcast(&tx, bitcoin_network_config)
+                            .broadcast(&tx, bitcoin_client)
                             .await
                             .unwrap();
                         log::info!("Non-cooperative Refund Successfully broadcasted: {}", txid);*/
@@ -302,23 +300,25 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
 #[serial]
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_reverse_electrum() {
-    let bitcoin_network_config = ElectrumConfig::default(CHAIN, None);
-    bitcoin_v2_reverse(bitcoin_network_config).await
+    setup_logger();
+    let bitcoin_client = ElectrumConfig::default(CHAIN, None)
+        .build_bitcoin_client()
+        .unwrap();
+    bitcoin_v2_reverse(bitcoin_client).await
 }
 
 #[macros::async_test_all]
 #[serial]
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_reverse_esplora() {
-    let bitcoin_network_config = EsploraConfig::default(CHAIN, None);
-    bitcoin_v2_reverse(bitcoin_network_config).await
+    setup_logger();
+    let bitcoin_client = EsploraConfig::default(CHAIN, None)
+        .build_bitcoin_client()
+        .unwrap();
+    bitcoin_v2_reverse(bitcoin_client).await
 }
 
-async fn bitcoin_v2_reverse<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
-    bitcoin_network_config: BN,
-) {
-    setup_logger();
-
+async fn bitcoin_v2_reverse<BC: BitcoinClient>(bitcoin_client: BC) {
     let secp = Secp256k1::new();
     let preimage = Preimage::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
@@ -423,7 +423,7 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
                         let claim_tx = BtcSwapTx::new_claim(
                             swap_script.clone(),
                             claim_address.clone(),
-                            &bitcoin_network_config,
+                            &bitcoin_client,
                             BOLTZ_REGTEST.to_owned(),
                             swap_id.clone(),
                         )
@@ -445,10 +445,7 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
                             .await
                             .unwrap();
 
-                        claim_tx
-                            .broadcast(&tx, &bitcoin_network_config)
-                            .await
-                            .unwrap();
+                        claim_tx.broadcast(&tx, &bitcoin_client).await.unwrap();
 
                         log::info!("Successfully broadcasted claim tx!");
                         log::debug!("Claim Tx {:?}", tx);
@@ -479,23 +476,25 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
 #[serial]
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_reverse_script_path_electrum() {
-    let bitcoin_network_config = ElectrumConfig::default(CHAIN, None);
-    bitcoin_v2_reverse_script_path(bitcoin_network_config).await
+    setup_logger();
+    let bitcoin_client = ElectrumConfig::default(CHAIN, None)
+        .build_bitcoin_client()
+        .unwrap();
+    bitcoin_v2_reverse_script_path(bitcoin_client).await
 }
 
 #[macros::async_test_all]
 #[serial]
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_reverse_script_path_esplora() {
-    let bitcoin_network_config = EsploraConfig::default(CHAIN, None);
-    bitcoin_v2_reverse_script_path(bitcoin_network_config).await
+    setup_logger();
+    let bitcoin_client = EsploraConfig::default(CHAIN, None)
+        .build_bitcoin_client()
+        .unwrap();
+    bitcoin_v2_reverse_script_path(bitcoin_client).await
 }
 
-async fn bitcoin_v2_reverse_script_path<BC: BitcoinClient, BN: BitcoinNetworkConfig<BC>>(
-    bitcoin_network_config: BN,
-) {
-    setup_logger();
-
+async fn bitcoin_v2_reverse_script_path<BC: BitcoinClient>(bitcoin_client: BC) {
     let secp = Secp256k1::new();
     let preimage = Preimage::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
@@ -602,7 +601,7 @@ async fn bitcoin_v2_reverse_script_path<BC: BitcoinClient, BN: BitcoinNetworkCon
                         let claim_tx = BtcSwapTx::new_claim(
                             swap_script.clone(),
                             claim_address.clone(),
-                            &bitcoin_network_config,
+                            &bitcoin_client,
                             BOLTZ_REGTEST.to_owned(),
                             swap_id,
                         )
@@ -614,10 +613,7 @@ async fn bitcoin_v2_reverse_script_path<BC: BitcoinClient, BN: BitcoinNetworkCon
                             .await
                             .unwrap();
 
-                        claim_tx
-                            .broadcast(&tx, &bitcoin_network_config)
-                            .await
-                            .unwrap();
+                        claim_tx.broadcast(&tx, &bitcoin_client).await.unwrap();
 
                         log::info!("Successfully broadcasted claim tx!");
                         log::debug!("Claim Tx {:?}", tx);

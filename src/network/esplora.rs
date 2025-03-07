@@ -1,7 +1,5 @@
 use crate::error::Error;
-use crate::network::{
-    BitcoinClient, BitcoinNetworkConfig, Chain, LiquidClient, LiquidNetworkConfig,
-};
+use crate::network::{BitcoinClient, Chain, LiquidClient};
 use bitcoin::ScriptBuf;
 use elements::hex::ToHex;
 use elements::pset::serialize::Serialize;
@@ -86,25 +84,21 @@ impl EsploraConfig {
             DEFAULT_ESPLORA_TIMEOUT_SECS,
         )
     }
-}
 
-impl BitcoinNetworkConfig<EsploraBitcoinClient> for EsploraConfig {
-    fn build_bitcoin_client(&self) -> Result<EsploraBitcoinClient, Error> {
-        Ok(EsploraBitcoinClient::new(&self.url, self.timeout))
+    pub fn build_bitcoin_client(&self) -> Result<EsploraBitcoinClient, Error> {
+        Ok(EsploraBitcoinClient::new(
+            &self.url,
+            self.timeout,
+            self.network,
+        ))
     }
 
-    fn network(&self) -> Chain {
-        self.network
-    }
-}
-
-impl LiquidNetworkConfig<EsploraLiquidClient> for EsploraConfig {
-    fn build_liquid_client(&self) -> Result<EsploraLiquidClient, Error> {
-        Ok(EsploraLiquidClient::new(&self.url, self.timeout))
-    }
-
-    fn network(&self) -> Chain {
-        self.network
+    pub fn build_liquid_client(&self) -> Result<EsploraLiquidClient, Error> {
+        Ok(EsploraLiquidClient::new(
+            &self.url,
+            self.timeout,
+            self.network,
+        ))
     }
 }
 
@@ -112,16 +106,18 @@ pub struct EsploraBitcoinClient {
     client: reqwest::Client,
     base_url: String,
     timeout: Duration,
+    network: Chain,
 }
 
 impl EsploraBitcoinClient {
-    pub fn new(url: &str, timeout: u64) -> Self {
+    pub fn new(url: &str, timeout: u64, network: Chain) -> Self {
         let client = reqwest::Client::new();
 
         Self {
             client,
             base_url: url.to_string(),
             timeout: Duration::from_secs(timeout),
+            network,
         }
     }
 
@@ -230,22 +226,27 @@ impl BitcoinClient for EsploraBitcoinClient {
         let txid = bitcoin::Txid::from_str(&response.text().await?)?;
         Ok(txid)
     }
+    fn network(&self) -> Chain {
+        self.network
+    }
 }
 
 pub struct EsploraLiquidClient {
     client: reqwest::Client,
     base_url: String,
     timeout: Duration,
+    network: Chain,
 }
 
 impl EsploraLiquidClient {
-    pub fn new(url: &str, timeout: u64) -> Self {
+    pub fn new(url: &str, timeout: u64, network: Chain) -> Self {
         let client = reqwest::Client::new();
 
         Self {
             client,
             base_url: url.to_string(),
             timeout: Duration::from_secs(timeout),
+            network,
         }
     }
 }
@@ -300,6 +301,9 @@ impl LiquidClient for EsploraLiquidClient {
             .await
             .map_err(|e| Error::Esplora(e.to_string()))?;
         Ok(response.text().await?)
+    }
+    fn network(&self) -> Chain {
+        self.network
     }
 }
 
@@ -418,9 +422,7 @@ pub struct Utxo {
 mod tests {
     use super::*;
     use crate::network::esplora::EsploraConfig;
-    use crate::network::{
-        BitcoinClient, BitcoinNetworkConfig, Chain, LiquidClient, LiquidNetworkConfig,
-    };
+    use crate::network::{BitcoinClient, Chain, LiquidClient};
     use elements::hex::ToHex;
     use std::str::FromStr;
 

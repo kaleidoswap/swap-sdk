@@ -1,6 +1,6 @@
 // use electrum_client::raw_client::RawClient;
 
-use super::{BitcoinClient, BitcoinNetworkConfig, Chain, LiquidClient, LiquidNetworkConfig};
+use super::{BitcoinClient, Chain, LiquidClient};
 use crate::error::Error;
 use bitcoin::{Address, ScriptBuf, Transaction, Txid};
 use electrum_client::{ElectrumApi, GetHistoryRes};
@@ -127,36 +127,26 @@ impl ElectrumConfig {
             url: electrum_url,
         }
     }
-}
 
-impl BitcoinNetworkConfig<ElectrumBitcoinClient> for ElectrumConfig {
-    fn build_bitcoin_client(&self) -> Result<ElectrumBitcoinClient, Error> {
-        ElectrumBitcoinClient::new(self.url.clone(), self.timeout)
+    pub fn build_bitcoin_client(&self) -> Result<ElectrumBitcoinClient, Error> {
+        ElectrumBitcoinClient::new(self.url.clone(), self.timeout, self.network)
     }
 
-    fn network(&self) -> Chain {
-        self.network
-    }
-}
-
-impl LiquidNetworkConfig<ElectrumLiquidClient> for ElectrumConfig {
-    fn build_liquid_client(&self) -> Result<ElectrumLiquidClient, Error> {
-        ElectrumLiquidClient::new(self.url.clone(), self.timeout)
-    }
-
-    fn network(&self) -> Chain {
-        self.network
+    pub fn build_liquid_client(&self) -> Result<ElectrumLiquidClient, Error> {
+        ElectrumLiquidClient::new(self.url.clone(), self.timeout, self.network)
     }
 }
 
 pub struct ElectrumBitcoinClient {
     inner: electrum_client::Client,
+    network: Chain,
 }
 
 impl ElectrumBitcoinClient {
-    fn new(url: ElectrumUrl, timeout: u8) -> Result<Self, Error> {
+    fn new(url: ElectrumUrl, timeout: u8, network: Chain) -> Result<Self, Error> {
         Ok(Self {
             inner: url.build_client(timeout)?,
+            network,
         })
     }
 
@@ -230,16 +220,21 @@ impl BitcoinClient for ElectrumBitcoinClient {
     async fn broadcast_tx(&self, signed_tx: &Transaction) -> Result<Txid, Error> {
         Ok(self.inner.transaction_broadcast(signed_tx)?)
     }
+    fn network(&self) -> Chain {
+        self.network
+    }
 }
 
 pub struct ElectrumLiquidClient {
     inner: electrum_client::Client,
+    network: Chain,
 }
 
 impl ElectrumLiquidClient {
-    fn new(url: ElectrumUrl, timeout: u8) -> Result<Self, Error> {
+    fn new(url: ElectrumUrl, timeout: u8, network: Chain) -> Result<Self, Error> {
         Ok(Self {
             inner: url.build_client(timeout)?,
+            network,
         })
     }
 }
@@ -283,6 +278,9 @@ impl LiquidClient for ElectrumLiquidClient {
             .inner
             .transaction_broadcast_raw(&serialized)?
             .to_string())
+    }
+    fn network(&self) -> Chain {
+        self.network
     }
 }
 

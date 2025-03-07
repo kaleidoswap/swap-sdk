@@ -33,7 +33,7 @@ use super::boltz::{
     CreateSubmarineResponse, Side, SubmarineClaimTxResponse, SwapTxKind, SwapType, ToSign,
 };
 use crate::fees::{create_tx_with_fee, Fee};
-use crate::network::{BitcoinClient, BitcoinNetworkConfig, LiquidClient, LiquidNetworkConfig};
+use crate::network::{BitcoinClient, LiquidClient};
 use elements::bitcoin::PublicKey;
 use elements::secp256k1_zkp::Keypair as ZKKeyPair;
 use elements::{
@@ -401,19 +401,18 @@ impl LBtcSwapScript {
     }
 
     /// Fetch utxo for script from Electrum
-    pub async fn fetch_utxo<LC: LiquidClient, N: LiquidNetworkConfig<LC>>(
+    pub async fn fetch_utxo<LC: LiquidClient>(
         &self,
-        network_config: &N,
+        liquid_client: &LC,
     ) -> Result<Option<(OutPoint, TxOut)>, Error> {
-        let client = network_config.build_liquid_client()?;
-        let address = self.to_address(network_config.network())?;
-        client.get_address_utxo(&address).await
+        let address = self.to_address(liquid_client.network())?;
+        liquid_client.get_address_utxo(&address).await
     }
 
     /// Fetch utxo for script from BoltzApi
-    pub async fn fetch_lockup_utxo_boltz<LC: LiquidClient, N: LiquidNetworkConfig<LC>>(
+    pub async fn fetch_lockup_utxo_boltz(
         &self,
-        network_config: &N,
+        network: Chain,
         boltz_url: &str,
         swap_id: &str,
         tx_kind: SwapTxKind,
@@ -452,7 +451,7 @@ impl LBtcSwapScript {
                 "No transaction hex found in boltz response".to_string(),
             ));
         }
-        let address = self.to_address(network_config.network())?;
+        let address = self.to_address(network)?;
         let tx: Transaction = elements::encode::deserialize(&hex::decode(hex.unwrap())?)?;
         for (vout, output) in tx.clone().output.into_iter().enumerate() {
             if output.script_pubkey == address.script_pubkey() {
@@ -467,12 +466,11 @@ impl LBtcSwapScript {
     }
 
     // Get the chain genesis hash. Requires for sighash calculation
-    pub async fn genesis_hash<LC: LiquidClient, N: LiquidNetworkConfig<LC>>(
+    pub async fn genesis_hash<LC: LiquidClient>(
         &self,
-        electrum_config: &N,
-    ) -> Result<elements::BlockHash, Error> {
-        let client = electrum_config.build_liquid_client()?;
-        client.get_genesis_hash().await
+        liquid_client: &LC,
+    ) -> Result<BlockHash, Error> {
+        liquid_client.get_genesis_hash().await
     }
 }
 
@@ -497,10 +495,10 @@ pub struct LBtcSwapTx {
 
 impl LBtcSwapTx {
     /// Craft a new ClaimTx. Only works for Reverse and Chain Swaps.
-    pub async fn new_claim<LC: LiquidClient, N: LiquidNetworkConfig<LC>>(
+    pub async fn new_claim<LC: LiquidClient>(
         swap_script: LBtcSwapScript,
         output_address: String,
-        network_config: &N,
+        liquid_client: &LC,
         boltz_url: String,
         swap_id: String,
     ) -> Result<LBtcSwapTx, Error> {
@@ -510,12 +508,12 @@ impl LBtcSwapTx {
             ));
         }
 
-        let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(network_config).await {
+        let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(liquid_client).await {
             Ok(Some(r)) => r,
             Ok(None) | Err(_) => {
                 swap_script
                     .fetch_lockup_utxo_boltz(
-                        network_config,
+                        liquid_client.network(),
                         &boltz_url,
                         &swap_id,
                         SwapTxKind::Claim,
@@ -524,10 +522,7 @@ impl LBtcSwapTx {
             }
         };
 
-        let genesis_hash = network_config
-            .build_liquid_client()?
-            .get_genesis_hash()
-            .await?;
+        let genesis_hash = liquid_client.get_genesis_hash().await?;
 
         Ok(LBtcSwapTx {
             kind: SwapTxKind::Claim,
@@ -540,10 +535,10 @@ impl LBtcSwapTx {
     }
 
     /// Construct a RefundTX corresponding to the swap_script. Only works for Submarine and Chain Swaps.
-    pub async fn new_refund<LC: LiquidClient, N: LiquidNetworkConfig<LC>>(
+    pub async fn new_refund<LC: LiquidClient>(
         swap_script: LBtcSwapScript,
         output_address: &str,
-        network_config: &N,
+        liquid_client: &LC,
         boltz_url: String,
         swap_id: String,
     ) -> Result<LBtcSwapTx, Error> {
@@ -554,12 +549,12 @@ impl LBtcSwapTx {
         }
 
         let address = Address::from_str(output_address)?;
-        let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(network_config).await {
+        let (funding_outpoint, funding_utxo) = match swap_script.fetch_utxo(liquid_client).await {
             Ok(Some(r)) => r,
             Ok(None) | Err(_) => {
                 swap_script
                     .fetch_lockup_utxo_boltz(
-                        network_config,
+                        liquid_client.network(),
                         &boltz_url,
                         &swap_id,
                         SwapTxKind::Refund,
@@ -568,10 +563,7 @@ impl LBtcSwapTx {
             }
         };
 
-        let genesis_hash = network_config
-            .build_liquid_client()?
-            .get_genesis_hash()
-            .await?;
+        let genesis_hash = liquid_client.get_genesis_hash().await?;
 
         Ok(LBtcSwapTx {
             kind: SwapTxKind::Refund,
@@ -1285,10 +1277,10 @@ impl LBtcSwapTx {
     }
 
     /// Broadcast transaction to the network
-    pub async fn broadcast<LC: LiquidClient, N: LiquidNetworkConfig<LC>>(
+    pub async fn broadcast<LC: LiquidClient>(
         &self,
         signed_tx: &Transaction,
-        network_config: &N,
+        liquid_client: &LC,
         is_lowball: Option<(&BoltzApiClientV2, Chain)>,
     ) -> Result<String, Error> {
         if let Some((boltz_api, chain)) = is_lowball {
@@ -1313,8 +1305,7 @@ impl LBtcSwapTx {
                 },
             }
         } else {
-            let client = network_config.build_liquid_client()?;
-            client.broadcast_tx(signed_tx).await
+            liquid_client.broadcast_tx(signed_tx).await
         }
     }
 }

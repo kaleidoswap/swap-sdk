@@ -32,7 +32,7 @@ use super::boltz::{
     SwapTxKind, SwapType, ToSign,
 };
 
-use crate::network::{BitcoinClient, BitcoinNetworkConfig};
+use crate::network::BitcoinClient;
 use crate::util::fees::{create_tx_with_fee, Fee};
 use elements::secp256k1_zkp::{
     musig, MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
@@ -391,31 +391,29 @@ impl BtcSwapScript {
     }
 
     /// Get the balance of the script
-    pub async fn get_balance<BC: BitcoinClient, N: BitcoinNetworkConfig<BC>>(
+    pub async fn get_balance<BC: BitcoinClient>(
         &self,
-        network_config: &N,
+        bitcoin_client: &BC,
     ) -> Result<(u64, i64), Error> {
-        let client = network_config.build_bitcoin_client()?;
-        client
-            .get_address_balance(&self.to_address(network_config.network())?)
+        bitcoin_client
+            .get_address_balance(&self.to_address(bitcoin_client.network())?)
             .await
     }
 
     /// Fetch (utxo,amount) pairs for all utxos of the script_pubkey of this swap.
-    pub async fn fetch_utxos<BC: BitcoinClient, N: BitcoinNetworkConfig<BC>>(
+    pub async fn fetch_utxos<BC: BitcoinClient>(
         &self,
-        network_config: &N,
+        bitcoin_client: &BC,
     ) -> Result<Vec<(OutPoint, TxOut)>, Error> {
-        let client = network_config.build_bitcoin_client()?;
-        client
-            .get_address_utxos(&self.to_address(network_config.network())?)
+        bitcoin_client
+            .get_address_utxos(&self.to_address(bitcoin_client.network())?)
             .await
     }
 
     /// Fetch utxo for script from BoltzApi
-    pub async fn fetch_lockup_utxo_boltz<BC: BitcoinClient, N: BitcoinNetworkConfig<BC>>(
+    pub async fn fetch_lockup_utxo_boltz(
         &self,
-        network_config: &N,
+        network: Chain,
         boltz_url: &str,
         swap_id: &str,
         tx_kind: SwapTxKind,
@@ -452,8 +450,8 @@ impl BtcSwapScript {
                 "No transaction hex found in boltz response".to_string(),
             ));
         }
-        let address = self.to_address(network_config.network())?;
-        let tx: Transaction = bitcoin::consensus::deserialize(&hex::decode(hex.unwrap())?)?;
+        let address = self.to_address(network)?;
+        let tx: Transaction = deserialize(&hex::decode(hex.unwrap())?)?;
         for (vout, output) in tx.clone().output.into_iter().enumerate() {
             if output.script_pubkey == address.script_pubkey() {
                 let outpoint_0 = OutPoint::new(tx.compute_txid(), vout as u32);
@@ -488,10 +486,10 @@ pub struct BtcSwapTx {
 impl BtcSwapTx {
     /// Craft a new ClaimTx. Only works for Reverse and Chain Swaps.
     /// Returns None, if the HTLC utxo doesn't exist for the swap.
-    pub async fn new_claim<BC: BitcoinClient, N: BitcoinNetworkConfig<BC>>(
+    pub async fn new_claim<BC: BitcoinClient>(
         swap_script: BtcSwapScript,
         claim_address: String,
-        network_config: &N,
+        bitcoin_client: &BC,
         boltz_url: String,
         swap_id: String,
     ) -> Result<BtcSwapTx, Error> {
@@ -501,7 +499,7 @@ impl BtcSwapTx {
             ));
         }
 
-        let network = match network_config.network() {
+        let network = match bitcoin_client.network() {
             Chain::Bitcoin => Network::Bitcoin,
             Chain::BitcoinTestnet => Network::Testnet,
             _ => Network::Regtest,
@@ -510,12 +508,12 @@ impl BtcSwapTx {
 
         address.is_valid_for_network(network);
 
-        let utxo_info = match swap_script.fetch_utxos(network_config).await {
+        let utxo_info = match swap_script.fetch_utxos(bitcoin_client).await {
             Ok(v) => v.first().cloned(),
             Err(_) => {
                 swap_script
                     .fetch_lockup_utxo_boltz(
-                        network_config,
+                        bitcoin_client.network(),
                         &boltz_url,
                         &swap_id,
                         SwapTxKind::Claim,
@@ -539,10 +537,10 @@ impl BtcSwapTx {
 
     /// Construct a RefundTX corresponding to the swap_script. Only works for Submarine and Chain Swaps.
     /// Returns None, if the HTLC UTXO for the swap doesn't exist in blockhcian.
-    pub async fn new_refund<BC: BitcoinClient, N: BitcoinNetworkConfig<BC>>(
+    pub async fn new_refund<BC: BitcoinClient>(
         swap_script: BtcSwapScript,
         refund_address: &str,
-        network_config: &N,
+        bitcoin_client: &BC,
         boltz_url: String,
         swap_id: String,
     ) -> Result<BtcSwapTx, Error> {
@@ -552,7 +550,7 @@ impl BtcSwapTx {
             ));
         }
 
-        let network = match network_config.network() {
+        let network = match bitcoin_client.network() {
             Chain::Bitcoin => Network::Bitcoin,
             Chain::BitcoinTestnet => Network::Testnet,
             _ => Network::Regtest,
@@ -563,12 +561,12 @@ impl BtcSwapTx {
             return Err(Error::Address("Address validation failed".to_string()));
         };
 
-        let utxos = match swap_script.fetch_utxos(network_config).await {
+        let utxos = match swap_script.fetch_utxos(bitcoin_client).await {
             Ok(r) => r,
             Err(_) => {
                 let lockup_utxo_info = swap_script
                     .fetch_lockup_utxo_boltz(
-                        network_config,
+                        bitcoin_client.network(),
                         &boltz_url,
                         &swap_id,
                         SwapTxKind::Refund,
@@ -1193,14 +1191,11 @@ impl BtcSwapTx {
     }
 
     /// Broadcast transaction to the network.
-    pub async fn broadcast<BC: BitcoinClient, N: BitcoinNetworkConfig<BC>>(
+    pub async fn broadcast<BC: BitcoinClient>(
         &self,
         signed_tx: &Transaction,
-        network_config: &N,
+        bitcoin_client: &BC,
     ) -> Result<Txid, Error> {
-        network_config
-            .build_bitcoin_client()?
-            .broadcast_tx(signed_tx)
-            .await
+        bitcoin_client.broadcast_tx(signed_tx).await
     }
 }
