@@ -53,7 +53,7 @@ web-sys = "0.3.77"
 wasm-bindgen-futures = "0.4.50"
 
 [patch.crates-io]
-secp256k1-zkp = { git = "https://github.com/danielgranhao/rust-secp256k1-zkp.git", rev = "e02a6d611f2844e0fb158537b4b3824d0341db61" }
+secp256k1-zkp = { git = "https://github.com/danielgranhao/rust-secp256k1-zkp.git", rev = "eac2e479255a6e32b5588bc25ee53c642fdd8395" }
 
 [dev-dependencies]
 futures-util = "0.3.31"
