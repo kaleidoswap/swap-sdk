@@ -1,8 +1,10 @@
 #!/bin/bash
 set -xe
 
-cd boltz
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cd "$SCRIPT_DIR/boltz"
 ./stop.sh
 
-cd ../proxy
+cd "$SCRIPT_DIR/proxy"
 docker compose down --volumes

@@ -159,67 +159,32 @@ liquid.
 
 They contain the entire example of usage of the library.
 
-Run all tests, except ignored tests
+Run all tests, except the ones that require running a local docker regtest environment
 
 ```bash
-./test # test helper script
-# OR MANUALLY
-cargo test
-cargo test -- --nocapture # for println! logs
+make cargo-test
 ```
 
-### ignored tests
+### Regtest tests
 
-To run the complete reverse swap integration test:
-
-```bash
-cargo test test_rsi -- --nocapture --include-ignored
-```
-
-`test_rsi` is interactive.
-It will block the terminal and prompt you to pay an ln invoice to proceed.
+To run the complete regtest integration tests you first need to start the regtest environment (requires initializing git
+submodules):
 
 ```bash
-cargo test test_normal_swap -- --nocapture --include-ignored
-
-```
-
-`test_normal_swap` is ignored since it requires always using a new invoice or else it errors with 409
-
-So when manually testing, make sure you update the invoice variable.
-
-For all ignored unit tests read the tests before running.
-
-### connecting a ln testnet channel with boltz
-
-It's better to connect directly to boltz for testing to ensure payment routes are guaranteed.
-
-Use botlz's 02* channel for testing with small amounts.
-
-```bash
-export FUND=2100000
-lightning-cli --lightning-dir=/.lightning connect 029040945df331e634fba152ce6a21e3dfca87b68d275e078caeee4753f43e9acb 212.46.38.66:9736
-lightning-cli --lightning-dir=/.lightning fundchannel 029040945df331e634fba152ce6a21e3dfca87b68d275e078caeee4753f43e9acb $FUND
+./regtest/start.sh
+make cargo-regtest-test
+./regtest/stop.sh
 ```
 
 ### Testing WASM
 
-Firefox (default):
+Tests can be run on the browser using WASM. By default Firefox is used, but there are alternative make targets for
+Chrome and Safari.
 
 ```bash
-make wasm-test
-```
+make wasm-test # runs tests that don't require regtest environemnt
 
-Chrome:
-
-```bash
-make wasm-test-chrome
-```
-
-Safari:
-
-```bash
-make wasm-test-safari
+make wasm-regtest-test # runs regtest tests (requires having the regtest environment set up)
 ```
 
 ## Milestones

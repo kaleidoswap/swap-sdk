@@ -1,9 +1,11 @@
 #!/bin/bash
 set -xe
 
-cd proxy
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+cd "$SCRIPT_DIR/proxy"
 docker compose down
 docker compose up --remove-orphans -d
 
-cd ../boltz
+cd "$SCRIPT_DIR/boltz"
 ./start.sh
