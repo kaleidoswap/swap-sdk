@@ -5,7 +5,7 @@ use crate::error::Error;
 use bitcoin::{Address, ScriptBuf, Transaction, Txid};
 use electrum_client::{ElectrumApi, GetHistoryRes};
 use elements::encode::{serialize, Decodable};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub const DEFAULT_MAINNET_NODE: &str = "wes.bullbitcoin.com:50002";
 pub const DEFAULT_TESTNET_NODE: &str = "electrum.blockstream.info:60002";
@@ -151,47 +151,44 @@ impl ElectrumBitcoinClient {
     }
 
     fn fetch_utxos_core(
-        txs: &[Transaction],
+        txs: Vec<Transaction>,
         history: &[GetHistoryRes],
         spk: &ScriptBuf,
     ) -> Vec<(bitcoin::OutPoint, bitcoin::TxOut)> {
         let tx_is_confirmed_map: HashMap<_, _> =
             history.iter().map(|h| (h.tx_hash, h.height > 0)).collect();
 
-        txs.iter()
-            .flat_map(|tx| {
-                tx.output
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, output)| output.script_pubkey == *spk)
-                    .filter(|(vout, _)| {
-                        // Check if output is unspent (only consider confirmed spending txs)
-                        !txs.iter().any(|spending_tx| {
-                            let spends_our_output = spending_tx.input.iter().any(|input| {
-                                input.previous_output.txid == tx.compute_txid()
-                                    && input.previous_output.vout == *vout as u32
-                            });
+        let mut spent_outputs = HashSet::new();
+        for tx in &txs {
+            for input in &tx.input {
+                let outpoint = input.previous_output;
+                let spending_tx_hash = tx.compute_txid();
 
-                            if !spends_our_output {
-                                return false;
-                            }
+                if tx_is_confirmed_map
+                    .get(&spending_tx_hash)
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    spent_outputs.insert(outpoint);
+                }
+            }
+        }
 
-                            // If it does spend our output, check if it's confirmed
-                            let spending_tx_hash = spending_tx.compute_txid();
-                            tx_is_confirmed_map
-                                .get(&spending_tx_hash)
-                                .copied()
-                                .unwrap_or(false)
-                        })
-                    })
-                    .map(|(vout, output)| {
-                        (
-                            bitcoin::OutPoint::new(tx.compute_txid(), vout as u32),
-                            output.clone(),
-                        )
-                    })
-            })
-            .collect()
+        // Convert to the needed output format without cloning
+        let mut result = Vec::new();
+        for tx in txs.into_iter() {
+            let txid = tx.compute_txid();
+            for (vout, mut output) in tx.output.into_iter().enumerate() {
+                if output.script_pubkey == *spk {
+                    let outpoint = bitcoin::OutPoint::new(txid, vout as u32);
+                    if !spent_outputs.contains(&outpoint) {
+                        result.push((outpoint, output));
+                    }
+                }
+            }
+        }
+
+        result
     }
 }
 
@@ -214,7 +211,7 @@ impl BitcoinClient for ElectrumBitcoinClient {
             .inner
             .batch_transaction_get(&history.iter().map(|h| h.tx_hash).collect::<Vec<_>>())?;
 
-        Ok(Self::fetch_utxos_core(&txs, &history, &spk))
+        Ok(Self::fetch_utxos_core(txs, &history, &spk))
     }
 
     async fn broadcast_tx(&self, signed_tx: &Transaction) -> Result<Txid, Error> {
@@ -458,7 +455,7 @@ mod tests {
         ];
 
         let utxo_pairs = ElectrumBitcoinClient::fetch_utxos_core(
-            &[tx1, tx2, tx3, tx4, spending_tx, pending_spending_tx],
+            vec![tx1, tx2, tx3, tx4, spending_tx, pending_spending_tx],
             &history,
             &our_script,
         );
