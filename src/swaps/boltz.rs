@@ -42,8 +42,8 @@ use elements::secp256k1_zkp::{
     MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
     MusigSessionId,
 };
-use tokio_tungstenite_wasm::connect;
-pub use tokio_tungstenite_wasm::{Message as WsMessage, WebSocketStream};
+pub use tokio_tungstenite_wasm;
+use tokio_tungstenite_wasm::{connect, WebSocketStream};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct HeightResponse {
