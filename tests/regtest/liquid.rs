@@ -1,10 +1,9 @@
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(feature = "electrum")]
-use boltz_client::network::electrum::ElectrumConfig;
+use boltz_client::network::electrum::ElectrumLiquidConfig;
 #[cfg(feature = "esplora")]
-use boltz_client::network::esplora::EsploraConfig;
+use boltz_client::network::esplora::EsploraLiquidConfig;
 use boltz_client::{
-    network::Chain,
     swaps::{
         boltz::{
             BoltzApiClientV2, Cooperative, CreateReverseRequest, CreateSubmarineRequest,
@@ -29,7 +28,7 @@ use bitcoin::{
 use boltz_client::boltz::BOLTZ_REGTEST;
 use boltz_client::fees::Fee;
 use boltz_client::network::esplora::async_sleep;
-use boltz_client::network::LiquidClient;
+use boltz_client::network::{Chain, LiquidChain, LiquidClient};
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use tokio_tungstenite_wasm::Message;
@@ -37,15 +36,15 @@ use tokio_tungstenite_wasm::Message;
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-const CHAIN: Chain = Chain::LiquidRegtest;
+const CHAIN: LiquidChain = LiquidChain::LiquidRegtest;
 
 #[macros::async_test]
 #[serial]
 #[cfg(feature = "electrum")]
 async fn liquid_v2_submarine_electrum() {
     setup_logger();
-    let liquid_client = ElectrumConfig::default(CHAIN, None)
-        .build_liquid_client()
+    let liquid_client = ElectrumLiquidConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     liquid_v2_submarine(&liquid_client, false).await;
     liquid_v2_submarine(&liquid_client, true).await;
@@ -56,8 +55,8 @@ async fn liquid_v2_submarine_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_submarine_esplora() {
     setup_logger();
-    let liquid_client = EsploraConfig::default(CHAIN, None)
-        .build_liquid_client()
+    let liquid_client = EsploraLiquidConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     liquid_v2_submarine(&liquid_client, false).await;
     liquid_v2_submarine(&liquid_client, true).await;
@@ -101,7 +100,7 @@ async fn liquid_v2_submarine<LC: LiquidClient>(liquid_client: &LC, underpay: boo
     log::info!("Got Swap Response from Boltz server");
 
     create_swap_response
-        .validate(&invoice, &refund_public_key, chain)
+        .validate(&invoice, &refund_public_key, Chain::Liquid(chain))
         .unwrap();
     log::info!("VALIDATED RESPONSE!");
 
@@ -313,8 +312,8 @@ async fn liquid_v2_submarine<LC: LiquidClient>(liquid_client: &LC, underpay: boo
 #[cfg(feature = "electrum")]
 async fn liquid_v2_reverse_electrum() {
     setup_logger();
-    let liquid_client = ElectrumConfig::default(CHAIN, None)
-        .build_liquid_client()
+    let liquid_client = ElectrumLiquidConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     liquid_v2_reverse(&liquid_client, false).await;
     liquid_v2_reverse(&liquid_client, true).await;
@@ -325,8 +324,8 @@ async fn liquid_v2_reverse_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_reverse_esplora() {
     setup_logger();
-    let liquid_client = EsploraConfig::default(CHAIN, None)
-        .build_liquid_client()
+    let liquid_client = EsploraLiquidConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     liquid_v2_reverse(&liquid_client, false).await;
     liquid_v2_reverse(&liquid_client, true).await;
@@ -369,13 +368,13 @@ async fn liquid_v2_reverse<LC: LiquidClient>(liquid_client: &LC, lowball: bool) 
         .await
         .unwrap();
     reverse_resp
-        .validate(&preimage, &claim_public_key, chain)
+        .validate(&preimage, &claim_public_key, Chain::Liquid(chain))
         .unwrap();
     log::info!("VALIDATED RESPONSE!");
 
     let swap_id = reverse_resp.clone().id;
 
-    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, CHAIN)
+    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, Chain::Liquid(CHAIN))
         .await
         .unwrap()
         .unwrap();
@@ -512,8 +511,8 @@ async fn liquid_v2_reverse<LC: LiquidClient>(liquid_client: &LC, lowball: bool) 
 #[cfg(feature = "electrum")]
 async fn liquid_v2_reverse_script_path_electrum() {
     setup_logger();
-    let liquid_client = ElectrumConfig::default(CHAIN, None)
-        .build_liquid_client()
+    let liquid_client = ElectrumLiquidConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     liquid_v2_reverse_script_path(&liquid_client, false).await;
     liquid_v2_reverse_script_path(&liquid_client, true).await;
@@ -524,8 +523,8 @@ async fn liquid_v2_reverse_script_path_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_reverse_script_path_esplora() {
     setup_logger();
-    let liquid_client = EsploraConfig::default(CHAIN, None)
-        .build_liquid_client()
+    let liquid_client = EsploraLiquidConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     liquid_v2_reverse_script_path(&liquid_client, false).await;
     liquid_v2_reverse_script_path(&liquid_client, true).await;
@@ -568,13 +567,13 @@ async fn liquid_v2_reverse_script_path<LC: LiquidClient>(liquid_client: &LC, low
         .await
         .unwrap();
     reverse_resp
-        .validate(&preimage, &claim_public_key, chain)
+        .validate(&preimage, &claim_public_key, Chain::Liquid(chain))
         .unwrap();
     log::info!("VALIDATED RESPONSE!");
 
     let swap_id = reverse_resp.clone().id;
 
-    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, CHAIN)
+    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, Chain::Liquid(CHAIN))
         .await
         .unwrap()
         .unwrap();

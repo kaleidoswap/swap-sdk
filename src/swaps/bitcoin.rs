@@ -21,7 +21,7 @@ use std::collections::HashMap;
 use std::ops::{Add, Index};
 use std::str::FromStr;
 
-use crate::{error::Error, network::Chain, util::secrets::Preimage};
+use crate::{error::Error, util::secrets::Preimage};
 use crate::{LBtcSwapScript, LBtcSwapTx};
 
 use bitcoin::{blockdata::locktime::absolute::LockTime, hashes::hash160};
@@ -32,7 +32,7 @@ use super::boltz::{
     SwapTxKind, SwapType, ToSign,
 };
 
-use crate::network::BitcoinClient;
+use crate::network::{BitcoinChain, BitcoinClient};
 use crate::util::fees::{create_tx_with_fee, Fee};
 use elements::secp256k1_zkp::{
     musig, MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
@@ -363,25 +363,20 @@ impl BtcSwapScript {
     }
 
     /// Get taproot address for the swap script.
-    pub fn to_address(&self, network: Chain) -> Result<Address, Error> {
+    pub fn to_address(&self, network: BitcoinChain) -> Result<Address, Error> {
         let spend_info = self.taproot_spendinfo()?;
         let output_key = spend_info.output_key();
 
         let mut network = match network {
-            Chain::Bitcoin => Network::Bitcoin,
-            Chain::BitcoinRegtest => Network::Regtest,
-            Chain::BitcoinTestnet => Network::Testnet,
-            _ => {
-                return Err(Error::Protocol(
-                    "Liquid chain used for Bitcoin operations".to_string(),
-                ))
-            }
+            BitcoinChain::Bitcoin => Network::Bitcoin,
+            BitcoinChain::BitcoinRegtest => Network::Regtest,
+            BitcoinChain::BitcoinTestnet => Network::Testnet,
         };
 
         Ok(Address::p2tr_tweaked(output_key, network))
     }
 
-    pub fn validate_address(&self, chain: Chain, address: String) -> Result<(), Error> {
+    pub fn validate_address(&self, chain: BitcoinChain, address: String) -> Result<(), Error> {
         let to_address = self.to_address(chain)?;
         if to_address.to_string() == address {
             Ok(())
@@ -413,7 +408,7 @@ impl BtcSwapScript {
     /// Fetch utxo for script from BoltzApi
     pub async fn fetch_lockup_utxo_boltz(
         &self,
-        network: Chain,
+        network: BitcoinChain,
         boltz_url: &str,
         swap_id: &str,
         tx_kind: SwapTxKind,
@@ -499,14 +494,9 @@ impl BtcSwapTx {
             ));
         }
 
-        let network = match bitcoin_client.network() {
-            Chain::Bitcoin => Network::Bitcoin,
-            Chain::BitcoinTestnet => Network::Testnet,
-            _ => Network::Regtest,
-        };
         let address = Address::from_str(&claim_address)?;
 
-        address.is_valid_for_network(network);
+        address.is_valid_for_network(bitcoin_client.network().into());
 
         let utxo_info = match swap_script.fetch_utxos(bitcoin_client).await {
             Ok(v) => v.first().cloned(),
@@ -550,14 +540,8 @@ impl BtcSwapTx {
             ));
         }
 
-        let network = match bitcoin_client.network() {
-            Chain::Bitcoin => Network::Bitcoin,
-            Chain::BitcoinTestnet => Network::Testnet,
-            _ => Network::Regtest,
-        };
-
         let address = Address::from_str(refund_address)?;
-        if !address.is_valid_for_network(network) {
+        if !address.is_valid_for_network(bitcoin_client.network().into()) {
             return Err(Error::Address("Address validation failed".to_string()));
         };
 

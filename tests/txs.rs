@@ -9,7 +9,7 @@ use bitcoind::bitcoincore_rpc::json::{AddressType, ScanTxOutRequest};
 use bitcoind::bitcoincore_rpc::RpcApi;
 use boltz_client::boltz::{SwapTxKind, SwapType};
 use boltz_client::fees::Fee;
-use boltz_client::network::Chain;
+use boltz_client::network::{BitcoinChain, LiquidChain};
 use boltz_client::util::secrets::Preimage;
 use boltz_client::{BtcSwapScript, BtcSwapTx, LBtcSwapScript, LBtcSwapTx};
 use elements::Address;
@@ -56,7 +56,9 @@ fn prepare_btc_claim() -> (
     };
 
     // Send coin the swapscript address and confirm tx
-    let swap_addrs = swap_script.to_address(Chain::BitcoinRegtest).unwrap();
+    let swap_addrs = swap_script
+        .to_address(BitcoinChain::BitcoinRegtest)
+        .unwrap();
     let spk = swap_addrs.script_pubkey();
     println!("spk: {}", spk);
     test_framework.send_coins(&swap_addrs, Amount::from_sat(FUNDING_AMOUNT));
@@ -231,7 +233,9 @@ fn prepare_btc_refund() -> (
     };
 
     // Send coin the swapscript address and confirm tx
-    let swap_addrs = swap_script.to_address(Chain::BitcoinRegtest).unwrap();
+    let swap_addrs = swap_script
+        .to_address(BitcoinChain::BitcoinRegtest)
+        .unwrap();
     test_framework.send_coins(&swap_addrs, Amount::from_sat(10000));
     test_framework.generate_blocks(1);
 
@@ -412,7 +416,7 @@ fn prepare_lbtc_claim() -> (
     };
 
     // Send coin the swapscript address and confirm tx
-    let swap_addrs = swap_script.to_address(Chain::LiquidRegtest).unwrap();
+    let swap_addrs = swap_script.to_address(LiquidChain::LiquidRegtest).unwrap();
 
     test_framework.send_coins(&swap_addrs, Amount::from_sat(10000));
     test_framework.generate_blocks(1);
@@ -564,7 +568,7 @@ fn prepare_lbtc_refund() -> (
     };
 
     // Send coin the swapscript address and confirm tx
-    let swap_addrs = swap_script.to_address(Chain::LiquidRegtest).unwrap();
+    let swap_addrs = swap_script.to_address(LiquidChain::LiquidRegtest).unwrap();
     test_framework.send_coins(&swap_addrs, Amount::from_sat(10000));
     test_framework.generate_blocks(1);
 

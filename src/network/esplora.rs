@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::network::{BitcoinClient, Chain, LiquidClient};
+use crate::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
 use bitcoin::ScriptBuf;
 use elements::hex::ToHex;
 use elements::pset::serialize::Serialize;
@@ -20,80 +20,81 @@ pub const DEFAULT_LIQUID_REGTEST_NODE: &str = "http://localhost:4003/api";
 pub const DEFAULT_ESPLORA_TIMEOUT_SECS: u64 = 30;
 
 #[derive(Debug, Clone)]
-pub struct EsploraConfig {
-    network: Chain,
+pub struct EsploraBitcoinConfig {
+    network: BitcoinChain,
     url: String,
     timeout: u64,
 }
 
-impl EsploraConfig {
-    pub fn new(network: Chain, url: &str, timeout: u64) -> Self {
+impl EsploraBitcoinConfig {
+    pub fn new(network: BitcoinChain, url: &str, timeout: u64) -> Self {
         Self {
             network,
             url: url.to_string(),
             timeout,
         }
     }
-    pub fn default(chain: Chain, regtest_url: Option<&str>) -> Self {
-        match chain {
-            Chain::Bitcoin => Self::new(
-                Chain::Bitcoin,
-                DEFAULT_MAINNET_NODE,
-                DEFAULT_ESPLORA_TIMEOUT_SECS,
-            ),
-            Chain::BitcoinTestnet => Self::new(
-                Chain::BitcoinTestnet,
-                DEFAULT_TESTNET_NODE,
-                DEFAULT_ESPLORA_TIMEOUT_SECS,
-            ),
-            Chain::BitcoinRegtest => Self::new(
-                Chain::BitcoinRegtest,
+    pub fn default(network: BitcoinChain, regtest_url: Option<&str>) -> Self {
+        match network {
+            BitcoinChain::Bitcoin => {
+                Self::new(network, DEFAULT_MAINNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
+            }
+            BitcoinChain::BitcoinTestnet => {
+                Self::new(network, DEFAULT_TESTNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
+            }
+            BitcoinChain::BitcoinRegtest => Self::new(
+                network,
                 regtest_url.unwrap_or(DEFAULT_REGTEST_NODE),
-                DEFAULT_ESPLORA_TIMEOUT_SECS,
-            ),
-            Chain::Liquid => Self::new(
-                Chain::Liquid,
-                DEFAULT_LIQUID_MAINNET_NODE,
-                DEFAULT_ESPLORA_TIMEOUT_SECS,
-            ),
-            Chain::LiquidTestnet => Self::new(
-                Chain::LiquidTestnet,
-                DEFAULT_LIQUID_TESTNET_NODE,
-                DEFAULT_ESPLORA_TIMEOUT_SECS,
-            ),
-            Chain::LiquidRegtest => Self::new(
-                Chain::LiquidRegtest,
-                regtest_url.unwrap_or(DEFAULT_LIQUID_REGTEST_NODE),
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
             ),
         }
     }
 
-    pub fn default_bitcoin() -> Self {
-        Self::new(
-            Chain::BitcoinTestnet,
-            DEFAULT_TESTNET_NODE,
-            DEFAULT_ESPLORA_TIMEOUT_SECS,
-        )
-    }
-
-    pub fn default_liquid() -> Self {
-        Self::new(
-            Chain::LiquidTestnet,
-            DEFAULT_LIQUID_TESTNET_NODE,
-            DEFAULT_ESPLORA_TIMEOUT_SECS,
-        )
-    }
-
-    pub fn build_bitcoin_client(&self) -> Result<EsploraBitcoinClient, Error> {
+    pub fn build_client(&self) -> Result<EsploraBitcoinClient, Error> {
         Ok(EsploraBitcoinClient::new(
             &self.url,
             self.timeout,
             self.network,
         ))
     }
+}
 
-    pub fn build_liquid_client(&self) -> Result<EsploraLiquidClient, Error> {
+#[derive(Debug, Clone)]
+pub struct EsploraLiquidConfig {
+    network: LiquidChain,
+    url: String,
+    timeout: u64,
+}
+
+impl EsploraLiquidConfig {
+    pub fn new(network: LiquidChain, url: &str, timeout: u64) -> Self {
+        Self {
+            network,
+            url: url.to_string(),
+            timeout,
+        }
+    }
+    pub fn default(network: LiquidChain, regtest_url: Option<&str>) -> Self {
+        match network {
+            LiquidChain::Liquid => Self::new(
+                network,
+                DEFAULT_LIQUID_MAINNET_NODE,
+                DEFAULT_ESPLORA_TIMEOUT_SECS,
+            ),
+            LiquidChain::LiquidTestnet => Self::new(
+                network,
+                DEFAULT_LIQUID_TESTNET_NODE,
+                DEFAULT_ESPLORA_TIMEOUT_SECS,
+            ),
+            LiquidChain::LiquidRegtest => Self::new(
+                network,
+                regtest_url.unwrap_or(DEFAULT_LIQUID_REGTEST_NODE),
+                DEFAULT_ESPLORA_TIMEOUT_SECS,
+            ),
+        }
+    }
+
+    pub fn build_client(&self) -> Result<EsploraLiquidClient, Error> {
         Ok(EsploraLiquidClient::new(
             &self.url,
             self.timeout,
@@ -106,11 +107,11 @@ pub struct EsploraBitcoinClient {
     client: reqwest::Client,
     base_url: String,
     timeout: Duration,
-    network: Chain,
+    network: BitcoinChain,
 }
 
 impl EsploraBitcoinClient {
-    pub fn new(url: &str, timeout: u64, network: Chain) -> Self {
+    pub fn new(url: &str, timeout: u64, network: BitcoinChain) -> Self {
         let client = reqwest::Client::new();
 
         Self {
@@ -226,7 +227,7 @@ impl BitcoinClient for EsploraBitcoinClient {
         let txid = bitcoin::Txid::from_str(&response.text().await?)?;
         Ok(txid)
     }
-    fn network(&self) -> Chain {
+    fn network(&self) -> BitcoinChain {
         self.network
     }
 }
@@ -235,11 +236,11 @@ pub struct EsploraLiquidClient {
     client: reqwest::Client,
     base_url: String,
     timeout: Duration,
-    network: Chain,
+    network: LiquidChain,
 }
 
 impl EsploraLiquidClient {
-    pub fn new(url: &str, timeout: u64, network: Chain) -> Self {
+    pub fn new(url: &str, timeout: u64, network: LiquidChain) -> Self {
         let client = reqwest::Client::new();
 
         Self {
@@ -302,7 +303,7 @@ impl LiquidClient for EsploraLiquidClient {
             .map_err(|e| Error::Esplora(e.to_string()))?;
         Ok(response.text().await?)
     }
-    fn network(&self) -> Chain {
+    fn network(&self) -> LiquidChain {
         self.network
     }
 }
@@ -421,8 +422,6 @@ pub struct Utxo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::esplora::EsploraConfig;
-    use crate::network::{BitcoinClient, Chain, LiquidClient};
     use elements::hex::ToHex;
     use std::str::FromStr;
 
@@ -431,8 +430,8 @@ mod tests {
 
     #[macros::async_test_all]
     async fn test_esplora_default_clients() {
-        let network_config = EsploraConfig::default(Chain::Bitcoin, None);
-        let esplora_client = network_config.build_bitcoin_client().unwrap();
+        let network_config = EsploraBitcoinConfig::default(BitcoinChain::Bitcoin, None);
+        let esplora_client = network_config.build_client().unwrap();
         assert!(esplora_client
             .get_address_balance(
                 &bitcoin::Address::from_str("bc1qlaghkgntxw84d8jfv45deup7v32dfmncs7t3ct")
@@ -442,8 +441,8 @@ mod tests {
             .await
             .is_ok());
 
-        let network_config = EsploraConfig::default(Chain::Liquid, None);
-        let esplora_client = network_config.build_liquid_client().unwrap();
+        let network_config = EsploraLiquidConfig::default(LiquidChain::Liquid, None);
+        let esplora_client = network_config.build_client().unwrap();
         assert_eq!(
             esplora_client.get_genesis_hash().await.unwrap().to_hex(),
             "1466275836220db2944ca059a3a10ef6fd2ea684b0688d2c379296888a206003"

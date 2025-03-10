@@ -1,10 +1,11 @@
 // use electrum_client::raw_client::RawClient;
 
-use super::{BitcoinClient, Chain, LiquidClient};
+use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
 use crate::error::Error;
-use bitcoin::{Address, ScriptBuf, Transaction, Txid};
+use bitcoin::{Address, Network, ScriptBuf, Transaction, Txid};
 use electrum_client::{ElectrumApi, GetHistoryRes};
 use elements::encode::{serialize, Decodable};
+use elements::AddressParams;
 use std::collections::{HashMap, HashSet};
 
 pub const DEFAULT_MAINNET_NODE: &str = "wes.bullbitcoin.com:50002";
@@ -38,80 +39,41 @@ impl ElectrumUrl {
 
 /// Electrum client configuration.
 #[derive(Debug, Clone)]
-pub struct ElectrumConfig {
-    network: Chain,
+pub struct ElectrumBitcoinConfig {
+    network: BitcoinChain,
     url: ElectrumUrl,
     timeout: u8,
 }
 
-impl ElectrumConfig {
-    pub fn default(chain: Chain, regtest_url: Option<&str>) -> Self {
-        match chain {
-            Chain::Bitcoin => ElectrumConfig::new(
-                Chain::Bitcoin,
+impl ElectrumBitcoinConfig {
+    pub fn default(network: BitcoinChain, regtest_url: Option<&str>) -> Result<Self, Error> {
+        Ok(match network {
+            BitcoinChain::Bitcoin => Self::new(
+                network,
                 DEFAULT_MAINNET_NODE,
                 true,
                 true,
                 DEFAULT_ELECTRUM_TIMEOUT,
             ),
-            Chain::BitcoinTestnet => ElectrumConfig::new(
-                Chain::BitcoinTestnet,
+            BitcoinChain::BitcoinTestnet => Self::new(
+                network,
                 DEFAULT_TESTNET_NODE,
                 true,
                 true,
                 DEFAULT_ELECTRUM_TIMEOUT,
             ),
-            Chain::BitcoinRegtest => ElectrumConfig::new(
-                Chain::BitcoinRegtest,
+            BitcoinChain::BitcoinRegtest => Self::new(
+                network,
                 regtest_url.unwrap_or(DEFAULT_REGTEST_NODE),
                 false,
                 false,
                 DEFAULT_ELECTRUM_TIMEOUT,
             ),
-            Chain::Liquid => ElectrumConfig::new(
-                Chain::Liquid,
-                DEFAULT_LIQUID_MAINNET_NODE,
-                true,
-                true,
-                DEFAULT_ELECTRUM_TIMEOUT,
-            ),
-            Chain::LiquidTestnet => ElectrumConfig::new(
-                Chain::LiquidTestnet,
-                DEFAULT_LIQUID_TESTNET_NODE,
-                true,
-                true,
-                DEFAULT_ELECTRUM_TIMEOUT,
-            ),
-            Chain::LiquidRegtest => ElectrumConfig::new(
-                Chain::LiquidRegtest,
-                regtest_url.unwrap_or(DEFAULT_LIQUID_REGTEST_NODE),
-                false,
-                false,
-                DEFAULT_ELECTRUM_TIMEOUT,
-            ),
-        }
+        })
     }
 
-    pub fn default_bitcoin() -> Self {
-        ElectrumConfig::new(
-            Chain::BitcoinTestnet,
-            DEFAULT_TESTNET_NODE,
-            true,
-            true,
-            DEFAULT_ELECTRUM_TIMEOUT,
-        )
-    }
-    pub fn default_liquid() -> Self {
-        ElectrumConfig::new(
-            Chain::LiquidTestnet,
-            DEFAULT_LIQUID_TESTNET_NODE,
-            true,
-            true,
-            DEFAULT_ELECTRUM_TIMEOUT,
-        )
-    }
     pub fn new(
-        network: Chain,
+        network: BitcoinChain,
         electrum_url: &str,
         tls: bool,
         validate_domain: bool,
@@ -121,29 +83,93 @@ impl ElectrumConfig {
             true => ElectrumUrl::Tls(electrum_url.into(), validate_domain),
             false => ElectrumUrl::Plaintext(electrum_url.into()),
         };
-        ElectrumConfig {
+        Self {
             timeout,
             network,
             url: electrum_url,
         }
     }
 
-    pub fn build_bitcoin_client(&self) -> Result<ElectrumBitcoinClient, Error> {
+    pub fn build_client(&self) -> Result<ElectrumBitcoinClient, Error> {
         ElectrumBitcoinClient::new(self.url.clone(), self.timeout, self.network)
     }
+}
 
-    pub fn build_liquid_client(&self) -> Result<ElectrumLiquidClient, Error> {
+/// Electrum client configuration.
+#[derive(Debug, Clone)]
+pub struct ElectrumLiquidConfig {
+    network: LiquidChain,
+    url: ElectrumUrl,
+    timeout: u8,
+}
+
+impl ElectrumLiquidConfig {
+    pub fn default(network: LiquidChain, regtest_url: Option<&str>) -> Self {
+        match network {
+            LiquidChain::Liquid => Self::new(
+                network,
+                DEFAULT_LIQUID_MAINNET_NODE,
+                true,
+                true,
+                DEFAULT_ELECTRUM_TIMEOUT,
+            ),
+            LiquidChain::LiquidTestnet => Self::new(
+                network,
+                DEFAULT_LIQUID_TESTNET_NODE,
+                true,
+                true,
+                DEFAULT_ELECTRUM_TIMEOUT,
+            ),
+            LiquidChain::LiquidRegtest => Self::new(
+                network,
+                regtest_url.unwrap_or(DEFAULT_LIQUID_REGTEST_NODE),
+                false,
+                false,
+                DEFAULT_ELECTRUM_TIMEOUT,
+            ),
+        }
+    }
+
+    pub fn default_liquid() -> Self {
+        Self::new(
+            LiquidChain::LiquidTestnet,
+            DEFAULT_LIQUID_TESTNET_NODE,
+            true,
+            true,
+            DEFAULT_ELECTRUM_TIMEOUT,
+        )
+    }
+
+    pub fn new(
+        network: LiquidChain,
+        electrum_url: &str,
+        tls: bool,
+        validate_domain: bool,
+        timeout: u8,
+    ) -> Self {
+        let electrum_url = match tls {
+            true => ElectrumUrl::Tls(electrum_url.into(), validate_domain),
+            false => ElectrumUrl::Plaintext(electrum_url.into()),
+        };
+        Self {
+            timeout,
+            network,
+            url: electrum_url,
+        }
+    }
+
+    pub fn build_client(&self) -> Result<ElectrumLiquidClient, Error> {
         ElectrumLiquidClient::new(self.url.clone(), self.timeout, self.network)
     }
 }
 
 pub struct ElectrumBitcoinClient {
     inner: electrum_client::Client,
-    network: Chain,
+    network: BitcoinChain,
 }
 
 impl ElectrumBitcoinClient {
-    fn new(url: ElectrumUrl, timeout: u8, network: Chain) -> Result<Self, Error> {
+    fn new(url: ElectrumUrl, timeout: u8, network: BitcoinChain) -> Result<Self, Error> {
         Ok(Self {
             inner: url.build_client(timeout)?,
             network,
@@ -218,18 +244,18 @@ impl BitcoinClient for ElectrumBitcoinClient {
         Ok(self.inner.transaction_broadcast(signed_tx)?)
     }
 
-    fn network(&self) -> Chain {
+    fn network(&self) -> BitcoinChain {
         self.network
     }
 }
 
 pub struct ElectrumLiquidClient {
     inner: electrum_client::Client,
-    network: Chain,
+    network: LiquidChain,
 }
 
 impl ElectrumLiquidClient {
-    fn new(url: ElectrumUrl, timeout: u8, network: Chain) -> Result<Self, Error> {
+    fn new(url: ElectrumUrl, timeout: u8, network: LiquidChain) -> Result<Self, Error> {
         Ok(Self {
             inner: url.build_client(timeout)?,
             network,
@@ -277,7 +303,8 @@ impl LiquidClient for ElectrumLiquidClient {
             .transaction_broadcast_raw(&serialized)?
             .to_string())
     }
-    fn network(&self) -> Chain {
+
+    fn network(&self) -> LiquidChain {
         self.network
     }
 }
@@ -286,6 +313,7 @@ impl LiquidClient for ElectrumLiquidClient {
 mod tests {
 
     use super::*;
+    use crate::network::BitcoinChain::BitcoinTestnet;
     use crate::BtcSwapScript;
     use bitcoin::absolute::LockTime;
     use bitcoin::blockdata::transaction::Transaction;
@@ -299,12 +327,12 @@ mod tests {
     #[test]
     fn test_electrum_default_clients() {
         // let network_config = ElectrumConfig::default(Chain::Bitcoin, None).unwrap();
-        let network_config = ElectrumConfig::default(Chain::Bitcoin, None);
-        let electrum_client = network_config.build_bitcoin_client().unwrap();
+        let network_config = ElectrumBitcoinConfig::default(BitcoinChain::Bitcoin, None).unwrap();
+        let electrum_client = network_config.build_client().unwrap();
         assert!(electrum_client.inner.ping().is_ok());
 
-        let network_config = ElectrumConfig::default(Chain::Liquid, None);
-        let electrum_client = network_config.build_liquid_client().unwrap();
+        let network_config = ElectrumLiquidConfig::default(LiquidChain::Liquid, None);
+        let electrum_client = network_config.build_client().unwrap();
         assert!(electrum_client.inner.ping().is_ok());
     }
 
@@ -312,20 +340,19 @@ mod tests {
     #[ignore]
     fn test_blockstream_electrum() {
         // let network_config = ElectrumConfig::default(Chain::Bitcoin, None).unwrap();
-        let network_config = ElectrumConfig::default_bitcoin();
-
-        let electrum_client = network_config.build_bitcoin_client().unwrap();
+        let network_config = ElectrumBitcoinConfig::default(BitcoinTestnet, None).unwrap();
+        let electrum_client = network_config.build_client().unwrap();
         assert!(electrum_client.inner.ping().is_ok());
 
-        let network_config = ElectrumConfig::default_liquid();
-        let electrum_client = network_config.build_liquid_client().unwrap();
+        let network_config = ElectrumLiquidConfig::default(LiquidChain::LiquidTestnet, None);
+        let electrum_client = network_config.build_client().unwrap();
         assert!(electrum_client.inner.ping().is_ok());
     }
     #[test]
     #[ignore]
     fn test_raw_electrum_calls() {
-        let network_config = ElectrumConfig::default(Chain::Liquid, None);
-        let electrum_client = network_config.build_liquid_client().unwrap();
+        let network_config = ElectrumLiquidConfig::default(LiquidChain::Liquid, None);
+        let electrum_client = network_config.build_client().unwrap();
         let numblocks = "blockchain.numblocks.subscribe";
         let blockheight = electrum_client.inner.raw_call(numblocks, []).unwrap();
         println!("blockheight: {}", blockheight);

@@ -564,8 +564,8 @@ impl BoltzApiClientV2 {
         );
 
         let chain = match chain {
-            Chain::Bitcoin | Chain::BitcoinRegtest | Chain::BitcoinTestnet => "BTC",
-            Chain::Liquid | Chain::LiquidTestnet | Chain::LiquidRegtest => "L-BTC",
+            Chain::Bitcoin(_) => "BTC",
+            Chain::Liquid(_) => "L-BTC",
         };
 
         let end_point = format!("chain/{}/transaction", chain);
@@ -694,11 +694,11 @@ impl CreateSubmarineResponse {
         let preimage = Preimage::from_invoice_str(invoice).unwrap();
 
         match chain {
-            Chain::Bitcoin | Chain::BitcoinTestnet | Chain::BitcoinRegtest => {
+            Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_sub_script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
-                boltz_sub_script.validate_address(chain, self.address.clone())
+                boltz_sub_script.validate_address(bitcoin_chain, self.address.clone())
             }
-            Chain::Liquid | Chain::LiquidTestnet | Chain::LiquidRegtest => {
+            Chain::Liquid(liquid_chain) => {
                 let blinding_key = self.blinding_key.as_ref().unwrap();
                 let boltz_sub_script = LBtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
                 if boltz_sub_script.hashlock != preimage.hash160 {
@@ -708,7 +708,7 @@ impl CreateSubmarineResponse {
                     )));
                 }
 
-                boltz_sub_script.validate_address(chain, self.address.clone())
+                boltz_sub_script.validate_address(liquid_chain, self.address.clone())
             }
         }
     }
@@ -799,14 +799,14 @@ impl CreateReverseResponse {
         }
 
         match chain {
-            Chain::Bitcoin | Chain::BitcoinTestnet | Chain::BitcoinRegtest => {
+            Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_rev_script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
-                boltz_rev_script.validate_address(chain, self.lockup_address.clone())
+                boltz_rev_script.validate_address(bitcoin_chain, self.lockup_address.clone())
             }
-            Chain::Liquid | Chain::LiquidTestnet | Chain::LiquidRegtest => {
+            Chain::Liquid(liquid_chain) => {
                 let blinding_key = self.blinding_key.as_ref().unwrap();
                 let boltz_rev_script = LBtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
-                boltz_rev_script.validate_address(chain, self.lockup_address.clone())
+                boltz_rev_script.validate_address(liquid_chain, self.lockup_address.clone())
             }
         }
     }
@@ -891,16 +891,16 @@ impl CreateChainResponse {
         our_pubkey: &PublicKey,
     ) -> Result<(), Error> {
         match chain {
-            Chain::Bitcoin | Chain::BitcoinTestnet | Chain::BitcoinRegtest => {
+            Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_chain_script =
                     BtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
-                boltz_chain_script.validate_address(chain, details.lockup_address.clone())
+                boltz_chain_script.validate_address(bitcoin_chain, details.lockup_address.clone())
             }
-            Chain::Liquid | Chain::LiquidTestnet | Chain::LiquidRegtest => {
+            Chain::Liquid(liquid_chain) => {
                 let blinding_key = details.blinding_key.as_ref().unwrap();
                 let boltz_chain_script =
                     LBtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
-                boltz_chain_script.validate_address(chain, details.lockup_address.clone())
+                boltz_chain_script.validate_address(liquid_chain, details.lockup_address.clone())
             }
         }
     }

@@ -1,8 +1,8 @@
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(feature = "electrum")]
-use boltz_client::network::electrum::ElectrumConfig;
+use boltz_client::network::electrum::ElectrumBitcoinConfig;
 #[cfg(feature = "esplora")]
-use boltz_client::network::esplora::EsploraConfig;
+use boltz_client::network::esplora::EsploraBitcoinConfig;
 use std::str::FromStr;
 
 use boltz_client::{
@@ -30,7 +30,7 @@ use bitcoin::{
 use boltz_client::boltz::BOLTZ_REGTEST;
 use boltz_client::fees::Fee;
 use boltz_client::network::esplora::async_sleep;
-use boltz_client::network::BitcoinClient;
+use boltz_client::network::{BitcoinChain, BitcoinClient};
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use tokio_tungstenite_wasm::Message;
@@ -38,15 +38,16 @@ use tokio_tungstenite_wasm::Message;
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
-const CHAIN: Chain = Chain::BitcoinRegtest;
+const CHAIN: BitcoinChain = BitcoinChain::BitcoinRegtest;
 
 #[macros::async_test]
 #[serial]
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_submarine_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumConfig::default(CHAIN, None)
-        .build_bitcoin_client()
+    let bitcoin_client = ElectrumBitcoinConfig::default(CHAIN, None)
+        .unwrap()
+        .build_client()
         .unwrap();
     bitcoin_v2_submarine(&bitcoin_client, false).await;
     bitcoin_v2_submarine(&bitcoin_client, true).await;
@@ -57,8 +58,8 @@ async fn bitcoin_v2_submarine_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_submarine_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraConfig::default(CHAIN, None)
-        .build_bitcoin_client()
+    let bitcoin_client = EsploraBitcoinConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     bitcoin_v2_submarine(&bitcoin_client, false).await;
     bitcoin_v2_submarine(&bitcoin_client, true).await;
@@ -301,8 +302,9 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient>(bitcoin_client: &BC, underpay: 
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_reverse_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumConfig::default(CHAIN, None)
-        .build_bitcoin_client()
+    let bitcoin_client = ElectrumBitcoinConfig::default(CHAIN, None)
+        .unwrap()
+        .build_client()
         .unwrap();
     bitcoin_v2_reverse(bitcoin_client).await
 }
@@ -312,8 +314,8 @@ async fn bitcoin_v2_reverse_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_reverse_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraConfig::default(CHAIN, None)
-        .build_bitcoin_client()
+    let bitcoin_client = EsploraBitcoinConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     bitcoin_v2_reverse(bitcoin_client).await
 }
@@ -353,7 +355,7 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient>(bitcoin_client: BC) {
         .await
         .unwrap();
 
-    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, CHAIN)
+    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, Chain::Bitcoin(CHAIN))
         .await
         .unwrap()
         .unwrap();
@@ -477,8 +479,9 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient>(bitcoin_client: BC) {
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_reverse_script_path_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumConfig::default(CHAIN, None)
-        .build_bitcoin_client()
+    let bitcoin_client = ElectrumBitcoinConfig::default(CHAIN, None)
+        .unwrap()
+        .build_client()
         .unwrap();
     bitcoin_v2_reverse_script_path(bitcoin_client).await
 }
@@ -488,8 +491,8 @@ async fn bitcoin_v2_reverse_script_path_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_reverse_script_path_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraConfig::default(CHAIN, None)
-        .build_bitcoin_client()
+    let bitcoin_client = EsploraBitcoinConfig::default(CHAIN, None)
+        .build_client()
         .unwrap();
     bitcoin_v2_reverse_script_path(bitcoin_client).await
 }
@@ -529,7 +532,7 @@ async fn bitcoin_v2_reverse_script_path<BC: BitcoinClient>(bitcoin_client: BC) {
         .await
         .unwrap();
     let swap_id = reverse_resp.id.clone();
-    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, CHAIN)
+    let _ = check_for_mrh(&boltz_api_v2, &reverse_resp.invoice, Chain::Bitcoin(CHAIN))
         .await
         .unwrap()
         .unwrap();

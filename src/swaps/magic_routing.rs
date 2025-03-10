@@ -1,5 +1,7 @@
 use std::str::FromStr;
 
+use super::boltz::BoltzApiClientV2;
+use crate::network::LiquidChain;
 use crate::{error::Error, network::Chain};
 use bitcoin::{
     hashes::{sha256, Hash},
@@ -10,8 +12,6 @@ use bitcoin::{
 };
 use elements::hex::ToHex;
 use lightning_invoice::{Bolt11Invoice, RouteHintHop};
-
-use super::boltz::BoltzApiClientV2;
 
 const MAGIC_ROUTING_HINT_CONSTANT: u64 = 596385002596073472;
 const LBTC_TESTNET_ASSET_HASH: &str =
@@ -96,9 +96,7 @@ pub async fn check_for_mrh(
         let address_hash = sha256::Hash::hash(address.as_bytes());
         let msg = Message::from_digest_slice(address_hash.as_byte_array())?;
 
-        let receiver_sig = bitcoin::secp256k1::schnorr::Signature::from_slice(&Vec::from_hex(
-            &mrh_resp.signature,
-        )?)?;
+        let receiver_sig = Signature::from_slice(&Vec::from_hex(&mrh_resp.signature)?)?;
 
         let receiver_pubkey = PublicKey::from_str(&route_hint.src_node_id.to_string())?.inner;
 
@@ -106,7 +104,7 @@ pub async fn check_for_mrh(
         secp.verify_schnorr(&receiver_sig, &msg, &receiver_pubkey.x_only_public_key().0)?;
 
         match network {
-            Chain::LiquidTestnet => {
+            Chain::Liquid(LiquidChain::LiquidTestnet) => {
                 if assetid != Some(LBTC_TESTNET_ASSET_HASH.to_string()) {
                     return Err(Error::Protocol(
                         "Asset Id missmatch in Magic Routing Hint".to_string(),
@@ -114,7 +112,7 @@ pub async fn check_for_mrh(
                 }
             }
 
-            Chain::Liquid => {
+            Chain::Liquid(LiquidChain::Liquid) => {
                 if assetid != Some(LBTC_MAINNET_ASSET_HASH.to_string()) {
                     return Err(Error::Protocol(
                         "Asset Id missmatch in Magic Routing Hint".to_string(),

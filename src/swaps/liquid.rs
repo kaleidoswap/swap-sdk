@@ -24,7 +24,7 @@ use elements::{
 use elements::encode::serialize;
 use elements::secp256k1_zkp::Message;
 
-use crate::{network::Chain, util::secrets::Preimage};
+use crate::util::secrets::Preimage;
 
 use crate::error::Error;
 
@@ -33,7 +33,7 @@ use super::boltz::{
     CreateSubmarineResponse, Side, SubmarineClaimTxResponse, SwapTxKind, SwapType, ToSign,
 };
 use crate::fees::{create_tx_with_fee, Fee};
-use crate::network::{BitcoinClient, LiquidClient};
+use crate::network::{BitcoinClient, Chain, LiquidChain, LiquidClient};
 use elements::bitcoin::PublicKey;
 use elements::secp256k1_zkp::Keypair as ZKKeyPair;
 use elements::{
@@ -369,29 +369,19 @@ impl LBtcSwapScript {
 
     /// Get taproot address for the swap script.
     /// Always returns a confidential address
-    pub fn to_address(&self, network: Chain) -> Result<EAddress, Error> {
+    pub fn to_address(&self, network: LiquidChain) -> Result<EAddress, Error> {
         let taproot_spend_info = self.taproot_spendinfo()?;
-        let address_params = match network {
-            Chain::Liquid => &AddressParams::LIQUID,
-            Chain::LiquidTestnet => &AddressParams::LIQUID_TESTNET,
-            Chain::LiquidRegtest => &AddressParams::ELEMENTS,
-            _ => {
-                return Err(Error::Address(
-                    "Cannot derive Liquid address for Bitcoin network".to_string(),
-                ))
-            }
-        };
 
         Ok(EAddress::p2tr(
             &Secp256k1::new(),
             taproot_spend_info.internal_key(),
             taproot_spend_info.merkle_root(),
             Some(self.blinding_key.public_key()),
-            address_params,
+            network.into(),
         ))
     }
 
-    pub fn validate_address(&self, chain: Chain, address: String) -> Result<(), Error> {
+    pub fn validate_address(&self, chain: LiquidChain, address: String) -> Result<(), Error> {
         let to_address = self.to_address(chain)?;
         if to_address.to_string() == address {
             Ok(())
@@ -412,7 +402,7 @@ impl LBtcSwapScript {
     /// Fetch utxo for script from BoltzApi
     pub async fn fetch_lockup_utxo_boltz(
         &self,
-        network: Chain,
+        network: LiquidChain,
         boltz_url: &str,
         swap_id: &str,
         tx_kind: SwapTxKind,
@@ -1281,12 +1271,14 @@ impl LBtcSwapTx {
         &self,
         signed_tx: &Transaction,
         liquid_client: &LC,
-        is_lowball: Option<(&BoltzApiClientV2, Chain)>,
+        is_lowball: Option<(&BoltzApiClientV2, LiquidChain)>,
     ) -> Result<String, Error> {
         if let Some((boltz_api, chain)) = is_lowball {
             log::info!("Attempting lowball broadcast");
             let tx_hex = serialize(signed_tx).to_lower_hex_string();
-            let response = boltz_api.broadcast_tx(chain, &tx_hex).await?;
+            let response = boltz_api
+                .broadcast_tx(Chain::Liquid(chain), &tx_hex)
+                .await?;
 
             match response.as_object() {
                 None => Err(Error::Protocol("Invalid broadcast reply".to_string())),
