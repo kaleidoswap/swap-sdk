@@ -1,8 +1,8 @@
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(feature = "electrum")]
-use boltz_client::network::electrum::ElectrumBitcoinConfig;
+use boltz_client::network::electrum::ElectrumBitcoinClient;
 #[cfg(feature = "esplora")]
-use boltz_client::network::esplora::EsploraBitcoinConfig;
+use boltz_client::network::esplora::EsploraBitcoinClient;
 use std::str::FromStr;
 
 use boltz_client::{
@@ -45,10 +45,7 @@ const CHAIN: BitcoinChain = BitcoinChain::BitcoinRegtest;
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_submarine_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumBitcoinConfig::default(CHAIN, None)
-        .unwrap()
-        .build_client()
-        .unwrap();
+    let bitcoin_client = ElectrumBitcoinClient::default(CHAIN, None).unwrap();
     bitcoin_v2_submarine(&bitcoin_client, false).await;
     bitcoin_v2_submarine(&bitcoin_client, true).await;
 }
@@ -58,9 +55,7 @@ async fn bitcoin_v2_submarine_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_submarine_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraBitcoinConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = EsploraBitcoinClient::default(CHAIN, None);
     bitcoin_v2_submarine(&bitcoin_client, false).await;
     bitcoin_v2_submarine(&bitcoin_client, true).await;
 }
@@ -302,10 +297,7 @@ async fn bitcoin_v2_submarine<BC: BitcoinClient>(bitcoin_client: &BC, underpay: 
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_reverse_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumBitcoinConfig::default(CHAIN, None)
-        .unwrap()
-        .build_client()
-        .unwrap();
+    let bitcoin_client = ElectrumBitcoinClient::default(CHAIN, None).unwrap();
     bitcoin_v2_reverse(bitcoin_client).await
 }
 
@@ -314,9 +306,7 @@ async fn bitcoin_v2_reverse_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_reverse_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraBitcoinConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = EsploraBitcoinClient::default(CHAIN, None);
     bitcoin_v2_reverse(bitcoin_client).await
 }
 
@@ -479,10 +469,7 @@ async fn bitcoin_v2_reverse<BC: BitcoinClient>(bitcoin_client: BC) {
 #[cfg(feature = "electrum")]
 async fn bitcoin_v2_reverse_script_path_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumBitcoinConfig::default(CHAIN, None)
-        .unwrap()
-        .build_client()
-        .unwrap();
+    let bitcoin_client = ElectrumBitcoinClient::default(CHAIN, None).unwrap();
     bitcoin_v2_reverse_script_path(bitcoin_client).await
 }
 
@@ -491,9 +478,7 @@ async fn bitcoin_v2_reverse_script_path_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_v2_reverse_script_path_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraBitcoinConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = EsploraBitcoinClient::default(CHAIN, None);
     bitcoin_v2_reverse_script_path(bitcoin_client).await
 }
 

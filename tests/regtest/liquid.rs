@@ -1,8 +1,8 @@
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(feature = "electrum")]
-use boltz_client::network::electrum::ElectrumLiquidConfig;
+use boltz_client::network::electrum::ElectrumLiquidClient;
 #[cfg(feature = "esplora")]
-use boltz_client::network::esplora::EsploraLiquidConfig;
+use boltz_client::network::esplora::EsploraLiquidClient;
 use boltz_client::{
     swaps::{
         boltz::{
@@ -43,9 +43,7 @@ const CHAIN: LiquidChain = LiquidChain::LiquidRegtest;
 #[cfg(feature = "electrum")]
 async fn liquid_v2_submarine_electrum() {
     setup_logger();
-    let liquid_client = ElectrumLiquidConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let liquid_client = ElectrumLiquidClient::default(CHAIN, None).unwrap();
     liquid_v2_submarine(&liquid_client, false).await;
     liquid_v2_submarine(&liquid_client, true).await;
 }
@@ -55,9 +53,7 @@ async fn liquid_v2_submarine_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_submarine_esplora() {
     setup_logger();
-    let liquid_client = EsploraLiquidConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let liquid_client = EsploraLiquidClient::default(CHAIN, None);
     liquid_v2_submarine(&liquid_client, false).await;
     liquid_v2_submarine(&liquid_client, true).await;
 }
@@ -312,9 +308,7 @@ async fn liquid_v2_submarine<LC: LiquidClient>(liquid_client: &LC, underpay: boo
 #[cfg(feature = "electrum")]
 async fn liquid_v2_reverse_electrum() {
     setup_logger();
-    let liquid_client = ElectrumLiquidConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let liquid_client = ElectrumLiquidClient::default(CHAIN, None).unwrap();
     liquid_v2_reverse(&liquid_client, false).await;
     liquid_v2_reverse(&liquid_client, true).await;
 }
@@ -324,9 +318,7 @@ async fn liquid_v2_reverse_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_reverse_esplora() {
     setup_logger();
-    let liquid_client = EsploraLiquidConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let liquid_client = EsploraLiquidClient::default(CHAIN, None);
     liquid_v2_reverse(&liquid_client, false).await;
     liquid_v2_reverse(&liquid_client, true).await;
 }
@@ -511,9 +503,7 @@ async fn liquid_v2_reverse<LC: LiquidClient>(liquid_client: &LC, lowball: bool) 
 #[cfg(feature = "electrum")]
 async fn liquid_v2_reverse_script_path_electrum() {
     setup_logger();
-    let liquid_client = ElectrumLiquidConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let liquid_client = ElectrumLiquidClient::default(CHAIN, None).unwrap();
     liquid_v2_reverse_script_path(&liquid_client, false).await;
     liquid_v2_reverse_script_path(&liquid_client, true).await;
 }
@@ -523,9 +513,7 @@ async fn liquid_v2_reverse_script_path_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_v2_reverse_script_path_esplora() {
     setup_logger();
-    let liquid_client = EsploraLiquidConfig::default(CHAIN, None)
-        .build_client()
-        .unwrap();
+    let liquid_client = EsploraLiquidClient::default(CHAIN, None);
     liquid_v2_reverse_script_path(&liquid_client, false).await;
     liquid_v2_reverse_script_path(&liquid_client, true).await;
 }

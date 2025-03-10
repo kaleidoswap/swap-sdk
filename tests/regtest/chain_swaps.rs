@@ -8,10 +8,10 @@ use boltz_client::boltz::{
 use boltz_client::fees::Fee;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(feature = "electrum")]
-use boltz_client::network::electrum::{ElectrumBitcoinConfig, ElectrumLiquidConfig};
+use boltz_client::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
 use boltz_client::network::esplora::async_sleep;
 #[cfg(feature = "esplora")]
-use boltz_client::network::esplora::{EsploraBitcoinConfig, EsploraLiquidConfig};
+use boltz_client::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 use boltz_client::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
 use boltz_client::{
     util::{secrets::Preimage, setup_logger},
@@ -34,13 +34,8 @@ const LIQUID_CHAIN: LiquidChain = LiquidChain::LiquidRegtest;
 #[cfg(feature = "electrum")]
 async fn bitcoin_liquid_v2_chain_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumBitcoinConfig::default(BITCOIN_CHAIN, None)
-        .unwrap()
-        .build_client()
-        .unwrap();
-    let liquid_client = ElectrumLiquidConfig::default(LIQUID_CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = ElectrumBitcoinClient::default(BITCOIN_CHAIN, None).unwrap();
+    let liquid_client = ElectrumLiquidClient::default(LIQUID_CHAIN, None).unwrap();
     bitcoin_liquid_v2_chain(&bitcoin_client, &liquid_client, false).await;
     bitcoin_liquid_v2_chain(&bitcoin_client, &liquid_client, true).await;
 }
@@ -50,12 +45,8 @@ async fn bitcoin_liquid_v2_chain_electrum() {
 #[cfg(feature = "esplora")]
 async fn bitcoin_liquid_v2_chain_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraBitcoinConfig::default(BITCOIN_CHAIN, None)
-        .build_client()
-        .unwrap();
-    let liquid_client = EsploraLiquidConfig::default(LIQUID_CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = EsploraBitcoinClient::default(BITCOIN_CHAIN, None);
+    let liquid_client = EsploraLiquidClient::default(LIQUID_CHAIN, None);
     bitcoin_liquid_v2_chain(&bitcoin_client, &liquid_client, false).await;
     bitcoin_liquid_v2_chain(&bitcoin_client, &liquid_client, true).await;
 }
@@ -356,13 +347,8 @@ async fn refund_bitcoin_liquid_v2_chain<BC: BitcoinClient>(
 #[cfg(feature = "electrum")]
 async fn liquid_bitcoin_v2_chain_electrum() {
     setup_logger();
-    let bitcoin_client = ElectrumBitcoinConfig::default(BITCOIN_CHAIN, None)
-        .unwrap()
-        .build_client()
-        .unwrap();
-    let liquid_client = ElectrumLiquidConfig::default(LIQUID_CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = ElectrumBitcoinClient::default(BITCOIN_CHAIN, None).unwrap();
+    let liquid_client = ElectrumLiquidClient::default(LIQUID_CHAIN, None).unwrap();
     liquid_bitcoin_v2_chain(&bitcoin_client, &liquid_client, false).await;
     liquid_bitcoin_v2_chain(&bitcoin_client, &liquid_client, true).await;
 }
@@ -372,12 +358,8 @@ async fn liquid_bitcoin_v2_chain_electrum() {
 #[cfg(feature = "esplora")]
 async fn liquid_bitcoin_v2_chain_esplora() {
     setup_logger();
-    let bitcoin_client = EsploraBitcoinConfig::default(BITCOIN_CHAIN, None)
-        .build_client()
-        .unwrap();
-    let liquid_client = EsploraLiquidConfig::default(LIQUID_CHAIN, None)
-        .build_client()
-        .unwrap();
+    let bitcoin_client = EsploraBitcoinClient::default(BITCOIN_CHAIN, None);
+    let liquid_client = EsploraLiquidClient::default(LIQUID_CHAIN, None);
     liquid_bitcoin_v2_chain(&bitcoin_client, &liquid_client, false).await;
     liquid_bitcoin_v2_chain(&bitcoin_client, &liquid_client, true).await;
 }
