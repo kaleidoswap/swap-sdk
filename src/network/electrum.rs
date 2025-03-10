@@ -220,6 +220,7 @@ impl BitcoinClient for ElectrumBitcoinClient {
     async fn broadcast_tx(&self, signed_tx: &Transaction) -> Result<Txid, Error> {
         Ok(self.inner.transaction_broadcast(signed_tx)?)
     }
+
     fn network(&self) -> Chain {
         self.network
     }
