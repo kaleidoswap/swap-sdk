@@ -150,7 +150,7 @@ impl ElectrumBitcoinClient {
         })
     }
 
-    fn fetch_utxos_core(
+    fn extract_address_utxos(
         txs: Vec<Transaction>,
         history: &[GetHistoryRes],
         spk: &ScriptBuf,
@@ -211,7 +211,7 @@ impl BitcoinClient for ElectrumBitcoinClient {
             .inner
             .batch_transaction_get(&history.iter().map(|h| h.tx_hash).collect::<Vec<_>>())?;
 
-        Ok(Self::fetch_utxos_core(txs, &history, &spk))
+        Ok(Self::extract_address_utxos(txs, &history, &spk))
     }
 
     async fn broadcast_tx(&self, signed_tx: &Transaction) -> Result<Txid, Error> {
@@ -332,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn test_utxo_fetching() {
+    fn test_extract_address_utxos() {
         let our_script = ScriptBuf::from_hex("aaaa").unwrap();
         let other_script = ScriptBuf::from_hex("bbbb").unwrap();
 
@@ -454,7 +454,7 @@ mod tests {
             },
         ];
 
-        let utxo_pairs = ElectrumBitcoinClient::fetch_utxos_core(
+        let utxo_pairs = ElectrumBitcoinClient::extract_address_utxos(
             vec![tx1, tx2, tx3, tx4, spending_tx, pending_spending_tx],
             &history,
             &our_script,

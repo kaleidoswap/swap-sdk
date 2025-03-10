@@ -121,7 +121,7 @@ impl EsploraBitcoinClient {
         }
     }
 
-    fn fetch_utxos_core(
+    fn extract_address_utxos(
         txs: &[Transaction],
         address: &str,
     ) -> Result<Vec<(bitcoin::OutPoint, bitcoin::TxOut)>, Error> {
@@ -210,7 +210,7 @@ impl BitcoinClient for EsploraBitcoinClient {
 
         let txs: Vec<Transaction> = serde_json::from_str(&response.text().await?)?;
 
-        Self::fetch_utxos_core(&txs, &address.to_string())
+        Self::extract_address_utxos(&txs, &address.to_string())
     }
 
     async fn broadcast_tx(&self, signed_tx: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error> {
@@ -451,7 +451,7 @@ mod tests {
     }
 
     #[macros::test_all]
-    fn test_utxo_fetching() {
+    fn test_extract_address_utxos() {
         let our_script_hex = "aaaa";
         let other_script_hex = "bbbb";
         let our_address = "test_address";
@@ -557,7 +557,7 @@ mod tests {
         };
 
         // Call the updated method
-        let utxo_pairs = EsploraBitcoinClient::fetch_utxos_core(
+        let utxo_pairs = EsploraBitcoinClient::extract_address_utxos(
             &[
                 tx1.clone(),
                 tx2.clone(),
