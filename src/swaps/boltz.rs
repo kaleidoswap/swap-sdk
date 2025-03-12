@@ -727,21 +727,121 @@ pub struct Leaf {
     pub version: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Subscription {
-    op: String,
-    channel: String,
-    args: Vec<String>,
+#[derive(Serialize, Deserialize, Debug, PartialEq)]
+pub enum SubscriptionChannel {
+    #[serde(rename = "swap.update")]
+    SwapUpdate,
 }
 
-impl Subscription {
-    pub fn new(id: &str) -> Self {
-        Self {
-            op: "subscribe".to_string(),
-            channel: "swap.update".to_string(),
-            args: vec![id.to_owned()],
-        }
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct SubscribeRequest {
+    pub channel: SubscriptionChannel,
+    pub args: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct UnsubscribeRequest {
+    pub channel: SubscriptionChannel,
+    pub args: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "op")]
+pub enum WsRequest {
+    #[serde(rename = "subscribe")]
+    Subscribe(SubscribeRequest),
+    #[serde(rename = "unsubscribe")]
+    Unsubscribe(UnsubscribeRequest),
+    #[serde(rename = "ping")]
+    Ping,
+}
+
+impl WsRequest {
+    pub fn subscribe_swap_request(swap_id: &str) -> Self {
+        Self::Subscribe(SubscribeRequest {
+            channel: SubscriptionChannel::SwapUpdate,
+            args: vec![swap_id.to_string()],
+        })
     }
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct SubscribeResponse {
+    pub channel: SubscriptionChannel,
+    pub args: Vec<String>,
+
+    pub timestamp: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct UnsubscribeResponse {
+    pub channel: SubscriptionChannel,
+    pub args: Vec<String>,
+
+    pub timestamp: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct TransactionInfo {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta: Option<u64>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct FailureReasonIncorrectAmounts {
+    pub expected: u64,
+    pub actual: u64,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct ChannelInfo {
+    #[serde(rename = "fundingTransactionId")]
+    pub funding_transaction_id: String,
+    #[serde(rename = "fundingTransactionVout")]
+    pub funding_transaction_vout: u64,
+}
+
+#[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
+pub struct SwapStatus {
+    pub id: String,
+    pub status: String,
+
+    #[serde(rename = "zeroConfRejected", skip_serializing_if = "Option::is_none")]
+    pub zero_conf_rejected: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transaction: Option<TransactionInfo>,
+
+    #[serde(rename = "failureReason", skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    #[serde(rename = "failureDetails", skip_serializing_if = "Option::is_none")]
+    pub failure_details: Option<FailureReasonIncorrectAmounts>,
+
+    #[serde(rename = "channel", skip_serializing_if = "Option::is_none")]
+    pub channel_info: Option<ChannelInfo>,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+pub struct UpdateResponse {
+    pub channel: SubscriptionChannel,
+    pub args: Vec<SwapStatus>,
+
+    pub timestamp: String,
+}
+
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
+#[serde(tag = "event")]
+pub enum WsResponse {
+    #[serde(rename = "subscribe")]
+    Subscribe(SubscribeResponse),
+    #[serde(rename = "unsubscribe")]
+    Unsubscribe(UnsubscribeResponse),
+    #[serde(rename = "update")]
+    Update(UpdateResponse),
+    #[serde(rename = "pong")]
+    Pong,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -997,40 +1097,9 @@ pub struct SwapUpdateTxDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Update {
-    pub id: String,
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub transaction: Option<SwapUpdateTxDetails>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub zero_conf_rejected: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RespError {
     pub id: String,
     pub error: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum SwapUpdate {
-    Subscription {
-        event: String,
-        channel: String,
-        args: Vec<String>,
-    },
-    Update {
-        event: String,
-        channel: String,
-        args: Vec<Update>,
-    },
-    Error {
-        event: String,
-        channel: String,
-        args: Vec<RespError>,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
