@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 
 use crate::error::Error;
-use crate::network::Chain;
+use crate::network::{BitcoinChain, Chain, LiquidChain};
 
 const SUBMARINE_SWAP_ACCOUNT: u32 = 21;
 const REVERSE_SWAP_ACCOUNT: u32 = 42;
@@ -52,8 +52,8 @@ impl SwapKey {
         let fingerprint = root.fingerprint(&secp);
         let purpose = DerivationPurpose::Compatible;
         let network_path = match network {
-            Chain::Bitcoin => BITCOIN_NETWORK_PATH,
-            Chain::Liquid => LIQUID_NETWORK_PATH,
+            Chain::Bitcoin(BitcoinChain::Bitcoin) => BITCOIN_NETWORK_PATH,
+            Chain::Liquid(LiquidChain::Liquid) => LIQUID_NETWORK_PATH,
             _ => TESTNET_NETWORK_PATH,
         };
         let derivation_path = format!(
@@ -87,8 +87,8 @@ impl SwapKey {
         let fingerprint = root.fingerprint(&secp);
         let purpose = DerivationPurpose::Native;
         let network_path = match network {
-            Chain::Bitcoin => BITCOIN_NETWORK_PATH,
-            Chain::Liquid => LIQUID_NETWORK_PATH,
+            Chain::Bitcoin(BitcoinChain::Bitcoin) => BITCOIN_NETWORK_PATH,
+            Chain::Liquid(LiquidChain::Liquid) => LIQUID_NETWORK_PATH,
             _ => TESTNET_NETWORK_PATH,
         };
         // m/84h/1h/42h/<0;1>/*  - child key for segwit wallet - xprv
@@ -122,8 +122,8 @@ impl SwapKey {
         let fingerprint = root.fingerprint(&secp);
         let purpose = DerivationPurpose::Taproot;
         let network_path = match network {
-            Chain::Bitcoin => BITCOIN_NETWORK_PATH,
-            Chain::Liquid => LIQUID_NETWORK_PATH,
+            Chain::Bitcoin(BitcoinChain::Bitcoin) => BITCOIN_NETWORK_PATH,
+            Chain::Liquid(LiquidChain::Liquid) => LIQUID_NETWORK_PATH,
             _ => TESTNET_NETWORK_PATH,
         };
         // m/84h/1h/42h/<0;1>/*  - child key for segwit wallet - xprv
@@ -311,11 +311,17 @@ mod tests {
     use super::*;
     use elements::pset::serialize::Serialize;
 
-    #[test]
+    #[macros::test_all]
     fn test_derivation() {
         let mnemonic: &str = "bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon";
         let index = 0_u64; // 0
-        let sk = SwapKey::from_submarine_account(mnemonic, "", Chain::Bitcoin, index).unwrap();
+        let sk = SwapKey::from_submarine_account(
+            mnemonic,
+            "",
+            Chain::Bitcoin(BitcoinChain::Bitcoin),
+            index,
+        )
+        .unwrap();
         let lsk: LiquidSwapKey = match LiquidSwapKey::try_from(sk.clone()) {
             Ok(t) => t,
             Err(e) => {
@@ -332,7 +338,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[macros::test_all]
     fn test_preimage_from_str() {
         let preimage = Preimage::new();
         assert_eq!(
@@ -341,7 +347,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[macros::test_all]
     fn test_preimage_from_vec() {
         let preimage = Preimage::new();
         assert_eq!(
@@ -350,7 +356,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[macros::test_all]
     fn test_preimage_from_vec_invalid_length() {
         let mut bytes = [0u8; 33];
         OsRng.fill_bytes(&mut bytes);
@@ -363,7 +369,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[macros::test_all]
     fn test_preimage_from_sha256_str() {
         let preimage = Preimage::new();
         let compare = Preimage::from_sha256_str(preimage.sha256.to_string().as_str()).unwrap();
@@ -373,7 +379,7 @@ mod tests {
         assert_eq!(compare.hash160, preimage.hash160);
     }
 
-    #[test]
+    #[macros::test_all]
     fn test_preimage_from_sha256_vec() {
         let preimage = Preimage::new();
         let compare = Preimage::from_sha256_vec(preimage.sha256.serialize()).unwrap();
@@ -383,7 +389,7 @@ mod tests {
         assert_eq!(compare.hash160, preimage.hash160);
     }
 
-    // #[test]
+    // #[macros::test_all]
     // #[ignore]
     // fn test_recover() {
     //     let recovery = BtcSubmarineRecovery {

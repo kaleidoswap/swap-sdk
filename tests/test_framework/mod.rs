@@ -1,3 +1,6 @@
+#![cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#![allow(dead_code)]
+
 use std::str::FromStr;
 
 use bitcoind::{
