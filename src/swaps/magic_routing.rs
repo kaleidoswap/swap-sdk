@@ -10,7 +10,6 @@ use bitcoin::{
     secp256k1::{schnorr::Signature, Message},
     PublicKey,
 };
-use elements::hex::ToHex;
 use lightning_invoice::{Bolt11Invoice, RouteHintHop};
 
 const MAGIC_ROUTING_HINT_CONSTANT: u64 = 596385002596073472;
@@ -68,9 +67,9 @@ pub fn parse_bip21(uri: &str) -> Result<(String, String, bitcoin::Amount, Option
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        return Err(Error::Generic(
-                            "Unable to parse amount from string".to_string(),
-                        ))
+                        return Err(Error::Generic(format!(
+                            "Unable to parse amount from string: {e}"
+                        )))
                     }
                 }
             }
@@ -92,7 +91,7 @@ pub async fn check_for_mrh(
     if let Some(route_hint) = find_magic_routing_hint(invoice)? {
         let mrh_resp = boltz_api_v2.get_mrh_bip21(invoice).await?;
 
-        let (network_found, address, amount, assetid) = parse_bip21(&mrh_resp.bip21)?;
+        let (_, address, amount, assetid) = parse_bip21(&mrh_resp.bip21)?;
         let address_hash = sha256::Hash::hash(address.as_bytes());
         let msg = Message::from_digest_slice(address_hash.as_byte_array())?;
 

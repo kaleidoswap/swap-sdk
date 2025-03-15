@@ -17,17 +17,13 @@
 //!     output_amount - base_fees - claim_fee
 //! );
 
-use bitcoin::key;
-use bitcoin::{
-    hashes::sha256, hex::DisplayHex, taproot::TapLeaf, PublicKey, ScriptBuf, Transaction,
-};
+use bitcoin::{hashes::sha256, hex::DisplayHex, PublicKey};
 use lightning_invoice::Bolt11Invoice;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::fmt::{Display, Formatter, Write};
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use std::sync::Arc;
-use std::{collections::HashMap, fmt::format, net::TcpStream};
 
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
 use crate::{BtcSwapScript, LBtcSwapScript};
@@ -36,12 +32,7 @@ pub const BOLTZ_TESTNET_URL_V2: &str = "https://api.testnet.boltz.exchange/v2";
 pub const BOLTZ_MAINNET_URL_V2: &str = "https://api.boltz.exchange/v2";
 pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
 
-use url::Url;
-
-use elements::secp256k1_zkp::{
-    MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
-    MusigSessionId,
-};
+use elements::secp256k1_zkp::{MusigPartialSignature, MusigPubNonce};
 pub use tokio_tungstenite_wasm;
 use tokio_tungstenite_wasm::{connect, WebSocketStream};
 
@@ -699,7 +690,6 @@ impl CreateSubmarineResponse {
                 boltz_sub_script.validate_address(bitcoin_chain, self.address.clone())
             }
             Chain::Liquid(liquid_chain) => {
-                let blinding_key = self.blinding_key.as_ref().unwrap();
                 let boltz_sub_script = LBtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
                 if boltz_sub_script.hashlock != preimage.hash160 {
                     return Err(Error::Protocol(format!(
@@ -904,7 +894,6 @@ impl CreateReverseResponse {
                 boltz_rev_script.validate_address(bitcoin_chain, self.lockup_address.clone())
             }
             Chain::Liquid(liquid_chain) => {
-                let blinding_key = self.blinding_key.as_ref().unwrap();
                 let boltz_rev_script = LBtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
                 boltz_rev_script.validate_address(liquid_chain, self.lockup_address.clone())
             }
@@ -997,7 +986,6 @@ impl CreateChainResponse {
                 boltz_chain_script.validate_address(bitcoin_chain, details.lockup_address.clone())
             }
             Chain::Liquid(liquid_chain) => {
-                let blinding_key = details.blinding_key.as_ref().unwrap();
                 let boltz_chain_script =
                     LBtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
                 boltz_chain_script.validate_address(liquid_chain, details.lockup_address.clone())

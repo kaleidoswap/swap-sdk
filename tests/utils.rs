@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use bitcoin::base64;
 use bitcoin::base64::Engine;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]

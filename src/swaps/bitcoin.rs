@@ -1,41 +1,35 @@
-use bitcoin::consensus::{deserialize, Decodable};
+use bitcoin::consensus::deserialize;
 use bitcoin::hashes::Hash;
 use bitcoin::hex::{DisplayHex, FromHex};
 use bitcoin::key::rand::rngs::OsRng;
 use bitcoin::key::rand::{thread_rng, RngCore};
-use bitcoin::script::{PushBytes, PushBytesBuf};
-use bitcoin::secp256k1::{All, Keypair, Message, Secp256k1, SecretKey};
+use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 use bitcoin::sighash::Prevouts;
 use bitcoin::taproot::{LeafVersion, Signature, TaprootBuilder, TaprootSpendInfo};
 use bitcoin::transaction::Version;
 use bitcoin::{
-    blockdata::script::{Builder, Instruction, Script, ScriptBuf},
+    blockdata::script::{Builder, Instruction, ScriptBuf},
     opcodes::{all::*, OP_0},
     Address, OutPoint, PublicKey,
 };
 use bitcoin::{sighash::SighashCache, Network, Sequence, Transaction, TxIn, TxOut, Witness};
-use bitcoin::{Amount, EcdsaSighashType, TapLeafHash, TapSighashType, Txid, XOnlyPublicKey};
-use elements::encode::serialize;
+use bitcoin::{Amount, TapLeafHash, TapSighashType, Txid, XOnlyPublicKey};
 use elements::pset::serialize::Serialize;
-use std::collections::HashMap;
-use std::ops::{Add, Index};
 use std::str::FromStr;
 
 use crate::{error::Error, util::secrets::Preimage};
-use crate::{LBtcSwapScript, LBtcSwapTx};
 
 use bitcoin::{blockdata::locktime::absolute::LockTime, hashes::hash160};
 
 use super::boltz::{
-    BoltzApiClientV2, ChainClaimTxResponse, ChainSwapDetails, Cooperative, CreateChainResponse,
-    CreateReverseResponse, CreateSubmarineResponse, PartialSig, Side, SubmarineClaimTxResponse,
-    SwapTxKind, SwapType, ToSign,
+    BoltzApiClientV2, ChainSwapDetails, Cooperative, CreateReverseResponse,
+    CreateSubmarineResponse, Side, SwapTxKind, SwapType, ToSign,
 };
 
 use crate::network::{BitcoinChain, BitcoinClient};
 use crate::util::fees::{create_tx_with_fee, Fee};
 use elements::secp256k1_zkp::{
-    musig, MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
+    MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
     MusigSessionId,
 };
 
@@ -308,7 +302,7 @@ impl BtcSwapScript {
         // Setup Key Aggregation cache
         // let pubkeys = [self.receiver_pubkey.inner, self.sender_pubkey.inner];
 
-        let mut key_agg_cache = self.musig_keyagg_cache();
+        let key_agg_cache = self.musig_keyagg_cache();
 
         // Construct the Taproot
         let internal_key = key_agg_cache.agg_pk();
@@ -323,9 +317,9 @@ impl BtcSwapScript {
         let taproot_spend_info = match taproot_builder.finalize(&secp, internal_key) {
             Ok(r) => r,
             Err(e) => {
-                return Err(Error::Taproot(
-                    "Could not finalize taproot constructions".to_string(),
-                ))
+                return Err(Error::Taproot(format!(
+                    "Could not finalize taproot constructions: {e:?}"
+                )))
             }
         };
 
@@ -367,7 +361,7 @@ impl BtcSwapScript {
         let spend_info = self.taproot_spendinfo()?;
         let output_key = spend_info.output_key();
 
-        let mut network = match network {
+        let network = match network {
             BitcoinChain::Bitcoin => Network::Bitcoin,
             BitcoinChain::BitcoinRegtest => Network::Regtest,
             BitcoinChain::BitcoinTestnet => Network::Testnet,
@@ -440,7 +434,7 @@ impl BtcSwapScript {
             SwapType::ReverseSubmarine => boltz_client.get_reverse_tx(swap_id).await?.hex,
             SwapType::Submarine => boltz_client.get_submarine_tx(swap_id).await?.hex,
         };
-        if (hex.is_none()) {
+        if hex.is_none() {
             return Err(Error::Hex(
                 "No transaction hex found in boltz response".to_string(),
             ));
@@ -587,11 +581,6 @@ impl BtcSwapTx {
     ) -> Result<(MusigPartialSignature, MusigPubNonce), Error> {
         // Step 1: Start with a Musig KeyAgg Cache
         let secp = Secp256k1::new();
-
-        let pubkeys = [
-            self.swap_script.receiver_pubkey.inner,
-            self.swap_script.sender_pubkey.inner,
-        ];
 
         let mut key_agg_cache = self.swap_script.musig_keyagg_cache();
 
@@ -797,9 +786,7 @@ impl BtcSwapTx {
         absolute_fees: u64,
         is_cooperative: bool,
     ) -> Result<Transaction, Error> {
-        let preimage_bytes = if let Some(value) = preimage.bytes {
-            value
-        } else {
+        if preimage.bytes.is_none() {
             return Err(Error::Protocol(
                 "No preimage provided while signing.".to_string(),
             ));

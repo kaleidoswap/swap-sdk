@@ -1,21 +1,13 @@
 use crate::error::Error;
 use lightning_invoice::Bolt11Invoice;
 use lnurl::lightning_address::LightningAddress;
-use lnurl::pay::LnURLPayInvoice;
 use lnurl::withdraw::WithdrawalResponse;
 use lnurl::{lnurl::LnUrl, Builder, LnUrlResponse};
-use std::cmp::max;
 use std::str::FromStr;
 
 pub fn validate_lnurl(string: &str) -> bool {
     let string = string.to_lowercase();
-    match LnUrl::from_str(&string) {
-        Ok(lnurl) => true,
-        Err(_) => match LightningAddress::from_str(&string) {
-            Ok(lightning_address) => true,
-            Err(_) => false,
-        },
-    }
+    LnUrl::from_str(&string).is_ok() || LightningAddress::from_str(&string).is_ok()
 }
 
 pub async fn fetch_invoice(address: &str, amount_msats: u64) -> Result<String, Error> {
@@ -80,7 +72,7 @@ pub async fn process_withdrawal(withdraw: &WithdrawalResponse, invoice: &str) ->
         .build_async()
         .map_err(|e| Error::Generic(e.to_string()))?;
 
-    let withdraw_result = client
+    client
         .do_withdrawal(withdraw, invoice)
         .await
         .map_err(|e| Error::HTTP(e.to_string()))?;
@@ -116,12 +108,12 @@ mod tests {
         let lnurl = "lnurl1dp68gurn8ghj7um9wfmxjcm99e3k7mf0v9cxj0m385ekvcenxc6r2c35xvukxefcv5mkvv34x5ekzd3ev56nyd3hxqurzepexejxxepnxscrvwfnv9nxzcn9xq6xyefhvgcxxcmyxymnserxfq5fns";
         let uppercase_lnurl = lnurl.to_uppercase();
         assert!(validate_lnurl(lnurl));
-        test_address(lnurl, amount_msats, "LNURL");
-        test_address(&uppercase_lnurl, amount_msats, "LNURL");
+        test_address(lnurl, amount_msats, "LNURL").await;
+        test_address(&uppercase_lnurl, amount_msats, "LNURL").await;
 
         let email_lnurl = "drunksteel17@walletofsatoshi.com";
         assert!(validate_lnurl(email_lnurl));
-        test_address(email_lnurl, amount_msats, "Lightning Address");
+        test_address(email_lnurl, amount_msats, "Lightning Address").await;
     }
 
     #[ignore = "Requires using an new lnurl-w voucher and invoice to match the max_withdrawble amount"]

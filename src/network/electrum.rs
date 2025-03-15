@@ -2,10 +2,9 @@
 
 use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
 use crate::error::Error;
-use bitcoin::{Address, Network, ScriptBuf, Transaction, Txid};
+use bitcoin::{Address, ScriptBuf, Transaction, Txid};
 use electrum_client::{ElectrumApi, GetHistoryRes};
 use elements::encode::{serialize, Decodable};
-use elements::AddressParams;
 use std::collections::{HashMap, HashSet};
 
 pub const DEFAULT_MAINNET_NODE: &str = "wes.bullbitcoin.com:50002";
@@ -114,7 +113,7 @@ impl ElectrumBitcoinClient {
         let mut result = Vec::new();
         for tx in txs.into_iter() {
             let txid = tx.compute_txid();
-            for (vout, mut output) in tx.output.into_iter().enumerate() {
+            for (vout, output) in tx.output.into_iter().enumerate() {
                 if output.script_pubkey == *spk {
                     let outpoint = bitcoin::OutPoint::new(txid, vout as u32);
                     if !spent_outputs.contains(&outpoint) {
@@ -260,15 +259,12 @@ mod tests {
 
     use super::*;
     use crate::network::BitcoinChain::BitcoinTestnet;
-    use crate::BtcSwapScript;
     use bitcoin::absolute::LockTime;
     use bitcoin::blockdata::transaction::Transaction;
-    use bitcoin::blockdata::transaction::Txid;
     use bitcoin::transaction::Version;
-    use bitcoin::{Amount, OutPoint, Script, ScriptBuf, TxIn, TxOut};
+    use bitcoin::{Amount, OutPoint, ScriptBuf, TxIn, TxOut};
     use electrum_client::ElectrumApi;
     use electrum_client::GetHistoryRes;
-    use std::str::FromStr;
 
     #[test]
     fn test_electrum_default_clients() {
