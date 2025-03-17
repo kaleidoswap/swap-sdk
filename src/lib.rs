@@ -2,7 +2,6 @@
 //! Refer to tests/ folder for usage
 //! THIS LIBRARY IS IN EARLY ALPHA. TEST AND REVIEW BEFORE USING IN PRODUCTION.
 
-#![allow(unused)]
 /// Error Module
 pub mod error;
 /// Blockchain Network module. Currently only contains electrum interface.

@@ -104,12 +104,10 @@ impl AsRef<Client> for BtcTestFramework {
     }
 }
 
-#[allow(unused)]
 pub struct LbtcTestFramework {
     elementsd: ElementsD,
 }
 
-#[allow(unused)]
 impl LbtcTestFramework {
     pub fn init() -> Self {
         let mut conf = elementsd::Conf::default();

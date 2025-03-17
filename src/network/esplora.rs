@@ -5,8 +5,6 @@ use elements::hex::ToHex;
 use elements::pset::serialize::Serialize;
 use reqwest::Response;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::fmt::format;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -326,18 +324,14 @@ pub async fn async_sleep(millis: i32) {
 
 #[derive(Debug, Deserialize)]
 struct AddressInfo {
-    address: String,
     chain_stats: Stats,
     mempool_stats: Stats,
 }
 
 #[derive(Debug, Deserialize)]
 struct Stats {
-    funded_txo_count: u64,
     funded_txo_sum: u64,
-    spent_txo_count: u64,
     spent_txo_sum: u64,
-    tx_count: u64,
 }
 
 #[derive(Debug, Deserialize, Clone)]

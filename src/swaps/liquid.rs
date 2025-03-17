@@ -1,25 +1,23 @@
-use std::{hash, str::FromStr};
-
 use bitcoin::{
     hashes::{hash160, Hash},
     hex::DisplayHex,
     key::rand::{rngs::OsRng, thread_rng, RngCore},
-    script::Script as BitcoinScript,
     secp256k1::Keypair,
     Amount, Witness, XOnlyPublicKey,
 };
 use elements::{
-    confidential::{self, Asset, AssetBlindingFactor, Value, ValueBlindingFactor},
-    hex::{FromHex, ToHex},
+    confidential::{Asset, AssetBlindingFactor, ValueBlindingFactor},
+    hex::FromHex,
     secp256k1_zkp::{
-        self, MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
+        MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
         MusigSessionId, Secp256k1, SecretKey,
     },
     sighash::{Prevouts, SighashCache},
     taproot::{LeafVersion, TapLeafHash, TaprootBuilder, TaprootSpendInfo},
     Address, AssetIssuance, BlockHash, LockTime, OutPoint, SchnorrSig, SchnorrSighashType, Script,
-    Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutSecrets, TxOutWitness,
+    Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness,
 };
+use std::str::FromStr;
 
 use elements::encode::serialize;
 use elements::secp256k1_zkp::Message;
@@ -29,18 +27,17 @@ use crate::util::secrets::Preimage;
 use crate::error::Error;
 
 use super::boltz::{
-    BoltzApiClientV2, ChainClaimTxResponse, ChainSwapDetails, Cooperative, CreateReverseResponse,
-    CreateSubmarineResponse, Side, SubmarineClaimTxResponse, SwapTxKind, SwapType, ToSign,
+    BoltzApiClientV2, ChainSwapDetails, Cooperative, CreateReverseResponse,
+    CreateSubmarineResponse, Side, SwapTxKind, SwapType, ToSign,
 };
 use crate::fees::{create_tx_with_fee, Fee};
-use crate::network::{BitcoinClient, Chain, LiquidChain, LiquidClient};
+use crate::network::{Chain, LiquidChain, LiquidClient};
 use elements::bitcoin::PublicKey;
 use elements::secp256k1_zkp::Keypair as ZKKeyPair;
 use elements::{
     address::Address as EAddress,
     opcodes::all::*,
-    script::{Builder as EBuilder, Instruction, Script as EScript},
-    AddressParams,
+    script::{Builder as EBuilder, Instruction},
 };
 
 /// Liquid v2 swap script helper.
@@ -322,7 +319,7 @@ impl LBtcSwapScript {
         let secp = Secp256k1::new();
 
         // Setup Key Aggregation cache
-        let mut key_agg_cache = self.musig_keyagg_cache();
+        let key_agg_cache = self.musig_keyagg_cache();
 
         // Construct the Taproot
         let internal_key = key_agg_cache.agg_pk();
@@ -436,7 +433,7 @@ impl LBtcSwapScript {
             SwapType::ReverseSubmarine => boltz_client.get_reverse_tx(swap_id).await?.hex,
             SwapType::Submarine => boltz_client.get_submarine_tx(swap_id).await?.hex,
         };
-        if (hex.is_none()) {
+        if hex.is_none() {
             return Err(Error::Hex(
                 "No transaction hex found in boltz response".to_string(),
             ));
@@ -746,7 +743,7 @@ impl LBtcSwapTx {
                 self.swap_script.sender_pubkey.inner, //boltz key
             );
 
-            if (!boltz_partial_sig_verify) {
+            if !boltz_partial_sig_verify {
                 return Err(Error::Taproot(
                     "Unable to verify Partial Signature".to_string(),
                 ));
@@ -789,9 +786,9 @@ impl LBtcSwapTx {
         absolute_fees: u64,
         is_cooperative: bool,
     ) -> Result<Transaction, Error> {
-        let preimage_bytes = preimage
-            .bytes
-            .ok_or(Error::Protocol("No preimage provided".to_string()))?;
+        if preimage.bytes.is_none() {
+            return Err(Error::Protocol("No preimage provided".to_string()));
+        }
 
         let claim_txin = TxIn {
             sequence: Sequence::MAX,
@@ -1033,7 +1030,7 @@ impl LBtcSwapTx {
                 self.swap_script.receiver_pubkey.inner, //boltz key
             );
 
-            if (!boltz_partial_sig_verify) {
+            if !boltz_partial_sig_verify {
                 return Err(Error::Taproot(
                     "Unable to verify Partial Signature".to_string(),
                 ));
@@ -1307,29 +1304,6 @@ fn tx_size(tx: &Transaction, is_discount_ct: bool) -> usize {
         true => tx.discount_vsize(),
         false => tx.vsize(),
     }
-}
-
-fn hex_to_bytes(hex_str: &str) -> Result<Vec<u8>, Error> {
-    if hex_str.len() % 2 != 0 {
-        return Err(Error::Hex(
-            "Hex string must have an even length".to_string(),
-        ));
-    }
-    let mut bytes = Vec::new();
-    for i in (0..hex_str.len()).step_by(2) {
-        let hex_pair = &hex_str[i..i + 2];
-        match u8::from_str_radix(hex_pair, 16) {
-            Ok(byte) => bytes.push(byte),
-            Err(_) => {
-                return Err(Error::Hex(format!(
-                    "Invalid hexadecimal pair: {}",
-                    hex_pair
-                )))
-            }
-        }
-    }
-
-    Ok(bytes)
 }
 
 #[cfg(test)]
