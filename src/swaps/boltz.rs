@@ -32,9 +32,13 @@ pub const BOLTZ_TESTNET_URL_V2: &str = "https://api.testnet.boltz.exchange/v2";
 pub const BOLTZ_MAINNET_URL_V2: &str = "https://api.boltz.exchange/v2";
 pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
 
+#[cfg(feature = "ws")]
+pub use crate::swaps::status_stream::{BoltzWsApi, BoltzWsConfig};
 use elements::secp256k1_zkp::{MusigPartialSignature, MusigPubNonce};
 use reqwest::RequestBuilder;
+#[cfg(feature = "ws")]
 pub use tokio_tungstenite_wasm;
+#[cfg(feature = "ws")]
 use tokio_tungstenite_wasm::{connect, WebSocketStream};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -342,9 +346,16 @@ impl BoltzApiClientV2 {
     }
 
     /// Returns the web socket connection to the boltz server
+    #[cfg(feature = "ws")]
     pub async fn connect_ws(&self) -> Result<WebSocketStream, Error> {
         let ws_string = self.base_url.clone().replace("http", "ws") + "/ws";
         Ok(connect(ws_string).await?)
+    }
+
+    #[cfg(feature = "ws")]
+    pub fn ws(&self, config: BoltzWsConfig) -> BoltzWsApi {
+        let ws_string = self.base_url.clone().replace("http", "ws") + "/ws";
+        BoltzWsApi::new(ws_string, config)
     }
 
     /// Make a get request. returns the Response
@@ -784,9 +795,13 @@ pub enum WsRequest {
 
 impl WsRequest {
     pub fn subscribe_swap_request(swap_id: &str) -> Self {
+        Self::subscribe_swaps_request(vec![swap_id.to_string()])
+    }
+
+    pub fn subscribe_swaps_request(swap_ids: Vec<String>) -> Self {
         Self::Subscribe(SubscribeRequest {
             channel: SubscriptionChannel::SwapUpdate,
-            args: vec![swap_id.to_string()],
+            args: swap_ids,
         })
     }
 }
