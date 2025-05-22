@@ -19,8 +19,10 @@
 
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
 use crate::{BtcSwapScript, LBtcSwapScript};
+use bitcoin::secp256k1;
 use bitcoin::{hashes::sha256, hex::DisplayHex, PublicKey};
 use lightning_invoice::Bolt11Invoice;
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -356,7 +358,7 @@ impl BoltzApiClientV2 {
         BoltzWsApi::new(ws_string, config)
     }
 
-    /// Make a get request. returns the Response
+    /// Make a GET request. Returns the Response
     async fn get(&self, end_point: &str) -> Result<String, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
         let req_builder = self.http_client.get(url);
@@ -364,19 +366,36 @@ impl BoltzApiClientV2 {
         Ok(req_builder.send().await?.text().await?)
     }
 
-    /// Make a Post request. Returns the Response
+    /// Make a POST request. Returns the Response
     async fn post(&self, end_point: &str, data: impl Serialize) -> Result<String, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
 
-        let req_builder = self.http_client.post(url).json(&data);
+        self.request(Method::POST, url, data).await
+    }
+
+    /// Make a PATCH request. Returns the Response
+    async fn patch(&self, end_point: &str, data: impl Serialize) -> Result<String, Error> {
+        let url = format!("{}/{}", self.base_url, end_point);
+
+        self.request(Method::PATCH, url, data).await
+    }
+
+    async fn request(
+        &self,
+        method: Method,
+        url: String,
+        data: impl Serialize,
+    ) -> Result<String, Error> {
+        let method_str = method.to_string();
+        let req_builder = self.http_client.request(method, url).json(&data);
         let req_builder = self.maybe_add_timeout(req_builder);
         match req_builder.send().await {
             Ok(r) => {
                 if r.status().is_success() {
-                    log::debug!("POST response: {r:#?}");
+                    log::debug!("{method_str} response: {r:#?}");
                     Ok(r.text().await?)
                 } else {
-                    log::error!("POST error: HTTP {}", r.status());
+                    log::error!("{} error: HTTP {}", method_str, r.status());
                     let err_resp = r.text().await.unwrap_or("Unknown error".to_string());
                     let e_val: Value = serde_json::from_str(&err_resp).unwrap_or(Value::Null);
                     let e_str = e_val.get("error").unwrap_or(&Value::Null).to_string();
@@ -384,7 +403,7 @@ impl BoltzApiClientV2 {
                 }
             }
             Err(e) => {
-                log::error!("POST error: {e:#?}");
+                log::error!("{method_str} error: {e:#?}");
                 Err(e.into())
             }
         }
@@ -606,21 +625,66 @@ impl BoltzApiClientV2 {
         Ok(serde_json::from_str(&self.post(&end_point, data).await?)?)
     }
 
-    /// Fetch an invoice for the specified BOLT12 offer
-    pub async fn get_bolt12_invoice(
-        &self,
-        offer: &str,
-        amount: u64,
-    ) -> Result<GetBolt12InvoiceResponse, Error> {
+    /// Creates a BOLT12 offer
+    pub async fn post_bolt12_offer(&self, req: CreateBolt12OfferRequest) -> Result<(), Error> {
+        let data = serde_json::to_value(req)?;
+        let end_point = "lightning/BTC/bolt12".to_string();
+        self.post(&end_point, data).await?;
+        Ok(())
+    }
+
+    /// Updates the webhook URL for a BOLT12 offer
+    ///
+    /// # Arguments
+    ///   * `req` - The request object containing the offer and the new webhook URL
+    ///     * `offer` - The BOLT12 offer
+    ///     * `url` - The updated webhook URL. Setting to None will remove the webhook URL from the registered offer
+    ///     * `signature` - The schnorr signature of the SHA256 hash of the webhook URL or "UPDATE" when not set
+    pub async fn patch_bolt12_offer(&self, req: UpdateBolt12OfferRequest) -> Result<(), Error> {
+        let data = serde_json::to_value(req)?;
+        let end_point = "lightning/BTC/bolt12".to_string();
+        self.patch(&end_point, data).await?;
+        Ok(())
+    }
+
+    /// Deletes a BOLT12 offer
+    ///
+    /// # Arguments
+    ///    * `offer` - The BOLT12 offer
+    ///    * `signature` - This schnorr signature of the SHA256 hash of "DELETE"
+    pub async fn delete_bolt12_offer(&self, offer: &str, signature: &str) -> Result<(), Error> {
         let data = json!(
             {
                 "offer": offer,
-                "amount": amount
+                "signature": signature,
             }
         );
 
+        let end_point = "lightning/BTC/bolt12/delete".to_string();
+        self.post(&end_point, data).await?;
+        Ok(())
+    }
+
+    /// Fetch an invoice for the specified BOLT12 offer
+    pub async fn get_bolt12_invoice(
+        &self,
+        req: GetBolt12FetchRequest,
+    ) -> Result<GetBolt12FetchResponse, Error> {
+        let data = serde_json::to_value(req)?;
         let end_point = "lightning/BTC/bolt12/fetch".to_string();
         Ok(serde_json::from_str(&self.post(&end_point, data).await?)?)
+    }
+
+    /// Gets parameters for a BOLT12 offer
+    pub async fn get_bolt12_params(&self) -> Result<GetBolt12ParamsResponse, Error> {
+        let end_point = "lightning/BTC/bolt12/L-BTC".to_string();
+        Ok(serde_json::from_str(&self.get(&end_point).await?)?)
+    }
+
+    /// Fetch information about the Lightning nodes the backend is connected to
+    pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
+        let end_point = "nodes".to_string();
+        Ok(serde_json::from_str(&self.get(&end_point).await?)?)
     }
 
     /// Gets a quote for a Zero-Amount or over- or underpaid Chain Swap.
@@ -760,31 +824,58 @@ pub struct Leaf {
     pub version: u8,
 }
 
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum SubscriptionChannel {
     #[serde(rename = "swap.update")]
     SwapUpdate,
+    #[serde(rename = "invoice.request")]
+    InvoiceRequest,
 }
 
-#[derive(Deserialize, Serialize, Debug, PartialEq)]
-pub struct SubscribeRequest {
-    pub channel: SubscriptionChannel,
-    pub args: Vec<String>,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct InvoiceRequestParams {
+    pub offer: String,
+    pub signature: String,
 }
 
-#[derive(Deserialize, Serialize, Debug, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "channel")]
+pub enum SubscribeRequest {
+    #[serde(rename = "swap.update")]
+    SwapUpdate { args: Vec<String> },
+    #[serde(rename = "invoice.request")]
+    InvoiceRequest { args: Vec<InvoiceRequestParams> },
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct UnsubscribeRequest {
     pub channel: SubscriptionChannel,
     pub args: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct InvoiceCreated {
+    pub id: String,
+    pub invoice: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct InvoiceError {
+    pub id: String,
+    pub error: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "op")]
 pub enum WsRequest {
     #[serde(rename = "subscribe")]
     Subscribe(SubscribeRequest),
     #[serde(rename = "unsubscribe")]
     Unsubscribe(UnsubscribeRequest),
+    #[serde(rename = "invoice")]
+    Invoice(InvoiceCreated),
+    #[serde(rename = "invoice.error")]
+    InvoiceError(InvoiceError),
     #[serde(rename = "ping")]
     Ping,
 }
@@ -795,10 +886,15 @@ impl WsRequest {
     }
 
     pub fn subscribe_swaps_request(swap_ids: Vec<String>) -> Self {
-        Self::Subscribe(SubscribeRequest {
-            channel: SubscriptionChannel::SwapUpdate,
-            args: swap_ids,
-        })
+        Self::Subscribe(SubscribeRequest::SwapUpdate { args: swap_ids })
+    }
+
+    pub fn subscribe_invoice_request(params: InvoiceRequestParams) -> Self {
+        Self::subscribe_invoice_requests(vec![params])
+    }
+
+    pub fn subscribe_invoice_requests(params: Vec<InvoiceRequestParams>) -> Self {
+        Self::Subscribe(SubscribeRequest::InvoiceRequest { args: params })
     }
 }
 
@@ -860,10 +956,24 @@ pub struct SwapStatus {
     pub channel_info: Option<ChannelInfo>,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct InvoiceRequest {
+    pub id: String,
+
+    pub offer: String,
+    #[serde(rename = "invoiceRequest")]
+    pub invoice_request: String,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct ErrorResponse {
+    pub error: String,
+}
+
 #[derive(Deserialize, Serialize, Debug, PartialEq)]
-pub struct UpdateResponse {
+pub struct UpdateResponse<T> {
     pub channel: SubscriptionChannel,
-    pub args: Vec<SwapStatus>,
+    pub args: Vec<T>,
 
     pub timestamp: String,
 }
@@ -876,7 +986,11 @@ pub enum WsResponse {
     #[serde(rename = "unsubscribe")]
     Unsubscribe(UnsubscribeResponse),
     #[serde(rename = "update")]
-    Update(UpdateResponse),
+    Update(UpdateResponse<SwapStatus>),
+    #[serde(rename = "request")]
+    InvoiceRequest(UpdateResponse<InvoiceRequest>),
+    #[serde(rename = "error")]
+    Error(ErrorResponse),
     #[serde(rename = "pong")]
     Pong,
 }
@@ -884,11 +998,18 @@ pub enum WsResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateReverseRequest {
-    pub invoice_amount: u64,
     pub from: String,
     pub to: String,
-    pub preimage_hash: sha256::Hash,
     pub claim_public_key: PublicKey,
+    /// The BOLT12 invoice
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invoice: Option<String>,
+    /// The invoice amount if the invoice is not provided
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invoice_amount: Option<u64>,
+    /// The preimage hash if the invoice is not provided
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage_hash: Option<sha256::Hash>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -907,7 +1028,7 @@ pub struct CreateReverseRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CreateReverseResponse {
     pub id: String,
-    pub invoice: String,
+    pub invoice: Option<String>,
     pub swap_tree: SwapTree,
     pub lockup_address: String,
     pub refund_public_key: PublicKey,
@@ -926,13 +1047,16 @@ impl CreateReverseResponse {
         our_pubkey: &PublicKey,
         chain: Chain,
     ) -> Result<(), Error> {
-        let invoice = Bolt11Invoice::from_str(&self.invoice)?;
-        if invoice.payment_hash().to_string() != preimage.sha256.to_string() {
-            return Err(Error::Protocol(format!(
-                "Preimage missmatch : {},{}",
-                &invoice.payment_hash().to_string(),
-                preimage.sha256
-            )));
+        if let Some(invoice) = &self.invoice {
+            // Boltz will only return a BOLT11 invoice if the invoice is not provided
+            let invoice = Bolt11Invoice::from_str(invoice)?;
+            if invoice.payment_hash().to_string() != preimage.sha256.to_string() {
+                return Err(Error::Protocol(format!(
+                    "Preimage hash mismatch : {},{}",
+                    &invoice.payment_hash().to_string(),
+                    preimage.sha256
+                )));
+            }
         }
 
         match chain {
@@ -1448,9 +1572,87 @@ pub struct GetFeeEstimationResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetBolt12InvoiceResponse {
+pub struct CreateBolt12OfferRequest {
+    pub offer: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateBolt12OfferRequest {
+    pub offer: String,
+    /// The updated webhook URL.
+    /// Setting to None will remove the webhook URL from the registered Offer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// The schnorr signature of the SHA256 hash of the webhook URL or "UPDATE" when None
+    pub signature: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MagicRoutingHint {
+    pub bip21: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBolt12FetchRequest {
+    /// The offer to fetch an invoice for
+    pub offer: String,
+    /// The amount to pay, in satoshi
+    pub amount: u64,
+    /// The optional payer note
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBolt12FetchResponse {
     /// BOLT12 invoice
     pub invoice: String,
+    /// The invoice magic routing hint
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub magic_routing_hint: Option<MagicRoutingHint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetBolt12ParamsResponse {
+    /// Minimum CLTV value
+    pub min_cltv: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Node {
+    /// The public key
+    pub public_key: secp256k1::PublicKey,
+    /// The public URIs
+    pub uris: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GetNodesResponse {
+    #[serde(rename = "BTC")]
+    pub btc: HashMap<String, Node>,
+}
+
+impl GetNodesResponse {
+    /// Get the BTC LND node data from the response.
+    /// Returns None if not found.
+    pub fn get_btc_lnd_node(&self) -> Option<Node> {
+        self.btc.get("LND").cloned()
+    }
+
+    /// Get the BTC CLN node data from the response.
+    /// Returns None if not found.
+    pub fn get_btc_cln_node(&self) -> Option<Node> {
+        self.btc.get("CLN").cloned()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

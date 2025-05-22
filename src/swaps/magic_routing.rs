@@ -18,6 +18,8 @@ const LBTC_TESTNET_ASSET_HASH: &str =
 const LBTC_MAINNET_ASSET_HASH: &str =
     "6f0279e9ed041c3d710a9f57d0c02928416460c4b722ae3457a11eec381c526d";
 
+pub type Bip21Components = (String, String, bitcoin::Amount, Option<String>);
+
 /// Decodes the provided invoice to find the magic routing hint.
 pub fn find_magic_routing_hint(invoice: &str) -> Result<Option<RouteHintHop>, Error> {
     let invoice = Bolt11Invoice::from_str(invoice)?;
@@ -30,7 +32,7 @@ pub fn find_magic_routing_hint(invoice: &str) -> Result<Option<RouteHintHop>, Er
 }
 
 /// Parse a BIP21 String and get the network, address, asset_id if present
-pub fn parse_bip21(uri: &str) -> Result<(String, String, bitcoin::Amount, Option<String>), Error> {
+pub fn parse_bip21(uri: &str) -> Result<Bip21Components, Error> {
     let parts: Vec<&str> = uri.split('?').collect();
 
     let (network_address, params) = (parts[0], parts[1]);
@@ -91,16 +93,11 @@ pub async fn check_for_mrh(
     if let Some(route_hint) = find_magic_routing_hint(invoice)? {
         let mrh_resp = boltz_api_v2.get_mrh_bip21(invoice).await?;
 
-        let (_, address, amount, assetid) = parse_bip21(&mrh_resp.bip21)?;
-        let address_hash = sha256::Hash::hash(address.as_bytes());
-        let msg = Message::from_digest_slice(address_hash.as_byte_array())?;
-
-        let receiver_sig = Signature::from_slice(&Vec::from_hex(&mrh_resp.signature)?)?;
-
-        let receiver_pubkey = PublicKey::from_str(&route_hint.src_node_id.to_string())?.inner;
-
-        let secp = Secp256k1::new();
-        secp.verify_schnorr(&receiver_sig, &msg, &receiver_pubkey.x_only_public_key().0)?;
+        let (_, address, amount, assetid) = verify_mrh_signature(
+            &mrh_resp.bip21,
+            &route_hint.src_node_id.to_string(),
+            &mrh_resp.signature,
+        )?;
 
         match network {
             Chain::Liquid(LiquidChain::LiquidTestnet) => {
@@ -125,6 +122,25 @@ pub async fn check_for_mrh(
     } else {
         Ok(None)
     }
+}
+
+pub fn verify_mrh_signature(
+    bip21: &str,
+    pubkey: &str,
+    signature: &str,
+) -> Result<Bip21Components, Error> {
+    let (network, address, amount, assetid) = parse_bip21(bip21)?;
+    let address_hash = sha256::Hash::hash(address.as_bytes());
+    let msg = Message::from_digest_slice(address_hash.as_byte_array())?;
+
+    let receiver_sig = Signature::from_slice(&Vec::from_hex(signature)?)?;
+
+    let receiver_pubkey = PublicKey::from_str(pubkey)?.inner;
+
+    let secp = Secp256k1::new();
+    secp.verify_schnorr(&receiver_sig, &msg, &receiver_pubkey.x_only_public_key().0)?;
+
+    Ok((network, address, amount, assetid))
 }
 
 /// Sign the address signature by a priv key.
