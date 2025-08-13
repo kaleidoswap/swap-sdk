@@ -7,7 +7,6 @@ on:
 name: lint
 
 jobs:
-
   fmt:
     name: rust fmt
     runs-on: ubuntu-latest
@@ -16,6 +15,10 @@ jobs:
         uses: actions/checkout@v3
       - name: Set default toolchain
         run: rustup default nightly
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
       - name: Set profile
         run: rustup set profile minimal
       - name: Add rustfmt
@@ -32,3 +35,6 @@ jobs:
         run: make cargo-clippy
       - name: Clippy wasm
         run: make wasm-clippy
+      - name: Check python
+        working-directory: bindings
+        run: make check-python
