@@ -539,8 +539,8 @@ impl BoltzApiClientV2 {
         let data = match signature {
             Some((partial_sig, pub_nonce)) => json!(
                 {
-                    "preimage": preimage.bytes.expect("expected").to_lower_hex_string(),
-                    "signature": PartialSig {
+                "preimage": preimage.bytes.ok_or(Error::Protocol("Preimage bytes not available to post chain claim".to_string()))?.to_lower_hex_string(),
+                "signature": PartialSig {
                     pub_nonce: pub_nonce.serialize().to_lower_hex_string(),
                     partial_signature: partial_sig.serialize().to_lower_hex_string(),
                 },
@@ -549,7 +549,7 @@ impl BoltzApiClientV2 {
             ),
             None => json!(
                 {
-                    "preimage": preimage.bytes.expect("expected").to_lower_hex_string(),
+                    "preimage": preimage.bytes.ok_or(Error::Protocol("Preimage bytes not available to post chain claim".to_string()))?.to_lower_hex_string(),
                     "toSign": to_sign,
                 }
             ),
@@ -596,7 +596,7 @@ impl BoltzApiClientV2 {
     ) -> Result<PartialSig, Error> {
         let data = json!(
             {
-                "preimage": preimage.bytes.expect("expected").to_lower_hex_string(),
+                "preimage": preimage.bytes.ok_or(Error::Protocol("Preimage bytes not available to post chain claim".to_string()))?.to_lower_hex_string(),
                 "pubNonce": pub_nonce.serialize().to_lower_hex_string(),
                 "transaction": claim_tx_hex,
                 "index": 0
@@ -830,7 +830,7 @@ impl CreateSubmarineResponse {
         our_pubkey: &PublicKey,
         chain: Chain,
     ) -> Result<(), Error> {
-        let preimage = Preimage::from_invoice_str(invoice).unwrap();
+        let preimage = Preimage::from_invoice_str(invoice)?;
 
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {

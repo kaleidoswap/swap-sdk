@@ -111,7 +111,9 @@ impl LBtcSwapScript {
         let blinding_str = create_swap_response
             .blinding_key
             .as_ref()
-            .expect("No blinding key provided in CreateSwapResp");
+            .ok_or(Error::Protocol(
+                "No blinding key provided in Create Swap Response".to_string(),
+            ))?;
         let blinding_key = ZKKeyPair::from_seckey_str(&Secp256k1::new(), blinding_str)?;
 
         Ok(Self {
@@ -180,7 +182,9 @@ impl LBtcSwapScript {
         let blinding_str = reverse_response
             .blinding_key
             .as_ref()
-            .expect("No blinding key provided in CreateSwapResp");
+            .ok_or(Error::Protocol(
+                "No blinding key provided in Create Swap Response".to_string(),
+            ))?;
         let blinding_key = ZKKeyPair::from_seckey_str(&Secp256k1::new(), blinding_str)?;
 
         Ok(Self {
@@ -255,7 +259,9 @@ impl LBtcSwapScript {
         let blinding_str = chain_swap_details
             .blinding_key
             .as_ref()
-            .expect("No blinding key provided in ChainSwapDetails");
+            .ok_or(Error::Protocol(
+                "No blinding key provided in ChainSwapDetails".to_string(),
+            ))?;
         let blinding_key = ZKKeyPair::from_seckey_str(&Secp256k1::new(), blinding_str)?;
 
         Ok(Self {
@@ -345,12 +351,14 @@ impl LBtcSwapScript {
             let pubkey_instruction = lockup_spk
                 .instructions()
                 .last()
-                .expect("should contain value")
-                .expect("should not fail");
+                .ok_or(Error::Protocol(
+                    "Script should contain at least one instruction".to_string(),
+                ))?
+                .map_err(|_| Error::Protocol("Failed to parse script instruction".to_string()))?;
 
-            let lockup_xonly_pubkey_bytes = pubkey_instruction
-                .push_bytes()
-                .expect("pubkey bytes expected");
+            let lockup_xonly_pubkey_bytes = pubkey_instruction.push_bytes().ok_or(
+                Error::Protocol("Expected push bytes instruction for pubkey".to_string()),
+            )?;
 
             let lockup_xonly_pubkey = XOnlyPublicKey::from_slice(lockup_xonly_pubkey_bytes)?;
 
@@ -862,7 +870,9 @@ impl LBtcSwapTx {
 
             let mut script_witness = Witness::new();
             script_witness.push(final_sig.to_vec());
-            script_witness.push(preimage.bytes.unwrap()); // checked for none
+            script_witness.push(preimage.bytes.ok_or(Error::Protocol(
+                "Preimage bytes not available - cannot claim without actual preimage".to_string(),
+            ))?);
             script_witness.push(claim_script.as_bytes());
             script_witness.push(control_block.serialize());
 
@@ -1107,7 +1117,7 @@ impl LBtcSwapTx {
         let lock_time = match refund_script
             .instructions()
             .filter_map(|i| {
-                let ins = i.unwrap();
+                let ins = i.ok()?;
                 if let Instruction::PushBytes(bytes) = ins {
                     if bytes.len() < 5_usize {
                         Some(LockTime::from_consensus(bytes_to_u32_little_endian(bytes)))

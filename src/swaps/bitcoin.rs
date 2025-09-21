@@ -334,12 +334,14 @@ impl BtcSwapScript {
             let pubkey_instruction = lockup_spk
                 .instructions()
                 .last()
-                .expect("should contain value")
-                .expect("should not fail");
+                .ok_or(Error::Protocol(
+                    "Script should contain at least one instruction".to_string(),
+                ))?
+                .map_err(|_| Error::Protocol("Failed to parse script instruction".to_string()))?;
 
-            let lockup_xonly_pubkey_bytes = pubkey_instruction
-                .push_bytes()
-                .expect("pubkey bytes expected");
+            let lockup_xonly_pubkey_bytes = pubkey_instruction.push_bytes().ok_or(
+                Error::Protocol("Expected push bytes instruction for pubkey".to_string()),
+            )?;
 
             let lockup_xonly_pubkey =
                 XOnlyPublicKey::from_slice(lockup_xonly_pubkey_bytes.as_bytes())?;
@@ -605,6 +607,12 @@ impl BtcSwapTx {
             ));
         }
 
+        if self.utxos.is_empty() {
+            return Err(Error::Protocol(
+                "No Bitcoin UTXO available for claim transaction".to_string(),
+            ));
+        }
+
         let mut claim_tx = create_tx_with_fee(
             fee,
             |fee| self.create_claim(keys, preimage, fee, is_cooperative.is_some()),
@@ -813,12 +821,16 @@ impl BtcSwapTx {
                 .swap_script
                 .taproot_spendinfo()?
                 .control_block(&(self.swap_script.claim_script(), LeafVersion::TapScript))
-                .expect("Control block calculation failed");
+                .ok_or(Error::Taproot(
+                    "Control block calculation failed".to_string(),
+                ))?;
 
             let mut witness = Witness::new();
 
             witness.push(final_sig.to_vec());
-            witness.push(preimage.bytes.unwrap());
+            witness.push(preimage.bytes.ok_or(Error::Protocol(
+                "Preimage bytes not available - cannot claim without actual preimage".to_string(),
+            ))?);
             witness.push(self.swap_script.claim_script().as_bytes());
             witness.push(control_block.serialize());
 
@@ -1021,7 +1033,7 @@ impl BtcSwapTx {
             .refund_script()
             .instructions()
             .filter_map(|i| {
-                let ins = i.unwrap();
+                let ins = i.ok()?;
                 if let Instruction::PushBytes(bytes) = ins {
                     if bytes.len() < 5_usize {
                         Some(LockTime::from_consensus(bytes_to_u32_little_endian(

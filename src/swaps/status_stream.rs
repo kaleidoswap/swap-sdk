@@ -345,7 +345,7 @@ impl BoltzWsApi {
                                                     if let Some(subscribe_request) = pending_subscriptions.remove(&id) {
                                                         subscriptions.insert(id.clone(), subscribe_request);
                                                     }
-                                                    self.subscription_notifier.send(id.clone()).unwrap();
+                                                    let _ = self.subscription_notifier.send(id.clone());
                                                 }
                                             }
 
