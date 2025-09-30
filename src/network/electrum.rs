@@ -220,7 +220,13 @@ impl LiquidClient for ElectrumLiquidClient {
         if history.is_empty() {
             return Err(Error::Protocol("No Transaction History".to_string()));
         }
-        let bitcoin_txid = history.last().expect("txid expected").tx_hash;
+        let bitcoin_txid = if let Some(last) = history.last() {
+            last.tx_hash
+        } else {
+            return Err(Error::Protocol(
+                "Unexpected empty history after check".to_string(),
+            ));
+        };
         let raw_tx = self.inner.transaction_get_raw(&bitcoin_txid)?;
         let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
         for (vout, output) in tx.clone().output.into_iter().enumerate() {
