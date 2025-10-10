@@ -393,11 +393,16 @@ impl BoltzApiClientV2 {
     }
 
     /// Make a GET request. Returns the Response
-    async fn get(&self, end_point: &str) -> Result<String, Error> {
+    async fn get_response(&self, end_point: &str) -> Result<reqwest::Response, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
         let req_builder = self.http_client.get(url);
         let req_builder = self.maybe_add_timeout(req_builder);
-        Ok(req_builder.send().await?.text().await?)
+        Ok(req_builder.send().await?)
+    }
+
+    /// Make a GET request. Returns the Response as text
+    async fn get(&self, end_point: &str) -> Result<String, Error> {
+        Ok(self.get_response(end_point).await?.text().await?)
     }
 
     /// Make a POST request. Returns the Response
@@ -502,7 +507,15 @@ impl BoltzApiClientV2 {
         id: &String,
     ) -> Result<SubmarineClaimTxResponse, Error> {
         let endpoint = format!("swap/submarine/{id}/claim");
-        Ok(serde_json::from_str(&self.get(&endpoint).await?)?)
+        let response = self.get_response(&endpoint).await?;
+        let status = response.status();
+        if status.is_success() {
+            let body = response.text().await?;
+            Ok(serde_json::from_str(&body)?)
+        } else {
+            let body = serde_json::from_str(&response.text().await?)?;
+            Err(Error::HTTPStatusNotSuccess(status, body))
+        }
     }
 
     pub async fn get_chain_claim_tx_details(
