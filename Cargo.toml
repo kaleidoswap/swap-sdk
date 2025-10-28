@@ -35,7 +35,12 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
-bitcoin = { workspace = true }
+bitcoin = { workspace = true } 
+
+# Used for musig API not available in secp included in bitcoin/elements
+# TODO: remove once bitcoin included version contains musig
+secp256k1_musig = { package = "secp256k1", version = "0.32.0-beta.0" }
+
 elements = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -63,8 +68,6 @@ web-sys = "0.3.77"
 wasm-bindgen-futures = "0.4.50"
 gloo-timers = { version = "0.3.0", features = ["futures"] }
 
-[patch.crates-io]
-secp256k1-zkp = { git = "https://github.com/breez/rust-secp256k1-zkp.git", rev = "eac2e479255a6e32b5588bc25ee53c642fdd8395" }
 
 [dev-dependencies]
 serial_test = { workspace = true }

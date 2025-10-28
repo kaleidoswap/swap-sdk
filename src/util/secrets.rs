@@ -179,7 +179,7 @@ impl Display for DerivationPurpose {
 }
 
 /// Internally used rng to generate secure 32 byte preimages
-fn rng_32b() -> [u8; 32] {
+pub(crate) fn rng_32b() -> [u8; 32] {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     bytes
