@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter};
 
+use secp256k1_musig::musig;
+use secp256k1_musig::scalar;
 use serde_json::Value;
 
 /// The Global Error enum. Encodes all possible internal library errors
@@ -221,33 +223,27 @@ impl From<bitcoin::taproot::TaprootBuilderError> for Error {
     }
 }
 
-impl From<elements::secp256k1_zkp::MusigTweakErr> for Error {
-    fn from(value: elements::secp256k1_zkp::MusigTweakErr) -> Self {
-        Self::Musig2(value.to_string())
-    }
-}
-
-impl From<elements::secp256k1_zkp::MusigNonceGenError> for Error {
-    fn from(value: elements::secp256k1_zkp::MusigNonceGenError) -> Self {
-        Self::Musig2(value.to_string())
-    }
-}
-
-impl From<elements::secp256k1_zkp::ParseError> for Error {
-    fn from(value: elements::secp256k1_zkp::ParseError) -> Self {
-        Self::Musig2(value.to_string())
-    }
-}
-
-impl From<elements::secp256k1_zkp::MusigSignError> for Error {
-    fn from(value: elements::secp256k1_zkp::MusigSignError) -> Self {
-        Self::Musig2(value.to_string())
-    }
-}
-
 impl From<bitcoin::consensus::encode::Error> for Error {
     fn from(value: bitcoin::consensus::encode::Error) -> Self {
         Self::BitcoinEncode(value)
+    }
+}
+
+impl From<musig::InvalidTweakErr> for Error {
+    fn from(value: musig::InvalidTweakErr) -> Self {
+        Self::Musig2(value.to_string())
+    }
+}
+
+impl From<scalar::OutOfRangeError> for Error {
+    fn from(value: scalar::OutOfRangeError) -> Self {
+        Self::Musig2(value.to_string())
+    }
+}
+
+impl From<musig::ParseError> for Error {
+    fn from(value: musig::ParseError) -> Self {
+        Self::Musig2(value.to_string())
     }
 }
 

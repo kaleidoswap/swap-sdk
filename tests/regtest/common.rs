@@ -48,7 +48,7 @@ pub async fn next_status(
             }
         } => result,
         _ = sleep(Duration::from_secs(10)) => {
-            Err(anyhow::anyhow!("Timeout waiting for status: {}", expected_status))
+            Err(anyhow::anyhow!("Timeout waiting for status: {expected_status}"))
         }
     }
 }

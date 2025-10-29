@@ -1,28 +1,29 @@
 use bitcoin::{
     hashes::{hash160, Hash},
     hex::DisplayHex,
-    key::rand::{rngs::OsRng, thread_rng, RngCore},
+    key::rand::{rngs::OsRng, RngCore},
     secp256k1::Keypair,
     Amount, Witness, XOnlyPublicKey,
 };
 use elements::{
     confidential::{Asset, AssetBlindingFactor, ValueBlindingFactor},
     hex::FromHex,
-    secp256k1_zkp::{
-        MusigAggNonce, MusigKeyAggCache, MusigPartialSignature, MusigPubNonce, MusigSession,
-        MusigSessionId, Secp256k1, SecretKey,
-    },
+    secp256k1_zkp::{Secp256k1, SecretKey},
     sighash::{Prevouts, SighashCache},
     taproot::{LeafVersion, TapLeafHash, TaprootBuilder, TaprootSpendInfo},
     Address, AssetIssuance, BlockHash, LockTime, OutPoint, SchnorrSig, SchnorrSighashType, Script,
     Sequence, Transaction, TxIn, TxInWitness, TxOut, TxOutWitness,
 };
+use secp256k1_musig::{musig, Scalar};
 use std::str::FromStr;
 
 use elements::encode::serialize;
 use elements::secp256k1_zkp::Message;
 
-use crate::util::secrets::Preimage;
+use crate::util::{
+    hex_to_bytes32,
+    secrets::{rng_32b, Preimage},
+};
 
 use crate::error::Error;
 
@@ -309,16 +310,18 @@ impl LBtcSwapScript {
             .into_script()
     }
 
-    pub fn musig_keyagg_cache(&self) -> MusigKeyAggCache {
+    pub fn musig_keyagg_cache(&self) -> musig::KeyAggCache {
         match (self.swap_type, self.side.clone()) {
             (SwapType::ReverseSubmarine, _) | (SwapType::Chain, Some(Side::Claim)) => {
                 let pubkeys = [self.sender_pubkey.inner, self.receiver_pubkey.inner];
-                MusigKeyAggCache::new(&Secp256k1::new(), &pubkeys)
+                let [a, b] = convert_pubkeys_for_musig(&pubkeys);
+                musig::KeyAggCache::new(&[&a, &b])
             }
 
             (SwapType::Submarine, _) | (SwapType::Chain, _) => {
                 let pubkeys = [self.receiver_pubkey.inner, self.sender_pubkey.inner];
-                MusigKeyAggCache::new(&Secp256k1::new(), &pubkeys)
+                let [a, b] = convert_pubkeys_for_musig(&pubkeys);
+                musig::KeyAggCache::new(&[&a, &b])
             }
         }
     }
@@ -340,7 +343,8 @@ impl LBtcSwapScript {
         let taproot_builder =
             taproot_builder.add_leaf_with_ver(1, self.refund_script(), LeafVersion::default())?;
 
-        let taproot_spend_info = taproot_builder.finalize(&secp, internal_key)?;
+        let taproot_spend_info =
+            taproot_builder.finalize(&secp, convert_xonly_key(internal_key))?;
 
         // Verify taproot construction
         if let Some(funding_addrs) = &self.funding_addrs {
@@ -578,7 +582,7 @@ impl LBtcSwapTx {
         keys: &Keypair,
         pub_nonce: &str,
         transaction_hash: &str,
-    ) -> Result<(MusigPartialSignature, MusigPubNonce), Error> {
+    ) -> Result<(musig::PartialSignature, musig::PublicNonce), Error> {
         self.swap_script
             .partial_sign(keys, pub_nonce, transaction_hash)
     }
@@ -628,32 +632,32 @@ impl LBtcSwapTx {
                     self.genesis_hash,
                 )?;
 
-            let msg = Message::from_digest_slice(claim_tx_taproot_hash.as_byte_array())?;
+            let msg = *claim_tx_taproot_hash.as_byte_array();
 
             let mut key_agg_cache = self.swap_script.musig_keyagg_cache();
 
-            let tweak = SecretKey::from_slice(
-                self.swap_script
+            let tweak = Scalar::from_be_bytes(
+                *self
+                    .swap_script
                     .taproot_spendinfo()?
                     .tap_tweak()
                     .as_byte_array(),
             )?;
 
-            let secp = Secp256k1::new();
-            let _ = key_agg_cache.pubkey_xonly_tweak_add(&secp, tweak)?;
+            let _ = key_agg_cache.pubkey_xonly_tweak_add(&tweak)?;
 
-            let session_id = MusigSessionId::new(&mut thread_rng());
+            let session_secret_rand =
+                musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b());
 
             let mut extra_rand = [0u8; 32];
             OsRng.fill_bytes(&mut extra_rand);
 
             let (claim_sec_nonce, claim_pub_nonce) = key_agg_cache.nonce_gen(
-                &secp,
-                session_id,
-                keys.public_key(),
-                msg,
+                session_secret_rand,
+                convert_public_key(keys.public_key()),
+                &msg,
                 Some(extra_rand),
-            )?;
+            );
 
             // Step 7: Get boltz's partial sig
             let claim_tx_hex = serialize(&claim_tx).to_lower_hex_string();
@@ -688,24 +692,21 @@ impl LBtcSwapTx {
                 ))),
             }?;
 
-            let boltz_public_nonce =
-                MusigPubNonce::from_slice(&Vec::from_hex(&partial_sig_resp.pub_nonce)?)?;
+            let boltz_public_nonce = musig::PublicNonce::from_str(&partial_sig_resp.pub_nonce)?;
 
-            let boltz_partial_sig = MusigPartialSignature::from_slice(&Vec::from_hex(
-                &partial_sig_resp.partial_signature,
-            )?)?;
+            let boltz_partial_sig =
+                musig::PartialSignature::from_str(&partial_sig_resp.partial_signature)?;
 
-            let agg_nonce = MusigAggNonce::new(&secp, &[boltz_public_nonce, claim_pub_nonce]);
+            let agg_nonce = musig::AggregatedNonce::new(&[&boltz_public_nonce, &claim_pub_nonce]);
 
-            let musig_session = MusigSession::new(&secp, &key_agg_cache, agg_nonce, msg);
+            let musig_session = musig::Session::new(&key_agg_cache, agg_nonce, &msg);
 
             // Verify the sigs.
             let boltz_partial_sig_verify = musig_session.partial_verify(
-                &secp,
                 &key_agg_cache,
-                boltz_partial_sig,
-                boltz_public_nonce,
-                self.swap_script.sender_pubkey.inner, //boltz key
+                &boltz_partial_sig,
+                &boltz_public_nonce,
+                convert_public_key(self.swap_script.sender_pubkey.inner), //boltz key
             );
 
             if !boltz_partial_sig_verify {
@@ -715,17 +716,21 @@ impl LBtcSwapTx {
             }
 
             let our_partial_sig =
-                musig_session.partial_sign(&secp, claim_sec_nonce, keys, &key_agg_cache)?;
+                musig_session.partial_sign(claim_sec_nonce, &convert_keypair(keys), &key_agg_cache);
 
-            let schnorr_sig = musig_session.partial_sig_agg(&[boltz_partial_sig, our_partial_sig]);
+            let schnorr_sig = musig_session
+                .partial_sig_agg(&[&boltz_partial_sig, &our_partial_sig])
+                .assume_valid();
 
             let final_schnorr_sig = SchnorrSig {
-                sig: schnorr_sig,
+                sig: convert_schnorr_signature(schnorr_sig),
                 hash_ty: SchnorrSighashType::Default,
             };
 
             let output_key = self.swap_script.taproot_spendinfo()?.output_key();
 
+            let secp = Secp256k1::new();
+            let msg = Message::from_digest_slice(&msg)?;
             secp.verify_schnorr(&final_schnorr_sig.sig, &msg, &output_key.into_inner())?;
 
             let mut script_witness = Witness::new();
@@ -765,16 +770,17 @@ impl LBtcSwapTx {
         };
 
         let secp = Secp256k1::new();
+        let mut rng = OsRng;
 
         let unblined_utxo = self
             .funding_utxo
             .unblind(&secp, self.swap_script.blinding_key.secret_key())?;
         let asset_id = unblined_utxo.asset;
-        let out_abf = AssetBlindingFactor::new(&mut thread_rng());
+        let out_abf = AssetBlindingFactor::new(&mut rng);
         let exp_asset = Asset::Explicit(asset_id);
 
         let (blinded_asset, asset_surjection_proof) =
-            exp_asset.blind(&mut thread_rng(), &secp, out_abf, &[unblined_utxo])?;
+            exp_asset.blind(&mut rng, &secp, out_abf, &[unblined_utxo])?;
 
         let output_value = Amount::from_sat(unblined_utxo.value) - Amount::from_sat(absolute_fees);
 
@@ -798,7 +804,7 @@ impl LBtcSwapTx {
             asset: asset_id,
             bf: out_abf,
         };
-        let ephemeral_sk = SecretKey::new(&mut thread_rng());
+        let ephemeral_sk = SecretKey::new(&mut rng);
 
         // assuming we always use a blinded address that has an extractable blinding pub
         let blinding_key = self
@@ -932,31 +938,32 @@ impl LBtcSwapTx {
                     self.genesis_hash,
                 )?;
 
-            let msg = Message::from_digest_slice(claim_tx_taproot_hash.as_byte_array())?;
+            let msg = *claim_tx_taproot_hash.as_byte_array();
 
             let mut key_agg_cache = self.swap_script.musig_keyagg_cache();
 
-            let tweak = SecretKey::from_slice(
-                self.swap_script
+            let tweak = Scalar::from_be_bytes(
+                *self
+                    .swap_script
                     .taproot_spendinfo()?
                     .tap_tweak()
                     .as_byte_array(),
             )?;
 
-            let _ = key_agg_cache.pubkey_xonly_tweak_add(&secp, tweak)?;
+            let _ = key_agg_cache.pubkey_xonly_tweak_add(&tweak)?;
 
-            let session_id = MusigSessionId::new(&mut thread_rng());
+            let session_secret_rand =
+                musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b());
 
             let mut extra_rand = [0u8; 32];
             OsRng.fill_bytes(&mut extra_rand);
 
             let (sec_nonce, pub_nonce) = key_agg_cache.nonce_gen(
-                &secp,
-                session_id,
-                keys.public_key(),
-                msg,
+                session_secret_rand,
+                convert_public_key(keys.public_key()),
+                &msg,
                 Some(extra_rand),
-            )?;
+            );
 
             // Step 7: Get boltz's partial sig
             let refund_tx_hex = serialize(&refund_tx).to_lower_hex_string();
@@ -977,24 +984,21 @@ impl LBtcSwapTx {
                 ))),
             }?;
 
-            let boltz_public_nonce =
-                MusigPubNonce::from_slice(&Vec::from_hex(&partial_sig_resp.pub_nonce)?)?;
+            let boltz_public_nonce = musig::PublicNonce::from_str(&partial_sig_resp.pub_nonce)?;
 
-            let boltz_partial_sig = MusigPartialSignature::from_slice(&Vec::from_hex(
-                &partial_sig_resp.partial_signature,
-            )?)?;
+            let boltz_partial_sig =
+                musig::PartialSignature::from_str(&partial_sig_resp.partial_signature)?;
 
-            let agg_nonce = MusigAggNonce::new(&secp, &[boltz_public_nonce, pub_nonce]);
+            let agg_nonce = musig::AggregatedNonce::new(&[&boltz_public_nonce, &pub_nonce]);
 
-            let musig_session = MusigSession::new(&secp, &key_agg_cache, agg_nonce, msg);
+            let musig_session = musig::Session::new(&key_agg_cache, agg_nonce, &msg);
 
             // Verify the sigs.
             let boltz_partial_sig_verify = musig_session.partial_verify(
-                &secp,
                 &key_agg_cache,
-                boltz_partial_sig,
-                boltz_public_nonce,
-                self.swap_script.receiver_pubkey.inner, //boltz key
+                &boltz_partial_sig,
+                &boltz_public_nonce,
+                convert_public_key(self.swap_script.receiver_pubkey.inner), //boltz key
             );
 
             if !boltz_partial_sig_verify {
@@ -1004,17 +1008,20 @@ impl LBtcSwapTx {
             }
 
             let our_partial_sig =
-                musig_session.partial_sign(&secp, sec_nonce, keys, &key_agg_cache)?;
+                musig_session.partial_sign(sec_nonce, &convert_keypair(keys), &key_agg_cache);
 
-            let schnorr_sig = musig_session.partial_sig_agg(&[boltz_partial_sig, our_partial_sig]);
+            let schnorr_sig = musig_session
+                .partial_sig_agg(&[&boltz_partial_sig, &our_partial_sig])
+                .assume_valid();
 
             let final_schnorr_sig = SchnorrSig {
-                sig: schnorr_sig,
+                sig: convert_schnorr_signature(schnorr_sig),
                 hash_ty: SchnorrSighashType::Default,
             };
 
             let output_key = self.swap_script.taproot_spendinfo()?.output_key();
 
+            let msg = Message::from_digest_slice(&msg)?;
             secp.verify_schnorr(&final_schnorr_sig.sig, &msg, &output_key.into_inner())?;
 
             let mut script_witness = Witness::new();
@@ -1050,16 +1057,17 @@ impl LBtcSwapTx {
         };
 
         let secp = Secp256k1::new();
+        let mut rng = OsRng;
 
         let unblined_utxo = self
             .funding_utxo
             .unblind(&secp, self.swap_script.blinding_key.secret_key())?;
         let asset_id = unblined_utxo.asset;
-        let out_abf = AssetBlindingFactor::new(&mut thread_rng());
+        let out_abf = AssetBlindingFactor::new(&mut rng);
         let exp_asset = Asset::Explicit(asset_id);
 
         let (blinded_asset, asset_surjection_proof) =
-            exp_asset.blind(&mut thread_rng(), &secp, out_abf, &[unblined_utxo])?;
+            exp_asset.blind(&mut rng, &secp, out_abf, &[unblined_utxo])?;
 
         let output_value = Amount::from_sat(unblined_utxo.value) - Amount::from_sat(absolute_fees);
 
@@ -1083,7 +1091,7 @@ impl LBtcSwapTx {
             asset: asset_id,
             bf: out_abf,
         };
-        let ephemeral_sk = SecretKey::new(&mut thread_rng());
+        let ephemeral_sk = SecretKey::new(&mut rng);
 
         // assuming we always use a blinded address that has an extractable blinding pub
         let blinding_key = self
@@ -1240,6 +1248,30 @@ impl LBtcSwapTx {
     }
 }
 
+fn convert_schnorr_signature(
+    schnorr_sig: secp256k1_musig::schnorr::Signature,
+) -> bitcoin::secp256k1::schnorr::Signature {
+    bitcoin::secp256k1::schnorr::Signature::from_slice(schnorr_sig.as_byte_array())
+        .expect("signature size matches")
+}
+
+fn convert_pubkeys_for_musig(
+    pubkeys: &[elements::secp256k1_zkp::PublicKey; 2],
+) -> [secp256k1_musig::PublicKey; 2] {
+    [
+        convert_public_key(pubkeys[0]),
+        convert_public_key(pubkeys[1]),
+    ]
+}
+
+fn convert_xonly_key(key: secp256k1_musig::XOnlyPublicKey) -> bitcoin::XOnlyPublicKey {
+    bitcoin::XOnlyPublicKey::from_slice(&key.serialize()[..]).expect("xonly key size matches")
+}
+
+fn convert_public_key(key: elements::secp256k1_zkp::PublicKey) -> secp256k1_musig::PublicKey {
+    secp256k1_musig::PublicKey::from_slice(&key.serialize()[..]).expect("public key size matches")
+}
+
 impl SwapScriptCommon for LBtcSwapScript {
     fn swap_type(&self) -> SwapType {
         self.swap_type
@@ -1252,39 +1284,48 @@ impl SwapScriptCommon for LBtcSwapScript {
         keys: &Keypair,
         pub_nonce: &str,
         transaction_hash: &str,
-    ) -> Result<(MusigPartialSignature, MusigPubNonce), Error> {
+    ) -> Result<(musig::PartialSignature, musig::PublicNonce), Error> {
         // Step 1: Start with a Musig KeyAgg Cache
-        let secp = Secp256k1::new();
-
         let pubkeys = [self.receiver_pubkey.inner, self.sender_pubkey.inner];
+        let [a, b] = convert_pubkeys_for_musig(&pubkeys);
 
-        let mut key_agg_cache = MusigKeyAggCache::new(&secp, &pubkeys);
+        let mut key_agg_cache = musig::KeyAggCache::new(&[&a, &b]);
 
-        let tweak = SecretKey::from_slice(self.taproot_spendinfo()?.tap_tweak().as_byte_array())?;
+        let tweak = Scalar::from_be_bytes(*self.taproot_spendinfo()?.tap_tweak().as_byte_array())?;
 
-        let _ = key_agg_cache.pubkey_xonly_tweak_add(&secp, tweak)?;
+        let _ = key_agg_cache.pubkey_xonly_tweak_add(&tweak)?;
 
-        let session_id = MusigSessionId::new(&mut thread_rng());
+        let session_secret_rand = musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b());
 
-        let msg = Message::from_digest_slice(&Vec::from_hex(transaction_hash)?)?;
+        let msg = hex_to_bytes32(transaction_hash)?;
 
         // Step 4: Start the Musig2 Signing session
         let mut extra_rand = [0u8; 32];
         OsRng.fill_bytes(&mut extra_rand);
 
-        let (gen_sec_nonce, gen_pub_nonce) =
-            key_agg_cache.nonce_gen(&secp, session_id, keys.public_key(), msg, Some(extra_rand))?;
+        let (gen_sec_nonce, gen_pub_nonce) = key_agg_cache.nonce_gen(
+            session_secret_rand,
+            convert_public_key(keys.public_key()),
+            &msg,
+            Some(extra_rand),
+        );
 
-        let boltz_nonce = MusigPubNonce::from_slice(&Vec::from_hex(pub_nonce)?)?;
+        let boltz_nonce = musig::PublicNonce::from_str(pub_nonce)?;
 
-        let agg_nonce = MusigAggNonce::new(&secp, &[boltz_nonce, gen_pub_nonce]);
+        let agg_nonce = musig::AggregatedNonce::new(&[&boltz_nonce, &gen_pub_nonce]);
 
-        let musig_session = MusigSession::new(&secp, &key_agg_cache, agg_nonce, msg);
+        let musig_session = musig::Session::new(&key_agg_cache, agg_nonce, &msg);
 
-        let partial_sig = musig_session.partial_sign(&secp, gen_sec_nonce, keys, &key_agg_cache)?;
+        let partial_sig =
+            musig_session.partial_sign(gen_sec_nonce, &convert_keypair(keys), &key_agg_cache);
 
         Ok((partial_sig, gen_pub_nonce))
     }
+}
+
+fn convert_keypair(keys: &Keypair) -> secp256k1_musig::Keypair {
+    secp256k1_musig::Keypair::from_seckey_byte_array(keys.secret_bytes())
+        .expect("keypair size matches")
 }
 
 fn tx_size(tx: &Transaction, is_discount_ct: bool) -> usize {
