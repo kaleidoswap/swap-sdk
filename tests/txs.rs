@@ -31,7 +31,7 @@ fn prepare_btc_claim() -> (
     let test_framework = BtcTestFramework::init();
 
     // Generate a random preimage and hash it.
-    let preimage = Preimage::new();
+    let preimage = Preimage::random();
 
     // Generate dummy receiver and sender's keypair
     let secp = Secp256k1::new();
@@ -210,7 +210,7 @@ fn prepare_btc_refund() -> (
     let test_framework = BtcTestFramework::init();
 
     // Generate dummy receiver and sender's keypair
-    let preimage = Preimage::new();
+    let preimage = Preimage::random();
     let secp = Secp256k1::new();
     let recvr_keypair = Keypair::new(&secp, &mut thread_rng());
     let sender_keypair = Keypair::new(&secp, &mut thread_rng());
@@ -389,7 +389,7 @@ fn prepare_lbtc_claim() -> (
     let test_framework = LbtcTestFramework::init();
 
     // Generate a random preimage and hash it.
-    let preimage = Preimage::new();
+    let preimage = Preimage::random();
 
     // Generate dummy receiver and sender's keypair
     let secp = Secp256k1::new();
@@ -543,7 +543,7 @@ fn prepare_lbtc_refund() -> (
     let test_framework = LbtcTestFramework::init();
 
     // Generate dummy receiver and sender's keypair
-    let preimage = Preimage::new();
+    let preimage = Preimage::random();
     let secp = Secp256k1::new();
     let recvr_keypair = Keypair::new(&secp, &mut thread_rng());
     let sender_keypair = Keypair::new(&secp, &mut thread_rng());

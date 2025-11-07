@@ -24,7 +24,7 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 
 async fn swap(chain: Chain, chain_client: &ChainClient) {
     let secp = Secp256k1::new();
-    let preimage = Preimage::new();
+    let preimage = Preimage::random();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
     let invoice_amount = 100000;
     let claim_public_key = PublicKey {

@@ -71,7 +71,7 @@ impl From<LiquidChain> for &'static AddressParams {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
     Mainnet,
     Testnet,
@@ -94,6 +94,16 @@ impl From<Network> for LiquidChain {
             Network::Mainnet => LiquidChain::Liquid,
             Network::Testnet => LiquidChain::LiquidTestnet,
             Network::Regtest => LiquidChain::LiquidRegtest,
+        }
+    }
+}
+
+impl From<Network> for bitcoin::Network {
+    fn from(value: Network) -> Self {
+        match value {
+            Network::Mainnet => Self::Bitcoin,
+            Network::Testnet => Self::Testnet,
+            Network::Regtest => Self::Regtest,
         }
     }
 }
