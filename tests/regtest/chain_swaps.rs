@@ -44,7 +44,7 @@ async fn bitcoin_liquid_v2_chain_esplora() {
 
 async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: Chain) {
     let secp = Secp256k1::new();
-    let preimage = Preimage::new();
+    let preimage = Preimage::random();
     log::info!("{preimage:#?}");
     let our_claim_keys = Keypair::new(&secp, &mut thread_rng());
     let claim_public_key = PublicKey {

@@ -29,6 +29,7 @@ pub enum Error {
     ConfidentialTx(elements::ConfidentialTxOutError),
     BIP32(bitcoin::bip32::Error),
     BIP39(bip39::Error),
+    BIP85(bip85_extended::Error),
     Hash(bitcoin::hashes::FromSliceError),
     Locktime(String),
     Url(url::ParseError),
@@ -174,6 +175,12 @@ impl From<bip39::Error> for Error {
     }
 }
 
+impl From<bip85_extended::Error> for Error {
+    fn from(value: bip85_extended::Error) -> Self {
+        Self::BIP85(value)
+    }
+}
+
 impl From<bitcoin::absolute::ConversionError> for Error {
     fn from(value: bitcoin::absolute::ConversionError) -> Self {
         Self::Locktime(value.to_string())
@@ -273,6 +280,7 @@ impl Error {
             Error::ConfidentialTx(_) => "ConfidentialTx",
             Error::BIP32(_) => "BIP32",
             Error::BIP39(_) => "BIP39",
+            Error::BIP85(_) => "BIP85",
             Error::Hash(_) => "Hash",
             Error::Locktime(_) => "Locktime",
             Error::Url(_) => "Url",
@@ -311,6 +319,7 @@ impl Error {
             Error::ConfidentialTx(e) => e.to_string(),
             Error::BIP32(e) => e.to_string(),
             Error::BIP39(e) => e.to_string(),
+            Error::BIP85(e) => e.to_string(),
             Error::Hash(e) => e.to_string(),
             Error::Locktime(e) => e.clone(),
             Error::Url(e) => e.to_string(),

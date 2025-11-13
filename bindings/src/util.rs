@@ -7,7 +7,7 @@ pub struct Preimage(pub(crate) boltz_client::util::secrets::Preimage);
 impl Preimage {
     #[uniffi::constructor]
     pub fn new() -> Self {
-        Self(boltz_client::util::secrets::Preimage::new())
+        Self(boltz_client::util::secrets::Preimage::random())
     }
 
     #[uniffi::constructor]
