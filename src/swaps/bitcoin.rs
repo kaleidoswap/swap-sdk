@@ -817,9 +817,18 @@ impl BtcSwapTx {
 
         let destination_spk = self.output_address.script_pubkey();
 
+        let output_value = utxo
+            .1
+            .value
+            .checked_sub(Amount::from_sat(absolute_fees))
+            .ok_or(Error::Protocol(format!(
+                "Claim output value {} is less than fees {}",
+                utxo.1.value, absolute_fees
+            )))?;
+
         let txout = TxOut {
             script_pubkey: destination_spk,
-            value: Amount::from_sat(utxo.1.value.to_sat() - absolute_fees),
+            value: output_value,
         };
 
         let mut claim_tx = Transaction {
@@ -1045,12 +1054,12 @@ impl BtcSwapTx {
             .iter()
             .fold(Amount::ZERO, |acc, (_, txo)| acc + txo.value);
         let absolute_fees_amount = Amount::from_sat(absolute_fees);
-        if utxos_amount <= absolute_fees_amount {
-            return Err(Error::Generic(
-                format!("Cannot sign Refund Tx because utxos_amount ({utxos_amount}) <= absolute_fees ({absolute_fees_amount})")
-            ));
-        }
-        let output_amount: Amount = utxos_amount - absolute_fees_amount;
+        let output_amount =
+            utxos_amount
+                .checked_sub(absolute_fees_amount)
+                .ok_or(Error::Protocol(format!(
+                    "Refund output value {utxos_amount} is less than fees {absolute_fees_amount}"
+                )))?;
         let output: TxOut = TxOut {
             script_pubkey: self.output_address.script_pubkey(),
             value: output_amount,
