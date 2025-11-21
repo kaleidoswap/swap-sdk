@@ -93,7 +93,7 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
 
     let refund_address = utils::generate_address(from).await.unwrap();
 
-    let claim_details = create_chain_response.claim_details;
+    let mut claim_details = create_chain_response.claim_details;
     let claim_script =
         SwapScript::chain_from_swap_resp(to, Side::Claim, claim_details.clone(), claim_public_key)
             .unwrap();
@@ -190,19 +190,39 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
             boltz_client: &boltz_api_v2,
         };
 
-        // Constructing a chain tx more than once should work
-        let _tx = claim_script
+        claim_details.amount -= 10;
+        let underpaid_claim_script = SwapScript::chain_from_swap_resp(
+            to,
+            Side::Claim,
+            claim_details.clone(),
+            claim_public_key,
+        )
+        .unwrap();
+
+        underpaid_claim_script
             .construct_claim(&preimage, swap_params.clone())
             .await
-            .unwrap();
+            .expect_err("Underpaid claim script should throw");
+
         let tx = claim_script
-            .construct_claim(&preimage, swap_params)
+            .construct_claim(&preimage, swap_params.clone())
             .await
             .unwrap();
 
         chain_client.broadcast_tx(&tx).await.unwrap();
-
         log::info!("Successfully broadcasted claim tx!");
+
+        // Constructing a chain tx more than once should work...
+        let _tx = claim_script
+            .construct_claim(&preimage, swap_params.clone())
+            .await
+            .unwrap();
+        let _tx = claim_script
+            .construct_claim(&preimage, swap_params)
+            .await
+            .unwrap();
+
+        // ... but broadcasting multiple times will lead to mempool conflicts
 
         next_status(&mut rx, "transaction.claimed").await.unwrap();
         log::info!("Successfully completed chain swap");
