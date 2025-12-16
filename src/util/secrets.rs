@@ -37,7 +37,7 @@ use crate::error::Error;
 use crate::network::Network;
 
 const MNEMONIC_BIP85_INDEX: u32 = 26589;
-const SWAP_KEY_DERIVATION_PATH: &str = "m/26589'/0'/0'";
+const SWAP_KEY_DERIVATION_PATH: &str = "m/44/0/0/0";
 
 /// Swap master key to derive swap keys for all swaps.
 ///
@@ -380,20 +380,20 @@ mod tests {
 
         assert_eq!(
             swap_master_key.xprv.to_string(),
-            "xprv9z1rybmkZ6Bx45RJ4wGsXWuMtrrKpvyMgny9ZPcoWWgXs2XWotuaqYaiLJuM8DEtj62DZ2wHpo4t2HsRtKfBf3mGf2LwK5xZix5LuvKNU7x",
+            "xprvA2Cw2wgWLdz9ppAYGVYpfVT6zjdVpQg9MPh9vuFQj3CMDguEv1reAdHiaSPyjqmk7sb7BA9X8T29snJGMtLBWKmATtdPaQijCbc5bbViDsH",
             "xpriv should match expected value"
         );
 
         let master_xpub = swap_master_key.get_master_xpub();
         assert_eq!(
             master_xpub.to_string(),
-            "xpub6D1DP7JePTkFGZVmAxoster6StgpEPhD41tkMn2R4rDWjprfMSDqPLuCBb4JjF9XCAhtosDaxBqxUnbx49796i4fqsARfWFqMuHffxyuQRT",
+            "xpub6FCHSTDQB1YT3JF1NX5q2dPqYmTzDsPzicckjHf2HNjL6VEPTZAtiRcCRixiSpfKinRfWGFQ5b1yw74jzsBd1hkm25864ZpH8uND7rjKjiV",
             "xpub should match expected value"
         );
 
         let swap_key_at_index_0 = swap_master_key.derive_swapkey(0)?;
 
-        let xprv_str = "xprvA1o5FLJ3sGydPdLFruGAx4HdgftKNZAjNCrzinqfXavcSBToLsgmNYjyXG8hbygMQSnKMsVt7kqHoZ4DZRXgpCxUN2JZLGU67FRgXXJWhNK";
+        let xprv_str = "xprvA44z2P7u7pXcG23soQ32XV9jUgbnQukETR1sNT2HKu681zaNU7iPEo3qQ6tMrAzNK8kQmFqEqFURCxXEZpEuVLK4KdXH8atNQpxrqYGjq17";
         let swap_xprv = Xpriv::from_str(xprv_str)?;
         let secp = Secp256k1::new();
 
@@ -409,14 +409,11 @@ mod tests {
             keypair_from_xprv.secret_key(),
             "Swap key secret at index 0 should match KeyPair secret derived from xprv"
         );
-        println!(
-            "Private key: {}",
-            swap_key_at_index_0.secret_key().display_secret()
-        );
+
         let preimage = Preimage::from_swap_key(&swap_key_at_index_0);
         assert_eq!(
             preimage.bytes.unwrap().to_lower_hex_string(),
-            "92cde8be384328b97307492898383470dc4a967398bf45326b38e507752f844d".to_string(),
+            "f19d42c70bf00267b6c5dcfe6e1094386f8c72389f1ced91e0132d1502bbd244".to_string(),
         );
 
         Ok(())
