@@ -1,6 +1,10 @@
 [package]
-name = "macros"
+name = "boltz-client-macros"
+version = "1.0.0"
 edition = "2021"
+license = "MIT"
+description = "Proc macros for boltz-client"
+repository = "https://github.com/SatoshiPortal/boltz-rust"
 
 [lib]
 proc-macro = true
