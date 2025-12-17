@@ -60,6 +60,9 @@ jobs:
         run: make cargo-regtest-test
       - name: Run WASM regtest tests
         run: make wasm-regtest-test
+      - name: Build bindings
+        working-directory: bindings
+        run: make build-debug
       - name: Run bindings tests
         working-directory: bindings
         run: make test
