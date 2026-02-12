@@ -811,7 +811,7 @@ impl BoltzApiClientV2 {
             }
         );
 
-        self.post_json("swap/restore/index", data).await
+        self.post_json("swap/restore", data).await
     }
 
     /// Restore swaps from an xpub
