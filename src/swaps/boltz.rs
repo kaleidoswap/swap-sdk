@@ -714,7 +714,7 @@ impl BoltzApiClientV2 {
     pub async fn post_bolt12_offer(&self, req: CreateBolt12OfferRequest) -> Result<(), Error> {
         let data = serde_json::to_value(req)?;
         let end_point = "lightning/BTC/bolt12".to_string();
-        self.post_json::<()>(&end_point, data).await?;
+        self.post_json::<Value>(&end_point, data).await?;
         Ok(())
     }
 
@@ -746,7 +746,7 @@ impl BoltzApiClientV2 {
         );
 
         let end_point = "lightning/BTC/bolt12/delete".to_string();
-        self.post_json::<()>(&end_point, data).await?;
+        self.post_json::<Value>(&end_point, data).await?;
         Ok(())
     }
 
@@ -790,7 +790,7 @@ impl BoltzApiClientV2 {
         );
 
         let end_point = format!("swap/chain/{swap_id}/quote");
-        self.post_json::<()>(&end_point, data).await?;
+        self.post_json::<Value>(&end_point, data).await?;
         Ok(())
     }
 
