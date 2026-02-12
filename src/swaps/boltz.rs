@@ -25,6 +25,7 @@ use bitcoin::{hashes::sha256, hex::DisplayHex, PublicKey};
 use lightning_invoice::Bolt11Invoice;
 use reqwest::Method;
 use secp256k1_musig::musig;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -405,15 +406,52 @@ impl BoltzApiClientV2 {
         Ok(self.get_response(end_point).await?.text().await?)
     }
 
-    /// Make a POST request. Returns the Response
-    async fn post(&self, end_point: &str, data: impl Serialize) -> Result<String, Error> {
-        let url = format!("{}/{}", self.base_url, end_point);
+    async fn get_json<T: DeserializeOwned>(&self, end_point: &str) -> Result<T, Error> {
+        let response = self.get_response(end_point).await?;
+        Self::parse_json_response(response).await
+    }
 
-        self.request(Method::POST, url, data).await
+    fn parse_value(body: String) -> Value {
+        serde_json::from_str::<Value>(&body).unwrap_or(Value::String(body))
+    }
+
+    async fn post_json<T: DeserializeOwned>(
+        &self,
+        end_point: &str,
+        data: impl Serialize,
+    ) -> Result<T, Error> {
+        let response = self.post_response(end_point, data).await?;
+        Self::parse_json_response(response).await
+    }
+
+    async fn parse_json_response<T: DeserializeOwned>(
+        response: reqwest::Response,
+    ) -> Result<T, Error> {
+        let status = response.status();
+        let body = response.text().await?;
+
+        if !status.is_success() {
+            return Err(Error::HTTPStatusNotSuccess(status, Self::parse_value(body)));
+        }
+
+        match serde_json::from_str::<T>(&body) {
+            Ok(parsed) => Ok(parsed),
+            Err(_) => Err(Error::HTTPStatusNotSuccess(status, Self::parse_value(body))),
+        }
+    }
+
+    /// Make a POST request. Returns the Response
+    async fn post_response(
+        &self,
+        end_point: &str,
+        data: impl Serialize,
+    ) -> Result<reqwest::Response, Error> {
+        let url = format!("{}/{}", self.base_url, end_point);
+        self.request_response(Method::POST, url, data).await
     }
 
     /// Make a PATCH request. Returns the Response
-    async fn patch(&self, end_point: &str, data: impl Serialize) -> Result<String, Error> {
+    async fn patch(&self, end_point: &str, data: impl Serialize) -> Result<Value, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
 
         self.request(Method::PATCH, url, data).await
@@ -424,23 +462,22 @@ impl BoltzApiClientV2 {
         method: Method,
         url: String,
         data: impl Serialize,
-    ) -> Result<String, Error> {
+    ) -> Result<Value, Error> {
+        let response = self.request_response(method.clone(), url, data).await?;
+        Self::parse_json_response(response).await
+    }
+
+    async fn request_response(
+        &self,
+        method: Method,
+        url: String,
+        data: impl Serialize,
+    ) -> Result<reqwest::Response, Error> {
         let method_str = method.to_string();
         let req_builder = self.http_client.request(method, url).json(&data);
         let req_builder = self.maybe_add_timeout(req_builder);
         match req_builder.send().await {
-            Ok(r) => {
-                if r.status().is_success() {
-                    log::debug!("{method_str} response: {r:#?}");
-                    Ok(r.text().await?)
-                } else {
-                    log::error!("{} error: HTTP {}", method_str, r.status());
-                    let err_resp = r.text().await.unwrap_or("Unknown error".to_string());
-                    let e_val: Value = serde_json::from_str(&err_resp).unwrap_or(Value::Null);
-                    let e_str = e_val.get("error").unwrap_or(&Value::Null).to_string();
-                    Err(Error::HTTP(e_str))
-                }
-            }
+            Ok(response) => Ok(response),
             Err(e) => {
                 log::error!("{method_str} error: {e:#?}");
                 Err(e.into())
@@ -457,23 +494,23 @@ impl BoltzApiClientV2 {
     }
 
     pub async fn get_fee_estimation(&self) -> Result<GetFeeEstimationResponse, Error> {
-        Ok(serde_json::from_str(&self.get("chain/fees").await?)?)
+        self.get_json("chain/fees").await
     }
 
     pub async fn get_height(&self) -> Result<HeightResponse, Error> {
-        Ok(serde_json::from_str(&self.get("chain/heights").await?)?)
+        self.get_json("chain/heights").await
     }
 
     pub async fn get_submarine_pairs(&self) -> Result<GetSubmarinePairsResponse, Error> {
-        Ok(serde_json::from_str(&self.get("swap/submarine").await?)?)
+        self.get_json("swap/submarine").await
     }
 
     pub async fn get_reverse_pairs(&self) -> Result<GetReversePairsResponse, Error> {
-        Ok(serde_json::from_str(&self.get("swap/reverse").await?)?)
+        self.get_json("swap/reverse").await
     }
 
     pub async fn get_chain_pairs(&self) -> Result<GetChainPairsResponse, Error> {
-        Ok(serde_json::from_str(&self.get("swap/chain").await?)?)
+        self.get_json("swap/chain").await
     }
 
     pub async fn post_swap_req(
@@ -481,25 +518,21 @@ impl BoltzApiClientV2 {
         swap_request: &CreateSubmarineRequest,
     ) -> Result<CreateSubmarineResponse, Error> {
         let data = serde_json::to_value(swap_request)?;
-        Ok(serde_json::from_str(
-            &self.post("swap/submarine", data).await?,
-        )?)
+        self.post_json("swap/submarine", data).await
     }
 
     pub async fn post_reverse_req(
         &self,
         req: CreateReverseRequest,
     ) -> Result<CreateReverseResponse, Error> {
-        Ok(serde_json::from_str(
-            &self.post("swap/reverse", req).await?,
-        )?)
+        self.post_json("swap/reverse", req).await
     }
 
     pub async fn post_chain_req(
         &self,
         req: CreateChainRequest,
     ) -> Result<CreateChainResponse, Error> {
-        Ok(serde_json::from_str(&self.post("swap/chain", req).await?)?)
+        self.post_json("swap/chain", req).await
     }
 
     pub async fn get_submarine_claim_tx_details(
@@ -507,15 +540,7 @@ impl BoltzApiClientV2 {
         id: &String,
     ) -> Result<SubmarineClaimTxResponse, Error> {
         let endpoint = format!("swap/submarine/{id}/claim");
-        let response = self.get_response(&endpoint).await?;
-        let status = response.status();
-        if status.is_success() {
-            let body = response.text().await?;
-            Ok(serde_json::from_str(&body)?)
-        } else {
-            let body = serde_json::from_str(&response.text().await?)?;
-            Err(Error::HTTPStatusNotSuccess(status, body))
-        }
+        self.get_json(&endpoint).await
     }
 
     pub async fn get_chain_claim_tx_details(
@@ -551,7 +576,7 @@ impl BoltzApiClientV2 {
             }
         );
         let endpoint = format!("swap/submarine/{id}/claim");
-        Ok(serde_json::from_str(&self.post(&endpoint, data).await?)?)
+        self.post_json(&endpoint, data).await
     }
 
     pub async fn post_chain_claim_tx_details(
@@ -580,36 +605,30 @@ impl BoltzApiClientV2 {
             ),
         };
         let endpoint = format!("swap/chain/{id}/claim");
-        Ok(serde_json::from_str(&self.post(&endpoint, data).await?)?)
+        self.post_json(&endpoint, data).await
     }
 
     pub async fn get_reverse_tx(&self, id: &str) -> Result<ReverseSwapTxResp, Error> {
-        Ok(serde_json::from_str(
-            &self.get(&format!("swap/reverse/{id}/transaction")).await?,
-        )?)
+        self.get_json(&format!("swap/reverse/{id}/transaction"))
+            .await
     }
 
     pub async fn get_submarine_tx(&self, id: &str) -> Result<SubmarineSwapTxResp, Error> {
-        Ok(serde_json::from_str(
-            &self
-                .get(&format!("swap/submarine/{id}/transaction"))
-                .await?,
-        )?)
+        self.get_json(&format!("swap/submarine/{id}/transaction"))
+            .await
     }
 
     pub async fn get_submarine_preimage(
         &self,
         id: &str,
     ) -> Result<SubmarineSwapPreimageResp, Error> {
-        Ok(serde_json::from_str(
-            &self.get(&format!("swap/submarine/{id}/preimage")).await?,
-        )?)
+        self.get_json(&format!("swap/submarine/{id}/preimage"))
+            .await
     }
 
     pub async fn get_chain_txs(&self, id: &str) -> Result<ChainSwapTxResp, Error> {
-        Ok(serde_json::from_str(
-            &self.get(&format!("swap/chain/{id}/transactions")).await?,
-        )?)
+        self.get_json(&format!("swap/chain/{id}/transactions"))
+            .await
     }
 
     pub async fn get_reverse_partial_sig(
@@ -629,7 +648,7 @@ impl BoltzApiClientV2 {
         );
 
         let endpoint = format!("swap/reverse/{id}/claim");
-        Ok(serde_json::from_str(&self.post(&endpoint, data).await?)?)
+        self.post_json(&endpoint, data).await
     }
 
     pub async fn get_submarine_partial_sig(
@@ -648,7 +667,7 @@ impl BoltzApiClientV2 {
         );
 
         let endpoint = format!("swap/submarine/{id}/refund");
-        Ok(serde_json::from_str(&self.post(&endpoint, data).await?)?)
+        self.post_json(&endpoint, data).await
     }
 
     pub async fn get_chain_partial_sig(
@@ -667,12 +686,12 @@ impl BoltzApiClientV2 {
         );
 
         let endpoint = format!("swap/chain/{id}/refund");
-        Ok(serde_json::from_str(&self.post(&endpoint, data).await?)?)
+        self.post_json(&endpoint, data).await
     }
 
     pub async fn get_mrh_bip21(&self, invoice: &str) -> Result<MrhResponse, Error> {
         let request = format!("swap/reverse/{invoice}/bip21");
-        Ok(serde_json::from_str(&self.get(&request).await?)?)
+        self.get_json(&request).await
     }
 
     pub async fn broadcast_tx(&self, chain: Chain, tx_hex: &String) -> Result<Value, Error> {
@@ -688,14 +707,14 @@ impl BoltzApiClientV2 {
         };
 
         let end_point = format!("chain/{chain}/transaction");
-        Ok(serde_json::from_str(&self.post(&end_point, data).await?)?)
+        self.post_json(&end_point, data).await
     }
 
     /// Creates a BOLT12 offer
     pub async fn post_bolt12_offer(&self, req: CreateBolt12OfferRequest) -> Result<(), Error> {
         let data = serde_json::to_value(req)?;
         let end_point = "lightning/BTC/bolt12".to_string();
-        self.post(&end_point, data).await?;
+        self.post_json::<Value>(&end_point, data).await?;
         Ok(())
     }
 
@@ -727,7 +746,7 @@ impl BoltzApiClientV2 {
         );
 
         let end_point = "lightning/BTC/bolt12/delete".to_string();
-        self.post(&end_point, data).await?;
+        self.post_json::<Value>(&end_point, data).await?;
         Ok(())
     }
 
@@ -738,19 +757,19 @@ impl BoltzApiClientV2 {
     ) -> Result<GetBolt12FetchResponse, Error> {
         let data = serde_json::to_value(req)?;
         let end_point = "lightning/BTC/bolt12/fetch".to_string();
-        Ok(serde_json::from_str(&self.post(&end_point, data).await?)?)
+        self.post_json(&end_point, data).await
     }
 
     /// Gets parameters for a BOLT12 offer
     pub async fn get_bolt12_params(&self) -> Result<GetBolt12ParamsResponse, Error> {
         let end_point = "lightning/BTC/bolt12/L-BTC".to_string();
-        Ok(serde_json::from_str(&self.get(&end_point).await?)?)
+        self.get_json(&end_point).await
     }
 
     /// Fetch information about the Lightning nodes the backend is connected to
     pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
         let end_point = "nodes".to_string();
-        Ok(serde_json::from_str(&self.get(&end_point).await?)?)
+        self.get_json(&end_point).await
     }
 
     /// Gets a quote for a Zero-Amount or over- or underpaid Chain Swap.
@@ -759,7 +778,7 @@ impl BoltzApiClientV2 {
     /// cases, it will return an error.
     pub async fn get_quote(&self, swap_id: &str) -> Result<GetQuoteResponse, Error> {
         let end_point = format!("swap/chain/{swap_id}/quote");
-        Ok(serde_json::from_str(&self.get(&end_point).await?)?)
+        self.get_json(&end_point).await
     }
 
     /// Accepts a specific quote for a Zero-Amount or over- or underpaid Chain Swap.
@@ -771,14 +790,14 @@ impl BoltzApiClientV2 {
         );
 
         let end_point = format!("swap/chain/{swap_id}/quote");
-        self.post(&end_point, data).await?;
+        self.post_json::<Value>(&end_point, data).await?;
         Ok(())
     }
 
     /// Gets the latest status of the Swap
     pub async fn get_swap(&self, swap_id: &str) -> Result<GetSwapResponse, Error> {
         let end_point = format!("swap/{swap_id}");
-        Ok(serde_json::from_str(&self.get(&end_point).await?)?)
+        self.get_json(&end_point).await
     }
 
     /// Restore swaps from an xpub
@@ -792,9 +811,7 @@ impl BoltzApiClientV2 {
             }
         );
 
-        Ok(serde_json::from_str::<Vec<SwapRestoreResponse>>(
-            &self.post("swap/restore", data).await?,
-        )?)
+        self.post_json("swap/restore", data).await
     }
 
     /// Restore swaps from an xpub
@@ -808,9 +825,7 @@ impl BoltzApiClientV2 {
             }
         );
 
-        Ok(serde_json::from_str::<SwapRestoreIndexResponse>(
-            &self.post("swap/restore/index", data).await?,
-        )?)
+        self.post_json("swap/restore/index", data).await
     }
 }
 
