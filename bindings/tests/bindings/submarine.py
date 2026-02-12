@@ -63,11 +63,10 @@ async def swap(from_chain: boltz_client.Chain, refund: bool):
         await next_status(updates, "transaction.mempool")
         await mine_block()
 
-        if from_chain == lbtc_chain:
-            await next_status(updates, "transaction.claim.pending")
-            await swap_script.submarine_cooperative_claim(
-                swap_id, key_pair, invoice, boltz_api
-            )
+        await next_status(updates, "transaction.claim.pending")
+        await swap_script.submarine_cooperative_claim(
+            swap_id, key_pair, invoice, boltz_api
+        )
 
         await next_status(updates, "transaction.claimed")
         await delay()

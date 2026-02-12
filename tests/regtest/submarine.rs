@@ -122,21 +122,19 @@ async fn v2_submarine(chain_client: &ChainClient, underpay: bool, chain: Chain) 
         next_status(&mut rx, "transaction.mempool").await.unwrap();
         utils::mine_blocks(1).await.unwrap();
 
-        if let Chain::Liquid(_) = chain {
-            next_status(&mut rx, "transaction.claim.pending")
-                .await
-                .unwrap();
-            let response = swap_script
-                .submarine_cooperative_claim(
-                    &swap_id,
-                    &our_keys,
-                    &create_swap_req.invoice,
-                    &boltz_api_v2,
-                )
-                .await
-                .unwrap();
-            log::debug!("Received claim tx details : {response:?}");
-        }
+        next_status(&mut rx, "transaction.claim.pending")
+            .await
+            .unwrap();
+        let response = swap_script
+            .submarine_cooperative_claim(
+                &swap_id,
+                &our_keys,
+                &create_swap_req.invoice,
+                &boltz_api_v2,
+            )
+            .await
+            .unwrap();
+        log::debug!("Received claim tx details : {response:?}");
 
         next_status(&mut rx, "transaction.claimed").await.unwrap();
         log::info!("Successfully completed submarine swap");
