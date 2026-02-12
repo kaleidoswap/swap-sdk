@@ -497,13 +497,20 @@ mod tests {
         let ws = Arc::new(boltz_api_v2.ws(BoltzWsConfig::default()));
 
         // Register the offer with the server
-        boltz_api_v2
+        let register_offer_result = boltz_api_v2
             .post_bolt12_offer(CreateBolt12OfferRequest {
                 offer: offer.to_string(),
                 url: None,
             })
-            .await
-            .unwrap();
+            .await;
+        if let Err(err) = register_offer_result {
+            // Regtest backend keeps state across runs; tolerate re-registering
+            // the same static offer used by this test fixture.
+            assert!(
+                err.to_string().contains("registered already"),
+                "unexpected offer registration error: {err}"
+            );
+        }
 
         assert!(!ws.is_connected().await);
         tokio::spawn(ws.clone().run_ws_loop());
