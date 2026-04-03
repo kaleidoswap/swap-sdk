@@ -1,8 +1,10 @@
 use bitcoin::hex::FromHex;
 use std::time::Duration;
 
+pub mod bolt12;
 pub mod ec;
 pub mod fees;
+pub mod invoice;
 #[cfg(feature = "lnurl")]
 pub mod lnurl;
 pub mod secrets;
