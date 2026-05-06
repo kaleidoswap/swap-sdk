@@ -51,7 +51,7 @@ jobs:
       - name: Add wasm target
         run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        run: cargo install wasm-pack --version 0.14.0 --locked
       - name: Create wasm project
         run: |
           wasm-pack new wasm-project

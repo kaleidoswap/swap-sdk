@@ -140,6 +140,8 @@ pub trait BitcoinClient: Send + Sync {
         address: &bitcoin::Address,
     ) -> Result<Vec<(bitcoin::OutPoint, bitcoin::TxOut)>, Error>;
 
+    async fn get_tx(&self, txid: bitcoin::Txid) -> Result<bitcoin::Transaction, Error>;
+
     async fn broadcast_tx(&self, signed_tx: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error>;
 
     fn network(&self) -> BitcoinChain;
@@ -153,6 +155,8 @@ pub trait LiquidClient: Send + Sync {
     ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error>;
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error>;
+
+    async fn get_tx(&self, txid: elements::Txid) -> Result<elements::Transaction, Error>;
 
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error>;
 
