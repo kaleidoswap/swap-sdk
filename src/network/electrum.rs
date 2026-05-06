@@ -149,6 +149,11 @@ impl BitcoinClient for ElectrumBitcoinClient {
         Ok(Self::extract_address_utxos(txs, &history, &spk))
     }
 
+    async fn get_tx(&self, txid: Txid) -> Result<Transaction, Error> {
+        let raw_tx = self.inner.transaction_get_raw(&txid)?;
+        Ok(bitcoin::consensus::deserialize(&raw_tx)?)
+    }
+
     async fn broadcast_tx(&self, signed_tx: &Transaction) -> Result<Txid, Error> {
         Ok(self.inner.transaction_broadcast(signed_tx)?)
     }

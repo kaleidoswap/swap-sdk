@@ -151,6 +151,14 @@ impl BitcoinClient for EsploraBitcoinClient {
         Self::extract_address_utxos(&txs, &address.to_string())
     }
 
+    async fn get_tx(&self, txid: bitcoin::Txid) -> Result<bitcoin::Transaction, Error> {
+        let url = format!("{}/tx/{txid}/raw", self.base_url);
+        let response = get_with_retry(&self.client, &url, self.timeout).await?;
+        let raw_tx = response.bytes().await?;
+
+        Ok(bitcoin::consensus::deserialize(&raw_tx)?)
+    }
+
     async fn broadcast_tx(&self, signed_tx: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error> {
         let tx_hex = signed_tx.serialize().to_hex();
         let response = self
