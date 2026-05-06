@@ -156,6 +156,8 @@ pub trait LiquidClient: Send + Sync {
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error>;
 
+    async fn get_tx(&self, txid: elements::Txid) -> Result<elements::Transaction, Error>;
+
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error>;
 
     fn network(&self) -> LiquidChain;

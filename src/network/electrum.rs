@@ -252,6 +252,12 @@ impl LiquidClient for ElectrumLiquidClient {
         ))
     }
 
+    async fn get_tx(&self, txid: elements::Txid) -> Result<elements::Transaction, Error> {
+        let bitcoin_txid = bitcoin::Txid::from_raw_hash(txid.to_raw_hash());
+        let raw_tx = self.inner.transaction_get_raw(&bitcoin_txid)?;
+        Ok(elements::encode::deserialize(&raw_tx)?)
+    }
+
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error> {
         let serialized = serialize(signed_tx);
         Ok(self

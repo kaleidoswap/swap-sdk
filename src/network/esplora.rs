@@ -264,6 +264,14 @@ impl LiquidClient for EsploraLiquidClient {
         Ok(elements::BlockHash::from_str(&text)?)
     }
 
+    async fn get_tx(&self, txid: elements::Txid) -> Result<elements::Transaction, Error> {
+        let url = format!("{}/tx/{txid}/raw", self.base_url);
+        let response = get_with_retry(&self.client, &url, self.timeout).await?;
+        let raw_tx = response.bytes().await?;
+
+        Ok(elements::encode::deserialize(&raw_tx)?)
+    }
+
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error> {
         let url = format!("{}/tx", self.base_url);
         let tx_hex = signed_tx.serialize().to_hex();
