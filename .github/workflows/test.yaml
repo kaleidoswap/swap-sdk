@@ -20,7 +20,7 @@ jobs:
       - name: Add wasm target
         run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        run: cargo install wasm-pack --version 0.14.0 --locked
       - name: Run cargo test
         run: make cargo-test
       - name: Run wasm-pack test
@@ -48,7 +48,7 @@ jobs:
       - name: Add wasm target
         run: rustup target add wasm32-unknown-unknown
       - name: Install wasm-pack
-        run: cargo install wasm-pack
+        run: cargo install wasm-pack --version 0.14.0 --locked
       - name: Start regtest environment
         working-directory: regtest
         env:

@@ -9,7 +9,7 @@ BITCOIND_COOKIE=$(shell cat regtest/boltz/data/bitcoind/regtest/.cookie)
 REGTEST_PREFIX = LND_MACAROON_HEX=$(LND_MACAROON_HEX) BITCOIND_COOKIE=$(BITCOIND_COOKIE)
 
 init:
-	cargo install wasm-pack
+	cargo install wasm-pack --version 0.14.0 --locked
 
 build: cargo-build cargo-clippy
 
