@@ -153,6 +153,29 @@ pub enum Fee {
 #[derive(uniffi::Object)]
 pub struct BtcLikeTransaction(pub(crate) swaps_bitcoin::BtcLikeTransaction);
 
+#[uniffi::export]
+impl BtcLikeTransaction {
+    #[uniffi::method]
+    pub fn hex(&self) -> String {
+        match &self.0 {
+            swaps_bitcoin::BtcLikeTransaction::Bitcoin(tx) => {
+                bitcoin::consensus::serialize(tx).to_lower_hex_string()
+            }
+            swaps_bitcoin::BtcLikeTransaction::Liquid(tx) => {
+                elements::encode::serialize(tx).to_lower_hex_string()
+            }
+        }
+    }
+
+    #[uniffi::method]
+    pub fn txid(&self) -> String {
+        match &self.0 {
+            swaps_bitcoin::BtcLikeTransaction::Bitcoin(tx) => tx.compute_txid().to_string(),
+            swaps_bitcoin::BtcLikeTransaction::Liquid(tx) => tx.txid().to_string(),
+        }
+    }
+}
+
 #[derive(uniffi::Object)]
 pub struct KeyPair {
     inner: Keypair,
