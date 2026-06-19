@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1]
+
+### Added
+- `derivation_path` and `gap_limit` parameters on `post_swap_restore` and
+  `post_swap_restore_index`. Pass `derivation_path = Some("m")` when the supplied
+  xpub is already the swap-account key (`m/44/0/0/0`) so boltz derives
+  `xpub/{index}` directly; omitting the path makes boltz apply its own default
+  and match nothing.
+- `invoice: Option<String>` field on `SwapRestoreResponse` (boltz returns it for
+  submarine and reverse swaps).
+- Tests for the swap-restore endpoints.
+
+### Changed
+- Boltz `regtest` submodule bumped to latest main.
+
+### Dependencies
+- Bumped `elements` from `0.25.0` to `0.26.2`.
+- Bumped `lightning-invoice` from `0.32.0` to `0.34.0`.
+- Bumped `electrum-client` from `0.21.0` to `0.25.0`.
+
+### Removed
+- The automated publish workflow.
+
+### Breaking
+- `post_swap_restore` and `post_swap_restore_index` gained `derivation_path` and
+  `gap_limit` parameters; existing callers must pass them (`None, None` reproduces
+  the previous behaviour).
+- `SwapRestoreResponse` gained an `invoice` field; struct-literal construction of
+  this type must be updated.
+
 ## [0.4.0]
 
 ### Added
