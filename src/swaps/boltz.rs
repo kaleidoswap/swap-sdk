@@ -800,30 +800,45 @@ impl BoltzApiClientV2 {
         self.get_json(&end_point).await
     }
 
-    /// Restore swaps from an xpub
+    /// Restore swaps from an xpub.
+    ///
+    /// `derivation_path` is the path boltz appends `/{index}` to when deriving
+    /// child keys from `xpub`. Pass `"m"` when `xpub` is already the
+    /// swap-account key (`m/44/0/0/0`), so boltz derives `xpub/{index}` to match
+    /// our per-swap keys. Omitting the path makes boltz apply its own default
+    /// and find nothing.
     pub async fn post_swap_restore(
         &self,
         xpub: &String,
+        derivation_path: Option<String>,
+        gap_limit: Option<u32>,
     ) -> Result<Vec<SwapRestoreResponse>, Error> {
-        let data = json!(
-            {
-                "xpub": xpub,
-            }
-        );
+        let mut data = json!({ "xpub": xpub });
+        if let Some(path) = derivation_path {
+            data["derivationPath"] = json!(path);
+        }
+        if let Some(gap) = gap_limit {
+            data["gapLimit"] = json!(gap);
+        }
 
         self.post_json("swap/restore", data).await
     }
 
-    /// Restore swaps from an xpub
+    /// Highest swap-key derivation index boltz has seen for `xpub` (-1 if none).
+    /// See [`Self::post_swap_restore`] for the `derivation_path` semantics.
     pub async fn post_swap_restore_index(
         &self,
         xpub: &String,
+        derivation_path: Option<String>,
+        gap_limit: Option<u32>,
     ) -> Result<SwapRestoreIndexResponse, Error> {
-        let data = json!(
-            {
-                "xpub": xpub,
-            }
-        );
+        let mut data = json!({ "xpub": xpub });
+        if let Some(path) = derivation_path {
+            data["derivationPath"] = json!(path);
+        }
+        if let Some(gap) = gap_limit {
+            data["gapLimit"] = json!(gap);
+        }
 
         self.post_json("swap/restore/index", data).await
     }
@@ -1869,6 +1884,115 @@ mod tests {
         let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
         let result = client.get_height().await;
         assert!(result.is_ok(), "Failed to get height");
+    }
+
+    // Hits the live mainnet swap/restore endpoint with the swap-master xpub
+    // derived from a known wallet mnemonic, and prints what boltz returns.
+    // Run: cargo test test_swap_restore_endpoint_print -- --nocapture
+    #[macros::async_test_all]
+    async fn test_swap_restore_endpoint_print() {
+        let wallet_mnemonic =
+            "slogan prevent affair connect autumn crop together earn track ribbon horn copy";
+        let swap_master_key =
+            crate::util::secrets::SwapMasterKey::new(wallet_mnemonic, None, Network::Mainnet)
+                .unwrap();
+        let xpub = swap_master_key.get_master_xpub().to_string();
+        println!("SWAP_RESTORE_TEST xpub: {xpub}");
+
+        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let responses = client
+            .post_swap_restore(&xpub, Some("m".to_string()), Some(100))
+            .await
+            .unwrap();
+        println!("SWAP_RESTORE_TEST returned {} swaps", responses.len());
+        for r in &responses {
+            println!(
+                "SWAP_RESTORE_TEST   {} type={:?} status={} {}->{}",
+                r.id, r.swap_type, r.status, r.from, r.to
+            );
+        }
+    }
+
+    // Creates a fresh BTC->L-BTC chain swap at swap-key indexes 0 (refund) and
+    // 1 (claim) using the seed's xpub-derived keys, then immediately calls
+    // swap/restore (and swap/restore/index) with the same xpub to see whether
+    // boltz matches the just-registered leaf pubkeys.
+    // Run: cargo test test_create_chain_then_restore -- --nocapture
+    #[macros::async_test_all]
+    async fn test_create_chain_then_restore() {
+        use crate::util::secrets::{Preimage, SwapMasterKey};
+        let wallet_mnemonic =
+            "slogan prevent affair connect autumn crop together earn track ribbon horn copy";
+        let smk = SwapMasterKey::new(wallet_mnemonic, None, Network::Mainnet).unwrap();
+        let xpub = smk.get_master_xpub().to_string();
+        let refund_kps = smk.derive_swapkey(0).unwrap();
+        let claim_kps = smk.derive_swapkey(1).unwrap();
+        let refund_public_key = PublicKey {
+            inner: refund_kps.public_key(),
+            compressed: true,
+        };
+        let claim_public_key = PublicKey {
+            inner: claim_kps.public_key(),
+            compressed: true,
+        };
+        let preimage = Preimage::from_swap_key(&claim_kps);
+        println!("CREATE_RESTORE xpub         : {xpub}");
+        println!("CREATE_RESTORE refund pubkey: {refund_public_key} (index 0)");
+        println!("CREATE_RESTORE claim pubkey : {claim_public_key} (index 1)");
+
+        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let req = CreateChainRequest {
+            from: "BTC".to_string(),
+            to: "L-BTC".to_string(),
+            preimage_hash: preimage.sha256,
+            claim_public_key: Some(claim_public_key),
+            refund_public_key: Some(refund_public_key),
+            user_lock_amount: Some(100_000),
+            server_lock_amount: None,
+            pair_hash: None,
+            referral_id: None,
+            webhook: None,
+        };
+        let created = client.post_chain_req(req).await;
+        match &created {
+            Ok(resp) => println!("CREATE_RESTORE created chain swap: {}", resp.id),
+            Err(e) => println!("CREATE_RESTORE create FAILED: {e:?}"),
+        }
+        let created_id = created.ok().map(|r| r.id);
+
+        match client
+            .post_swap_restore_index(&xpub, Some("m".to_string()), Some(100))
+            .await
+        {
+            Ok(idx) => println!("CREATE_RESTORE restore/index for xpub = {}", idx.index),
+            Err(e) => println!("CREATE_RESTORE restore/index FAILED: {e:?}"),
+        }
+
+        let responses = client
+            .post_swap_restore(&xpub, Some("m".to_string()), Some(100))
+            .await
+            .unwrap();
+        println!("CREATE_RESTORE restore returned {} swaps", responses.len());
+        for r in &responses {
+            let ck = r
+                .claim_details
+                .as_ref()
+                .map(|d| d.key_index as i64)
+                .unwrap_or(-1);
+            let rk = r
+                .refund_details
+                .as_ref()
+                .map(|d| d.key_index as i64)
+                .unwrap_or(-1);
+            println!(
+                "CREATE_RESTORE   {} type={:?} status={} {}->{} claimIdx={} refundIdx={}",
+                r.id, r.swap_type, r.status, r.from, r.to, ck, rk
+            );
+        }
+        if let Some(id) = created_id {
+            let found = responses.iter().any(|r| r.id == id);
+            println!("CREATE_RESTORE just-created swap {id} found in restore: {found}");
+        }
     }
 
     #[macros::async_test_all]

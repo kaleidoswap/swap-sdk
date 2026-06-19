@@ -25,7 +25,7 @@ enum ElectrumUrl {
 impl ElectrumUrl {
     pub fn build_client(&self, timeout: u8) -> Result<electrum_client::Client, Error> {
         let builder = electrum_client::ConfigBuilder::new();
-        let builder = builder.timeout(Some(timeout));
+        let builder = builder.timeout(Some(std::time::Duration::from_secs(timeout as u64)));
         let (url, builder) = match self {
             ElectrumUrl::Tls(url, validate) => {
                 (format!("ssl://{url}"), builder.validate_domain(*validate))

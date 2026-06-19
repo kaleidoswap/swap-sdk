@@ -418,4 +418,31 @@ mod tests {
 
         Ok(())
     }
+
+    // Derives + prints the swap mnemonic / xpub / fingerprint for a known wallet
+    // mnemonic, to cross-check against the values shown in the mobile app.
+    // Run with: cargo test test_swap_master_key_derivation_print -- --nocapture
+    #[macros::test_all]
+    fn test_swap_master_key_derivation_print() -> Result<(), Error> {
+        let wallet_mnemonic =
+            "slogan prevent affair connect autumn crop together earn track ribbon horn copy";
+        let network = Network::Mainnet;
+
+        let swap_master_key = SwapMasterKey::new(wallet_mnemonic, None, network)?;
+        let master_xpub = swap_master_key.get_master_xpub();
+
+        println!("--- SWAP MASTER KEY (mainnet) ---");
+        println!("wallet mnemonic : {wallet_mnemonic}");
+        println!("swap mnemonic   : {}", swap_master_key.mnemonic);
+        println!("fingerprint     : {}", swap_master_key.fingerprint);
+        println!("master xprv     : {}", swap_master_key.xprv);
+        println!("master xpub     : {master_xpub}");
+        println!("--- swap keys at indexes 0..5 ---");
+        for i in 0..5u64 {
+            let kp = swap_master_key.derive_swapkey(i)?;
+            println!("index {i}: pubkey {}", kp.public_key());
+        }
+
+        Ok(())
+    }
 }

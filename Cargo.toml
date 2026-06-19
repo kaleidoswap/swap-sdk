@@ -2,7 +2,7 @@
 name = "boltz-client"
 description = "a boltz exchange client for swaps between BTC/LBTC & LN"
 authors = ["i5hi <ishi@satoshiportal.com>", "Rajarshi Maitra <raj@bitshala.org>"]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 license = "MIT"
 
@@ -20,7 +20,7 @@ members = [
 
 [workspace.dependencies]
 bitcoin = { version = "0.32.2", features = ["rand", "base64", "rand-std"] }
-elements = { version = "0.25.0", features = ["serde"] }
+elements = { version = "0.26.2", features = ["serde"] }
 serde = { version = "1.0.0", features = ["derive"] }
 serde_json = "1.0.0"
 async-trait = "0.1.86"
@@ -47,7 +47,7 @@ serde_json = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 bip39 = "2.0.0"
-lightning-invoice = "0.32.0"
+lightning-invoice = "0.34.0"
 url = "2.5.0"
 log = "^0.4"
 env_logger = "0.11.8"
@@ -61,7 +61,7 @@ bip85_extended = "1.1.0"
 lightning = "0.2.2"
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
-electrum-client = { version = "0.21.0", default-features = false, features = ["use-rustls-ring", "proxy"], optional = true }
+electrum-client = { version = "0.25.0", default-features = false, features = ["use-rustls-ring", "proxy"], optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
