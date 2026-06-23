@@ -32,6 +32,17 @@ pub fn setup_logger() {
     });
 }
 
+#[cfg(all(
+    feature = "ws",
+    not(all(target_family = "wasm", target_os = "unknown"))
+))]
+pub(crate) fn ensure_rustls_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
+#[cfg(all(feature = "ws", target_family = "wasm", target_os = "unknown"))]
+pub(crate) fn ensure_rustls_crypto_provider() {}
+
 pub async fn sleep(duration: Duration) {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     {
