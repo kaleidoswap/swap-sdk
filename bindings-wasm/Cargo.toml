@@ -1,0 +1,25 @@
+[package]
+name = "bindings-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "WebAssembly (wasm-bindgen) bindings for the KaleidoSwap SDK"
+
+# Browser/TS binding surface. Separate from the UniFFI `bindings` crate because
+# wasm-bindgen and UniFFI are different export mechanisms targeting different
+# runtimes (browser vs native FFI). Build with wasm-pack (see Makefile:
+# `make wasm-pack-build`). RLN types + swap types cross to JS as plain JS objects
+# via serde-wasm-bindgen; TS callers type them with the openapi-typescript models
+# in typescript-sdk/src/generated/node-types.ts.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rln-client = { path = "../rln-client" }
+kaleidoswap-sdk = { path = "..", default-features = false, features = ["esplora"] }

@@ -15,6 +15,7 @@ crate-type = ["lib"]
 [workspace]
 members = [
     "bindings",
+    "bindings-wasm",
     "macros",
     "rln-client",
 ]

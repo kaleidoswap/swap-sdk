@@ -88,10 +88,41 @@ Exposes `RlnClient` to the foreign-language SDKs. Strategy is **"2 + 4"**:
   `RlnClient` constructs, all 28 methods present, converters round-trip through
   pydantic.
 
+### Added — WebAssembly / TypeScript bindings (`bindings-wasm` + `typescript-sdk`)
+
+Browser-facing SDK, mirroring the Python surface for the web.
+
+- **Separate `bindings-wasm` crate (wasm-bindgen).** UniFFI does not target
+  browsers, so the web path uses `wasm-bindgen` in its own crate (it cannot
+  cleanly share the UniFFI `bindings` crate — different export mechanisms,
+  different runtimes). Exposes `RlnClient` (all 28 methods) and the swap
+  key-management surface (`WasmSwapMasterKey`: BIP85 derivation, per-swap keys,
+  deterministic preimages).
+- **JS-object boundary via `serde-wasm-bindgen`** — the browser analogue of the
+  Python custom-type boundary: RLN/swap values cross to JS as plain objects
+  (typed `any` at the raw wasm layer), typed on the TS side by the generated
+  models. Async methods map to JS Promises.
+- **`typescript-sdk`.**
+  - `src/generated/node-types.ts` — domain types from the RLN OpenAPI spec via
+    `openapi-typescript` (same flags as kaleido-sdk's
+    `generate_typescript_types.sh`); generated but committed.
+  - `src/index.ts` — a hand-written typed wrapper that restores the domain types
+    onto the wasm client's `any` boundary (`RlnClient`, `SwapMasterKey`), so TS
+    callers get a fully-typed API. `tsc --noEmit` passes.
+- **Build (`make wasm-pack-build`, `make generate-ts-types`).** `wasm-pack`
+  emits the JS package + `.d.ts` under `bindings-wasm/pkg/`. The secp256k1 C is
+  cross-compiled to wasm via a wasm-capable clang; `CLANG_PREFIX` now prefers the
+  versioned `llvm@21` keg and falls back to unversioned `llvm`.
+
+Note: full swap-script / transaction-construction methods (`SwapScript`, claim/
+refund builders, `BoltzApiClientV2`) are not yet exposed over wasm — the client +
+key-management foundation is in place and the remaining surface is mechanical.
+
 ### Added — specs
 
 - Vendored `specs/rgb-lightning-node.yaml` (the RLN OpenAPI 3.1 spec) as the
-  single source of truth feeding typify (Rust) and datamodel-codegen (Python).
+  single source of truth feeding typify (Rust), datamodel-codegen (Python), and
+  openapi-typescript (TypeScript).
 
 ### Changed — crate rename `boltz-client` → `kaleidoswap-sdk`
 
@@ -118,8 +149,12 @@ Mechanical, non-functional rename of the crate identity:
 - New crate `rln-client`: `serde`, `serde_json`, optional `reqwest` (feature
   `client`).
 - Python package: added `pydantic>=2` (backs the generated RLN models).
-- Tooling: `cargo-typify` (Rust type generation) and `datamodel-code-generator`
-  via `uvx` (Python models).
+- New crate `bindings-wasm`: `wasm-bindgen`, `wasm-bindgen-futures`,
+  `serde-wasm-bindgen`, `js-sys`.
+- TypeScript package: `openapi-typescript` + `typescript` (dev).
+- Tooling: `cargo-typify` (Rust types), `datamodel-code-generator` via `uvx`
+  (Python models), `openapi-typescript` (TS types), `wasm-pack` + `llvm@21`
+  (wasm build).
 
 ### Breaking
 

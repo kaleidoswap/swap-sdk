@@ -1,7 +1,10 @@
 UNAME := $(shell uname)
 
+# secp256k1-sys needs a wasm-capable clang to cross-compile its C to wasm.
+# Prefer the versioned llvm@21 keg, fall back to unversioned llvm.
 ifeq ($(UNAME), Darwin)
-	CLANG_PREFIX += AR=$(shell brew --prefix llvm)/bin/llvm-ar CC=$(shell brew --prefix llvm)/bin/clang
+	LLVM_PREFIX := $(shell brew --prefix llvm@21 2>/dev/null || brew --prefix llvm 2>/dev/null)
+	CLANG_PREFIX += AR=$(LLVM_PREFIX)/bin/llvm-ar CC=$(LLVM_PREFIX)/bin/clang
 endif
 
 LND_MACAROON_HEX=$(shell xxd -p regtest/boltz/data/lnd1/data/chain/bitcoin/regtest/admin.macaroon | tr -d '\n')
@@ -26,6 +29,18 @@ generate-rln-pydantic:
 
 # Regenerate every RLN codegen artifact (Rust types + Python models + mapping).
 generate-rln: generate-rln-types generate-rln-pydantic
+
+# --- wasm / TypeScript binding ----------------------------------------------
+# Builds the wasm-bindgen package (bindings-wasm/pkg) for the browser/TS SDK.
+# Needs a wasm-capable clang (see CLANG_PREFIX / `brew install llvm@21`).
+WASM_PACK_TARGET ?= web
+wasm-pack-build:
+	$(CLANG_PREFIX) wasm-pack build bindings-wasm --target $(WASM_PACK_TARGET) --out-dir pkg
+
+# Regenerate the TypeScript domain types from the RLN OpenAPI spec.
+generate-ts-types:
+	cd typescript-sdk && npx -y openapi-typescript ../specs/rgb-lightning-node.yaml \
+		--export-type --enum --dedupe-enums -o src/generated/node-types.ts
 
 build: cargo-build cargo-clippy
 
