@@ -434,3 +434,279 @@ impl BoltzClient {
         to_js(&self.inner.post_swap_restore_index(&xpub, derivation_path, gap_limit).await.map_err(core_err)?)
     }
 }
+
+// ============================================================================
+// Swap-script + claim/refund transaction construction (client-side crypto).
+//
+// wasm-bindgen async methods can't take `&ExportedType` args (the Future would
+// outlive the JS-side borrow), so construct/broadcast take primitives + a params
+// object and rebuild the chain/boltz clients internally. Per-swap keys come from
+// `WasmSwapMasterKey.deriveSwapKey` (returns { publicKey, secretKey } hex).
+// ============================================================================
+
+use kaleidoswap_sdk::bitcoin::hex::DisplayHex as _;
+use kaleidoswap_sdk::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
+use kaleidoswap_sdk::bitcoin::PublicKey;
+use kaleidoswap_sdk::boltz::{
+    ChainSwapDetails, CreateReverseResponse, CreateSubmarineResponse, Side,
+};
+use kaleidoswap_sdk::fees::Fee;
+use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidoswap_sdk::network::Chain;
+use kaleidoswap_sdk::swaps::{
+    BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
+    SwapScript as CoreSwapScript, SwapTransactionParams, TransactionOptions,
+};
+use kaleidoswap_sdk::util::secrets::Preimage as CorePreimage;
+use std::str::FromStr as _;
+
+fn build_chain(kind: &str, network: &str) -> Result<Chain, JsValue> {
+    let net = parse_network(network)?;
+    match kind.to_lowercase().as_str() {
+        "bitcoin" | "btc" => Ok(Chain::Bitcoin(net.into())),
+        "liquid" | "lbtc" | "l-btc" => Ok(Chain::Liquid(net.into())),
+        other => Err(JsValue::from_str(&format!("unknown chain kind: {other}"))),
+    }
+}
+
+fn build_fee(sat_per_vb: Option<f64>, absolute_sat: Option<u64>) -> Result<Fee, JsValue> {
+    match (sat_per_vb, absolute_sat) {
+        (Some(r), None) => Ok(Fee::Relative(r)),
+        (None, Some(a)) => Ok(Fee::Absolute(a)),
+        _ => Err(JsValue::from_str(
+            "provide exactly one of feeSatPerVb or feeAbsoluteSat",
+        )),
+    }
+}
+
+fn build_chain_client(
+    network: &str,
+    bitcoin_esplora_url: &Option<String>,
+    liquid_esplora_url: &Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<CoreChainClient, JsValue> {
+    let net = parse_network(network)?;
+    let timeout = timeout_secs.unwrap_or(30);
+    let mut cc = CoreChainClient::new();
+    if let Some(url) = bitcoin_esplora_url {
+        cc = cc.with_bitcoin(EsploraBitcoinClient::new(net.into(), url, timeout));
+    }
+    if let Some(url) = liquid_esplora_url {
+        cc = cc.with_liquid(EsploraLiquidClient::new(net.into(), url, timeout));
+    }
+    Ok(cc)
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Parameters for building a claim/refund transaction (a plain JS object).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TxParams {
+    output_address: String,
+    swap_id: String,
+    /// Per-swap key secret (hex), e.g. from `deriveSwapKey(index).secretKey`.
+    keys_secret_hex: String,
+    boltz_base_url: String,
+    #[serde(default)]
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    #[serde(default)]
+    bitcoin_esplora_url: Option<String>,
+    #[serde(default)]
+    liquid_esplora_url: Option<String>,
+    #[serde(default)]
+    esplora_timeout_secs: Option<u64>,
+    #[serde(default)]
+    fee_sat_per_vb: Option<f64>,
+    #[serde(default)]
+    fee_absolute_sat: Option<u64>,
+    #[serde(default = "default_true")]
+    cooperative: bool,
+}
+
+impl TxParams {
+    fn keypair(&self) -> Result<Keypair, JsValue> {
+        let sk = SecretKey::from_str(&self.keys_secret_hex).map_err(js_err)?;
+        Ok(Keypair::from_secret_key(&Secp256k1::new(), &sk))
+    }
+    fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
+        build_chain_client(
+            &self.network,
+            &self.bitcoin_esplora_url,
+            &self.liquid_esplora_url,
+            self.esplora_timeout_secs,
+        )
+    }
+    fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
+        kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
+            self.boltz_base_url.clone(),
+            self.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        )
+    }
+}
+
+/// A reconstructed swap script; builds the claim/refund transactions.
+#[wasm_bindgen]
+pub struct SwapScript {
+    inner: CoreSwapScript,
+}
+
+#[wasm_bindgen]
+impl SwapScript {
+    /// Reconstruct from a submarine-swap create response.
+    /// `chainKind` is "bitcoin" | "liquid"; `ourPubkeyHex` is the refund pubkey.
+    #[wasm_bindgen(js_name = fromSubmarine)]
+    pub fn from_submarine(
+        chain_kind: String,
+        network: String,
+        response: JsValue,
+        our_pubkey_hex: String,
+    ) -> Result<SwapScript, JsValue> {
+        let chain = build_chain(&chain_kind, &network)?;
+        let resp: CreateSubmarineResponse = from_js(response)?;
+        let pk = PublicKey::from_str(&our_pubkey_hex).map_err(js_err)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::submarine_from_swap_resp(chain, &resp, pk).map_err(core_err)?,
+        })
+    }
+
+    /// Reconstruct from a reverse-swap create response (`ourPubkeyHex` = claim pubkey).
+    #[wasm_bindgen(js_name = fromReverse)]
+    pub fn from_reverse(
+        chain_kind: String,
+        network: String,
+        response: JsValue,
+        our_pubkey_hex: String,
+    ) -> Result<SwapScript, JsValue> {
+        let chain = build_chain(&chain_kind, &network)?;
+        let resp: CreateReverseResponse = from_js(response)?;
+        let pk = PublicKey::from_str(&our_pubkey_hex).map_err(js_err)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::reverse_from_swap_resp(chain, &resp, pk).map_err(core_err)?,
+        })
+    }
+
+    /// Reconstruct from chain-swap details. `side` is "lockup" | "claim".
+    #[wasm_bindgen(js_name = fromChain)]
+    pub fn from_chain(
+        chain_kind: String,
+        network: String,
+        side: String,
+        chain_swap_details: JsValue,
+        our_pubkey_hex: String,
+    ) -> Result<SwapScript, JsValue> {
+        let chain = build_chain(&chain_kind, &network)?;
+        let side = match side.to_lowercase().as_str() {
+            "lockup" => Side::Lockup,
+            "claim" => Side::Claim,
+            other => return Err(JsValue::from_str(&format!("unknown side: {other}"))),
+        };
+        let details: ChainSwapDetails = from_js(chain_swap_details)?;
+        let pk = PublicKey::from_str(&our_pubkey_hex).map_err(js_err)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::chain_from_swap_resp(chain, side, details, pk)
+                .map_err(core_err)?,
+        })
+    }
+
+    /// Build the claim transaction. `preimageHex` is the swap preimage
+    /// (e.g. `derivePreimage(index).preimage`); `params` is a `TxParams` object.
+    #[wasm_bindgen(js_name = constructClaim)]
+    pub async fn construct_claim(
+        &self,
+        preimage_hex: String,
+        params: JsValue,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let p: TxParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let tx_params = SwapTransactionParams {
+            keys: p.keypair()?,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            kaleidoswap_sdk: &boltz,
+            options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
+        };
+        let tx = self
+            .inner
+            .construct_claim(&preimage, tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+
+    /// Build the refund transaction (after the timelock, or cooperatively).
+    #[wasm_bindgen(js_name = constructRefund)]
+    pub async fn construct_refund(&self, params: JsValue) -> Result<BtcLikeTransaction, JsValue> {
+        let p: TxParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let tx_params = SwapTransactionParams {
+            keys: p.keypair()?,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            kaleidoswap_sdk: &boltz,
+            options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
+        };
+        let tx = self
+            .inner
+            .construct_refund(tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+}
+
+/// A signed Bitcoin/Liquid transaction produced by claim/refund construction.
+#[wasm_bindgen]
+pub struct BtcLikeTransaction {
+    inner: CoreBtcLikeTransaction,
+}
+
+#[wasm_bindgen]
+impl BtcLikeTransaction {
+    /// The transaction serialized as hex.
+    pub fn hex(&self) -> String {
+        match &self.inner {
+            CoreBtcLikeTransaction::Bitcoin(tx) => {
+                kaleidoswap_sdk::bitcoin::consensus::serialize(tx).to_lower_hex_string()
+            }
+            CoreBtcLikeTransaction::Liquid(tx) => {
+                kaleidoswap_sdk::elements::encode::serialize(tx).to_lower_hex_string()
+            }
+        }
+    }
+
+    /// The transaction id.
+    pub fn txid(&self) -> String {
+        match &self.inner {
+            CoreBtcLikeTransaction::Bitcoin(tx) => tx.compute_txid().to_string(),
+            CoreBtcLikeTransaction::Liquid(tx) => tx.txid().to_string(),
+        }
+    }
+
+    /// Broadcast via an Esplora backend, returning the txid.
+    pub async fn broadcast(
+        &self,
+        network: String,
+        bitcoin_esplora_url: Option<String>,
+        liquid_esplora_url: Option<String>,
+        esplora_timeout_secs: Option<u64>,
+    ) -> Result<String, JsValue> {
+        let cc = build_chain_client(
+            &network,
+            &bitcoin_esplora_url,
+            &liquid_esplora_url,
+            esplora_timeout_secs,
+        )?;
+        cc.broadcast_tx(&self.inner).await.map_err(core_err)
+    }
+}

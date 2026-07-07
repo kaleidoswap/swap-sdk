@@ -19,6 +19,32 @@ import type { components } from "./generated/node-types";
 // surface would need a schema-generation step (schemars) or hand-written types.
 export { BoltzClient } from "../../bindings-wasm/pkg/bindings_wasm";
 
+// Client-side swap-script + claim/refund transaction construction. Re-exported
+// as opaque handles; `SwapScript.constructClaim/constructRefund` take a
+// `TxParams` object (below) and return a `BtcLikeTransaction`.
+export { SwapScript, BtcLikeTransaction } from "../../bindings-wasm/pkg/bindings_wasm";
+
+/** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
+export interface TxParams {
+  /** Where the claimed/refunded funds are sent. */
+  outputAddress: string;
+  swapId: string;
+  /** Per-swap key secret (hex), e.g. `deriveSwapKey(index).secretKey`. */
+  keysSecretHex: string;
+  boltzBaseUrl: string;
+  boltzTimeoutSecs?: number;
+  network: Network;
+  bitcoinEsploraUrl?: string;
+  liquidEsploraUrl?: string;
+  esploraTimeoutSecs?: number;
+  /** Relative fee in sat/vByte (mutually exclusive with feeAbsoluteSat). */
+  feeSatPerVb?: number;
+  /** Absolute fee in satoshis (mutually exclusive with feeSatPerVb). */
+  feeAbsoluteSat?: number;
+  /** Cooperative (MuSig2 keyspend) claim/refund. Defaults to true. */
+  cooperative?: boolean;
+}
+
 /** Domain models generated from the RLN OpenAPI spec. */
 export type Schemas = components["schemas"];
 export type { components } from "./generated/node-types";
