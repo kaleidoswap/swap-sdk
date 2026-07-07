@@ -294,3 +294,143 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
         other => Err(JsValue::from_str(&format!("unknown network: {other}"))),
     }
 }
+
+// ============================================================================
+// Boltz swap API client — the taker's query / create / status surface.
+//
+// Structurally identical to RlnClient (async reqwest + serde DTOs). Note: unlike
+// the RLN types, the Boltz swap DTOs are Rust-defined (no OpenAPI spec), so their
+// TS types are currently `any` on the JS side — a typed TS surface for these
+// would need a schema-generation step (e.g. schemars) or hand-written interfaces.
+// ============================================================================
+
+use kaleidoswap_sdk::boltz::{
+    BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
+};
+
+fn core_err(e: kaleidoswap_sdk::error::Error) -> JsValue {
+    JsValue::from_str(&e.message())
+}
+
+/// Async client for the Boltz swap API.
+#[wasm_bindgen]
+pub struct BoltzClient {
+    inner: BoltzApiClientV2,
+}
+
+#[wasm_bindgen]
+impl BoltzClient {
+    /// `new BoltzClient(baseUrl, timeoutSecs?)`
+    #[wasm_bindgen(constructor)]
+    pub fn new(base_url: String, timeout_secs: Option<u64>) -> BoltzClient {
+        BoltzClient {
+            inner: BoltzApiClientV2::new(base_url, timeout_secs.map(std::time::Duration::from_secs)),
+        }
+    }
+
+    /// Client pointed at the default Boltz endpoint for a network
+    /// ("mainnet" | "testnet" | "regtest").
+    #[wasm_bindgen(js_name = forNetwork)]
+    pub fn for_network(network: String) -> Result<BoltzClient, JsValue> {
+        Ok(BoltzClient {
+            inner: BoltzApiClientV2::default(parse_network(&network)?),
+        })
+    }
+
+    // ---- Rates / limits ----------------------------------------------------
+
+    #[wasm_bindgen(js_name = feeEstimation)]
+    pub async fn fee_estimation(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_fee_estimation().await.map_err(core_err)?)
+    }
+    pub async fn height(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_height().await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = submarinePairs)]
+    pub async fn submarine_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_submarine_pairs().await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = reversePairs)]
+    pub async fn reverse_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_reverse_pairs().await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = chainPairs)]
+    pub async fn chain_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_chain_pairs().await.map_err(core_err)?)
+    }
+
+    // ---- Create swaps ------------------------------------------------------
+
+    #[wasm_bindgen(js_name = createSubmarineSwap)]
+    pub async fn create_submarine_swap(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        let req: CreateSubmarineRequest = from_js(req)?;
+        to_js(&self.inner.post_swap_req(&req).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = createReverseSwap)]
+    pub async fn create_reverse_swap(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        let req: CreateReverseRequest = from_js(req)?;
+        to_js(&self.inner.post_reverse_req(req).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = createChainSwap)]
+    pub async fn create_chain_swap(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        let req: CreateChainRequest = from_js(req)?;
+        to_js(&self.inner.post_chain_req(req).await.map_err(core_err)?)
+    }
+
+    // ---- Status / lookups --------------------------------------------------
+
+    #[wasm_bindgen(js_name = submarineTx)]
+    pub async fn submarine_tx(&self, id: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_submarine_tx(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = reverseTx)]
+    pub async fn reverse_tx(&self, id: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_reverse_tx(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = chainTxs)]
+    pub async fn chain_txs(&self, id: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_chain_txs(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = submarinePreimage)]
+    pub async fn submarine_preimage(&self, id: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_submarine_preimage(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = mrhBip21)]
+    pub async fn mrh_bip21(&self, invoice: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
+    }
+    pub async fn swap(&self, swap_id: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
+    }
+    pub async fn quote(&self, swap_id: String) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_quote(&swap_id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = acceptQuote)]
+    pub async fn accept_quote(&self, swap_id: String, amount_sat: u64) -> Result<(), JsValue> {
+        self.inner.accept_quote(&swap_id, amount_sat).await.map_err(core_err)
+    }
+    pub async fn nodes(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_nodes().await.map_err(core_err)?)
+    }
+
+    // ---- Recovery ----------------------------------------------------------
+
+    #[wasm_bindgen(js_name = swapRestore)]
+    pub async fn swap_restore(
+        &self,
+        xpub: String,
+        derivation_path: Option<String>,
+        gap_limit: Option<u32>,
+    ) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.post_swap_restore(&xpub, derivation_path, gap_limit).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = swapRestoreIndex)]
+    pub async fn swap_restore_index(
+        &self,
+        xpub: String,
+        derivation_path: Option<String>,
+        gap_limit: Option<u32>,
+    ) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.post_swap_restore_index(&xpub, derivation_path, gap_limit).await.map_err(core_err)?)
+    }
+}

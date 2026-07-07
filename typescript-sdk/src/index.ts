@@ -13,6 +13,12 @@ import initWasm, {
 } from "../../bindings-wasm/pkg/bindings_wasm";
 import type { components } from "./generated/node-types";
 
+// Boltz swap API client. Re-exported from the wasm module as-is: its request/
+// response payloads are currently untyped (`any`) because the Boltz swap DTOs are
+// Rust-defined and have no OpenAPI spec to generate TS types from. A typed
+// surface would need a schema-generation step (schemars) or hand-written types.
+export { BoltzClient } from "../../bindings-wasm/pkg/bindings_wasm";
+
 /** Domain models generated from the RLN OpenAPI spec. */
 export type Schemas = components["schemas"];
 export type { components } from "./generated/node-types";

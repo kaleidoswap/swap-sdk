@@ -95,9 +95,10 @@ Browser-facing SDK, mirroring the Python surface for the web.
 - **Separate `bindings-wasm` crate (wasm-bindgen).** UniFFI does not target
   browsers, so the web path uses `wasm-bindgen` in its own crate (it cannot
   cleanly share the UniFFI `bindings` crate — different export mechanisms,
-  different runtimes). Exposes `RlnClient` (all 28 methods) and the swap
+  different runtimes). Exposes `RlnClient` (all 28 methods), the swap
   key-management surface (`WasmSwapMasterKey`: BIP85 derivation, per-swap keys,
-  deterministic preimages).
+  deterministic preimages), and `BoltzClient` (the Boltz swap API: pairs/fees,
+  create submarine/reverse/chain swaps, status lookups, quotes, swap-restore).
 - **JS-object boundary via `serde-wasm-bindgen`** — the browser analogue of the
   Python custom-type boundary: RLN/swap values cross to JS as plain objects
   (typed `any` at the raw wasm layer), typed on the TS side by the generated
@@ -114,9 +115,12 @@ Browser-facing SDK, mirroring the Python surface for the web.
   cross-compiled to wasm via a wasm-capable clang; `CLANG_PREFIX` now prefers the
   versioned `llvm@21` keg and falls back to unversioned `llvm`.
 
-Note: full swap-script / transaction-construction methods (`SwapScript`, claim/
-refund builders, `BoltzApiClientV2`) are not yet exposed over wasm — the client +
-key-management foundation is in place and the remaining surface is mechanical.
+Note: swap-script / transaction-construction (`SwapScript`, claim/refund
+builders) is not yet exposed over wasm — the RLN + Boltz clients and
+key-management are in place. Those methods involve trait-object chain clients and
+`Keypair`, so they need more than the mechanical serde-wasm-bindgen pattern.
+Boltz swap DTOs also have no OpenAPI spec, so `BoltzClient` payloads are untyped
+(`any`) in TS pending a schema-generation step.
 
 ### Added — specs
 
