@@ -23,8 +23,8 @@ mv "$tmp_dir"/*.whl dist/
 
 python -m venv "$tmp_dir/wheel"
 "$tmp_dir/wheel/bin/python" -m pip install --no-index dist/*.whl
-"$tmp_dir/wheel/bin/python" -c "import boltz_client"
+"$tmp_dir/wheel/bin/python" -c "import kaleidoswap_sdk"
 
 python -m venv "$tmp_dir/sdist"
 "$tmp_dir/sdist/bin/python" -m pip install dist/*.tar.gz
-"$tmp_dir/sdist/bin/python" -c "import boltz_client"
+"$tmp_dir/sdist/bin/python" -c "import kaleidoswap_sdk"

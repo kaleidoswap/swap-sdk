@@ -1,6 +1,6 @@
-use boltz_client::swaps::ChainClient;
-use boltz_client::util::sleep;
-use boltz_client::{
+use kaleidoswap_sdk::swaps::ChainClient;
+use kaleidoswap_sdk::util::sleep;
+use kaleidoswap_sdk::{
     boltz::{BoltzApiClientV2, SwapStatus, BOLTZ_REGTEST},
     network::{BitcoinChain, LiquidChain},
 };
@@ -17,7 +17,7 @@ pub fn create_boltz_api() -> BoltzApiClientV2 {
 
 #[cfg(feature = "electrum")]
 pub fn create_chain_client_electrum() -> ChainClient {
-    use boltz_client::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+    use kaleidoswap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
 
     ChainClient::new()
         .with_bitcoin(ElectrumBitcoinClient::default(BTC_CHAIN, None).unwrap())
@@ -26,7 +26,7 @@ pub fn create_chain_client_electrum() -> ChainClient {
 
 #[cfg(feature = "esplora")]
 pub fn create_chain_client_esplora() -> ChainClient {
-    use boltz_client::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+    use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 
     ChainClient::new()
         .with_bitcoin(EsploraBitcoinClient::default(BTC_CHAIN, None))
@@ -36,7 +36,7 @@ pub fn create_chain_client_esplora() -> ChainClient {
 pub async fn next_status(
     updates: &mut Receiver<SwapStatus>,
     expected_status: &str,
-) -> Result<boltz_client::boltz::SwapStatus, anyhow::Error> {
+) -> Result<kaleidoswap_sdk::boltz::SwapStatus, anyhow::Error> {
     tokio::select! {
         result = async {
             loop {

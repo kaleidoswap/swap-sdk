@@ -3,19 +3,19 @@ use crate::regtest::WAIT_TIME;
 use crate::utils;
 use bitcoin::key::rand::thread_rng;
 use bitcoin::PublicKey;
-use boltz_client::boltz::BoltzApiClientV2;
-use boltz_client::boltz::BoltzWsConfig;
-use boltz_client::boltz::CreateChainRequest;
-use boltz_client::boltz::Side;
-use boltz_client::boltz::BOLTZ_REGTEST;
-use boltz_client::fees::Fee;
-use boltz_client::network::Chain;
-use boltz_client::swaps::ChainClient;
-use boltz_client::swaps::SwapScript;
-use boltz_client::swaps::{SwapTransactionParams, TransactionOptions};
-use boltz_client::util::{secrets::Preimage, setup_logger, sleep};
-use boltz_client::Keypair;
-use boltz_client::Secp256k1;
+use kaleidoswap_sdk::boltz::BoltzApiClientV2;
+use kaleidoswap_sdk::boltz::BoltzWsConfig;
+use kaleidoswap_sdk::boltz::CreateChainRequest;
+use kaleidoswap_sdk::boltz::Side;
+use kaleidoswap_sdk::boltz::BOLTZ_REGTEST;
+use kaleidoswap_sdk::fees::Fee;
+use kaleidoswap_sdk::network::Chain;
+use kaleidoswap_sdk::swaps::ChainClient;
+use kaleidoswap_sdk::swaps::SwapScript;
+use kaleidoswap_sdk::swaps::{SwapTransactionParams, TransactionOptions};
+use kaleidoswap_sdk::util::{secrets::Preimage, setup_logger, sleep};
+use kaleidoswap_sdk::Keypair;
+use kaleidoswap_sdk::Secp256k1;
 use serial_test::serial;
 use std::sync::Arc;
 
@@ -187,7 +187,7 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
                     .with_lockup_tx(lockup_tx),
             ),
             chain_client,
-            boltz_client: &boltz_api_v2,
+            kaleidoswap_sdk: &boltz_api_v2,
         };
 
         claim_details.amount -= 10;
@@ -245,7 +245,7 @@ async fn refund_v2_chain(
             fee: Fee::Absolute(absolute_fees),
             swap_id: swap_id.clone(),
             chain_client,
-            boltz_client: &boltz_api_v2,
+            kaleidoswap_sdk: &boltz_api_v2,
             options: None,
         })
         .await

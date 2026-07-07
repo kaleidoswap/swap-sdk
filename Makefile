@@ -11,6 +11,22 @@ REGTEST_PREFIX = LND_MACAROON_HEX=$(LND_MACAROON_HEX) BITCOIND_COOKIE=$(BITCOIND
 init:
 	cargo install wasm-pack --version 0.14.0 --locked
 
+# --- Codegen: RGB Lightning Node (RLN) types --------------------------------
+# Generates rln-client/src/types.rs from the OpenAPI 3.1 spec using typify
+# (types only; the client is hand-written), matching the kaleido-sdk approach.
+# Requires: python3 (+PyYAML) and cargo-typify (`cargo install cargo-typify`).
+generate-rln-types:
+	bash scripts/gen-rln-types.sh
+
+# Generates the Python-side RLN artifacts: pydantic models
+# (bindings/python/rln_types.py) + the uniffi.toml custom-type mapping.
+# Requires: uv, python3.
+generate-rln-pydantic:
+	bash scripts/gen-rln-pydantic.sh
+
+# Regenerate every RLN codegen artifact (Rust types + Python models + mapping).
+generate-rln: generate-rln-types generate-rln-pydantic
+
 build: cargo-build cargo-clippy
 
 cargo-build:

@@ -1,16 +1,16 @@
-import boltz_client
+import kaleidoswap_sdk
 import asyncio
 from datetime import datetime
 
-electrum_btc = boltz_client.ClientConnection.ELECTRUM(
-    boltz_client.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
+    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = boltz_client.ClientConnection.ELECTRUM(
-    boltz_client.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
+    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-network = boltz_client.Network.REGTEST
-chain_client = boltz_client.ChainClient(
-    boltz_client.ClientConfig(
+network = kaleidoswap_sdk.Network.REGTEST
+chain_client = kaleidoswap_sdk.ChainClient(
+    kaleidoswap_sdk.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -18,16 +18,16 @@ chain_client = boltz_client.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    network = boltz_client.Network.REGTEST
-    boltz_api = boltz_client.BoltzApiClientV2.default(network)
+    network = kaleidoswap_sdk.Network.REGTEST
+    boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
 
-    to_chain = boltz_client.btc_chain_from_network(network)
+    to_chain = kaleidoswap_sdk.btc_chain_from_network(network)
 
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
 
     # Generate a new key pair for the swap
-    key_pair = boltz_client.KeyPair()
+    key_pair = kaleidoswap_sdk.KeyPair()
 
     # Get the amount to swap from user
     amount = int(input("Enter amount in sats to swap: "))
@@ -36,10 +36,10 @@ async def main():
         f"Enter claim address for {'liquid' if to_chain.is_liquid() else 'bitcoin'}: "
     )
 
-    preimage = boltz_client.Preimage()
+    preimage = kaleidoswap_sdk.Preimage()
 
     # Create a reverse swap request
-    request = boltz_client.CreateReverseRequest(
+    request = kaleidoswap_sdk.CreateReverseRequest(
         invoice_amount=amount,
         _from=to_chain,
         to=to_chain,
@@ -83,19 +83,19 @@ async def main():
         elif status == "transaction.confirmed":
             print("Lockup transaction confirmed!")
 
-            swap_script = boltz_client.SwapScript.from_reverse(
+            swap_script = kaleidoswap_sdk.SwapScript.from_reverse(
                 chain=to_chain, reverse_response=response, our_pubkey=key_pair.public()
             )
 
             tx = await swap_script.construct_claim(
                 preimage,
-                boltz_client.SwapTransactionParams(
+                kaleidoswap_sdk.SwapTransactionParams(
                     swap_id=swap_id,
                     keys=key_pair,
-                    fee=boltz_client.Fee.ABSOLUTE(200),
+                    fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
                     output_address=claim_address,
                     chain_client=chain_client,
-                    boltz_client=boltz_api,
+                    kaleidoswap_sdk=boltz_api,
                 ),
             )
 

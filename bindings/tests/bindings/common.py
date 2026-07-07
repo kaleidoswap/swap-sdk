@@ -1,19 +1,19 @@
-import boltz_client
+import kaleidoswap_sdk
 import asyncio
 
-network = boltz_client.Network.REGTEST
-boltz_api = boltz_client.BoltzApiClientV2.default(network)
-btc_chain = boltz_client.btc_chain_from_network(network)
-lbtc_chain = boltz_client.lbtc_chain_from_network(network)
+network = kaleidoswap_sdk.Network.REGTEST
+boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
+btc_chain = kaleidoswap_sdk.btc_chain_from_network(network)
+lbtc_chain = kaleidoswap_sdk.lbtc_chain_from_network(network)
 
-electrum_btc = boltz_client.ClientConnection.ELECTRUM(
-    boltz_client.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
+    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = boltz_client.ClientConnection.ELECTRUM(
-    boltz_client.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
+    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-chain_client = boltz_client.ChainClient(
-    boltz_client.ClientConfig(
+chain_client = kaleidoswap_sdk.ChainClient(
+    kaleidoswap_sdk.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -37,17 +37,17 @@ async def pay_invoice(invoice: str):
     await cli_docker(f"lncli-sim 1 payinvoice --force {invoice}")
 
 
-async def chain_cli(chain: boltz_client.Chain, cmd: str):
+async def chain_cli(chain: kaleidoswap_sdk.Chain, cmd: str):
     return await cli_docker(
         f"{'bitcoin' if chain.is_bitcoin() else 'elements'}-cli-sim-client {cmd}"
     )
 
 
-async def getnewaddress(chain: boltz_client.Chain):
+async def getnewaddress(chain: kaleidoswap_sdk.Chain):
     return await chain_cli(chain, "getnewaddress")
 
 
-async def sendtoaddress(chain: boltz_client.Chain, address: str, amount: int):
+async def sendtoaddress(chain: kaleidoswap_sdk.Chain, address: str, amount: int):
     btc_amount = f"{amount / 100_000_000:.8f}"
     return await chain_cli(chain, f"sendtoaddress {address} {btc_amount}")
 
@@ -61,7 +61,7 @@ async def delay():
     await asyncio.sleep(5)
 
 
-async def next_status(updates: boltz_client.BoltzWsUpdates, status: str):
+async def next_status(updates: kaleidoswap_sdk.BoltzWsUpdates, status: str):
     while True:
         try:
             update = await asyncio.wait_for(updates.next(), timeout=5)

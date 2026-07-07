@@ -7,8 +7,8 @@
 //!
 //! ## Example
 //! ```no_run
-//! use boltz_client::util::secrets::SwapMasterKey;
-//! use boltz_client::network::Network;
+//! use kaleidoswap_sdk::util::secrets::SwapMasterKey;
+//! use kaleidoswap_sdk::network::Network;
 //!
 //! // Create SwapMasterKey from wallet mnemonic (BIP85 derivation happens internally)
 //! let wallet_mnemonic = "bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon bacon";
@@ -17,7 +17,7 @@
 //! // Store swap_master_key (can be serialized to JSON)
 //! // Later, derive keys for each swap
 //! let swap_key = swap_master_key.derive_swapkey(0)?;
-//! # Ok::<(), boltz_client::error::Error>(())
+//! # Ok::<(), kaleidoswap_sdk::error::Error>(())
 //! ```
 
 use std::str::FromStr;
