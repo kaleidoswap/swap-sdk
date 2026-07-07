@@ -245,7 +245,7 @@ pub struct SwapTransactionParams<'a> {
     pub fee: Fee,
     pub swap_id: String,
     pub chain_client: &'a ChainClient,
-    pub kaleidoswap_sdk: &'a BoltzApiClientV2,
+    pub boltz_api: &'a BoltzApiClientV2,
     pub options: Option<TransactionOptions>,
 }
 
@@ -446,7 +446,7 @@ impl SwapScript {
         &self,
         tx_kind: SwapTxKind,
         options: Option<TransactionOptions>,
-        kaleidoswap_sdk: &'a BoltzApiClientV2,
+        boltz_api: &'a BoltzApiClientV2,
         swap_id: String,
     ) -> Result<Option<Cooperative<'a>>, Error> {
         let o = options.unwrap_or_default();
@@ -458,12 +458,12 @@ impl SwapScript {
                     ))?;
                     claim
                         .lockup_script
-                        .cooperative_chain_claim(&claim.refund_keys, &swap_id, kaleidoswap_sdk)
+                        .cooperative_chain_claim(&claim.refund_keys, &swap_id, boltz_api)
                         .await
                         .map(Option::Some)
                 }
                 _ => Ok(Some(Cooperative {
-                    boltz_api: kaleidoswap_sdk,
+                    boltz_api,
                     swap_id,
                     signature: None,
                 })),
@@ -581,7 +581,7 @@ impl SwapScript {
             .get_cooperative(
                 SwapTxKind::Claim,
                 params.options.clone(),
-                params.kaleidoswap_sdk,
+                params.boltz_api,
                 params.swap_id.clone(),
             )
             .await?;
@@ -604,7 +604,7 @@ impl SwapScript {
                             })
                             .transpose()?,
                         chain_client,
-                        params.kaleidoswap_sdk,
+                        params.boltz_api,
                         &params.swap_id,
                         SwapTxKind::Claim,
                     )
@@ -637,7 +637,7 @@ impl SwapScript {
                             })
                             .transpose()?,
                         chain_client,
-                        params.kaleidoswap_sdk,
+                        params.boltz_api,
                         &params.swap_id,
                         SwapTxKind::Claim,
                     )
@@ -675,7 +675,7 @@ impl SwapScript {
             .get_cooperative(
                 SwapTxKind::Refund,
                 params.options,
-                params.kaleidoswap_sdk,
+                params.boltz_api,
                 params.swap_id.clone(),
             )
             .await?;
@@ -686,7 +686,7 @@ impl SwapScript {
                     script.as_ref().clone(),
                     &params.output_address,
                     params.chain_client.require_bitcoin_client()?,
-                    params.kaleidoswap_sdk,
+                    params.boltz_api,
                     params.swap_id.clone(),
                 )
                 .await?;
@@ -699,7 +699,7 @@ impl SwapScript {
                     script.as_ref().clone(),
                     &params.output_address,
                     params.chain_client.require_liquid_client()?,
-                    params.kaleidoswap_sdk,
+                    params.boltz_api,
                     params.swap_id.clone(),
                 )
                 .await?;

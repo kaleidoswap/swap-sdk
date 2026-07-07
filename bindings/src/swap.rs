@@ -23,7 +23,7 @@ pub struct SwapTransactionParams {
     pub swap_id: String,
     pub keys: Arc<KeyPair>,
     pub chain_client: Arc<ChainClient>,
-    pub kaleidoswap_sdk: Arc<BoltzApiClientV2>,
+    pub boltz_api: Arc<BoltzApiClientV2>,
     #[uniffi(default = None)]
     pub options: Option<TransactionOptions>,
 }
@@ -47,7 +47,7 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
                 options
             }),
             chain_client: &params.chain_client.0,
-            kaleidoswap_sdk: &params.kaleidoswap_sdk.inner,
+            boltz_api: &params.boltz_api.inner,
         }
     }
 }

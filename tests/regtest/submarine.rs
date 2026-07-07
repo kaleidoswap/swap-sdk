@@ -110,7 +110,7 @@ async fn v2_submarine(chain_client: &ChainClient, underpay: bool, chain: Chain) 
                 fee: Fee::Absolute(1000),
                 swap_id: swap_id.clone(),
                 chain_client,
-                kaleidoswap_sdk: &boltz_api_v2,
+                boltz_api: &boltz_api_v2,
                 options: None,
             })
             .await

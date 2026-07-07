@@ -146,7 +146,9 @@ Mechanical, non-functional rename of the crate identity:
   (`libboltz_client.*` → `libkaleidoswap_sdk.*`) all follow.
 - The Boltz *protocol* surface is intentionally untouched: the `boltz` module,
   `BoltzApiClientV2`, and the `boltz.exchange` URLs remain (repointing those to
-  the KaleidoSwap maker is a separate, functional change).
+  the KaleidoSwap maker is a separate, functional change). The
+  `SwapTransactionParams` Boltz-client field is named `boltz_api` — the mechanical
+  token sweep had briefly caught it; it's restored to a protocol-accurate name.
 
 ### Fixed
 

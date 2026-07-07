@@ -631,7 +631,7 @@ impl SwapScript {
             fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
             swap_id: p.swap_id.clone(),
             chain_client: &chain_client,
-            kaleidoswap_sdk: &boltz,
+            boltz_api: &boltz,
             options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
         };
         let tx = self
@@ -654,7 +654,7 @@ impl SwapScript {
             fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
             swap_id: p.swap_id.clone(),
             chain_client: &chain_client,
-            kaleidoswap_sdk: &boltz,
+            boltz_api: &boltz,
             options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
         };
         let tx = self

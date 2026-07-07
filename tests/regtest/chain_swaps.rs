@@ -187,7 +187,7 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
                     .with_lockup_tx(lockup_tx),
             ),
             chain_client,
-            kaleidoswap_sdk: &boltz_api_v2,
+            boltz_api: &boltz_api_v2,
         };
 
         claim_details.amount -= 10;
@@ -245,7 +245,7 @@ async fn refund_v2_chain(
             fee: Fee::Absolute(absolute_fees),
             swap_id: swap_id.clone(),
             chain_client,
-            kaleidoswap_sdk: &boltz_api_v2,
+            boltz_api: &boltz_api_v2,
             options: None,
         })
         .await

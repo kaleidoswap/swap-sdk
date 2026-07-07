@@ -102,7 +102,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient) {
         fee: Fee::Absolute(200),
         output_address: claim_address,
         chain_client,
-        kaleidoswap_sdk: &boltz_api_v2,
+        boltz_api: &boltz_api_v2,
         options: Some(TransactionOptions::default().with_lockup_tx(lockup_tx)),
     };
 
