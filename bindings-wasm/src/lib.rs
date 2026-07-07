@@ -9,6 +9,7 @@
 //! Build with `wasm-pack build` (see `make wasm-pack-build`), which emits a JS
 //! package with generated `.d.ts` under `bindings-wasm/pkg/`.
 
+use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
 fn js_err<E: std::fmt::Display>(e: E) -> JsValue {
@@ -708,5 +709,81 @@ impl BtcLikeTransaction {
             esplora_timeout_secs,
         )?;
         cc.broadcast_tx(&self.inner).await.map_err(core_err)
+    }
+}
+
+// ============================================================================
+// WebSocket swap-status stream.
+//
+// JS usage:
+//   const ws = new BoltzWsApi(wsUrl);
+//   ws.runWsLoop();                       // do NOT await — runs in background
+//   await ws.subscribeSwap(swapId);
+//   const updates = ws.updates();
+//   for (;;) { const status = await updates.next(); ... }
+//
+// `runWsLoop` is a *sync* method returning a Promise: it clones the inner Arc and
+// hands it to future_to_promise, so it does not hold a `&self` borrow across the
+// (never-resolving) loop — otherwise wasm-bindgen would reject any other call on
+// the same object while the loop is pending.
+// ============================================================================
+
+use kaleidoswap_sdk::boltz::{BoltzWsApi as CoreBoltzWsApi, BoltzWsConfig, SwapStatus};
+use tokio::sync::{broadcast, Mutex as TokioMutex};
+
+/// Boltz WebSocket status stream.
+#[wasm_bindgen]
+pub struct BoltzWsApi {
+    inner: Arc<CoreBoltzWsApi>,
+}
+
+#[wasm_bindgen]
+impl BoltzWsApi {
+    /// `new BoltzWsApi(wsUrl)` — e.g. `wss://api.boltz.exchange/v2/ws`.
+    #[wasm_bindgen(constructor)]
+    pub fn new(ws_url: String) -> BoltzWsApi {
+        BoltzWsApi {
+            inner: Arc::new(CoreBoltzWsApi::new(ws_url, BoltzWsConfig::default())),
+        }
+    }
+
+    /// Start the reconnecting WS loop in the background. Returns a Promise that
+    /// resolves only on shutdown — do NOT await it in normal use.
+    #[wasm_bindgen(js_name = runWsLoop)]
+    pub fn run_ws_loop(&self) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        wasm_bindgen_futures::future_to_promise(async move {
+            inner.run_ws_loop().await;
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
+    /// Subscribe to status updates for a swap id.
+    #[wasm_bindgen(js_name = subscribeSwap)]
+    pub async fn subscribe_swap(&self, swap_id: String) -> Result<(), JsValue> {
+        self.inner.subscribe_swap(&swap_id).await.map_err(core_err)
+    }
+
+    /// A cursor over swap-status updates (see `BoltzWsUpdates.next`).
+    pub fn updates(&self) -> BoltzWsUpdates {
+        BoltzWsUpdates {
+            inner: TokioMutex::new(self.inner.updates()),
+        }
+    }
+}
+
+/// Cursor over the swap-status broadcast; await `next()` repeatedly.
+#[wasm_bindgen]
+pub struct BoltzWsUpdates {
+    inner: TokioMutex<broadcast::Receiver<SwapStatus>>,
+}
+
+#[wasm_bindgen]
+impl BoltzWsUpdates {
+    /// Resolve with the next `SwapStatus`, or reject if the stream lagged/closed.
+    pub async fn next(&self) -> Result<JsValue, JsValue> {
+        let mut rx = self.inner.lock().await;
+        let status = rx.recv().await.map_err(js_err)?;
+        to_js(&status)
     }
 }

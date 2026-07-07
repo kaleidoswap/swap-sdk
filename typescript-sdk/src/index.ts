@@ -24,6 +24,11 @@ export { BoltzClient } from "../../bindings-wasm/pkg/bindings_wasm";
 // `TxParams` object (below) and return a `BtcLikeTransaction`.
 export { SwapScript, BtcLikeTransaction } from "../../bindings-wasm/pkg/bindings_wasm";
 
+// WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
+// the background), `await subscribeSwap(id)`, then poll `updates().next()`.
+// `next()` resolves with a Boltz `SwapStatus` (untyped `any` — Boltz-defined).
+export { BoltzWsApi, BoltzWsUpdates } from "../../bindings-wasm/pkg/bindings_wasm";
+
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {
   /** Where the claimed/refunded funds are sent. */

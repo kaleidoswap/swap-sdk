@@ -99,12 +99,15 @@ Browser-facing SDK, mirroring the Python surface for the web.
   key-management surface (`WasmSwapMasterKey`: BIP85 derivation, per-swap keys,
   deterministic preimages), `BoltzClient` (the Boltz swap API: pairs/fees,
   create submarine/reverse/chain swaps, status lookups, quotes, swap-restore),
-  and the client-side transaction surface (`SwapScript`: reconstruct submarine/
+  the client-side transaction surface (`SwapScript`: reconstruct submarine/
   reverse/chain scripts and build claim/refund txs; `BtcLikeTransaction`:
-  hex/txid/broadcast). Because wasm-bindgen async methods can't hold
+  hex/txid/broadcast), and the WebSocket swap-status stream (`BoltzWsApi` +
+  `BoltzWsUpdates`). Because wasm-bindgen async methods can't hold
   `&ExportedType` borrows across the await, `constructClaim`/`constructRefund`/
   `broadcast` take primitives + a params object and rebuild the chain/boltz
-  clients internally.
+  clients internally; `runWsLoop` is a sync method returning a Promise (clones
+  the inner `Arc`) so the never-resolving loop doesn't hold a `&self` borrow that
+  would block other calls on the object.
 - **JS-object boundary via `serde-wasm-bindgen`** — the browser analogue of the
   Python custom-type boundary: RLN/swap values cross to JS as plain objects
   (typed `any` at the raw wasm layer), typed on the TS side by the generated
@@ -121,11 +124,11 @@ Browser-facing SDK, mirroring the Python surface for the web.
   cross-compiled to wasm via a wasm-capable clang; `CLANG_PREFIX` now prefers the
   versioned `llvm@21` keg and falls back to unversioned `llvm`.
 
-Remaining wasm gaps: the WebSocket swap-status stream (`BoltzWsApi`) is not
-wasm-exposed; and the Boltz swap DTOs / `TxParams` have no OpenAPI spec, so
-`BoltzClient` payloads and `constructClaim/Refund` params are typed `any` in the
-raw wasm `.d.ts` (the TS SDK adds a hand-written `TxParams` interface; fully
-typed Boltz DTOs would need a schema-generation step such as schemars).
+Remaining typing note: the Boltz swap DTOs, `SwapStatus`, and `TxParams` have no
+OpenAPI spec, so `BoltzClient` payloads, WS `next()` results, and
+`constructClaim/Refund` params are typed `any` in the raw wasm `.d.ts` (the TS
+SDK adds a hand-written `TxParams` interface; fully typed Boltz DTOs would need a
+schema-generation step such as schemars).
 
 ### Added — specs
 
