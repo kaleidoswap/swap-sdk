@@ -10,24 +10,24 @@
 import initWasm, {
   RlnClient as WasmRlnClient,
   WasmSwapMasterKey,
-} from "../vendor/bindings_wasm";
+} from "../vendor/bindings_wasm.js";
 import type { components } from "./generated/node-types";
 
 // Boltz swap API client. Re-exported from the wasm module as-is: its request/
 // response payloads are currently untyped (`any`) because the Boltz swap DTOs are
 // Rust-defined and have no OpenAPI spec to generate TS types from. A typed
 // surface would need a schema-generation step (schemars) or hand-written types.
-export { BoltzClient } from "../vendor/bindings_wasm";
+export { BoltzClient } from "../vendor/bindings_wasm.js";
 
 // Client-side swap-script + claim/refund transaction construction. Re-exported
 // as opaque handles; `SwapScript.constructClaim/constructRefund` take a
 // `TxParams` object (below) and return a `BtcLikeTransaction`.
-export { SwapScript, BtcLikeTransaction } from "../vendor/bindings_wasm";
+export { SwapScript, BtcLikeTransaction } from "../vendor/bindings_wasm.js";
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.
 // `next()` resolves with a Boltz `SwapStatus` (untyped `any` — Boltz-defined).
-export { BoltzWsApi, BoltzWsUpdates } from "../vendor/bindings_wasm";
+export { BoltzWsApi, BoltzWsUpdates } from "../vendor/bindings_wasm.js";
 
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {

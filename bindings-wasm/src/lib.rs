@@ -400,15 +400,24 @@ impl BoltzClient {
         let claim_pk = req.claim_public_key;
         let to = req.to.clone();
         let preimage_hash = req.preimage_hash;
+        let invoice = req.invoice.clone();
         let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
-        if let Some(hash) = preimage_hash {
-            let preimage =
-                kaleidoswap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
-                    .map_err(core_err)?;
-            let chain = chain_from_boltz(&to, &network)?;
-            resp.validate(&preimage, &claim_pk, chain)
-                .map_err(core_err)?;
-        }
+        // Validate the returned tree/address regardless of request form: derive
+        // the payment hash from `preimage_hash` or, in the invoice form, from the
+        // invoice itself. Never hand back an unvalidated response to fund.
+        let preimage = if let Some(hash) = preimage_hash {
+            kaleidoswap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
+                .map_err(core_err)?
+        } else if let Some(inv) = &invoice {
+            kaleidoswap_sdk::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
+        } else {
+            return Err(JsValue::from_str(
+                "reverse swap request needs preimageHash or invoice",
+            ));
+        };
+        let chain = chain_from_boltz(&to, &network)?;
+        resp.validate(&preimage, &claim_pk, chain)
+            .map_err(core_err)?;
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]

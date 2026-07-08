@@ -183,6 +183,24 @@ Addressing PR review (Codex):
   (documented on `TxParams`); the cooperative chain path needs lockup-script +
   refund-key options the wasm params object does not yet carry.
 
+Second review round:
+
+- **Invoice-form reverse swaps are validated too.** The previous fix only
+  validated when `preimage_hash` was set; the invoice form (`preimage_hash`
+  unset) skipped it. `createReverseSwap` now derives the payment hash from the
+  invoice (`Preimage::from_invoice_str`) and always validates, erroring rather
+  than returning an unvalidated response.
+- **Vendored wasm imports use the `.js` extension.** As native ESM, the emitted
+  `dist/index.js` keeps the relative specifier verbatim; `../vendor/bindings_wasm`
+  is now `../vendor/bindings_wasm.js` so browser/Node ESM loaders resolve it
+  without a bundler.
+
+Known (not yet fixed): `u64` RLN fields (e.g. `channel_asset_max_amount`) are
+typed `number` in the TS surface and serialized lossily across the wasm boundary
+for values above 2^53. A precise fix means BigInt end-to-end (serde-wasm-bindgen
++ TS `bigint`), which would make every amount field a `bigint` — deferred as a
+deliberate API decision.
+
 ### Dependencies
 
 - New crate `rln-client`: `serde`, `serde_json`, optional `reqwest` (feature
