@@ -104,7 +104,7 @@ async def main():
                     swap_id=swap_id,
                     keys=key_pair,
                     chain_client=chain_client,
-                    kaleidoswap_sdk=boltz_api,
+                    boltz_api=boltz_api,
                 )
             )
 

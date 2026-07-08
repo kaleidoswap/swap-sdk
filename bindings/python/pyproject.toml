@@ -3,7 +3,7 @@ name = "kaleidoswap_sdk"
 version = "0.4.1"
 description = "Boltz Swap library"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 # pydantic backs the generated RLN models (rln_types.py) that the uniffi
 # custom-type converters hydrate at the FFI boundary.
 dependencies = ["pydantic>=2"]

@@ -10,24 +10,24 @@
 import initWasm, {
   RlnClient as WasmRlnClient,
   WasmSwapMasterKey,
-} from "../../bindings-wasm/pkg/bindings_wasm";
+} from "../vendor/bindings_wasm";
 import type { components } from "./generated/node-types";
 
 // Boltz swap API client. Re-exported from the wasm module as-is: its request/
 // response payloads are currently untyped (`any`) because the Boltz swap DTOs are
 // Rust-defined and have no OpenAPI spec to generate TS types from. A typed
 // surface would need a schema-generation step (schemars) or hand-written types.
-export { BoltzClient } from "../../bindings-wasm/pkg/bindings_wasm";
+export { BoltzClient } from "../vendor/bindings_wasm";
 
 // Client-side swap-script + claim/refund transaction construction. Re-exported
 // as opaque handles; `SwapScript.constructClaim/constructRefund` take a
 // `TxParams` object (below) and return a `BtcLikeTransaction`.
-export { SwapScript, BtcLikeTransaction } from "../../bindings-wasm/pkg/bindings_wasm";
+export { SwapScript, BtcLikeTransaction } from "../vendor/bindings_wasm";
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.
 // `next()` resolves with a Boltz `SwapStatus` (untyped `any` — Boltz-defined).
-export { BoltzWsApi, BoltzWsUpdates } from "../../bindings-wasm/pkg/bindings_wasm";
+export { BoltzWsApi, BoltzWsUpdates } from "../vendor/bindings_wasm";
 
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {
@@ -46,7 +46,12 @@ export interface TxParams {
   feeSatPerVb?: number;
   /** Absolute fee in satoshis (mutually exclusive with feeSatPerVb). */
   feeAbsoluteSat?: number;
-  /** Cooperative (MuSig2 keyspend) claim/refund. Defaults to true. */
+  /**
+   * Cooperative (MuSig2 keyspend) claim/refund. Defaults to true.
+   * Set `false` for **chain-swap claims** — the cooperative chain path needs the
+   * counterparty lockup script + refund keys, which this object does not carry
+   * (submarine/reverse cooperative claims work with the default).
+   */
   cooperative?: boolean;
 }
 

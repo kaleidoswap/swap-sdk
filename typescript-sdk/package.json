@@ -5,10 +5,12 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "src"],
+  "files": ["dist", "vendor", "src"],
   "scripts": {
     "generate:types": "openapi-typescript ../specs/rgb-lightning-node.yaml --export-type --enum --dedupe-enums -o src/generated/node-types.ts",
+    "vendor:wasm": "rm -rf vendor && mkdir -p vendor && cp ../bindings-wasm/pkg/bindings_wasm.js ../bindings-wasm/pkg/bindings_wasm.d.ts ../bindings-wasm/pkg/bindings_wasm_bg.wasm ../bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts vendor/",
     "typecheck": "tsc --noEmit",
+    "prepack": "npm run vendor:wasm && npm run build",
     "build": "tsc"
   },
   "devDependencies": {

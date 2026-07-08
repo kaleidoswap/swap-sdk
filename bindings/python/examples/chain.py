@@ -120,7 +120,7 @@ async def main():
                 swap_id=swap_id,
                 keys=claim_keys,
                 chain_client=chain_client,
-                kaleidoswap_sdk=boltz_api,
+                boltz_api=boltz_api,
                 options=kaleidoswap_sdk.TransactionOptions(
                     chain_claim=kaleidoswap_sdk.ChainClaim(
                         keys=refund_keys, lockup_script=lockup_script
@@ -154,7 +154,7 @@ async def main():
                 swap_id=swap_id,
                 keys=refund_keys,
                 chain_client=chain_client,
-                kaleidoswap_sdk=boltz_api,
+                boltz_api=boltz_api,
             )
 
             refund_tx = await lockup_script.construct_refund(refund_params)

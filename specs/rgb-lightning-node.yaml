@@ -2463,9 +2463,11 @@ components:
           example: 16777215
         channel_asset_min_amount:
           type: integer
+          format: uint64
           example: 1
         channel_asset_max_amount:
           type: integer
+          format: uint64
           example: 18446744073709551615
         network_nodes:
           type: integer

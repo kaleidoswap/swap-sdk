@@ -95,7 +95,7 @@ async def main():
                     fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
                     output_address=claim_address,
                     chain_client=chain_client,
-                    kaleidoswap_sdk=boltz_api,
+                    boltz_api=boltz_api,
                 ),
             )
 

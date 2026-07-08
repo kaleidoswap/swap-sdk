@@ -36,6 +36,11 @@ generate-rln: generate-rln-types generate-rln-pydantic
 WASM_PACK_TARGET ?= web
 wasm-pack-build:
 	$(CLANG_PREFIX) wasm-pack build bindings-wasm --target $(WASM_PACK_TARGET) --out-dir pkg
+	# Vendor the wasm output into the TS package so it is self-contained/publishable.
+	rm -rf typescript-sdk/vendor && mkdir -p typescript-sdk/vendor
+	cp bindings-wasm/pkg/bindings_wasm.js bindings-wasm/pkg/bindings_wasm.d.ts \
+	   bindings-wasm/pkg/bindings_wasm_bg.wasm bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts \
+	   typescript-sdk/vendor/
 
 # Regenerate the TypeScript domain types from the RLN OpenAPI spec.
 generate-ts-types:

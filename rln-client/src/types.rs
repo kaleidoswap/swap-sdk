@@ -4291,10 +4291,12 @@ impl NetworkInfoResponse {
 #[doc = "    },"]
 #[doc = "    \"channel_asset_max_amount\": {"]
 #[doc = "      \"type\": \"integer\","]
+#[doc = "      \"format\": \"uint64\","]
 #[doc = "      \"example\": 18446744073709551615"]
 #[doc = "    },"]
 #[doc = "    \"channel_asset_min_amount\": {"]
 #[doc = "      \"type\": \"integer\","]
+#[doc = "      \"format\": \"uint64\","]
 #[doc = "      \"example\": 1"]
 #[doc = "    },"]
 #[doc = "    \"channel_capacity_max_sat\": {"]
@@ -4361,8 +4363,8 @@ impl NetworkInfoResponse {
 pub struct NodeInfoResponse {
     pub account_xpub_colored: ::std::string::String,
     pub account_xpub_vanilla: ::std::string::String,
-    pub channel_asset_max_amount: i64,
-    pub channel_asset_min_amount: i64,
+    pub channel_asset_max_amount: u64,
+    pub channel_asset_min_amount: u64,
     pub channel_capacity_max_sat: i64,
     pub channel_capacity_min_sat: i64,
     pub eventual_close_fees_sat: i64,
@@ -12402,8 +12404,8 @@ pub mod builder {
     pub struct NodeInfoResponse {
         account_xpub_colored: ::std::result::Result<::std::string::String, ::std::string::String>,
         account_xpub_vanilla: ::std::result::Result<::std::string::String, ::std::string::String>,
-        channel_asset_max_amount: ::std::result::Result<i64, ::std::string::String>,
-        channel_asset_min_amount: ::std::result::Result<i64, ::std::string::String>,
+        channel_asset_max_amount: ::std::result::Result<u64, ::std::string::String>,
+        channel_asset_min_amount: ::std::result::Result<u64, ::std::string::String>,
         channel_capacity_max_sat: ::std::result::Result<i64, ::std::string::String>,
         channel_capacity_min_sat: ::std::result::Result<i64, ::std::string::String>,
         eventual_close_fees_sat: ::std::result::Result<i64, ::std::string::String>,
@@ -12482,7 +12484,7 @@ pub mod builder {
         }
         pub fn channel_asset_max_amount<T>(mut self, value: T) -> Self
         where
-            T: ::std::convert::TryInto<i64>,
+            T: ::std::convert::TryInto<u64>,
             T::Error: ::std::fmt::Display,
         {
             self.channel_asset_max_amount = value.try_into().map_err(|e| {
@@ -12492,7 +12494,7 @@ pub mod builder {
         }
         pub fn channel_asset_min_amount<T>(mut self, value: T) -> Self
         where
-            T: ::std::convert::TryInto<i64>,
+            T: ::std::convert::TryInto<u64>,
             T::Error: ::std::fmt::Display,
         {
             self.channel_asset_min_amount = value.try_into().map_err(|e| {

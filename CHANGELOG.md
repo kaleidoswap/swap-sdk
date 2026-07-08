@@ -158,6 +158,31 @@ Mechanical, non-functional rename of the crate identity:
   the local `macros/` member (`path = "macros"`), making the workspace
   self-contained.
 
+Addressing PR review (Codex):
+
+- **`channel_asset_{min,max}_amount` are now `u64`.** The spec documents a max of
+  `18446744073709551615` (u64::MAX); typify had emitted `i64`, so `node_info()`
+  failed to deserialize the documented value. Fixed via `format: uint64` in the
+  spec + regeneration.
+- **Wasm `BoltzClient` validates create-swap responses.** `createSubmarineSwap`/
+  `createReverseSwap`/`createChainSwap` now run the same `validate(...)` checks as
+  the native bindings (they take a `network` arg for this), so a mismatched lockup
+  address/tree is rejected before the caller funds it.
+- **Python call sites use the `boltz_api` keyword.** The examples/binding tests
+  still passed `kaleidoswap_sdk=` after the field rename; updated to `boltz_api=`.
+- **`requires-python` bumped to `>=3.11`** (the generated pydantic models use
+  `enum.StrEnum`); the manylinux build uses `cp311` accordingly.
+- **manylinux smoke install resolves `pydantic`** — the wheel step no longer uses
+  `--no-index` (which couldn't fetch the new runtime dependency).
+- **`gen-rln-pydantic.sh` propagates `datamodel-codegen` failures** instead of
+  masking them with `| grep … || true`.
+- **The TS package bundles the wasm output** (`typescript-sdk/vendor/`, populated
+  by `make wasm-pack-build`) and imports it via an in-package path, so a published
+  `@kaleidoswap/sdk` resolves without escaping the package.
+- Chain-swap **cooperative** claims over wasm require `cooperative: false`
+  (documented on `TxParams`); the cooperative chain path needs lockup-script +
+  refund-key options the wasm params object does not yet carry.
+
 ### Dependencies
 
 - New crate `rln-client`: `serde`, `serde_json`, optional `reqwest` (feature

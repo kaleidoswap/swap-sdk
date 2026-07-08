@@ -313,6 +313,17 @@ fn core_err(e: kaleidoswap_sdk::error::Error) -> JsValue {
     JsValue::from_str(&e.message())
 }
 
+/// Map a Boltz chain identifier ("BTC" | "L-BTC") + network to a `Chain`,
+/// for validating create-swap responses.
+fn chain_from_boltz(s: &str, network: &str) -> Result<kaleidoswap_sdk::network::Chain, JsValue> {
+    let net = parse_network(network)?;
+    match s {
+        "BTC" => Ok(kaleidoswap_sdk::network::Chain::Bitcoin(net.into())),
+        "L-BTC" => Ok(kaleidoswap_sdk::network::Chain::Liquid(net.into())),
+        other => Err(JsValue::from_str(&format!("unsupported chain '{other}'"))),
+    }
+}
+
 /// Async client for the Boltz swap API.
 #[wasm_bindgen]
 pub struct BoltzClient {
@@ -362,20 +373,66 @@ impl BoltzClient {
 
     // ---- Create swaps ------------------------------------------------------
 
+    // `network` ("mainnet" | "testnet" | "regtest") is used to validate the
+    // returned lockup address/tree against the request before the caller funds
+    // it — mirroring the checks the native bindings run.
+
     #[wasm_bindgen(js_name = createSubmarineSwap)]
-    pub async fn create_submarine_swap(&self, req: JsValue) -> Result<JsValue, JsValue> {
+    pub async fn create_submarine_swap(
+        &self,
+        network: String,
+        req: JsValue,
+    ) -> Result<JsValue, JsValue> {
         let req: CreateSubmarineRequest = from_js(req)?;
-        to_js(&self.inner.post_swap_req(&req).await.map_err(core_err)?)
+        let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
+        let chain = chain_from_boltz(&req.from, &network)?;
+        resp.validate(&req.invoice, &req.refund_public_key, chain)
+            .map_err(core_err)?;
+        to_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
-    pub async fn create_reverse_swap(&self, req: JsValue) -> Result<JsValue, JsValue> {
+    pub async fn create_reverse_swap(
+        &self,
+        network: String,
+        req: JsValue,
+    ) -> Result<JsValue, JsValue> {
         let req: CreateReverseRequest = from_js(req)?;
-        to_js(&self.inner.post_reverse_req(req).await.map_err(core_err)?)
+        let claim_pk = req.claim_public_key;
+        let to = req.to.clone();
+        let preimage_hash = req.preimage_hash;
+        let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
+        if let Some(hash) = preimage_hash {
+            let preimage =
+                kaleidoswap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
+                    .map_err(core_err)?;
+            let chain = chain_from_boltz(&to, &network)?;
+            resp.validate(&preimage, &claim_pk, chain)
+                .map_err(core_err)?;
+        }
+        to_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
-    pub async fn create_chain_swap(&self, req: JsValue) -> Result<JsValue, JsValue> {
+    pub async fn create_chain_swap(
+        &self,
+        network: String,
+        req: JsValue,
+    ) -> Result<JsValue, JsValue> {
         let req: CreateChainRequest = from_js(req)?;
-        to_js(&self.inner.post_chain_req(req).await.map_err(core_err)?)
+        let claim_pk = req.claim_public_key;
+        let refund_pk = req.refund_public_key;
+        let from = req.from.clone();
+        let to = req.to.clone();
+        let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
+        if let (Some(claim_pk), Some(refund_pk)) = (claim_pk, refund_pk) {
+            resp.validate(
+                &claim_pk,
+                &refund_pk,
+                chain_from_boltz(&from, &network)?,
+                chain_from_boltz(&to, &network)?,
+            )
+            .map_err(core_err)?;
+        }
+        to_js(&resp)
     }
 
     // ---- Status / lookups --------------------------------------------------
@@ -615,6 +672,11 @@ impl SwapScript {
 
     /// Build the claim transaction. `preimageHex` is the swap preimage
     /// (e.g. `derivePreimage(index).preimage`); `params` is a `TxParams` object.
+    ///
+    /// Note: for **chain-swap** claims set `params.cooperative = false`. The
+    /// cooperative path needs the counterparty lockup script + refund keys, which
+    /// this params object does not yet carry (submarine/reverse cooperative
+    /// claims work with the default `cooperative = true`).
     #[wasm_bindgen(js_name = constructClaim)]
     pub async fn construct_claim(
         &self,
