@@ -1,7 +1,7 @@
 [project]
 name = "kaleidoswap_sdk"
 version = "0.4.1"
-description = "Boltz Swap library"
+description = "KaleidoSwap SDK — atomic swaps (Boltz protocol) + RGB Lightning Node client"
 readme = "README.md"
 requires-python = ">=3.11"
 # pydantic backs the generated RLN models (rln_types.py) that the uniffi
@@ -9,9 +9,9 @@ requires-python = ">=3.11"
 dependencies = ["pydantic>=2"]
 
 [project.urls]
-Homepage = "https://boltz.exchange"
-Repository = "https://github.com/SatoshiPortal/boltz-rust"
-Documentation = "https://docs.boltz.exchange"
+Homepage = "https://kaleidoswap.com"
+Repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+Documentation = "https://docs.kaleidoswap.com"
 
 [build-system]
 requires = ["hatchling"]

@@ -136,6 +136,20 @@ schema-generation step such as schemars).
   single source of truth feeding typify (Rust), datamodel-codegen (Python), and
   openapi-typescript (TypeScript).
 
+### Changed — CI & docs
+
+- **CI triggers fixed**: workflows ran on pushes to `master`, which doesn't exist
+  (default branch is `trunk`) — no CI had ever run on this repository. Push
+  triggers now target `trunk`; the `build-as-wasm-dependency` job's
+  `cargo add boltz-client` updated to the renamed `kaleidoswap-sdk`.
+- **Python formatting gate**: `make check-python` (run by the lint workflow) was
+  failing on two files (`examples/rln.py`, `tests/bindings/chain.py`); reformatted.
+- **README rewritten** for the KaleidoSwap SDK: repository structure, codegen
+  commands, bindings overview; the Boltz-protocol swap-engine documentation is
+  kept (still accurate) under its own section, with fork provenance and upstream
+  acknowledgment preserved. `bindings/` READMEs and the Python package metadata
+  (description, URLs) updated from Boltz to KaleidoSwap.
+
 ### Changed — crate rename `boltz-client` → `kaleidoswap-sdk`
 
 Mechanical, non-functional rename of the crate identity:
