@@ -17,6 +17,8 @@ import type { components } from "./generated/node-types";
 // response payloads are currently untyped (`any`) because the Boltz swap DTOs are
 // Rust-defined and have no OpenAPI spec to generate TS types from. A typed
 // surface would need a schema-generation step (schemars) or hand-written types.
+// NOTE: 64-bit integer fields in its responses arrive as `bigint` (same lossless
+// boundary as the RLN types).
 export { BoltzClient } from "../vendor/bindings_wasm.js";
 
 // Client-side swap-script + claim/refund transaction construction. Re-exported
@@ -55,9 +57,28 @@ export interface TxParams {
   cooperative?: boolean;
 }
 
-/** Domain models generated from the RLN OpenAPI spec. */
+/**
+ * Domain models generated from the RLN OpenAPI spec.
+ *
+ * Integer fields are `bigint`: the wasm boundary serializes Rust i64/u64 as
+ * BigInt so u64 amounts (e.g. RGB asset amounts up to u64::MAX) never lose
+ * precision through an f64. Use bigint literals in requests (`1000n`) and
+ * {@link toJson} when stringifying responses.
+ */
 export type Schemas = components["schemas"];
 export type { components } from "./generated/node-types";
+
+/**
+ * `JSON.stringify` that encodes `bigint` values as decimal strings — plain
+ * `JSON.stringify` throws on BigInt. Use for logging/persisting SDK responses.
+ */
+export function toJson(value: unknown, space?: string | number): string {
+  return JSON.stringify(
+    value,
+    (_key, v: unknown) => (typeof v === "bigint" ? v.toString() : v),
+    space,
+  );
+}
 
 /**
  * Load and instantiate the wasm module. Call once (await it) before creating any

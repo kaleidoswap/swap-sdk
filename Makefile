@@ -43,9 +43,10 @@ wasm-pack-build:
 	   typescript-sdk/vendor/
 
 # Regenerate the TypeScript domain types from the RLN OpenAPI spec.
+# Uses the openapi-typescript Node API (scripts/generate-types.mjs) to map
+# integer fields to `bigint`, matching the wasm boundary's BigInt serialization.
 generate-ts-types:
-	cd typescript-sdk && npx -y openapi-typescript ../specs/rgb-lightning-node.yaml \
-		--export-type --enum --dedupe-enums -o src/generated/node-types.ts
+	cd typescript-sdk && npm install --no-audit --no-fund --silent && npm run generate:types
 
 build: cargo-build cargo-clippy
 

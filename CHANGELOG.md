@@ -195,11 +195,21 @@ Second review round:
   is now `../vendor/bindings_wasm.js` so browser/Node ESM loaders resolve it
   without a bundler.
 
-Known (not yet fixed): `u64` RLN fields (e.g. `channel_asset_max_amount`) are
-typed `number` in the TS surface and serialized lossily across the wasm boundary
-for values above 2^53. A precise fix means BigInt end-to-end (serde-wasm-bindgen
-+ TS `bigint`), which would make every amount field a `bigint` — deferred as a
-deliberate API decision.
+- **64-bit integers cross the wasm boundary as BigInt (lossless).** The wasm
+  `to_js` serializer now uses `serialize_large_number_types_as_bigints`, so u64
+  amounts (e.g. RGB asset amounts up to u64::MAX) are never rounded through an
+  f64 — matching wasm-bindgen's own u64 ↔ `bigint` mapping in direct signatures
+  and the convention of modern JS crypto libraries (ethers v6 / viem).
+  Uniform rule: **every RLN integer field is `bigint` in JS.**
+  - `node-types.ts` generation moved from the openapi-typescript CLI to its Node
+    API (`typescript-sdk/scripts/generate-types.mjs`) with a transform mapping
+    `type: integer` → `bigint` (nullable → `bigint | null`; floats stay
+    `number`), so the TS types match the runtime exactly.
+  - New `toJson` helper exported from the TS SDK (`JSON.stringify` throws on
+    BigInt; the helper encodes bigints as decimal strings).
+  - Requests accept `bigint` per the types; the boundary deserializer lifts both
+    Number and BigInt. Python/native are unaffected (that path was already exact:
+    serde_json prints u64 losslessly and Python ints are arbitrary-precision).
 
 ### Dependencies
 

@@ -17,7 +17,13 @@ fn js_err<E: std::fmt::Display>(e: E) -> JsValue {
 }
 
 fn to_js<T: serde::Serialize>(v: &T) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(v).map_err(js_err)
+    // Serialize 64-bit integers as JS BigInt so u64 amounts (e.g. RGB asset
+    // amounts up to u64::MAX) cross the boundary losslessly instead of being
+    // rounded through an f64. This matches wasm-bindgen's own u64 <-> bigint
+    // mapping in direct signatures; deserialization (from_js) accepts both
+    // Number and BigInt, so request objects may use either.
+    let ser = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+    v.serialize(&ser).map_err(js_err)
 }
 
 fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
