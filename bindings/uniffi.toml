@@ -222,3 +222,233 @@ from_custom = "{}.model_dump_json()"
 imports = ["rln_types"]
 into_custom = "rln_types.DecodeSwapstringResponse.model_validate_json({})"
 from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.BackupRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.BackupRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.RestoreRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.RestoreRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ChangePasswordRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.ChangePasswordRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.BtcBalanceRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.BtcBalanceRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.BtcBalanceResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.BtcBalanceResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.SendBtcRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.SendBtcRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.SendBtcResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.SendBtcResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListTransactionsRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.ListTransactionsRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListTransactionsResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.ListTransactionsResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListUnspentsRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.ListUnspentsRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListUnspentsResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.ListUnspentsResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.CreateUtxosRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.CreateUtxosRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.EstimateFeeRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.EstimateFeeRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.EstimateFeeResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.EstimateFeeResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetNiaRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetNIARequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetNiaResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetNIAResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetCfaRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetCFARequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetCfaResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetCFAResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetUdaRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetUDARequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetUdaResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetUDAResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetIfaRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetIFARequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.IssueAssetIfaResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.IssueAssetIFAResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.InflateRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.InflateRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.InflateResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.InflateResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.AssetMetadataRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.AssetMetadataRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.AssetMetadataResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.AssetMetadataResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.GetAssetMediaRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.GetAssetMediaRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.GetAssetMediaResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.GetAssetMediaResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.PostAssetMediaResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.PostAssetMediaResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListTransfersRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.ListTransfersRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListTransfersResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.ListTransfersResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.RefreshRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.RefreshRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.FailTransfersRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.FailTransfersRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.FailTransfersResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.FailTransfersResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.SyncRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.SyncRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.ListPeersResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.ListPeersResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.DisconnectPeerRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.DisconnectPeerRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.GetChannelIdRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.GetChannelIdRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.GetChannelIdResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.GetChannelIdResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.SignMessageRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.SignMessageRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.SignMessageResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.SignMessageResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.SendOnionMessageRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.SendOnionMessageRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.CheckIndexerUrlRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.CheckIndexerUrlRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.CheckIndexerUrlResponse]
+imports = ["rln_types"]
+into_custom = "rln_types.CheckIndexerUrlResponse.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.CheckProxyEndpointRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.CheckProxyEndpointRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"
+
+[bindings.python.custom_types.RevokeTokenRequest]
+imports = ["rln_types"]
+into_custom = "rln_types.RevokeTokenRequest.model_validate_json({})"
+from_custom = "{}.model_dump_json()"

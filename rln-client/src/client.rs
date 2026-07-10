@@ -5,9 +5,8 @@
 //! authenticates with a bearer (Biscuit) token, injected on every request when
 //! configured.
 //!
-//! This is a *curated* surface — the swap/node/RGB endpoints the SDK actually
-//! drives, not a 1:1 mirror of all 58 spec paths. Adding another endpoint is a
-//! three-line method following the same pattern.
+//! This covers the full RLN surface — a method per spec path (58 endpoints).
+//! Adding another endpoint is a three-line method following the same pattern.
 
 use std::time::Duration;
 
@@ -359,5 +358,238 @@ impl RlnClient {
         req: types::DecodeSwapstringRequest,
     ) -> Result<types::DecodeSwapstringResponse, RlnError> {
         self.post("decodeswapstring", req).await
+    }
+
+    // ---- Node lifecycle: backup / restore / password / shutdown ------------
+
+    /// `POST /backup` — back up the node's data to a file, encrypted with a password.
+    pub async fn backup(&self, req: types::BackupRequest) -> Result<(), RlnError> {
+        self.post_empty("backup", req).await
+    }
+
+    /// `POST /restore` — restore the node from a backup file.
+    pub async fn restore(&self, req: types::RestoreRequest) -> Result<(), RlnError> {
+        self.post_empty("restore", req).await
+    }
+
+    /// `POST /changepassword` — change the node's unlock password.
+    pub async fn change_password(&self, req: types::ChangePasswordRequest) -> Result<(), RlnError> {
+        self.post_empty("changepassword", req).await
+    }
+
+    /// `POST /shutdown` — gracefully shut the node down.
+    pub async fn shutdown(&self) -> Result<(), RlnError> {
+        self.post_empty("shutdown", Value::Object(Default::default()))
+            .await
+    }
+
+    // ---- BTC on-chain ------------------------------------------------------
+
+    /// `POST /btcbalance` — on-chain BTC balance (settled/future/spendable).
+    pub async fn btc_balance(
+        &self,
+        req: types::BtcBalanceRequest,
+    ) -> Result<types::BtcBalanceResponse, RlnError> {
+        self.post("btcbalance", req).await
+    }
+
+    /// `POST /sendbtc` — send on-chain BTC to an address.
+    pub async fn send_btc(
+        &self,
+        req: types::SendBtcRequest,
+    ) -> Result<types::SendBtcResponse, RlnError> {
+        self.post("sendbtc", req).await
+    }
+
+    /// `POST /listtransactions` — on-chain BTC transactions.
+    pub async fn list_transactions(
+        &self,
+        req: types::ListTransactionsRequest,
+    ) -> Result<types::ListTransactionsResponse, RlnError> {
+        self.post("listtransactions", req).await
+    }
+
+    /// `POST /listunspents` — unspent outputs (colored + vanilla).
+    pub async fn list_unspents(
+        &self,
+        req: types::ListUnspentsRequest,
+    ) -> Result<types::ListUnspentsResponse, RlnError> {
+        self.post("listunspents", req).await
+    }
+
+    /// `POST /createutxos` — create UTXOs to hold RGB allocations.
+    pub async fn create_utxos(&self, req: types::CreateUtxosRequest) -> Result<(), RlnError> {
+        self.post_empty("createutxos", req).await
+    }
+
+    /// `POST /estimatefee` — estimate the fee rate for a confirmation target.
+    pub async fn estimate_fee(
+        &self,
+        req: types::EstimateFeeRequest,
+    ) -> Result<types::EstimateFeeResponse, RlnError> {
+        self.post("estimatefee", req).await
+    }
+
+    // ---- RGB assets: issuance, inflation, metadata & media -----------------
+
+    /// `POST /issueassetnia` — issue a NIA (non-inflatable fungible) asset.
+    pub async fn issue_asset_nia(
+        &self,
+        req: types::IssueAssetNiaRequest,
+    ) -> Result<types::IssueAssetNiaResponse, RlnError> {
+        self.post("issueassetnia", req).await
+    }
+
+    /// `POST /issueassetcfa` — issue a CFA (collectible fungible) asset.
+    pub async fn issue_asset_cfa(
+        &self,
+        req: types::IssueAssetCfaRequest,
+    ) -> Result<types::IssueAssetCfaResponse, RlnError> {
+        self.post("issueassetcfa", req).await
+    }
+
+    /// `POST /issueassetuda` — issue a UDA (unique digital) asset.
+    pub async fn issue_asset_uda(
+        &self,
+        req: types::IssueAssetUdaRequest,
+    ) -> Result<types::IssueAssetUdaResponse, RlnError> {
+        self.post("issueassetuda", req).await
+    }
+
+    /// `POST /issueassetifa` — issue an IFA (inflatable fungible) asset.
+    pub async fn issue_asset_ifa(
+        &self,
+        req: types::IssueAssetIfaRequest,
+    ) -> Result<types::IssueAssetIfaResponse, RlnError> {
+        self.post("issueassetifa", req).await
+    }
+
+    /// `POST /inflate` — inflate the supply of an IFA asset.
+    pub async fn inflate(
+        &self,
+        req: types::InflateRequest,
+    ) -> Result<types::InflateResponse, RlnError> {
+        self.post("inflate", req).await
+    }
+
+    /// `POST /assetmetadata` — metadata for a single RGB asset.
+    pub async fn asset_metadata(
+        &self,
+        req: types::AssetMetadataRequest,
+    ) -> Result<types::AssetMetadataResponse, RlnError> {
+        self.post("assetmetadata", req).await
+    }
+
+    /// `POST /getassetmedia` — fetch an asset's media (hex-encoded bytes).
+    pub async fn get_asset_media(
+        &self,
+        req: types::GetAssetMediaRequest,
+    ) -> Result<types::GetAssetMediaResponse, RlnError> {
+        self.post("getassetmedia", req).await
+    }
+
+    /// `POST /postassetmedia` — upload asset media as a multipart `file` part,
+    /// returning its digest for use when issuing a CFA/UDA asset. `file_name`
+    /// defaults to `"media"` when not supplied.
+    pub async fn post_asset_media(
+        &self,
+        file_bytes: Vec<u8>,
+        file_name: Option<String>,
+    ) -> Result<types::PostAssetMediaResponse, RlnError> {
+        let part = reqwest::multipart::Part::bytes(file_bytes)
+            .file_name(file_name.unwrap_or_else(|| "media".to_string()));
+        let form = reqwest::multipart::Form::new().part("file", part);
+        let resp = self
+            .prepare(self.http.post(self.url("postassetmedia")).multipart(form))
+            .send()
+            .await?;
+        Self::parse(resp).await
+    }
+
+    // ---- RGB transfers -----------------------------------------------------
+
+    /// `POST /listtransfers` — transfers for an RGB asset.
+    pub async fn list_transfers(
+        &self,
+        req: types::ListTransfersRequest,
+    ) -> Result<types::ListTransfersResponse, RlnError> {
+        self.post("listtransfers", req).await
+    }
+
+    /// `POST /refreshtransfers` — refresh pending RGB transfers.
+    pub async fn refresh_transfers(&self, req: types::RefreshRequest) -> Result<(), RlnError> {
+        self.post_empty("refreshtransfers", req).await
+    }
+
+    /// `POST /failtransfers` — fail (abandon) pending RGB transfers.
+    pub async fn fail_transfers(
+        &self,
+        req: types::FailTransfersRequest,
+    ) -> Result<types::FailTransfersResponse, RlnError> {
+        self.post("failtransfers", req).await
+    }
+
+    /// `POST /sync` — sync the RGB wallet against the indexer.
+    pub async fn sync(&self, req: types::SyncRequest) -> Result<(), RlnError> {
+        self.post_empty("sync", req).await
+    }
+
+    // ---- Peers & channels (extended) ---------------------------------------
+
+    /// `GET /listpeers` — connected peers.
+    pub async fn list_peers(&self) -> Result<types::ListPeersResponse, RlnError> {
+        self.get("listpeers").await
+    }
+
+    /// `POST /disconnectpeer` — disconnect from a peer.
+    pub async fn disconnect_peer(&self, req: types::DisconnectPeerRequest) -> Result<(), RlnError> {
+        self.post_empty("disconnectpeer", req).await
+    }
+
+    /// `POST /getchannelid` — resolve a temporary channel id to its final id.
+    pub async fn get_channel_id(
+        &self,
+        req: types::GetChannelIdRequest,
+    ) -> Result<types::GetChannelIdResponse, RlnError> {
+        self.post("getchannelid", req).await
+    }
+
+    // ---- Utility -----------------------------------------------------------
+
+    /// `POST /signmessage` — sign a message with the node key.
+    pub async fn sign_message(
+        &self,
+        req: types::SignMessageRequest,
+    ) -> Result<types::SignMessageResponse, RlnError> {
+        self.post("signmessage", req).await
+    }
+
+    /// `POST /sendonionmessage` — send a BOLT onion message.
+    pub async fn send_onion_message(
+        &self,
+        req: types::SendOnionMessageRequest,
+    ) -> Result<(), RlnError> {
+        self.post_empty("sendonionmessage", req).await
+    }
+
+    /// `POST /checkindexerurl` — validate an RGB indexer URL.
+    pub async fn check_indexer_url(
+        &self,
+        req: types::CheckIndexerUrlRequest,
+    ) -> Result<types::CheckIndexerUrlResponse, RlnError> {
+        self.post("checkindexerurl", req).await
+    }
+
+    /// `POST /checkproxyendpoint` — validate an RGB proxy endpoint.
+    pub async fn check_proxy_endpoint(
+        &self,
+        req: types::CheckProxyEndpointRequest,
+    ) -> Result<(), RlnError> {
+        self.post_empty("checkproxyendpoint", req).await
+    }
+
+    /// `POST /revoketoken` — revoke an issued API token.
+    pub async fn revoke_token(&self, req: types::RevokeTokenRequest) -> Result<(), RlnError> {
+        self.post_empty("revoketoken", req).await
     }
 }

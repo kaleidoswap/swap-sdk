@@ -28,6 +28,21 @@ use rln_client::types::{
     OpenChannelResponse, RgbInvoiceRequest, RgbInvoiceResponse, SendPaymentRequest,
     SendPaymentResponse, SendRgbRequest, SendRgbResponse, TakerRequest, UnlockRequest,
 };
+// Extended surface — the remaining RLN endpoints (wallet lifecycle, BTC
+// on-chain, RGB issuance/media, transfers, peers, utility).
+use rln_client::types::{
+    AssetMetadataRequest, AssetMetadataResponse, BackupRequest, BtcBalanceRequest,
+    BtcBalanceResponse, ChangePasswordRequest, CheckIndexerUrlRequest, CheckIndexerUrlResponse,
+    CheckProxyEndpointRequest, CreateUtxosRequest, DisconnectPeerRequest, EstimateFeeRequest,
+    EstimateFeeResponse, FailTransfersRequest, FailTransfersResponse, GetAssetMediaRequest,
+    GetAssetMediaResponse, GetChannelIdRequest, GetChannelIdResponse, InflateRequest,
+    InflateResponse, IssueAssetCfaRequest, IssueAssetCfaResponse, IssueAssetIfaRequest,
+    IssueAssetIfaResponse, IssueAssetNiaRequest, IssueAssetNiaResponse, IssueAssetUdaRequest,
+    IssueAssetUdaResponse, ListPeersResponse, ListTransactionsRequest, ListTransactionsResponse,
+    ListTransfersRequest, ListTransfersResponse, ListUnspentsRequest, ListUnspentsResponse,
+    PostAssetMediaResponse, RefreshRequest, RestoreRequest, RevokeTokenRequest, SendBtcRequest,
+    SendBtcResponse, SendOnionMessageRequest, SignMessageRequest, SignMessageResponse, SyncRequest,
+};
 
 /// Register a batch of `rln_client::types` as UniFFI custom types that cross the
 /// FFI boundary as JSON strings. `remote` is required because the concrete types
@@ -88,6 +103,52 @@ json_ffi_types!(
     ListSwapsResponse,
     DecodeSwapstringRequest,
     DecodeSwapstringResponse,
+    BackupRequest,
+    RestoreRequest,
+    ChangePasswordRequest,
+    BtcBalanceRequest,
+    BtcBalanceResponse,
+    SendBtcRequest,
+    SendBtcResponse,
+    ListTransactionsRequest,
+    ListTransactionsResponse,
+    ListUnspentsRequest,
+    ListUnspentsResponse,
+    CreateUtxosRequest,
+    EstimateFeeRequest,
+    EstimateFeeResponse,
+    IssueAssetNiaRequest,
+    IssueAssetNiaResponse,
+    IssueAssetCfaRequest,
+    IssueAssetCfaResponse,
+    IssueAssetUdaRequest,
+    IssueAssetUdaResponse,
+    IssueAssetIfaRequest,
+    IssueAssetIfaResponse,
+    InflateRequest,
+    InflateResponse,
+    AssetMetadataRequest,
+    AssetMetadataResponse,
+    GetAssetMediaRequest,
+    GetAssetMediaResponse,
+    PostAssetMediaResponse,
+    ListTransfersRequest,
+    ListTransfersResponse,
+    RefreshRequest,
+    FailTransfersRequest,
+    FailTransfersResponse,
+    SyncRequest,
+    ListPeersResponse,
+    DisconnectPeerRequest,
+    GetChannelIdRequest,
+    GetChannelIdResponse,
+    SignMessageRequest,
+    SignMessageResponse,
+    SendOnionMessageRequest,
+    CheckIndexerUrlRequest,
+    CheckIndexerUrlResponse,
+    CheckProxyEndpointRequest,
+    RevokeTokenRequest,
 );
 
 /// FFI-facing error type mirroring [`rln_client::RlnError`].
@@ -284,5 +345,191 @@ impl RlnClient {
         req: DecodeSwapstringRequest,
     ) -> Result<DecodeSwapstringResponse, RlnError> {
         Ok(self.inner.decode_swapstring(req).await?)
+    }
+
+    // ---- Node lifecycle: backup / restore / password / shutdown ------------
+
+    pub async fn backup(&self, req: BackupRequest) -> Result<(), RlnError> {
+        Ok(self.inner.backup(req).await?)
+    }
+
+    pub async fn restore(&self, req: RestoreRequest) -> Result<(), RlnError> {
+        Ok(self.inner.restore(req).await?)
+    }
+
+    pub async fn change_password(&self, req: ChangePasswordRequest) -> Result<(), RlnError> {
+        Ok(self.inner.change_password(req).await?)
+    }
+
+    pub async fn shutdown(&self) -> Result<(), RlnError> {
+        Ok(self.inner.shutdown().await?)
+    }
+
+    // ---- BTC on-chain ------------------------------------------------------
+
+    pub async fn btc_balance(
+        &self,
+        req: BtcBalanceRequest,
+    ) -> Result<BtcBalanceResponse, RlnError> {
+        Ok(self.inner.btc_balance(req).await?)
+    }
+
+    pub async fn send_btc(&self, req: SendBtcRequest) -> Result<SendBtcResponse, RlnError> {
+        Ok(self.inner.send_btc(req).await?)
+    }
+
+    pub async fn list_transactions(
+        &self,
+        req: ListTransactionsRequest,
+    ) -> Result<ListTransactionsResponse, RlnError> {
+        Ok(self.inner.list_transactions(req).await?)
+    }
+
+    pub async fn list_unspents(
+        &self,
+        req: ListUnspentsRequest,
+    ) -> Result<ListUnspentsResponse, RlnError> {
+        Ok(self.inner.list_unspents(req).await?)
+    }
+
+    pub async fn create_utxos(&self, req: CreateUtxosRequest) -> Result<(), RlnError> {
+        Ok(self.inner.create_utxos(req).await?)
+    }
+
+    pub async fn estimate_fee(
+        &self,
+        req: EstimateFeeRequest,
+    ) -> Result<EstimateFeeResponse, RlnError> {
+        Ok(self.inner.estimate_fee(req).await?)
+    }
+
+    // ---- RGB assets: issuance, inflation, metadata & media -----------------
+
+    pub async fn issue_asset_nia(
+        &self,
+        req: IssueAssetNiaRequest,
+    ) -> Result<IssueAssetNiaResponse, RlnError> {
+        Ok(self.inner.issue_asset_nia(req).await?)
+    }
+
+    pub async fn issue_asset_cfa(
+        &self,
+        req: IssueAssetCfaRequest,
+    ) -> Result<IssueAssetCfaResponse, RlnError> {
+        Ok(self.inner.issue_asset_cfa(req).await?)
+    }
+
+    pub async fn issue_asset_uda(
+        &self,
+        req: IssueAssetUdaRequest,
+    ) -> Result<IssueAssetUdaResponse, RlnError> {
+        Ok(self.inner.issue_asset_uda(req).await?)
+    }
+
+    pub async fn issue_asset_ifa(
+        &self,
+        req: IssueAssetIfaRequest,
+    ) -> Result<IssueAssetIfaResponse, RlnError> {
+        Ok(self.inner.issue_asset_ifa(req).await?)
+    }
+
+    pub async fn inflate(&self, req: InflateRequest) -> Result<InflateResponse, RlnError> {
+        Ok(self.inner.inflate(req).await?)
+    }
+
+    pub async fn asset_metadata(
+        &self,
+        req: AssetMetadataRequest,
+    ) -> Result<AssetMetadataResponse, RlnError> {
+        Ok(self.inner.asset_metadata(req).await?)
+    }
+
+    pub async fn get_asset_media(
+        &self,
+        req: GetAssetMediaRequest,
+    ) -> Result<GetAssetMediaResponse, RlnError> {
+        Ok(self.inner.get_asset_media(req).await?)
+    }
+
+    /// Upload asset media (`file_bytes`), returning its digest. `file_name`
+    /// defaults to `"media"` when omitted.
+    pub async fn post_asset_media(
+        &self,
+        file_bytes: Vec<u8>,
+        file_name: Option<String>,
+    ) -> Result<PostAssetMediaResponse, RlnError> {
+        Ok(self.inner.post_asset_media(file_bytes, file_name).await?)
+    }
+
+    // ---- RGB transfers -----------------------------------------------------
+
+    pub async fn list_transfers(
+        &self,
+        req: ListTransfersRequest,
+    ) -> Result<ListTransfersResponse, RlnError> {
+        Ok(self.inner.list_transfers(req).await?)
+    }
+
+    pub async fn refresh_transfers(&self, req: RefreshRequest) -> Result<(), RlnError> {
+        Ok(self.inner.refresh_transfers(req).await?)
+    }
+
+    pub async fn fail_transfers(
+        &self,
+        req: FailTransfersRequest,
+    ) -> Result<FailTransfersResponse, RlnError> {
+        Ok(self.inner.fail_transfers(req).await?)
+    }
+
+    pub async fn sync(&self, req: SyncRequest) -> Result<(), RlnError> {
+        Ok(self.inner.sync(req).await?)
+    }
+
+    // ---- Peers & channels (extended) ---------------------------------------
+
+    pub async fn list_peers(&self) -> Result<ListPeersResponse, RlnError> {
+        Ok(self.inner.list_peers().await?)
+    }
+
+    pub async fn disconnect_peer(&self, req: DisconnectPeerRequest) -> Result<(), RlnError> {
+        Ok(self.inner.disconnect_peer(req).await?)
+    }
+
+    pub async fn get_channel_id(
+        &self,
+        req: GetChannelIdRequest,
+    ) -> Result<GetChannelIdResponse, RlnError> {
+        Ok(self.inner.get_channel_id(req).await?)
+    }
+
+    // ---- Utility -----------------------------------------------------------
+
+    pub async fn sign_message(
+        &self,
+        req: SignMessageRequest,
+    ) -> Result<SignMessageResponse, RlnError> {
+        Ok(self.inner.sign_message(req).await?)
+    }
+
+    pub async fn send_onion_message(&self, req: SendOnionMessageRequest) -> Result<(), RlnError> {
+        Ok(self.inner.send_onion_message(req).await?)
+    }
+
+    pub async fn check_indexer_url(
+        &self,
+        req: CheckIndexerUrlRequest,
+    ) -> Result<CheckIndexerUrlResponse, RlnError> {
+        Ok(self.inner.check_indexer_url(req).await?)
+    }
+
+    pub async fn check_proxy_endpoint(
+        &self,
+        req: CheckProxyEndpointRequest,
+    ) -> Result<(), RlnError> {
+        Ok(self.inner.check_proxy_endpoint(req).await?)
+    }
+
+    pub async fn revoke_token(&self, req: RevokeTokenRequest) -> Result<(), RlnError> {
+        Ok(self.inner.revoke_token(req).await?)
     }
 }

@@ -270,6 +270,280 @@ impl RlnClient {
                 .map_err(js_err)?,
         )
     }
+
+    // ---- Node lifecycle: backup / restore / password / shutdown ------------
+
+    pub async fn backup(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner.backup(from_js(req)?).await.map_err(js_err)
+    }
+
+    pub async fn restore(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner.restore(from_js(req)?).await.map_err(js_err)
+    }
+
+    #[wasm_bindgen(js_name = changePassword)]
+    pub async fn change_password(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner
+            .change_password(from_js(req)?)
+            .await
+            .map_err(js_err)
+    }
+
+    pub async fn shutdown(&self) -> Result<(), JsValue> {
+        self.inner.shutdown().await.map_err(js_err)
+    }
+
+    // ---- BTC on-chain ------------------------------------------------------
+
+    #[wasm_bindgen(js_name = btcBalance)]
+    pub async fn btc_balance(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .btc_balance(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = sendBtc)]
+    pub async fn send_btc(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.send_btc(from_js(req)?).await.map_err(js_err)?)
+    }
+
+    #[wasm_bindgen(js_name = listTransactions)]
+    pub async fn list_transactions(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .list_transactions(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = listUnspents)]
+    pub async fn list_unspents(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .list_unspents(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = createUtxos)]
+    pub async fn create_utxos(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner.create_utxos(from_js(req)?).await.map_err(js_err)
+    }
+
+    #[wasm_bindgen(js_name = estimateFee)]
+    pub async fn estimate_fee(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .estimate_fee(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    // ---- RGB assets: issuance, inflation, metadata & media -----------------
+
+    #[wasm_bindgen(js_name = issueAssetNia)]
+    pub async fn issue_asset_nia(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .issue_asset_nia(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = issueAssetCfa)]
+    pub async fn issue_asset_cfa(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .issue_asset_cfa(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = issueAssetUda)]
+    pub async fn issue_asset_uda(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .issue_asset_uda(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = issueAssetIfa)]
+    pub async fn issue_asset_ifa(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .issue_asset_ifa(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    pub async fn inflate(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.inflate(from_js(req)?).await.map_err(js_err)?)
+    }
+
+    #[wasm_bindgen(js_name = assetMetadata)]
+    pub async fn asset_metadata(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .asset_metadata(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = getAssetMedia)]
+    pub async fn get_asset_media(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .get_asset_media(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    /// Upload asset media bytes (`fileBytes`), returning its digest. `fileName`
+    /// defaults to `"media"` when omitted.
+    #[wasm_bindgen(js_name = postAssetMedia)]
+    pub async fn post_asset_media(
+        &self,
+        file_bytes: Vec<u8>,
+        file_name: Option<String>,
+    ) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .post_asset_media(file_bytes, file_name)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    // ---- RGB transfers -----------------------------------------------------
+
+    #[wasm_bindgen(js_name = listTransfers)]
+    pub async fn list_transfers(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .list_transfers(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = refreshTransfers)]
+    pub async fn refresh_transfers(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner
+            .refresh_transfers(from_js(req)?)
+            .await
+            .map_err(js_err)
+    }
+
+    #[wasm_bindgen(js_name = failTransfers)]
+    pub async fn fail_transfers(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .fail_transfers(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    pub async fn sync(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner.sync(from_js(req)?).await.map_err(js_err)
+    }
+
+    // ---- Peers & channels (extended) ---------------------------------------
+
+    #[wasm_bindgen(js_name = listPeers)]
+    pub async fn list_peers(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.list_peers().await.map_err(js_err)?)
+    }
+
+    #[wasm_bindgen(js_name = disconnectPeer)]
+    pub async fn disconnect_peer(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner
+            .disconnect_peer(from_js(req)?)
+            .await
+            .map_err(js_err)
+    }
+
+    #[wasm_bindgen(js_name = getChannelId)]
+    pub async fn get_channel_id(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .get_channel_id(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    // ---- Utility -----------------------------------------------------------
+
+    #[wasm_bindgen(js_name = signMessage)]
+    pub async fn sign_message(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .sign_message(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = sendOnionMessage)]
+    pub async fn send_onion_message(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner
+            .send_onion_message(from_js(req)?)
+            .await
+            .map_err(js_err)
+    }
+
+    #[wasm_bindgen(js_name = checkIndexerUrl)]
+    pub async fn check_indexer_url(&self, req: JsValue) -> Result<JsValue, JsValue> {
+        to_js(
+            &self
+                .inner
+                .check_indexer_url(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = checkProxyEndpoint)]
+    pub async fn check_proxy_endpoint(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner
+            .check_proxy_endpoint(from_js(req)?)
+            .await
+            .map_err(js_err)
+    }
+
+    #[wasm_bindgen(js_name = revokeToken)]
+    pub async fn revoke_token(&self, req: JsValue) -> Result<(), JsValue> {
+        self.inner.revoke_token(from_js(req)?).await.map_err(js_err)
+    }
 }
 
 // ============================================================================

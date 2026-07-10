@@ -206,6 +206,138 @@ export class RlnClient {
   ): Promise<Schemas["DecodeSwapstringResponse"]> {
     return this.inner.decodeSwapstring(req);
   }
+
+  // ---- Node lifecycle: backup / restore / password / shutdown ------------
+  backup(req: Schemas["BackupRequest"]): Promise<void> {
+    return this.inner.backup(req);
+  }
+  restore(req: Schemas["RestoreRequest"]): Promise<void> {
+    return this.inner.restore(req);
+  }
+  changePassword(req: Schemas["ChangePasswordRequest"]): Promise<void> {
+    return this.inner.changePassword(req);
+  }
+  shutdown(): Promise<void> {
+    return this.inner.shutdown();
+  }
+
+  // ---- BTC on-chain ------------------------------------------------------
+  btcBalance(req: Schemas["BtcBalanceRequest"]): Promise<Schemas["BtcBalanceResponse"]> {
+    return this.inner.btcBalance(req);
+  }
+  sendBtc(req: Schemas["SendBtcRequest"]): Promise<Schemas["SendBtcResponse"]> {
+    return this.inner.sendBtc(req);
+  }
+  listTransactions(
+    req: Schemas["ListTransactionsRequest"],
+  ): Promise<Schemas["ListTransactionsResponse"]> {
+    return this.inner.listTransactions(req);
+  }
+  listUnspents(
+    req: Schemas["ListUnspentsRequest"],
+  ): Promise<Schemas["ListUnspentsResponse"]> {
+    return this.inner.listUnspents(req);
+  }
+  createUtxos(req: Schemas["CreateUtxosRequest"]): Promise<void> {
+    return this.inner.createUtxos(req);
+  }
+  estimateFee(req: Schemas["EstimateFeeRequest"]): Promise<Schemas["EstimateFeeResponse"]> {
+    return this.inner.estimateFee(req);
+  }
+
+  // ---- RGB assets: issuance, inflation, metadata & media -----------------
+  issueAssetNia(
+    req: Schemas["IssueAssetNIARequest"],
+  ): Promise<Schemas["IssueAssetNIAResponse"]> {
+    return this.inner.issueAssetNia(req);
+  }
+  issueAssetCfa(
+    req: Schemas["IssueAssetCFARequest"],
+  ): Promise<Schemas["IssueAssetCFAResponse"]> {
+    return this.inner.issueAssetCfa(req);
+  }
+  issueAssetUda(
+    req: Schemas["IssueAssetUDARequest"],
+  ): Promise<Schemas["IssueAssetUDAResponse"]> {
+    return this.inner.issueAssetUda(req);
+  }
+  issueAssetIfa(
+    req: Schemas["IssueAssetIFARequest"],
+  ): Promise<Schemas["IssueAssetIFAResponse"]> {
+    return this.inner.issueAssetIfa(req);
+  }
+  inflate(req: Schemas["InflateRequest"]): Promise<Schemas["InflateResponse"]> {
+    return this.inner.inflate(req);
+  }
+  assetMetadata(
+    req: Schemas["AssetMetadataRequest"],
+  ): Promise<Schemas["AssetMetadataResponse"]> {
+    return this.inner.assetMetadata(req);
+  }
+  getAssetMedia(
+    req: Schemas["GetAssetMediaRequest"],
+  ): Promise<Schemas["GetAssetMediaResponse"]> {
+    return this.inner.getAssetMedia(req);
+  }
+  /** Upload asset media bytes, returning its digest. `fileName` defaults to `"media"`. */
+  postAssetMedia(
+    fileBytes: Uint8Array,
+    fileName?: string,
+  ): Promise<Schemas["PostAssetMediaResponse"]> {
+    return this.inner.postAssetMedia(fileBytes, fileName);
+  }
+
+  // ---- RGB transfers -----------------------------------------------------
+  listTransfers(
+    req: Schemas["ListTransfersRequest"],
+  ): Promise<Schemas["ListTransfersResponse"]> {
+    return this.inner.listTransfers(req);
+  }
+  refreshTransfers(req: Schemas["RefreshRequest"]): Promise<void> {
+    return this.inner.refreshTransfers(req);
+  }
+  failTransfers(
+    req: Schemas["FailTransfersRequest"],
+  ): Promise<Schemas["FailTransfersResponse"]> {
+    return this.inner.failTransfers(req);
+  }
+  sync(req: Schemas["SyncRequest"]): Promise<void> {
+    return this.inner.sync(req);
+  }
+
+  // ---- Peers & channels (extended) ---------------------------------------
+  listPeers(): Promise<Schemas["ListPeersResponse"]> {
+    return this.inner.listPeers();
+  }
+  disconnectPeer(req: Schemas["DisconnectPeerRequest"]): Promise<void> {
+    return this.inner.disconnectPeer(req);
+  }
+  getChannelId(
+    req: Schemas["GetChannelIdRequest"],
+  ): Promise<Schemas["GetChannelIdResponse"]> {
+    return this.inner.getChannelId(req);
+  }
+
+  // ---- Utility -----------------------------------------------------------
+  signMessage(
+    req: Schemas["SignMessageRequest"],
+  ): Promise<Schemas["SignMessageResponse"]> {
+    return this.inner.signMessage(req);
+  }
+  sendOnionMessage(req: Schemas["SendOnionMessageRequest"]): Promise<void> {
+    return this.inner.sendOnionMessage(req);
+  }
+  checkIndexerUrl(
+    req: Schemas["CheckIndexerUrlRequest"],
+  ): Promise<Schemas["CheckIndexerUrlResponse"]> {
+    return this.inner.checkIndexerUrl(req);
+  }
+  checkProxyEndpoint(req: Schemas["CheckProxyEndpointRequest"]): Promise<void> {
+    return this.inner.checkProxyEndpoint(req);
+  }
+  revokeToken(req: Schemas["RevokeTokenRequest"]): Promise<void> {
+    return this.inner.revokeToken(req);
+  }
 }
 
 /** A derived swap keypair (hex). */
