@@ -7,12 +7,12 @@ use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Amount, OutPoint, TxOut};
 use bitcoind::bitcoincore_rpc::json::{AddressType, ScanTxOutRequest};
 use bitcoind::bitcoincore_rpc::RpcApi;
+use elements::Address;
 use kaleidoswap_sdk::boltz::{SwapTxKind, SwapType};
 use kaleidoswap_sdk::fees::Fee;
 use kaleidoswap_sdk::network::{BitcoinChain, LiquidChain};
 use kaleidoswap_sdk::util::secrets::Preimage;
 use kaleidoswap_sdk::{BtcSwapScript, BtcSwapTx, LBtcSwapScript, LBtcSwapTx};
-use elements::Address;
 
 mod test_framework;
 use test_framework::{BtcTestFramework, LbtcTestFramework};

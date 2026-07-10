@@ -96,24 +96,48 @@ impl RlnClient {
 
     #[wasm_bindgen(js_name = decodeLnInvoice)]
     pub async fn decode_ln_invoice(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.decode_ln_invoice(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .decode_ln_invoice(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = invoiceStatus)]
     pub async fn invoice_status(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.invoice_status(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .invoice_status(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     // ---- Payments ----------------------------------------------------------
 
     #[wasm_bindgen(js_name = sendPayment)]
     pub async fn send_payment(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.send_payment(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .send_payment(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = getPayment)]
     pub async fn get_payment(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.get_payment(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .get_payment(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = listPayments)]
@@ -129,22 +153,46 @@ impl RlnClient {
 
     #[wasm_bindgen(js_name = rgbInvoice)]
     pub async fn rgb_invoice(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.rgb_invoice(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .rgb_invoice(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = decodeRgbInvoice)]
     pub async fn decode_rgb_invoice(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.decode_rgb_invoice(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .decode_rgb_invoice(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = listAssets)]
     pub async fn list_assets(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.list_assets(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .list_assets(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = assetBalance)]
     pub async fn asset_balance(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.asset_balance(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .asset_balance(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = sendRgb)]
@@ -161,12 +209,21 @@ impl RlnClient {
 
     #[wasm_bindgen(js_name = openChannel)]
     pub async fn open_channel(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.open_channel(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .open_channel(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 
     #[wasm_bindgen(js_name = closeChannel)]
     pub async fn close_channel(&self, req: JsValue) -> Result<(), JsValue> {
-        self.inner.close_channel(from_js(req)?).await.map_err(js_err)
+        self.inner
+            .close_channel(from_js(req)?)
+            .await
+            .map_err(js_err)
     }
 
     #[wasm_bindgen(js_name = connectPeer)]
@@ -183,7 +240,10 @@ impl RlnClient {
 
     #[wasm_bindgen(js_name = makerExecute)]
     pub async fn maker_execute(&self, req: JsValue) -> Result<(), JsValue> {
-        self.inner.maker_execute(from_js(req)?).await.map_err(js_err)
+        self.inner
+            .maker_execute(from_js(req)?)
+            .await
+            .map_err(js_err)
     }
 
     pub async fn taker(&self, req: JsValue) -> Result<(), JsValue> {
@@ -202,7 +262,13 @@ impl RlnClient {
 
     #[wasm_bindgen(js_name = decodeSwapstring)]
     pub async fn decode_swapstring(&self, req: JsValue) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.decode_swapstring(from_js(req)?).await.map_err(js_err)?)
+        to_js(
+            &self
+                .inner
+                .decode_swapstring(from_js(req)?)
+                .await
+                .map_err(js_err)?,
+        )
     }
 }
 
@@ -240,8 +306,12 @@ impl WasmSwapMasterKey {
         passphrase: Option<String>,
         network: String,
     ) -> Result<WasmSwapMasterKey, JsValue> {
-        let inner = SwapMasterKey::new(&wallet_mnemonic, passphrase.as_deref(), parse_network(&network)?)
-            .map_err(js_err)?;
+        let inner = SwapMasterKey::new(
+            &wallet_mnemonic,
+            passphrase.as_deref(),
+            parse_network(&network)?,
+        )
+        .map_err(js_err)?;
         Ok(WasmSwapMasterKey { inner })
     }
 
@@ -252,8 +322,12 @@ impl WasmSwapMasterKey {
         passphrase: Option<String>,
         network: String,
     ) -> Result<WasmSwapMasterKey, JsValue> {
-        let inner = SwapMasterKey::from_mnemonic(&mnemonic, passphrase.as_deref(), parse_network(&network)?)
-            .map_err(js_err)?;
+        let inner = SwapMasterKey::from_mnemonic(
+            &mnemonic,
+            passphrase.as_deref(),
+            parse_network(&network)?,
+        )
+        .map_err(js_err)?;
         Ok(WasmSwapMasterKey { inner })
     }
 
@@ -342,7 +416,10 @@ impl BoltzClient {
     #[wasm_bindgen(constructor)]
     pub fn new(base_url: String, timeout_secs: Option<u64>) -> BoltzClient {
         BoltzClient {
-            inner: BoltzApiClientV2::new(base_url, timeout_secs.map(std::time::Duration::from_secs)),
+            inner: BoltzApiClientV2::new(
+                base_url,
+                timeout_secs.map(std::time::Duration::from_secs),
+            ),
         }
     }
 
@@ -466,7 +543,13 @@ impl BoltzClient {
     }
     #[wasm_bindgen(js_name = submarinePreimage)]
     pub async fn submarine_preimage(&self, id: String) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.get_submarine_preimage(&id).await.map_err(core_err)?)
+        to_js(
+            &self
+                .inner
+                .get_submarine_preimage(&id)
+                .await
+                .map_err(core_err)?,
+        )
     }
     #[wasm_bindgen(js_name = mrhBip21)]
     pub async fn mrh_bip21(&self, invoice: String) -> Result<JsValue, JsValue> {
@@ -480,7 +563,10 @@ impl BoltzClient {
     }
     #[wasm_bindgen(js_name = acceptQuote)]
     pub async fn accept_quote(&self, swap_id: String, amount_sat: u64) -> Result<(), JsValue> {
-        self.inner.accept_quote(&swap_id, amount_sat).await.map_err(core_err)
+        self.inner
+            .accept_quote(&swap_id, amount_sat)
+            .await
+            .map_err(core_err)
     }
     pub async fn nodes(&self) -> Result<JsValue, JsValue> {
         to_js(&self.inner.get_nodes().await.map_err(core_err)?)
@@ -495,7 +581,13 @@ impl BoltzClient {
         derivation_path: Option<String>,
         gap_limit: Option<u32>,
     ) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.post_swap_restore(&xpub, derivation_path, gap_limit).await.map_err(core_err)?)
+        to_js(
+            &self
+                .inner
+                .post_swap_restore(&xpub, derivation_path, gap_limit)
+                .await
+                .map_err(core_err)?,
+        )
     }
     #[wasm_bindgen(js_name = swapRestoreIndex)]
     pub async fn swap_restore_index(
@@ -504,7 +596,13 @@ impl BoltzClient {
         derivation_path: Option<String>,
         gap_limit: Option<u32>,
     ) -> Result<JsValue, JsValue> {
-        to_js(&self.inner.post_swap_restore_index(&xpub, derivation_path, gap_limit).await.map_err(core_err)?)
+        to_js(
+            &self
+                .inner
+                .post_swap_restore_index(&xpub, derivation_path, gap_limit)
+                .await
+                .map_err(core_err)?,
+        )
     }
 }
 

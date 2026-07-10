@@ -12,7 +12,9 @@ impl Preimage {
 
     #[uniffi::constructor]
     pub fn from_bytes(vec: Vec<u8>) -> Result<Self, Error> {
-        Ok(Self(kaleidoswap_sdk::util::secrets::Preimage::from_vec(vec)?))
+        Ok(Self(kaleidoswap_sdk::util::secrets::Preimage::from_vec(
+            vec,
+        )?))
     }
 
     #[uniffi::method]

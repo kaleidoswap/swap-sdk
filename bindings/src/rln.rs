@@ -21,12 +21,12 @@ use rln_client::types::{
     ConnectPeerRequest, DecodeLnInvoiceRequest, DecodeLnInvoiceResponse, DecodeRgbInvoiceRequest,
     DecodeRgbInvoiceResponse, DecodeSwapstringRequest, DecodeSwapstringResponse, GetPaymentRequest,
     GetPaymentResponse, GetSwapRequest, GetSwapResponse, InitRequest, InitResponse,
-    InvoiceStatusRequest, InvoiceStatusResponse, KeysendRequest, KeysendResponse, ListAssetsRequest,
-    ListAssetsResponse, ListChannelsResponse, ListPaymentsResponse, ListSwapsResponse,
-    LnInvoiceRequest, LnInvoiceResponse, MakerExecuteRequest, MakerInitRequest, MakerInitResponse,
-    NetworkInfoResponse, NodeInfoResponse, OpenChannelRequest, OpenChannelResponse,
-    RgbInvoiceRequest, RgbInvoiceResponse, SendPaymentRequest, SendPaymentResponse, SendRgbRequest,
-    SendRgbResponse, TakerRequest, UnlockRequest,
+    InvoiceStatusRequest, InvoiceStatusResponse, KeysendRequest, KeysendResponse,
+    ListAssetsRequest, ListAssetsResponse, ListChannelsResponse, ListPaymentsResponse,
+    ListSwapsResponse, LnInvoiceRequest, LnInvoiceResponse, MakerExecuteRequest, MakerInitRequest,
+    MakerInitResponse, NetworkInfoResponse, NodeInfoResponse, OpenChannelRequest,
+    OpenChannelResponse, RgbInvoiceRequest, RgbInvoiceResponse, SendPaymentRequest,
+    SendPaymentResponse, SendRgbRequest, SendRgbResponse, TakerRequest, UnlockRequest,
 };
 
 /// Register a batch of `rln_client::types` as UniFFI custom types that cross the
@@ -124,7 +124,11 @@ impl RlnClient {
     #[uniffi::constructor]
     pub fn new(base_url: String, token: Option<String>, timeout_secs: Option<u64>) -> Arc<Self> {
         Arc::new(Self {
-            inner: rln_client::RlnClient::new(base_url, token, timeout_secs.map(Duration::from_secs)),
+            inner: rln_client::RlnClient::new(
+                base_url,
+                token,
+                timeout_secs.map(Duration::from_secs),
+            ),
         })
     }
 
@@ -183,7 +187,10 @@ impl RlnClient {
         Ok(self.inner.send_payment(req).await?)
     }
 
-    pub async fn get_payment(&self, req: GetPaymentRequest) -> Result<GetPaymentResponse, RlnError> {
+    pub async fn get_payment(
+        &self,
+        req: GetPaymentRequest,
+    ) -> Result<GetPaymentResponse, RlnError> {
         Ok(self.inner.get_payment(req).await?)
     }
 
@@ -197,7 +204,10 @@ impl RlnClient {
 
     // ---- RGB ---------------------------------------------------------------
 
-    pub async fn rgb_invoice(&self, req: RgbInvoiceRequest) -> Result<RgbInvoiceResponse, RlnError> {
+    pub async fn rgb_invoice(
+        &self,
+        req: RgbInvoiceRequest,
+    ) -> Result<RgbInvoiceResponse, RlnError> {
         Ok(self.inner.rgb_invoice(req).await?)
     }
 
@@ -208,7 +218,10 @@ impl RlnClient {
         Ok(self.inner.decode_rgb_invoice(req).await?)
     }
 
-    pub async fn list_assets(&self, req: ListAssetsRequest) -> Result<ListAssetsResponse, RlnError> {
+    pub async fn list_assets(
+        &self,
+        req: ListAssetsRequest,
+    ) -> Result<ListAssetsResponse, RlnError> {
         Ok(self.inner.list_assets(req).await?)
     }
 
