@@ -9,6 +9,7 @@ Then run:
 Request/response types are pydantic models (rln_types), converted to/from JSON
 across the FFI boundary automatically — you never touch raw JSON.
 """
+
 import asyncio
 
 import kaleidoswap_sdk
@@ -36,7 +37,9 @@ async def main() -> None:
     print("pubkey:", info.pubkey)
 
     # RGB: list assets (typed request + response).
-    assets = await client.list_assets(rln_types.ListAssetsRequest(filter_asset_schemas=None))
+    assets = await client.list_assets(
+        rln_types.ListAssetsRequest(filter_asset_schemas=None)
+    )
     print("assets:", assets)
 
 

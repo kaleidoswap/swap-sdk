@@ -4,7 +4,9 @@ from common import *
 
 
 async def swap(
-    from_chain: kaleidoswap_sdk.Chain, to_chain: kaleidoswap_sdk.Chain, refund: bool = False
+    from_chain: kaleidoswap_sdk.Chain,
+    to_chain: kaleidoswap_sdk.Chain,
+    refund: bool = False,
 ):
     claim_address = await getnewaddress(to_chain)
 
