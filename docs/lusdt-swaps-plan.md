@@ -1,211 +1,418 @@
-# Plan: Add native Liquid USDt (LUSDT) swaps alongside L-BTC
+# Plan: Add native Liquid USDt (L-USDT) swaps alongside L-BTC
+
+> Status: **frozen V1 contract**. These decisions are the shared SDK ⇄ maker
+> contract. Confidential maker HTLCs and cooperative MuSig spends are explicit
+> follow-up work, not part of V1.
 
 ## Goal & scope
 
-Add support for **native Liquid Tether (USDt)** — the Liquid-issued asset
-`ce091c998b83c78bb71a632313ba3760f1763d9cfcffae02258ffa9865a37bd2` on mainnet —
-as a swappable asset in the **Boltz Liquid swap engine** (`src/swaps/liquid.rs`),
-alongside the existing L-BTC support.
+Add support for **native Liquid Tether (USDt)** as a swappable asset in the
+Boltz-v2 Liquid swap engine, alongside the existing L-BTC support, using:
 
-This is explicitly **not** about RGB-USDT. All the `USDT`/`Tether` strings that
-already exist in the repo belong to the RGB Lightning Node (RLN) client
-(`rln-client/`, `specs/rgb-lightning-node.yaml`) and are a completely separate
-mechanism (RGB assets over Lightning). Nothing in this plan touches RLN.
+- **Explicit (unconfidential) L-USDT HTLC outputs.**
+- **Caller-funded L-BTC network fees** via a **two-stage PSET** boundary.
+- **Unilateral tapscript (script-path) claim/refund** for V1 (no cooperative
+  MuSig for L-USDT).
 
-### Out of scope (tracked, not done here)
+This fits both repositories without exposing the maker wallet or redesigning the
+Boltz v2 protocol.
 
-- Any RGB-USDT / RLN changes.
-- Server-side (KaleidoSwap/Boltz backend) work. The SDK is a **client**; a
-  Liquid-USDT swap pair must be offered by the backend for these swaps to
-  function end to end. See "Backend dependency" below.
+> Not RGB-USDT. All existing `USDT`/`Tether` strings in this repo belong to the
+> RGB Lightning Node (RLN) client (`rln-client/`, `specs/rgb-lightning-node.yaml`)
+> — a separate mechanism. Nothing here touches RLN.
 
-## Background: how the Liquid engine works today
+### Supported swap directions (V1)
 
-- **`network/mod.rs`**
-  - `Chain::Liquid(LiquidChain)` — the `Chain` enum carries **no asset**;
-    "Liquid" implicitly means L-BTC everywhere.
-  - `LiquidChain::bitcoin()` (mod.rs:68) returns the **policy (L-BTC) asset id**
-    per network (mainnet `AssetId::LIQUID_BTC`, testnet/regtest hardcoded).
-  - `LiquidClient` trait — esplora/electrum backends: get UTXO/tx, broadcast,
-    genesis hash.
-- **`LBtcSwapScript`** (liquid.rs:75) — taproot swap script (hashlock claim leaf
-  + CLTV refund leaf), MuSig2 key aggregation, confidential blinded address.
-- **`LBtcSwapTx`** (liquid.rs:540) — builds claim/refund txs.
-  **Current shape: exactly 1 confidential input → 1 confidential payment output
-  + 1 explicit fee output**, fully blinded (asset blinding factor + surjection
-  proof, value blinding factor + rangeproof). `is_discount_ct = true` is passed
-  for Liquid (ELIP-0200 discount vsize).
+- **Submarine:** `L-USDT → BTC Lightning`
+- **Reverse:** `BTC Lightning → L-USDT`
+- **Atomic chain:** `BTC on-chain → L-USDT`
+- Existing BTC / L-BTC behavior remains **unchanged**.
 
-The transaction **value/asset math is already asset-agnostic**: `create_claim`
-(liquid.rs:829) and `create_refund` (liquid.rs:1102) read the asset from the
-unblinded funding UTXO (`unblined_utxo.asset`) and reuse it for the outputs. The
-blinding logic doesn't care which asset it is.
-
-## The core problem: Liquid fees must be paid in L-BTC
-
-Today the fee output is `TxOut::new_fee(absolute_fees, asset_id)` (liquid.rs:893,
-1185) where `asset_id` is the **funding** asset, and the fee is subtracted from
-the swap amount. That is only valid because the funding asset **is** L-BTC.
-
-For an LUSDT swap the funding UTXO is LUSDT, so:
-
-- The fee **cannot** be denominated in or subtracted from the LUSDT amount —
-  Liquid network fees are always paid in L-BTC.
-- The claim/refund transaction therefore needs a **second input providing L-BTC**
-  to cover the fee, plus an **L-BTC change output**.
-
-New transaction shape for an LUSDT claim/refund:
-
-```
-inputs:  [ LUSDT swap utxo ] + [ L-BTC fee utxo ]
-outputs: [ LUSDT -> user (full swap amount) ]
-         [ L-BTC change -> user ]
-         [ explicit L-BTC fee ]
+```mermaid
+flowchart LR
+    A["Maker returns explicit L-USDT HTLC"] --> B["SDK validates tree, keys, address, asset and amount"]
+    B --> C["SDK prepares PSET with swap input and full L-USDT payout"]
+    C --> D["Caller wallet adds L-BTC fee input, change, blinds and signs"]
+    D --> E["SDK validates immutable intent and signs HTLC input"]
+    E --> F["Broadcast and track through standard Boltz statuses"]
 ```
 
-This is the single biggest structural change and it breaks the documented
-"reverse swap spends only 1 utxo / sweep is 1 output" assumptions in the README.
-Multi-asset blinding must balance value blinding factors **per asset**
-(LUSDT in vs LUSDT out; L-BTC in vs L-BTC change + fee) and produce a surjection
-proof per confidential output against the full input set.
+## 1. Frozen protocol decisions (shared SDK/maker contract)
 
-## Design decisions
+| Concern | V1 decision |
+|---|---|
+| Maker HTLC output | Explicit / unconfidential L-USDT |
+| Payout output | May be confidential |
+| Elements transaction fee | Always policy asset (normally L-BTC) |
+| Fee payer for SDK claim/refund | Caller wallet |
+| Transaction interchange | Base64 PSET |
+| Cooperative claim/refund | **Disabled** for L-USDT |
+| Spend path | Tapscript claim/refund leaves |
+| API shape | Boltz v2 with optional asset extensions |
+| Internal maker pair IDs | Private implementation detail |
 
-1. **Thread an explicit `AssetId` through the Liquid path** rather than deriving
-   "the asset" from `LiquidChain::bitcoin()`. Introduce the notion of the swap's
-   *funding asset* and validate against it, instead of hardcoding L-BTC.
+## Repository split
 
-2. **Asset registry per network.** Add an `lusdt()` (and a generic lookup) to
-   `LiquidChain` returning the LUSDT `AssetId` per network:
-   - mainnet: `ce091c99…a37bd2`
-   - testnet: (confirm the Liquid-testnet USDt asset id, or make configurable)
-   - regtest: issued at runtime by the regtest env → must be **injectable**,
-     not a constant.
-   Because regtest ids are dynamic, prefer carrying the asset id on the swap
-   type over a pure enum-to-constant map. Recommended: add an
-   `asset_id: AssetId` field to `LBtcSwapScript` / `LBtcSwapTx` (defaulted to the
-   network's L-BTC id for existing call sites) so the engine never has to guess.
+- **Maker** (`kaleidoswap-maker-rs`): §2, §4, §5, §8, §9, §10, §11.
+- **SDK** (`kaleidoswap-sdk`, this repo): §3, §6, §7, plus binding regeneration.
+- Both: §2 golden vectors, wire JSON contract (§4).
 
-3. **L-BTC fee funding is caller-supplied.** The SDK cannot source an L-BTC UTXO
-   on its own. Add an optional fee-input parameter (outpoint + `TxOut` +
-   blinding secret key + a change address) that callers pass when the swap asset
-   is not L-BTC. When the asset **is** L-BTC, behaviour is unchanged (fee comes
-   out of the swap output, single input).
+SDK and maker work can proceed in parallel once the wire JSON and golden vectors
+are frozen.
 
-4. **Currency strings stay at the caller / thin mapping layer.** `from`/`to` in
-   the Boltz request structs are already `String`. Add the USDT currency string
-   and pair accessors; do not over-engineer a new enum unless the backend
-   contract requires it.
+---
 
-## File-by-file changes (ordered)
+## 2. Maker: fix script/address compatibility first
 
-### Phase 1 — asset plumbing (no behaviour change for L-BTC)
+The maker currently creates some Liquid reverse and atomic-chain addresses with
+the submarine tree and the wrong aggregate-key order; the SDK will correctly
+reject those addresses even with otherwise-correct JSON.
 
-1. **`src/network/mod.rs`**
-   - Add `LiquidChain::lusdt() -> AssetId` (mainnet constant; testnet
-     constant/config; regtest injectable).
-   - Keep `bitcoin()` as-is (it is the policy/fee asset).
-   - Consider a small helper describing "policy asset for fees" vs "swap asset".
+| Swap side | Script tree | MuSig aggregation order |
+|---|---|---|
+| Submarine / deposit | `submarine_swap_tree` | `ClaimFirst` |
+| Reverse / server lock | `reverse_swap_tree` | `RefundFirst` |
+| Chain user lock | Same as submarine | `ClaimFirst` |
+| Chain server lock | Same as reverse | `RefundFirst` |
 
-2. **`src/swaps/liquid.rs`**
-   - Add `asset_id: AssetId` to `LBtcSwapScript` (and/or `LBtcSwapTx`), populated
-     from the create-swap responses / caller. Default it to
-     `network.bitcoin()` so all existing constructors keep working.
-   - Replace the hard check in **`unblind_utxo()` (liquid.rs:64)**
-     `secrets.asset != network.bitcoin()` with a check against the **expected
-     swap asset** (`!= expected_asset`), taking the expected asset as a param.
+- Add `maker_swap::create_chain_lockup`, backed by `reverse_swap_tree`.
+- Reverse Liquid creation (`reverse.rs`): `submarine_swap_tree` → `reverse_swap_tree`.
+- Atomic server lock (`chain.rs`): reverse-shaped tree.
+- Thread an `AggOrder` field through address construction, claim/refund params,
+  provider calls and witness construction (currently hardcoded in `claim.rs`).
+- Use `CooperativeKey::from_bytes_reverse` for reverse/server-lock address
+  validation.
+- Keep the lockup blinder absent (explicit-output architecture in `address.rs`).
 
-3. **`src/swaps/wrappers.rs`**
-   - **`construct_claim` (wrappers.rs:647)** — pass the swap's expected asset into
-     `unblind_utxo` instead of `chain_client.network()`'s L-BTC.
-   - **`check_direct_transaction_inner` (wrappers.rs:514)** — replace
-     `asset != chain.bitcoin()` with the expected swap asset.
+**Cross-repo golden vectors** (blocking, before further work): swap tree JSON,
+claim/refund leaf scripts, aggregate internal key, taproot output key, explicit
+Elements address. Both repos must derive identical values from the same keys,
+preimage hash and timeout.
 
-### Phase 2 — fee funding (the structural change)
+---
 
-4. **`src/swaps/liquid.rs`**
-   - Extend `LBtcSwapTx` with an optional L-BTC fee input:
-     `fee_input: Option<{ outpoint, txout, blinding_key, change_address }>`.
-   - Rework `create_claim` / `create_refund` to two branches:
-     - **funding asset == L-BTC**: current single-input path, unchanged.
-     - **funding asset != L-BTC**: build the 2-input / 3-output tx above with
-       multi-asset blinding (per-asset value blinding, one surjection proof per
-       confidential output over both inputs, fee output explicit L-BTC).
-   - Update `size()` / `tx_size` estimation for the larger tx (still honour
-     `is_discount_ct`).
-   - Update `sign_claim` / `sign_refund` (and the cooperative MuSig2 paths) to
-     sign **both** inputs; the fee input is a normal key-path/single-sig spend
-     from the caller-provided L-BTC key (not part of the MuSig2 swap key agg).
+## 3. SDK: separate currency from network
 
-5. **`src/swaps/fees.rs` + `src/util/fees.rs`**
-   - `estimate_claim_fee` and `mrh_amount = lockup − claim_fee` (wrappers.rs:322)
-     assume the fee is subtracted from the swap asset — split fee estimation
-     (in L-BTC) from the swap output amount for non-L-BTC swaps. Add LUSDT tx-size
-     constants (2-in/3-out) alongside `LIQUID_TX_SIZES`.
+Core design bug: `Chain::Display` (network/mod.rs:20-27) serializes **every**
+Liquid network as `"L-BTC"`. A chain identifies the *network*; it cannot also
+identify the *asset*.
 
-### Phase 3 — magic routing & currency surface
+Add:
 
-6. **`src/swaps/magic_routing.rs`**
-   - `check_for_mrh` (lines 102-119) hardcodes `LBTC_*_ASSET_HASH`. Generalise to
-     accept the expected swap asset (L-BTC **or** LUSDT) so a USDT BIP21 isn't
-     rejected. (MRH for USDT only matters if the backend issues USDT MRHs;
-     otherwise gate MRH to L-BTC and skip for USDT.)
+```rust
+pub enum Currency { Btc, LBtc, LUsdt }
+```
 
-7. **`src/network/mod.rs` (Display) + `src/swaps/boltz.rs`**
-   - Decide the currency string the backend expects for Liquid-USDT (e.g.
-     `"USDT"` / `"L-USDT"`), and:
-     - Add pair accessors on `GetSubmarinePairsResponse` /
-       `GetReversePairsResponse` / `GetChainPairsResponse` (boltz.rs:258-330) for
-       the USDT keys.
-     - Provide a way to set `from`/`to` to the USDT string (either a richer
-       `Chain`/currency type or a documented caller convention — today callers do
-       `chain.to_string()`).
+Keep `Chain` for network selection. In the UniFFI request records add:
 
-### Phase 4 — bindings & docs
+```rust
+#[uniffi(default = None)] pub from_currency: Option<Currency>;
+#[uniffi(default = None)] pub to_currency: Option<Currency>;
+```
 
-8. **Bindings**
-   - `bindings-wasm/src/lib.rs`, Python UniFFI (`bindings/`), and
-     `typescript-sdk/` expose the swap surface; surface the new asset/currency
-     and the fee-input parameter. (The `issueAsset*`/`listAssets` methods there
-     are RLN/RGB — leave untouched.)
+Serialization rules:
 
-9. **`README.md`**
-   - Update the "Assumptions" section (single-utxo / single-output) to reflect
-     the 2-in/3-out LUSDT case.
+- `Chain::Bitcoin(_)` permits only `Currency::Btc`.
+- `Chain::Liquid(_)` permits `Currency::LBtc` or `Currency::LUsdt`.
+- Absent currency preserves current behavior: Bitcoin → `BTC`, Liquid → `L-BTC`.
 
-## Testing plan
+The raw Boltz request structs keep using strings; only the binding→core
+conversion decides which string is sent. L-USDT is additive; old clients are
+preserved.
 
-- **Regtest** (`tests/regtest/`, requires the docker env): issue a regtest USDT
-  asset, fund a swap script with it plus a separate L-BTC utxo, and exercise
-  reverse-claim and submarine-refund with the new fee input. Mirror the existing
-  `reverse.rs` / `submarine.rs` flows.
-- **Unit** (`tests/txs.rs`, `src/swaps/liquid.rs` tests): extend
-  `prepare_lbtc_claim` / `prepare_lbtc_refund` analogues for a non-L-BTC funding
-  asset; assert outputs = [USDT to user, L-BTC change, explicit fee] and that
-  blinding validates. Add a multi-asset `tx_size` vector.
-- **Negative**: wrong fee-asset, insufficient L-BTC fee input, USDT amount
-  underflow.
+In `boltz.rs` (from line 259):
 
-## Backend dependency (must confirm before Phase 3+ is testable)
+- Add a defaulted `L-USDT` outer map to submarine pair responses.
+- Add `get_lusdt_to_btc_pair()`.
+- Add `get_btc_to_lusdt_pair()` to reverse and chain responses.
+- Add optional `from_asset_id`, `to_asset_id`, `fee_asset_id` to every pair card.
 
-The SDK can build and sign LUSDT swap transactions, but a full swap requires the
-**KaleidoSwap/Boltz backend to offer a Liquid-USDT pair** (currency strings,
-`GET /swap/*/pairs` entries, lockup addresses funded in USDT, cooperative MuSig2
-partial-sig endpoints for the USDT swaps). Confirm:
+---
 
-1. Which currency string the backend uses for Liquid-USDT.
-2. Whether the backend funds USDT lockups and expects USDT claim/refund txs with
-   a client-supplied L-BTC fee input (vs. fee sponsorship / discount-CT covered
-   by the server).
-3. Whether MRH is issued for USDT.
+## 4. Boltz v2 wire contract (shared)
 
-The answers to (2) in particular could simplify or reshape Phase 2.
+Public wire currencies only — never internal pair IDs.
 
-## Risks
+| Swap kind | Internal maker pair | Public route |
+|---|---|---|
+| Submarine | `L-USDT/BTC@LN` | `L-USDT/BTC` |
+| Reverse | `BTC@LN/L-USDT` | `BTC/L-USDT` |
+| Chain | `BTC/L-USDT-ATOMIC` | `BTC/L-USDT` |
+| Legacy plain send | `BTC/L-USDT` | Hidden from SDK |
 
-- **Multi-asset blinding** is the trickiest part; getting per-asset value
-  blinding factors and surjection proofs right is where bugs will hide. Lean on
-  regtest end-to-end validation, not just size estimation.
-- **Breaking the 1-utxo/1-output invariants** ripples into fee estimation, size
-  calc, and the cooperative-claim MuSig2 path (now signing 2 inputs).
-- **Regtest USDT asset id is dynamic** — the design must inject it, not hardcode.
+Pair cards include optional `fromAssetId`, `toAssetId`, `feeAssetId`. Existing
+fee structures must match the SDK exactly:
+
+- Submarine: `minerFees: number`
+- Reverse: `minerFees: { lockup, claim }`
+- Chain: `minerFees: { server, user: { lockup, claim } }`
+
+Create-response additions:
+
+- Submarine/reverse: optional `assetId`, `feeAssetId`.
+- Each `ChainSwapDetails`: optional `assetId`, `feeAssetId`.
+- Explicit Liquid lockups omit `blindingKey` or return `null`.
+- Keep required compatibility fields (e.g. `bip21`); empty string acceptable for
+  explicit Liquid lockups.
+- Atomic chain: stop requiring `userAddress` at creation — the payout address
+  belongs to transaction construction, not swap creation.
+
+---
+
+## 5. Maker: inverse quoting for L-USDT submarine
+
+The SDK submarine request does not send `fromAmount`; the maker requires it. Add
+`quote_for_output`:
+
+1. Decode invoice → BTC amount.
+2. Search within the pair's input limits.
+3. Reuse the existing forward quote during search.
+4. Return the smallest L-USDT input whose quoted output ≥ invoice amount.
+5. Monotone binary search, capped at 64 iterations.
+6. Reject when no in-limit amount satisfies the invoice.
+
+Accept legacy `fromAmount` temporarily but require it to equal the canonical
+inverse-quoted amount (prevents conflicting caller amounts).
+
+---
+
+## 6. SDK: generalize Liquid scripts & explicit outputs
+
+In `liquid.rs` (from line 75):
+
+- Rename `LBtcSwapScript` → `LiquidSwapScript`, `LBtcSwapTx` → `LiquidSwapTx`;
+  keep deprecated type aliases so current Rust users aren't broken.
+- Replace mandatory `ZKKeyPair` blinding key with `Option<ZKKeyPair>`.
+
+Address validation (explicit rules):
+
+- Confidential address + matching blinding key → accept.
+- Explicit address + no blinding key → accept.
+- Confidential address + no key → reject.
+- Explicit address + supplied key → reject.
+- Any reconstructed-address mismatch → reject.
+
+Introduce:
+
+```rust
+pub struct LiquidAssetContext {
+    pub swap_asset: AssetId,
+    pub policy_asset: AssetId,
+}
+```
+
+Resolution:
+
+- L-USDT responses must provide both `assetId` and `feeAssetId`.
+- Existing L-BTC/Boltz responses without extensions default both to
+  `LiquidChain::bitcoin()`.
+- Every located HTLC output must match `swap_asset` and the expected amount.
+
+Replace `LiquidClient::get_address_utxo` with plural `get_address_utxos`. Output
+discovery must select by exact script pubkey **and** expected asset **and**
+expected amount **and** expected txid when supplied — never the first output at
+the address.
+
+---
+
+## 7. SDK: caller-funded PSET boundary
+
+The current SDK builds a single-input tx and deducts the fee from that input's
+asset — invalid for L-USDT (the Elements fee output must use the policy asset).
+
+Wallet-neutral binding records:
+
+```rust
+pub struct LiquidPsetTemplate {
+    pub pset: String,
+    pub swap_input_index: u32,
+    pub payment_output_index: u32,
+    pub swap_asset_id: String,
+    pub policy_asset_id: String,
+    pub amount: u64,
+}
+pub struct LiquidOutputSecrets {
+    pub asset_id: String,
+    pub value: u64,
+    pub asset_blinding_factor: String,
+    pub value_blinding_factor: String,
+}
+pub struct FundedLiquidPset {
+    pub pset: String,
+    pub payment_output_secrets: LiquidOutputSecrets,
+    pub max_fee: u64,
+}
+```
+
+Immutable `PreparedLiquidSpend`:
+
+```text
+prepare_liquid_claim(...)
+prepare_liquid_refund(...)
+PreparedLiquidSpend.finalize_claim(funded_pset, keypair, preimage)
+PreparedLiquidSpend.finalize_refund(funded_pset, keypair)
+```
+
+Flow:
+
+1. SDK creates a template with the HTLC input and a full-value L-USDT payout.
+2. Caller wallet adds one or more L-BTC inputs.
+3. Wallet adds L-BTC change and an explicit L-BTC fee output.
+4. Wallet blinds outputs as needed and signs only its own inputs.
+5. Wallet returns the PSET plus secrets for the designated payout output.
+6. SDK validates the complete transaction.
+7. SDK signs the HTLC input.
+8. SDK finalizes and returns the tx for broadcast.
+
+**Immutable-intent invariants (reject unless all hold):**
+
+- Every input has `witness_utxo`.
+- The swap input uses the expected outpoint and exact previous output.
+- No duplicate inputs, peg-ins or issuance.
+- The HTLC input has the expected asset and value.
+- The designated payout output pays the entire HTLC L-USDT amount to the
+  requested script.
+- Supplied output secrets recreate the payout commitments.
+- The Elements fee output is explicit and uses the policy asset.
+- Fee ≤ caller cap and quoted cap.
+- No L-USDT amount deducted for the network fee.
+- Refund locktime/sequence satisfy the swap timeout.
+- No signature-covered field changed after preparation.
+
+Taproot sighash must use the real `swap_input_index` and `Prevouts::All` over
+**every** actual previous output — remove the current input-zero / single-prevout
+assumption (liquid.rs:910, 992).
+
+Return a typed `liquid_fee_asset_required` error when the wallet can't add enough
+L-BTC. Keep the old single-input path for ordinary L-BTC swaps; **L-USDT always
+takes the PSET path.**
+
+### SDK reconciliation notes (carried over from prior analysis)
+
+These L-BTC-hardcoded paths must be explicitly scoped to L-BTC so an L-USDT flow
+never trips them:
+
+- `unblind_utxo()` (liquid.rs:64) — `asset != network.bitcoin()`; take the
+  expected swap asset instead.
+- `check_direct_transaction_inner` (wrappers.rs:514) — `asset != chain.bitcoin()`;
+  gate to L-BTC / MRH path only.
+- Magic routing (magic_routing.rs:16-19, 102-119) — hardcoded L-BTC asset
+  hashes; MRH stays L-BTC-only in V1, so ensure L-USDT never reaches this
+  rejection.
+- README "Assumptions" section documents the 1-utxo/1-output invariant the PSET
+  path breaks — update it.
+
+---
+
+## 8. Maker: transaction lookup endpoints
+
+The SDK already calls these (liquid.rs:487-510); the maker must expose them:
+
+```text
+GET /v2/swap/submarine/{id}/transaction
+GET /v2/swap/reverse/{id}/transaction
+GET /v2/swap/chain/{id}/transactions
+```
+
+Response models must match existing SDK models (`{ id, hex, timeoutBlockHeight }`;
+chain: `{ userLock, serverLock }` with nested `transaction`/`timeout`). Return
+`404 transaction_not_found` before the tx exists. Add `raw_transaction(txid)` to
+the Liquid provider trait (and Bitcoin analogue). SDK still validates returned
+txid, HTLC script, asset and amount.
+
+---
+
+## 9. Maker: fix persisted statuses
+
+Atomic chain broadcasts the server lock without the SDK-required
+`transaction.server.mempool` / `transaction.server.confirmed` progression.
+
+- Store `wire_status` on the swap row; `load_status` returns it verbatim.
+- `SwapUpdate` carries the exact wire-status string; WS/webhook use it directly.
+- Persist server-lock txid + `transaction.server.mempool` atomically after
+  broadcast; move to `...confirmed` only after real provider confirmation.
+
+Expected atomic sequence:
+
+```text
+swap.created → transaction.mempool → transaction.confirmed
+→ transaction.server.mempool → transaction.server.confirmed → transaction.claimed
+```
+
+---
+
+## 10. Maker: routing & immutable swap snapshots
+
+Three migrations after `0028`:
+
+- **`0029_sdk_pair_routes.sql`**: `wire_from`, `wire_to`, `sdk_visible`,
+  `sdk_default` on `pairs`; check that `sdk_default ⇒ sdk_visible` + non-null wire
+  currencies; partial unique index over `(swap_kind, wire_from, wire_to)` where
+  `sdk_default`; repo methods `resolve_sdk_pair(kind, from, to)`,
+  `list_sdk_pairs(kind)`.
+- **`0030_swap_route_snapshots.sql`**: `from_asset/from_layer`, `to_asset/to_layer`,
+  `settlement_mode`, `liquid_network`, `liquid_genesis_hash`,
+  `liquid_deposit_asset`, `liquid_server_asset`, `liquid_fee_asset`,
+  `user_lockup_txid`. All route/asset/timeout/reservation fields inserted in the
+  same tx as the swap row. Workers/sweepers/restarts use snapshots, **not** live
+  pair config or a global payout-asset fallback.
+- **`0031_liquid_asset_registry.sql`**: network/genesis/policy/L-USDT bindings.
+  Startup inserts an absent binding and fails on conflict with config.
+
+Build every configured pair at startup; remove `ATOMIC_CHAIN_ENABLED` — DB
+`enabled` + `sdk_default` is the sole activation. Don't make the atomic pair
+public/default until full SDK e2e passes.
+
+---
+
+## 11. Maker: correct Liquid configuration
+
+```rust
+pub struct ResolvedLiquidConfig {
+    pub network: LiquidNetwork,
+    pub esplora_url: String,
+    pub mnemonic: String,
+    pub genesis_hash: BlockHash,
+    pub policy_asset: AssetId,
+    pub lusdt_asset: AssetId,
+}
+```
+
+- Mainnet may use canonical defaults.
+- Liquid testnet policy asset `144c654344aa716d6f3abcc1ca90e5641e4e2a7f633bc09fe3baf64585819a49`.
+- Testnet requires an explicit L-USDT asset id.
+- Regtest requires genesis hash + policy + L-USDT from config.
+- Never silently use mainnet L-USDT on testnet/regtest.
+- Verify configured genesis hash against the connected provider before readiness.
+- Keep `payout_asset_hex` as a deprecated alias for one release, then remove.
+
+---
+
+## 12. Implementation / merge order
+
+1. Maker tree, aggregation-order and cross-repo golden-vector fixes.
+2. Maker Liquid config, asset registry, routing metadata, swap snapshots.
+3. Maker inverse quotes, standard create responses, transaction GETs, status
+   persistence.
+4. SDK currency separation, pair parsing, asset context, explicit HTLC support.
+5. SDK PSET prepare/finalize + regenerated UniFFI/Python/TypeScript/WASM bindings.
+6. Standalone SDK-driven regtest e2e, then DB activation of the atomic public
+   route.
+
+SDK and maker work parallelize after the wire JSON and golden vectors freeze.
+
+## Acceptance gate
+
+Complete only when a standalone test app (pinned SDK revision, **no**
+maker-internal crates) passes:
+
+- L-USDT submarine creation, maker claim, client timeout refund.
+- L-USDT reverse creation, client script-path claim.
+- BTC→L-USDT atomic claim and both timeout/refund paths.
+- Exact WebSocket status progression.
+- All three transaction lookup endpoints.
+- Restart after creation, user funding and server-lock broadcast.
+- Rejection of wrong asset, wrong tree, wrong key order, decoy outputs.
+- Rejection of modified PSETs, excessive fees, invalid CLTV.
+- Typed failure when the caller has no L-BTC fee balance.
+- Existing BTC/L-BTC test suites unchanged.
