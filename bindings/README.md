@@ -1,6 +1,6 @@
 # Bindings
 
-Uniffi bindings for the Boltz Rust library.
+Uniffi bindings for the KaleidoSwap SDK (the Boltz-protocol swap engine + the RGB Lightning Node client).
 
 [UniFFI](https://mozilla.github.io/uniffi-rs/) enables automatic generation of bindings for multiple programming languages from a single Rust codebase. Currently, only Python bindings are implemented in this repository, but UniFFI supports many other languages including Kotlin, Swift, Ruby, and more.
 
@@ -19,7 +19,7 @@ pip install kaleidoswap_sdk
 1. **Prerequisites**
 
    - Rust toolchain (1.70+)
-   - Python 3.10+
+   - Python 3.11+
    - `uv` package manager
 
 2. **Build the bindings**

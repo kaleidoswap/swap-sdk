@@ -1,6 +1,6 @@
-# Boltz Client Python Bindings
+# KaleidoSwap SDK Python Bindings
 
-Python bindings for the Boltz Rust library, enabling atomic swaps between Bitcoin, Lightning Network, and Liquid.
+Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between Bitcoin, Lightning, and Liquid, plus a typed client for the RGB Lightning Node (RLN).
 
 ## Installation
 
@@ -50,6 +50,7 @@ asyncio.run(main())
 
 Complete working examples are available in the `examples/` directory:
 
-- [`reverse.py`](https://github.com/SatoshiPortal/boltz-rust/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
-- [`submarine.py`](https://github.com/SatoshiPortal/boltz-rust/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
-- [`chain.py`](https://github.com/SatoshiPortal/boltz-rust/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)
+- [`reverse.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
+- [`submarine.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
+- [`chain.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)
+- [`rln.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/rln.py) - RGB Lightning Node client (typed pydantic requests/responses)
