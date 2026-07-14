@@ -66,11 +66,14 @@ impl BoltzApiClientV2 {
         }
     }
 
+    /// Client pointed at the default KaleidoSwap maker for `network`.
+    /// Errors on `Mainnet` (no mainnet maker yet) — use `new` with an
+    /// explicit `base_url` instead.
     #[uniffi::constructor]
-    pub fn default(network: Network) -> Self {
-        Self {
-            inner: boltz::BoltzApiClientV2::default(network),
-        }
+    pub fn default(network: Network) -> Result<Self, Error> {
+        Ok(Self {
+            inner: boltz::BoltzApiClientV2::default(network)?,
+        })
     }
 
     #[uniffi::method]

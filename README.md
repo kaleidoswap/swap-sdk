@@ -1,7 +1,13 @@
 # kaleidoswap-sdk
 
-Rust SDK for [KaleidoSwap](https://kaleidoswap.com) — client-side atomic swaps
-across Bitcoin, Lightning, and Liquid.
+**KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
+Bitcoin, Lightning, and Liquid, for Rust, Python, and the browser.
+
+The published surface is **swaps-only**: quote/create/watch a swap against the
+KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
+refund transactions client-side. Defaults point at the KaleidoSwap maker
+(`maker.signet.kaleidoswap.com/v2` on testnet); any Boltz-`/v2`-compatible
+endpoint works via an explicit base URL.
 
 The crate is a fork of [boltz-rust](https://github.com/SatoshiPortal/boltz-rust):
 the battle-tested swap engine (taproot swap scripts, MuSig2 cooperative signing,
@@ -15,7 +21,7 @@ the KaleidoSwap layers are built on top of it.
 | `src/` | The swap engine (Boltz protocol): scripts, MuSig2, tx construction, key/preimage derivation, Esplora/Electrum chain access |
 | `bindings/` | [UniFFI](https://mozilla.github.io/uniffi-rs/) bindings (Python today) |
 | `bindings-wasm/` | wasm-bindgen bindings for the browser — same swap surface, 64-bit integers cross as `BigInt` |
-| `typescript-sdk/` | TypeScript SDK wrapping the wasm package with hand-written types |
+| `typescript-sdk/` | TypeScript SDK (`@kaleidorg/swap-sdk`) wrapping the wasm package with hand-written types |
 | `macros/` | Proc-macros (wasm-compatible `async_trait`, cross-target `test_all`) |
 
 ## Bindings

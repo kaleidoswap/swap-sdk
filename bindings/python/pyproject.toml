@@ -1,7 +1,7 @@
 [project]
 name = "kaleidoswap_sdk"
-version = "0.4.1"
-description = "KaleidoSwap SDK — atomic swaps (Boltz protocol) between Bitcoin, Lightning, and Liquid"
+version = "0.1.0"
+description = "KaleidoSwap swap SDK — client-side atomic swaps (Boltz protocol)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []

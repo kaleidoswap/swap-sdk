@@ -215,12 +215,13 @@ impl BoltzClient {
         }
     }
 
-    /// Client pointed at the default Boltz endpoint for a network
-    /// ("mainnet" | "testnet" | "regtest").
+    /// Client pointed at the default **KaleidoSwap maker** for a network
+    /// ("testnet" | "regtest"). Rejects "mainnet" — no mainnet maker is live
+    /// yet; pass an explicit base URL to the constructor instead.
     #[wasm_bindgen(js_name = forNetwork)]
     pub fn for_network(network: String) -> Result<BoltzClient, JsValue> {
         Ok(BoltzClient {
-            inner: BoltzApiClientV2::default(parse_network(&network)?),
+            inner: BoltzApiClientV2::default(parse_network(&network)?).map_err(core_err)?,
         })
     }
 
@@ -942,7 +943,8 @@ pub struct BoltzWsApi {
 
 #[wasm_bindgen]
 impl BoltzWsApi {
-    /// `new BoltzWsApi(wsUrl)` — e.g. `wss://api.boltz.exchange/v2/ws`.
+    /// `new BoltzWsApi(wsUrl)` — e.g. `wss://maker.signet.kaleidoswap.com/v2/ws`
+    /// (or `wss://api.boltz.exchange/v2/ws` for Boltz).
     #[wasm_bindgen(constructor)]
     pub fn new(ws_url: String) -> BoltzWsApi {
         BoltzWsApi {

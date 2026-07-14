@@ -13,3 +13,4 @@ bindings-wasm/pkg/
 typescript-sdk/dist/
 node_modules/
 typescript-sdk/vendor/
+.DS_Store
