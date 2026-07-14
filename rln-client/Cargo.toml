@@ -1,0 +1,23 @@
+[package]
+name = "rln-client"
+version = "0.1.0"
+authors = ["KaleidoSwap"]
+description = "RGB Lightning Node (RLN) types and client for the KaleidoSwap SDK"
+license = "MIT"
+edition = "2021"
+
+# `src/types.rs` is generated from the OpenAPI 3.1 spec by typify (see
+# scripts/gen-rln-types.sh / `make generate-rln-types`) and must not be edited.
+# The hand-written HTTP client lives in `src/client.rs` (behind the default
+# `client` feature), mirroring the kaleido-sdk pattern of generated types +
+# hand-written client. Disable default features for a types-only dependency.
+[features]
+default = ["client"]
+client = ["dep:reqwest"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# rustls-tls mirrors the root crate: links a TLS backend on native and stays
+# inert (browser fetch) on wasm32.
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"], optional = true }

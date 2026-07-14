@@ -1,5 +1,5 @@
 [package]
-name = "boltz-client"
+name = "kaleidoswap-sdk"
 description = "a boltz exchange client for swaps between BTC/LBTC & LN"
 authors = ["i5hi <ishi@satoshiportal.com>", "Rajarshi Maitra <raj@bitshala.org>"]
 version = "0.4.1"
@@ -7,7 +7,7 @@ edition = "2021"
 license = "MIT"
 
 [lib]
-name = "boltz_client"
+name = "kaleidoswap_sdk"
 path = "src/lib.rs"
 doctest = false
 crate-type = ["lib"]
@@ -15,7 +15,9 @@ crate-type = ["lib"]
 [workspace]
 members = [
     "bindings",
+    "bindings-wasm",
     "macros",
+    "rln-client",
 ]
 
 [workspace.dependencies]
@@ -54,7 +56,7 @@ env_logger = "0.11.8"
 hex = "0.4"
 lnurl-rs = { version = "0.9.0", default-features = false, features = ["async", "async-https"], optional = true }
 reqwest = { version = "0.12.12" , default-features = false, features = ["json", "rustls-tls"] }
-macros = { version = "1.0.0", package = "boltz-client-macros" }
+macros = { version = "1.0.0", path = "macros", package = "kaleidoswap-sdk-macros" }
 futures-util = "0.3.31"
 tokio-tungstenite-wasm = { version = "0.6.0", features = ["rustls-tls-webpki-roots"], optional = true }
 bip85_extended = "1.1.0"

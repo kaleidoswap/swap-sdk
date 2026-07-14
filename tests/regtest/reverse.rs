@@ -1,10 +1,10 @@
 use bitcoin::secp256k1::SecretKey;
 use bitcoin::{key::rand::thread_rng, secp256k1::Keypair, PublicKey};
-use boltz_client::boltz::BoltzWsConfig;
-use boltz_client::fees::Fee;
-use boltz_client::network::Network;
-use boltz_client::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
-use boltz_client::{
+use kaleidoswap_sdk::boltz::BoltzWsConfig;
+use kaleidoswap_sdk::fees::Fee;
+use kaleidoswap_sdk::network::Network;
+use kaleidoswap_sdk::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
+use kaleidoswap_sdk::{
     network::Chain,
     swaps::{
         boltz::CreateReverseRequest,
@@ -102,7 +102,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient) {
         fee: Fee::Absolute(200),
         output_address: claim_address,
         chain_client,
-        boltz_client: &boltz_api_v2,
+        boltz_api: &boltz_api_v2,
         options: Some(TransactionOptions::default().with_lockup_tx(lockup_tx)),
     };
 

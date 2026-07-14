@@ -1,0 +1,34 @@
+[package]
+name = "bindings-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "WebAssembly (wasm-bindgen) bindings for the KaleidoSwap SDK"
+
+# Browser/TS binding surface. Separate from the UniFFI `bindings` crate because
+# wasm-bindgen and UniFFI are different export mechanisms targeting different
+# runtimes (browser vs native FFI). Build with wasm-pack (see Makefile:
+# `make wasm-pack-build`). RLN types + swap types cross to JS as plain JS objects
+# via serde-wasm-bindgen; TS callers type them with the openapi-typescript models
+# in typescript-sdk/src/generated/node-types.ts.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Skip wasm-opt in `wasm-pack build --release`: the bundled wasm-opt rejects some
+# of the wasm features this build emits. Re-enable with tuned flags
+# (`wasm-opt = ['-O2', '--enable-bulk-memory', ...]`) once size optimization is needed.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+serde-wasm-bindgen = "0.6"
+js-sys = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `sync` names the broadcast::Receiver / Mutex used by the WS status stream.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+rln-client = { path = "../rln-client" }
+# `ws` enables the Boltz WebSocket swap-status stream (BoltzWsApi).
+kaleidoswap-sdk = { path = "..", default-features = false, features = ["esplora", "ws"] }

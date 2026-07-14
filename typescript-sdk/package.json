@@ -1,0 +1,20 @@
+{
+  "name": "@kaleidoswap/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for KaleidoSwap (RGB Lightning Node + swaps) over WebAssembly",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist", "vendor", "src"],
+  "scripts": {
+    "generate:types": "node scripts/generate-types.mjs",
+    "vendor:wasm": "rm -rf vendor && mkdir -p vendor && cp ../bindings-wasm/pkg/bindings_wasm.js ../bindings-wasm/pkg/bindings_wasm.d.ts ../bindings-wasm/pkg/bindings_wasm_bg.wasm ../bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts vendor/",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run vendor:wasm && npm run build",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7",
+    "typescript": "^5"
+  }
+}

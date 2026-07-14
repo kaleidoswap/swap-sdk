@@ -1,7 +1,7 @@
-use boltz_client::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
-use boltz_client::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use boltz_client::network::{BitcoinChain, Chain, LiquidChain, Network};
-use boltz_client::swaps::ChainClient as CoreClient;
+use kaleidoswap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidoswap_sdk::network::{BitcoinChain, Chain, LiquidChain, Network};
+use kaleidoswap_sdk::swaps::ChainClient as CoreClient;
 
 use crate::boltz::Error;
 use crate::swap::BtcLikeTransaction;

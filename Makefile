@@ -1,7 +1,10 @@
 UNAME := $(shell uname)
 
+# secp256k1-sys needs a wasm-capable clang to cross-compile its C to wasm.
+# Prefer the versioned llvm@21 keg, fall back to unversioned llvm.
 ifeq ($(UNAME), Darwin)
-	CLANG_PREFIX += AR=$(shell brew --prefix llvm)/bin/llvm-ar CC=$(shell brew --prefix llvm)/bin/clang
+	LLVM_PREFIX := $(shell brew --prefix llvm@21 2>/dev/null || brew --prefix llvm 2>/dev/null)
+	CLANG_PREFIX += AR=$(LLVM_PREFIX)/bin/llvm-ar CC=$(LLVM_PREFIX)/bin/clang
 endif
 
 LND_MACAROON_HEX=$(shell xxd -p regtest/boltz/data/lnd1/data/chain/bitcoin/regtest/admin.macaroon | tr -d '\n')
@@ -10,6 +13,40 @@ REGTEST_PREFIX = LND_MACAROON_HEX=$(LND_MACAROON_HEX) BITCOIND_COOKIE=$(BITCOIND
 
 init:
 	cargo install wasm-pack --version 0.14.0 --locked
+
+# --- Codegen: RGB Lightning Node (RLN) types --------------------------------
+# Generates rln-client/src/types.rs from the OpenAPI 3.1 spec using typify
+# (types only; the client is hand-written), matching the kaleido-sdk approach.
+# Requires: python3 (+PyYAML) and cargo-typify (`cargo install cargo-typify`).
+generate-rln-types:
+	bash scripts/gen-rln-types.sh
+
+# Generates the Python-side RLN artifacts: pydantic models
+# (bindings/python/rln_types.py) + the uniffi.toml custom-type mapping.
+# Requires: uv, python3.
+generate-rln-pydantic:
+	bash scripts/gen-rln-pydantic.sh
+
+# Regenerate every RLN codegen artifact (Rust types + Python models + mapping).
+generate-rln: generate-rln-types generate-rln-pydantic
+
+# --- wasm / TypeScript binding ----------------------------------------------
+# Builds the wasm-bindgen package (bindings-wasm/pkg) for the browser/TS SDK.
+# Needs a wasm-capable clang (see CLANG_PREFIX / `brew install llvm@21`).
+WASM_PACK_TARGET ?= web
+wasm-pack-build:
+	$(CLANG_PREFIX) wasm-pack build bindings-wasm --target $(WASM_PACK_TARGET) --out-dir pkg
+	# Vendor the wasm output into the TS package so it is self-contained/publishable.
+	rm -rf typescript-sdk/vendor && mkdir -p typescript-sdk/vendor
+	cp bindings-wasm/pkg/bindings_wasm.js bindings-wasm/pkg/bindings_wasm.d.ts \
+	   bindings-wasm/pkg/bindings_wasm_bg.wasm bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts \
+	   typescript-sdk/vendor/
+
+# Regenerate the TypeScript domain types from the RLN OpenAPI spec.
+# Uses the openapi-typescript Node API (scripts/generate-types.mjs) to map
+# integer fields to `bigint`, matching the wasm boundary's BigInt serialization.
+generate-ts-types:
+	cd typescript-sdk && npm install --no-audit --no-fund --silent && npm run generate:types
 
 build: cargo-build cargo-clippy
 

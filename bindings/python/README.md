@@ -5,7 +5,7 @@ Python bindings for the Boltz Rust library, enabling atomic swaps between Bitcoi
 ## Installation
 
 ```bash
-pip install boltz_client
+pip install kaleidoswap_sdk
 ```
 
 ## Quick Start
@@ -13,21 +13,21 @@ pip install boltz_client
 > **⚠️ WARNING: All examples are only to be used in REGTEST.**
 
 ```python
-import boltz_client
+import kaleidoswap_sdk
 import asyncio
 
 async def main():
     # Initialize for regtest (do NOT use this example in production)
-    network = boltz_client.Network.REGTEST
-    boltz_api = boltz_client.BoltzApiClientV2.default(network)
+    network = kaleidoswap_sdk.Network.REGTEST
+    boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
 
     # Example: Create a submarine swap (Lightning → Bitcoin)
-    key_pair = boltz_client.KeyPair()
-    btc_chain = boltz_client.btc_chain_from_network(network)
+    key_pair = kaleidoswap_sdk.KeyPair()
+    btc_chain = kaleidoswap_sdk.btc_chain_from_network(network)
 
     invoice = "lightning-invoice-to-pay"
 
-    request = boltz_client.CreateSubmarineRequest(
+    request = kaleidoswap_sdk.CreateSubmarineRequest(
         _from=btc_chain,
         to=btc_chain,
         invoice=invoice,

@@ -11,7 +11,7 @@ Uniffi bindings for the Boltz Rust library.
 #### From PyPI
 
 ```bash
-pip install boltz_client
+pip install kaleidoswap_sdk
 ```
 
 #### From Source
@@ -32,7 +32,7 @@ pip install boltz_client
 3. **Install the wheel**
    ```bash
    cd python/dist
-   pip install boltz_client-*.whl
+   pip install kaleidoswap_sdk-*.whl
    ```
 
 ## Development
@@ -63,10 +63,10 @@ wheel, and smoke-tests both the repaired wheel and the sdist.
 
 The build process generates:
 
-- `libboltz_client.so` - The compiled Rust library
-- `boltz_client.py` - Python bindings module
-- `dist/boltz_client-*.whl` - Installable Python wheel
-- `dist/boltz_client-*.tar.gz` - Installable source distribution
+- `libkaleidoswap_sdk.so` - The compiled Rust library
+- `kaleidoswap_sdk.py` - Python bindings module
+- `dist/kaleidoswap_sdk-*.whl` - Installable Python wheel
+- `dist/kaleidoswap_sdk-*.tar.gz` - Installable source distribution
 
 ### Testing
 

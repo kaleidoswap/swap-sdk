@@ -1,9 +1,9 @@
 [package]
-name = "boltz-client-macros"
+name = "kaleidoswap-sdk-macros"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
-description = "Proc macros for boltz-client"
+description = "Proc macros for kaleidoswap-sdk"
 repository = "https://github.com/SatoshiPortal/boltz-rust"
 
 [lib]

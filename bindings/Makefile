@@ -5,14 +5,14 @@ DOCKER_PLATFORM_ARG := $(if $(MANYLINUX_PLATFORM),--platform $(MANYLINUX_PLATFOR
 
 build-debug:
 	cargo build
-	cp $(CARGO_TARGET_DIR)/debug/libboltz_client.so ./python/
-	cargo run generate --language python --no-format --library $(CARGO_TARGET_DIR)/debug/libboltz_client.so --out-dir python/
+	cp $(CARGO_TARGET_DIR)/debug/libkaleidoswap_sdk.so ./python/
+	cargo run generate --language python --no-format --library $(CARGO_TARGET_DIR)/debug/libkaleidoswap_sdk.so --out-dir python/
 
 build-release:
 	cargo build --release
 	cargo build  # Also build debug for uniffi to read metadata
-	cp $(CARGO_TARGET_DIR)/release/libboltz_client.so ./python/
-	cargo run generate --language python --no-format --library $(CARGO_TARGET_DIR)/debug/libboltz_client.so --out-dir python/
+	cp $(CARGO_TARGET_DIR)/release/libkaleidoswap_sdk.so ./python/
+	cargo run generate --language python --no-format --library $(CARGO_TARGET_DIR)/debug/libkaleidoswap_sdk.so --out-dir python/
 
 build-python: build-release
 	cd python && uv build

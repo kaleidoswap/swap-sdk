@@ -420,7 +420,7 @@ impl BtcSwapScript {
         &self,
         lockup_tx: Option<&Transaction>,
         bitcoin_client: &BC,
-        boltz_client: &BoltzApiClientV2,
+        kaleidoswap_sdk: &BoltzApiClientV2,
         swap_id: &str,
         tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
@@ -431,7 +431,7 @@ impl BtcSwapScript {
                 Err(_) => {
                     self.fetch_lockup_utxo_boltz(
                         bitcoin_client.network(),
-                        boltz_client,
+                        kaleidoswap_sdk,
                         swap_id,
                         tx_kind,
                     )
@@ -458,14 +458,14 @@ impl BtcSwapScript {
     pub async fn fetch_lockup_utxo_boltz(
         &self,
         network: BitcoinChain,
-        boltz_client: &BoltzApiClientV2,
+        kaleidoswap_sdk: &BoltzApiClientV2,
         swap_id: &str,
         tx_kind: SwapTxKind,
     ) -> Result<Option<(OutPoint, TxOut)>, Error> {
         let hex = match self.swap_type {
             SwapType::Chain => match tx_kind {
                 SwapTxKind::Claim => {
-                    let chain_txs = boltz_client.get_chain_txs(swap_id).await?;
+                    let chain_txs = kaleidoswap_sdk.get_chain_txs(swap_id).await?;
                     chain_txs
                         .server_lock
                         .ok_or(Error::Protocol(
@@ -475,7 +475,7 @@ impl BtcSwapScript {
                         .hex
                 }
                 SwapTxKind::Refund => {
-                    let chain_txs = boltz_client.get_chain_txs(swap_id).await?;
+                    let chain_txs = kaleidoswap_sdk.get_chain_txs(swap_id).await?;
                     chain_txs
                         .user_lock
                         .ok_or(Error::Protocol(
@@ -485,8 +485,8 @@ impl BtcSwapScript {
                         .hex
                 }
             },
-            SwapType::ReverseSubmarine => boltz_client.get_reverse_tx(swap_id).await?.hex,
-            SwapType::Submarine => boltz_client.get_submarine_tx(swap_id).await?.hex,
+            SwapType::ReverseSubmarine => kaleidoswap_sdk.get_reverse_tx(swap_id).await?.hex,
+            SwapType::Submarine => kaleidoswap_sdk.get_submarine_tx(swap_id).await?.hex,
         };
         if hex.is_none() {
             return Err(Error::Hex(
@@ -526,14 +526,14 @@ impl BtcSwapTx {
         swap_script: BtcSwapScript,
         claim_address: String,
         bitcoin_client: &BC,
-        boltz_client: &BoltzApiClientV2,
+        kaleidoswap_sdk: &BoltzApiClientV2,
         swap_id: String,
     ) -> Result<BtcSwapTx, Error> {
         let utxo = swap_script
             .fetch_swap_utxo(
                 None,
                 bitcoin_client,
-                boltz_client,
+                kaleidoswap_sdk,
                 &swap_id,
                 SwapTxKind::Claim,
             )
@@ -571,7 +571,7 @@ impl BtcSwapTx {
         swap_script: BtcSwapScript,
         refund_address: &str,
         bitcoin_client: &BC,
-        boltz_client: &BoltzApiClientV2,
+        kaleidoswap_sdk: &BoltzApiClientV2,
         swap_id: String,
     ) -> Result<BtcSwapTx, Error> {
         if swap_script.swap_type == SwapType::ReverseSubmarine {
@@ -591,7 +591,7 @@ impl BtcSwapTx {
                 let lockup_utxo_info = swap_script
                     .fetch_lockup_utxo_boltz(
                         bitcoin_client.network(),
-                        boltz_client,
+                        kaleidoswap_sdk,
                         &swap_id,
                         SwapTxKind::Refund,
                     )
