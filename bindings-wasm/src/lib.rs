@@ -784,20 +784,24 @@ impl BoltzClient {
         req: JsValue,
     ) -> Result<JsValue, JsValue> {
         let req: CreateChainRequest = from_js(req)?;
-        let claim_pk = req.claim_public_key;
-        let refund_pk = req.refund_public_key;
-        let from = req.from.clone();
-        let to = req.to.clone();
+        // Both keys are required so the returned lockup script/tree can be
+        // checked against the request — never hand back an unvalidated
+        // response to fund (same guarantee as the reverse path). Reject (and
+        // resolve the chains) *before* posting, so a bad request can't create
+        // an orphan swap server-side.
+        let (claim_pk, refund_pk) = match (req.claim_public_key, req.refund_public_key) {
+            (Some(claim_pk), Some(refund_pk)) => (claim_pk, refund_pk),
+            _ => {
+                return Err(JsValue::from_str(
+                    "chain swap request needs claimPublicKey and refundPublicKey",
+                ))
+            }
+        };
+        let from_chain = chain_from_boltz(&req.from, &network)?;
+        let to_chain = chain_from_boltz(&req.to, &network)?;
         let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
-        if let (Some(claim_pk), Some(refund_pk)) = (claim_pk, refund_pk) {
-            resp.validate(
-                &claim_pk,
-                &refund_pk,
-                chain_from_boltz(&from, &network)?,
-                chain_from_boltz(&to, &network)?,
-            )
+        resp.validate(&claim_pk, &refund_pk, from_chain, to_chain)
             .map_err(core_err)?;
-        }
         to_js(&resp)
     }
 
