@@ -1,8 +1,10 @@
 # Plan: Add native Liquid USDt (L-USDT) swaps alongside L-BTC
 
-> Status: **frozen V1 contract**. These decisions are the shared SDK ⇄ maker
-> contract. Confidential maker HTLCs and cooperative MuSig spends are explicit
-> follow-up work, not part of V1.
+> Status: **V1 architecture frozen; executable contract fixtures pending.** The
+> architectural decisions below are the shared SDK ⇄ maker contract. Phase 0
+> must still commit canonical wire-JSON fixtures and cross-repository golden
+> vectors before implementation starts. Confidential maker HTLCs and
+> cooperative MuSig spends are follow-up work, not part of V1.
 
 ## Goal & scope
 
@@ -85,9 +87,10 @@ reject those addresses even with otherwise-correct JSON.
 - Keep the lockup blinder absent (explicit-output architecture in `address.rs`).
 
 **Cross-repo golden vectors** (blocking, before further work): swap tree JSON,
-claim/refund leaf scripts, aggregate internal key, taproot output key, explicit
-Elements address. Both repos must derive identical values from the same keys,
-preimage hash and timeout.
+claim/refund leaf scripts and Liquid leaf version `0xc4`, aggregate internal
+key, taproot output key, and explicit Elements address. Commit the same fixture
+inputs and expected outputs in both repositories; both implementations must
+derive identical values from the same keys, preimage hash and timeout.
 
 ---
 
@@ -147,6 +150,14 @@ fee structures must match the SDK exactly:
 - Reverse: `minerFees: { lockup, claim }`
 - Chain: `minerFees: { server, user: { lockup, claim } }`
 
+Amount semantics are part of the contract:
+
+- `limits` are denominated in input-asset base units.
+- `rate` is output-asset base units per input-asset base unit.
+- Quoted percentage and miner fees are denominated in output-asset base units.
+- `feeAssetId` identifies the policy asset used by the actual Elements fee
+  output; it does not change the quote-fee denomination.
+
 Create-response additions:
 
 - Submarine/reverse: optional `assetId`, `feeAssetId`.
@@ -156,6 +167,14 @@ Create-response additions:
   explicit Liquid lockups.
 - Atomic chain: stop requiring `userAddress` at creation — the payout address
   belongs to transaction construction, not swap creation.
+
+Before implementation, commit canonical JSON fixtures covering all three pair
+responses; submarine, reverse and chain create requests/responses; omitted
+versus `null` optional fields; the chain request's exactly-one-of
+`userLockAmount`/`serverLockAmount` rule; all transaction lookup responses;
+`transaction_not_found`; and the complete WebSocket status sequence. Those
+fixtures, together with the golden vectors in §2, complete Phase 0 and turn the
+frozen architecture into an executable contract.
 
 ---
 
@@ -191,6 +210,24 @@ Address validation (explicit rules):
 - Confidential address + no key → reject.
 - Explicit address + supplied key → reject.
 - Any reconstructed-address mismatch → reject.
+
+Address support also requires an output decoder; changing only the expected
+asset check in `unblind_utxo()` is insufficient because an explicit HTLC has no
+blinding key and cannot call `TxOut::unblind`:
+
+```rust
+fn decode_swap_output(
+    txout: &TxOut,
+    blinding_key: Option<SecretKey>,
+    expected_asset: AssetId,
+) -> Result<TxOutSecrets, Error>;
+```
+
+- Explicit asset + explicit value + no key: validate the asset and return
+  zero asset/value blinding factors.
+- Confidential asset/value + key: unblind, then validate the asset.
+- Confidential without a key or explicit with a key: reject.
+- Reject mixed explicit/confidential asset-value encodings in V1.
 
 Introduce:
 
@@ -230,6 +267,7 @@ pub struct LiquidPsetTemplate {
     pub swap_asset_id: String,
     pub policy_asset_id: String,
     pub amount: u64,
+    pub max_fee: u64,
 }
 pub struct LiquidOutputSecrets {
     pub asset_id: String,
@@ -240,9 +278,13 @@ pub struct LiquidOutputSecrets {
 pub struct FundedLiquidPset {
     pub pset: String,
     pub payment_output_secrets: LiquidOutputSecrets,
-    pub max_fee: u64,
 }
 ```
+
+`max_fee` is fixed by `PreparedLiquidSpend` before the wallet funds the PSET;
+the wallet-returned object must not be able to raise its own fee cap. The funded
+PSET must retain the standard PSET explicit `asset`/`amount` fields and their
+blind-asset/blind-value proofs for every confidential wallet input and output.
 
 Immutable `PreparedLiquidSpend`:
 
@@ -259,7 +301,8 @@ Flow:
 2. Caller wallet adds one or more L-BTC inputs.
 3. Wallet adds L-BTC change and an explicit L-BTC fee output.
 4. Wallet blinds outputs as needed and signs only its own inputs.
-5. Wallet returns the PSET plus secrets for the designated payout output.
+5. Wallet returns the PSET plus secrets for the designated payout output; the
+   PSET retains standard asset/amount proof fields for wallet inputs and change.
 6. SDK validates the complete transaction.
 7. SDK signs the HTLC input.
 8. SDK finalizes and returns the tx for broadcast.
@@ -270,14 +313,22 @@ Flow:
 - The swap input uses the expected outpoint and exact previous output.
 - No duplicate inputs, peg-ins or issuance.
 - The HTLC input has the expected asset and value.
+- Every non-swap input has PSET `asset` and `amount` fields whose blind-asset and
+  blind-value proofs verify against its `witness_utxo`; every such asset equals
+  `policy_asset`.
 - The designated payout output pays the entire HTLC L-USDT amount to the
   requested script.
 - Supplied output secrets recreate the payout commitments.
-- The Elements fee output is explicit and uses the policy asset.
-- Fee ≤ caller cap and quoted cap.
+- Exactly one empty-script Elements fee output exists; it is explicit and uses
+  the policy asset.
+- Every other output is policy-asset change, with PSET asset/amount fields and
+  proofs that verify its commitments. Reject unknown asset inputs or outputs.
+- Fee ≤ the cap pinned in `PreparedLiquidSpend` and the quoted cap.
 - No L-USDT amount deducted for the network fee.
 - Refund locktime/sequence satisfy the swap timeout.
-- No signature-covered field changed after preparation.
+- After the funded PSET is returned and validated, freeze the unsigned
+  transaction. Signing/finalization may add witness data only; inputs, outputs,
+  version, locktime and sequences must remain byte-for-byte unchanged.
 
 Taproot sighash must use the real `swap_input_index` and `Prevouts::All` over
 **every** actual previous output — remove the current input-zero / single-prevout
@@ -306,7 +357,7 @@ never trips them:
 
 ## 8. Maker: transaction lookup endpoints
 
-The SDK already calls these (liquid.rs:487-510); the maker must expose them:
+The SDK already calls these (`boltz.rs:615-635`); the maker must expose them:
 
 ```text
 GET /v2/swap/submarine/{id}/transaction
@@ -327,7 +378,8 @@ txid, HTLC script, asset and amount.
 Atomic chain broadcasts the server lock without the SDK-required
 `transaction.server.mempool` / `transaction.server.confirmed` progression.
 
-- Store `wire_status` on the swap row; `load_status` returns it verbatim.
+- `wire_status` already exists on `swap_orders`; make `load_status` return the
+  stored value verbatim instead of recomputing it from `(swap_type, state)`.
 - `SwapUpdate` carries the exact wire-status string; WS/webhook use it directly.
 - Persist server-lock txid + `transaction.server.mempool` atomically after
   broadcast; move to `...confirmed` only after real provider confirmation.
@@ -363,6 +415,13 @@ Build every configured pair at startup; remove `ATOMIC_CHAIN_ENABLED` — DB
 `enabled` + `sdk_default` is the sole activation. Don't make the atomic pair
 public/default until full SDK e2e passes.
 
+This migration is a reconciliation, not a greenfield schema. `pairs` already
+stores route fields; snapshot them onto `swap_orders`. Migration 0021 already
+added nullable `server_lock_asset`, and the database already has `lockup_txid`
+and `liquid_lockup_txid`. Either rename/backfill those into the canonical
+snapshot columns or document and reuse their exact user-lock/server-lock roles;
+do not create overlapping fields with ambiguous ownership.
+
 ---
 
 ## 11. Maker: correct Liquid configuration
@@ -390,7 +449,8 @@ pub struct ResolvedLiquidConfig {
 
 ## 12. Implementation / merge order
 
-1. Maker tree, aggregation-order and cross-repo golden-vector fixes.
+0. Commit canonical wire-JSON fixtures and cross-repository golden vectors.
+1. Maker tree and aggregation-order fixes validated against those vectors.
 2. Maker Liquid config, asset registry, routing metadata, swap snapshots.
 3. Maker inverse quotes, standard create responses, transaction GETs, status
    persistence.
@@ -413,6 +473,10 @@ maker-internal crates) passes:
 - All three transaction lookup endpoints.
 - Restart after creation, user funding and server-lock broadcast.
 - Rejection of wrong asset, wrong tree, wrong key order, decoy outputs.
-- Rejection of modified PSETs, excessive fees, invalid CLTV.
+- Explicit HTLC decoding without a blinding key and confidential L-BTC
+  regression coverage with a key.
+- Verification of wallet-input/change asset and value proofs.
+- Rejection of modified PSETs, unknown assets, multiple fee outputs, excessive
+  fees and invalid CLTV.
 - Typed failure when the caller has no L-BTC fee balance.
 - Existing BTC/L-BTC test suites unchanged.
