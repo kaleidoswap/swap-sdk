@@ -6,7 +6,7 @@ use bitcoin::{
     Amount, Witness, XOnlyPublicKey,
 };
 use elements::{
-    confidential::{Asset, AssetBlindingFactor, ValueBlindingFactor},
+    confidential::{Asset, AssetBlindingFactor, Value, ValueBlindingFactor},
     hex::FromHex,
     secp256k1_zkp::{Secp256k1, SecretKey},
     sighash::{Prevouts, SighashCache},
@@ -35,7 +35,7 @@ use super::{
     wrappers::SwapScriptCommon,
 };
 use crate::fees::{create_tx_with_fee, Fee};
-use crate::network::{LiquidChain, LiquidClient};
+use crate::network::{Currency, LiquidChain, LiquidClient};
 use elements::bitcoin::PublicKey;
 use elements::secp256k1_zkp::Keypair as ZKKeyPair;
 use elements::{
@@ -54,16 +54,83 @@ pub(crate) fn find_utxo(tx: &Transaction, script_pubkey: &Script) -> Option<(Out
     None
 }
 
-pub(crate) fn unblind_utxo(
-    network: LiquidChain,
-    utxo: TxOut,
-    blinding_key: SecretKey,
+/// Swap and fee assets resolved for a Liquid response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LiquidAssetContext {
+    pub swap_asset: elements::AssetId,
+    pub policy_asset: elements::AssetId,
+}
+
+impl LiquidAssetContext {
+    fn from_response(
+        asset_id: Option<&str>,
+        fee_asset_id: Option<&str>,
+    ) -> Result<Option<Self>, Error> {
+        match (asset_id, fee_asset_id) {
+            (None, None) => Ok(None),
+            (Some(asset_id), Some(fee_asset_id)) => Ok(Some(Self {
+                swap_asset: elements::AssetId::from_str(asset_id)?,
+                policy_asset: elements::AssetId::from_str(fee_asset_id)?,
+            })),
+            _ => Err(Error::Protocol(
+                "Liquid responses must provide assetId and feeAssetId together".to_string(),
+            )),
+        }
+    }
+
+    pub fn legacy_lbtc(network: LiquidChain) -> Self {
+        let policy_asset = network.bitcoin();
+        Self {
+            swap_asset: policy_asset,
+            policy_asset,
+        }
+    }
+
+    pub fn is_policy_asset_swap(self) -> bool {
+        self.swap_asset == self.policy_asset
+    }
+}
+
+/// Decode and validate a Liquid HTLC output for the expected swap asset.
+///
+/// V1 accepts either a fully explicit asset/value pair without a blinding key,
+/// or a fully confidential pair with its blinding key. Mixed encodings are
+/// rejected.
+pub fn decode_swap_output(
+    txout: &TxOut,
+    blinding_key: Option<SecretKey>,
+    expected_asset: elements::AssetId,
 ) -> Result<TxOutSecrets, Error> {
-    let secp = Secp256k1::new();
-    let secrets = utxo.unblind(&secp, blinding_key)?;
-    if secrets.asset != network.bitcoin() {
+    let secrets = match (&txout.asset, &txout.value, blinding_key) {
+        (Asset::Explicit(asset), Value::Explicit(value), None) => TxOutSecrets {
+            asset: *asset,
+            asset_bf: AssetBlindingFactor::zero(),
+            value: *value,
+            value_bf: ValueBlindingFactor::zero(),
+        },
+        (Asset::Confidential(_), Value::Confidential(_), Some(blinding_key)) => {
+            txout.unblind(&Secp256k1::new(), blinding_key)?
+        }
+        (Asset::Explicit(_), Value::Explicit(_), Some(_)) => {
+            return Err(Error::Protocol(
+                "Explicit Liquid swap output must not have a blinding key".to_string(),
+            ));
+        }
+        (Asset::Confidential(_), Value::Confidential(_), None) => {
+            return Err(Error::Protocol(
+                "Confidential Liquid swap output requires a blinding key".to_string(),
+            ));
+        }
+        _ => {
+            return Err(Error::Protocol(
+                "Mixed explicit/confidential Liquid swap output is unsupported".to_string(),
+            ));
+        }
+    };
+
+    if secrets.asset != expected_asset {
         return Err(Error::Protocol(format!(
-            "Asset is not bitcoin: {}",
+            "Liquid swap asset mismatch: expected {expected_asset}, got {}",
             secrets.asset
         )));
     }
@@ -72,7 +139,7 @@ pub(crate) fn unblind_utxo(
 
 /// Liquid v2 swap script helper.
 #[derive(Debug, Clone, PartialEq)]
-pub struct LBtcSwapScript {
+pub struct LiquidSwapScript {
     pub swap_type: SwapType,
     pub side: Option<Side>,
     pub funding_addrs: Option<Address>,
@@ -80,10 +147,18 @@ pub struct LBtcSwapScript {
     pub receiver_pubkey: PublicKey,
     pub locktime: LockTime,
     pub sender_pubkey: PublicKey,
-    pub blinding_key: ZKKeyPair,
+    pub blinding_key: Option<ZKKeyPair>,
+    /// Explicit server asset ids; absent only for legacy L-BTC responses.
+    pub asset_context: Option<LiquidAssetContext>,
+    /// Exact amount expected at the swap HTLC output.
+    pub expected_amount: u64,
 }
 
-impl LBtcSwapScript {
+/// Deprecated compatibility alias. Use [`LiquidSwapScript`].
+#[deprecated(since = "0.4.2", note = "renamed to LiquidSwapScript")]
+pub type LBtcSwapScript = LiquidSwapScript;
+
+impl LiquidSwapScript {
     /// Create the struct for a submarine swap from boltz create response.
     pub fn submarine_from_swap_resp(
         create_swap_response: &CreateSubmarineResponse,
@@ -135,13 +210,15 @@ impl LBtcSwapScript {
 
         let funding_addrs = Address::from_str(&create_swap_response.address)?;
 
-        let blinding_str = create_swap_response
+        let blinding_key = create_swap_response
             .blinding_key
-            .as_ref()
-            .ok_or(Error::Protocol(
-                "No blinding key provided in Create Swap Response".to_string(),
-            ))?;
-        let blinding_key = ZKKeyPair::from_seckey_str(&Secp256k1::new(), blinding_str)?;
+            .as_deref()
+            .map(|key| ZKKeyPair::from_seckey_str(&Secp256k1::new(), key))
+            .transpose()?;
+        let asset_context = LiquidAssetContext::from_response(
+            create_swap_response.asset_id.as_deref(),
+            create_swap_response.fee_asset_id.as_deref(),
+        )?;
 
         Ok(Self {
             swap_type: SwapType::Submarine,
@@ -152,6 +229,8 @@ impl LBtcSwapScript {
             locktime,
             sender_pubkey: our_pubkey,
             blinding_key,
+            asset_context,
+            expected_amount: create_swap_response.expected_amount,
         })
     }
 
@@ -206,13 +285,15 @@ impl LBtcSwapScript {
 
         let funding_addrs = Address::from_str(&reverse_response.lockup_address)?;
 
-        let blinding_str = reverse_response
+        let blinding_key = reverse_response
             .blinding_key
-            .as_ref()
-            .ok_or(Error::Protocol(
-                "No blinding key provided in Create Swap Response".to_string(),
-            ))?;
-        let blinding_key = ZKKeyPair::from_seckey_str(&Secp256k1::new(), blinding_str)?;
+            .as_deref()
+            .map(|key| ZKKeyPair::from_seckey_str(&Secp256k1::new(), key))
+            .transpose()?;
+        let asset_context = LiquidAssetContext::from_response(
+            reverse_response.asset_id.as_deref(),
+            reverse_response.fee_asset_id.as_deref(),
+        )?;
 
         Ok(Self {
             swap_type: SwapType::ReverseSubmarine,
@@ -223,6 +304,8 @@ impl LBtcSwapScript {
             locktime,
             sender_pubkey: reverse_response.refund_public_key,
             blinding_key,
+            asset_context,
+            expected_amount: reverse_response.onchain_amount,
         })
     }
 
@@ -283,13 +366,15 @@ impl LBtcSwapScript {
             Side::Claim => (chain_swap_details.server_public_key, our_pubkey),
         };
 
-        let blinding_str = chain_swap_details
+        let blinding_key = chain_swap_details
             .blinding_key
-            .as_ref()
-            .ok_or(Error::Protocol(
-                "No blinding key provided in ChainSwapDetails".to_string(),
-            ))?;
-        let blinding_key = ZKKeyPair::from_seckey_str(&Secp256k1::new(), blinding_str)?;
+            .as_deref()
+            .map(|key| ZKKeyPair::from_seckey_str(&Secp256k1::new(), key))
+            .transpose()?;
+        let asset_context = LiquidAssetContext::from_response(
+            chain_swap_details.asset_id.as_deref(),
+            chain_swap_details.fee_asset_id.as_deref(),
+        )?;
 
         Ok(Self {
             swap_type: SwapType::Chain,
@@ -300,6 +385,8 @@ impl LBtcSwapScript {
             locktime,
             sender_pubkey,
             blinding_key,
+            asset_context,
+            expected_amount: chain_swap_details.amount,
         })
     }
 
@@ -404,8 +491,47 @@ impl LBtcSwapScript {
         Ok(taproot_spend_info)
     }
 
-    /// Get taproot address for the swap script.
-    /// Always returns a confidential address
+    pub fn resolved_asset_context(&self, network: LiquidChain) -> LiquidAssetContext {
+        self.asset_context
+            .unwrap_or_else(|| LiquidAssetContext::legacy_lbtc(network))
+    }
+
+    pub fn requires_caller_funded_pset(&self) -> bool {
+        self.asset_context
+            .is_some_and(|context| !context.is_policy_asset_swap())
+    }
+
+    pub(crate) fn validate_currency(
+        &self,
+        network: LiquidChain,
+        currency: Currency,
+    ) -> Result<(), Error> {
+        let context = self.resolved_asset_context(network);
+        match currency {
+            Currency::LBtc
+                if context.swap_asset == network.bitcoin()
+                    && context.policy_asset == network.bitcoin() =>
+            {
+                Ok(())
+            }
+            Currency::LUsdt
+                if self.asset_context.is_some()
+                    && context.swap_asset != context.policy_asset
+                    && context.policy_asset == network.bitcoin() =>
+            {
+                Ok(())
+            }
+            Currency::Btc => Err(Error::Protocol(
+                "BTC is not a valid Liquid swap currency".to_string(),
+            )),
+            _ => Err(Error::Protocol(format!(
+                "Liquid response assets do not match requested currency {currency}"
+            ))),
+        }
+    }
+
+    /// Get the taproot address for the swap script. The address is
+    /// confidential only when the response supplied a blinding key.
     pub fn to_address(&self, network: LiquidChain) -> Result<EAddress, Error> {
         let taproot_spend_info = self.taproot_spendinfo()?;
 
@@ -413,17 +539,90 @@ impl LBtcSwapScript {
             &Secp256k1::new(),
             taproot_spend_info.internal_key(),
             taproot_spend_info.merkle_root(),
-            Some(self.blinding_key.public_key()),
+            self.blinding_key.as_ref().map(ZKKeyPair::public_key),
             network.into(),
         ))
     }
 
     pub fn validate_address(&self, chain: LiquidChain, address: String) -> Result<(), Error> {
+        let provided = Address::parse_with_params(&address, chain.into())?;
+        match (
+            provided.blinding_pubkey.is_some(),
+            self.blinding_key.is_some(),
+        ) {
+            (true, false) => {
+                return Err(Error::Protocol(
+                    "Confidential Liquid address requires a blinding key".to_string(),
+                ));
+            }
+            (false, true) => {
+                return Err(Error::Protocol(
+                    "Explicit Liquid address must not include a blinding key".to_string(),
+                ));
+            }
+            _ => {}
+        }
+
         let to_address = self.to_address(chain)?;
-        if to_address.to_string() == address {
+        if to_address == provided {
             Ok(())
         } else {
             Err(Error::Protocol("Script/LockupAddress Mismatch".to_string()))
+        }
+    }
+
+    pub(crate) fn blinding_secret(&self) -> Option<SecretKey> {
+        self.blinding_key.as_ref().map(ZKKeyPair::secret_key)
+    }
+
+    fn required_blinding_secret(&self) -> Result<SecretKey, Error> {
+        self.blinding_secret().ok_or_else(|| {
+            Error::Protocol(
+                "Legacy single-input Liquid transactions require a confidential L-BTC HTLC"
+                    .to_string(),
+            )
+        })
+    }
+
+    fn select_utxo(
+        &self,
+        candidates: impl IntoIterator<Item = (OutPoint, TxOut)>,
+        network: LiquidChain,
+        expected_txid: Option<elements::Txid>,
+    ) -> Result<Option<(OutPoint, TxOut)>, Error> {
+        let address = self.to_address(network)?;
+        let context = self.resolved_asset_context(network);
+        let mut first_validation_error = None;
+
+        for (outpoint, output) in candidates {
+            if output.script_pubkey != address.script_pubkey()
+                || expected_txid.is_some_and(|txid| outpoint.txid != txid)
+            {
+                continue;
+            }
+
+            match decode_swap_output(&output, self.blinding_secret(), context.swap_asset) {
+                Ok(secrets) if secrets.value == self.expected_amount => {
+                    return Ok(Some((outpoint, output)));
+                }
+                Ok(secrets) => {
+                    first_validation_error.get_or_insert_with(|| {
+                        Error::Protocol(format!(
+                            "Liquid swap amount mismatch: expected {}, got {}",
+                            self.expected_amount, secrets.value
+                        ))
+                    });
+                }
+                Err(error) => {
+                    first_validation_error.get_or_insert(error);
+                }
+            }
+        }
+
+        if let Some(error) = first_validation_error {
+            Err(error)
+        } else {
+            Ok(None)
         }
     }
 
@@ -433,7 +632,8 @@ impl LBtcSwapScript {
         liquid_client: &LC,
     ) -> Result<Option<(OutPoint, TxOut)>, Error> {
         let address = self.to_address(liquid_client.network())?;
-        liquid_client.get_address_utxo(&address).await
+        let candidates = liquid_client.get_address_utxos(&address).await?;
+        self.select_utxo(candidates, liquid_client.network(), None)
     }
 
     pub(crate) async fn fetch_swap_utxo<LC: LiquidClient + ?Sized>(
@@ -467,10 +667,16 @@ impl LBtcSwapScript {
         tx: &Transaction,
         network: LiquidChain,
     ) -> Result<(OutPoint, TxOut), Error> {
-        let address = self.to_address(network)?;
-        find_utxo(tx, &address.script_pubkey()).ok_or(Error::Protocol(
-            "No Liquid UTXO detected for this script".to_string(),
-        ))
+        let candidates = tx
+            .output
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(vout, output)| (OutPoint::new(tx.txid(), vout as u32), output));
+        self.select_utxo(candidates, network, Some(tx.txid()))?
+            .ok_or(Error::Protocol(
+                "No Liquid UTXO matched script, asset, amount, and transaction".to_string(),
+            ))
     }
 
     /// Fetch utxo for script from BoltzApi
@@ -537,22 +743,31 @@ fn bytes_to_u32_little_endian(bytes: &[u8]) -> u32 {
 
 /// Liquid swap transaction helper.
 #[derive(Debug, Clone)]
-pub struct LBtcSwapTx {
+pub struct LiquidSwapTx {
     pub kind: SwapTxKind,
-    pub swap_script: LBtcSwapScript,
+    pub swap_script: LiquidSwapScript,
     pub output_address: Address,
     pub funding_outpoint: OutPoint,
     pub funding_utxo: TxOut, // there should only ever be one outpoint in a swap
     pub genesis_hash: BlockHash, // Required to calculate sighash
 }
 
-impl LBtcSwapTx {
+/// Deprecated compatibility alias. Use [`LiquidSwapTx`].
+#[deprecated(since = "0.4.2", note = "renamed to LiquidSwapTx")]
+pub type LBtcSwapTx = LiquidSwapTx;
+
+impl LiquidSwapTx {
     pub(crate) async fn new_claim_with_utxo<LC: LiquidClient + ?Sized>(
-        swap_script: LBtcSwapScript,
+        swap_script: LiquidSwapScript,
         output_address: String,
         liquid_client: &LC,
         utxo: (OutPoint, TxOut),
-    ) -> Result<LBtcSwapTx, Error> {
+    ) -> Result<LiquidSwapTx, Error> {
+        if swap_script.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "L-USDT claims require the caller-funded PSET flow".to_string(),
+            ));
+        }
         if swap_script.swap_type == SwapType::Submarine {
             return Err(Error::Protocol(
                 "Claim transactions cannot be constructed for Submarine swaps.".to_string(),
@@ -561,7 +776,7 @@ impl LBtcSwapTx {
 
         let genesis_hash = liquid_client.get_genesis_hash().await?;
 
-        Ok(LBtcSwapTx {
+        Ok(LiquidSwapTx {
             kind: SwapTxKind::Claim,
             swap_script,
             output_address: Address::from_str(&output_address)?,
@@ -573,12 +788,17 @@ impl LBtcSwapTx {
 
     /// Craft a new ClaimTx. Only works for Reverse and Chain Swaps.
     pub async fn new_claim<LC: LiquidClient + ?Sized>(
-        swap_script: LBtcSwapScript,
+        swap_script: LiquidSwapScript,
         output_address: String,
         liquid_client: &LC,
         kaleidoswap_sdk: &BoltzApiClientV2,
         swap_id: String,
-    ) -> Result<LBtcSwapTx, Error> {
+    ) -> Result<LiquidSwapTx, Error> {
+        if swap_script.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "L-USDT claims require the caller-funded PSET flow".to_string(),
+            ));
+        }
         let utxo = swap_script
             .fetch_swap_utxo(
                 None,
@@ -594,12 +814,17 @@ impl LBtcSwapTx {
 
     /// Construct a RefundTX corresponding to the swap_script. Only works for Submarine and Chain Swaps.
     pub async fn new_refund<LC: LiquidClient + ?Sized>(
-        swap_script: LBtcSwapScript,
+        swap_script: LiquidSwapScript,
         output_address: &str,
         liquid_client: &LC,
         kaleidoswap_sdk: &BoltzApiClientV2,
         swap_id: String,
-    ) -> Result<LBtcSwapTx, Error> {
+    ) -> Result<LiquidSwapTx, Error> {
+        if swap_script.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "L-USDT refunds require the caller-funded PSET flow".to_string(),
+            ));
+        }
         if swap_script.swap_type == SwapType::ReverseSubmarine {
             return Err(Error::Protocol(
                 "Refund Txs cannot be constructed for Reverse Submarine Swaps.".to_string(),
@@ -619,7 +844,7 @@ impl LBtcSwapTx {
 
         let genesis_hash = liquid_client.get_genesis_hash().await?;
 
-        Ok(LBtcSwapTx {
+        Ok(LiquidSwapTx {
             kind: SwapTxKind::Refund,
             swap_script,
             output_address: address,
@@ -637,6 +862,11 @@ impl LBtcSwapTx {
         pub_nonce: &str,
         transaction_hash: &str,
     ) -> Result<(musig::PartialSignature, musig::PublicNonce), Error> {
+        if self.swap_script.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "Cooperative Liquid signing is disabled for L-USDT".to_string(),
+            ));
+        }
         self.swap_script
             .partial_sign(keys, pub_nonce, transaction_hash)
     }
@@ -653,6 +883,11 @@ impl LBtcSwapTx {
         is_cooperative: Option<Cooperative<'_>>,
         is_discount_ct: bool,
     ) -> Result<Transaction, Error> {
+        if self.swap_script.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "L-USDT claims require the caller-funded PSET flow".to_string(),
+            ));
+        }
         if self.swap_script.swap_type == SwapType::Submarine {
             return Err(Error::Protocol(
                 "Claim Tx signing is not applicable for Submarine Swaps".to_string(),
@@ -661,7 +896,7 @@ impl LBtcSwapTx {
 
         if self.kind == SwapTxKind::Refund {
             return Err(Error::Protocol(
-                "Cannot sign claim with refund-type LBtcSwapTx".to_string(),
+                "Cannot sign claim with refund-type LiquidSwapTx".to_string(),
             ));
         }
 
@@ -828,7 +1063,7 @@ impl LBtcSwapTx {
 
         let unblined_utxo = self
             .funding_utxo
-            .unblind(&secp, self.swap_script.blinding_key.secret_key())?;
+            .unblind(&secp, self.swap_script.required_blinding_secret()?)?;
         let asset_id = unblined_utxo.asset;
         let out_abf = AssetBlindingFactor::new(&mut rng);
         let exp_asset = Asset::Explicit(asset_id);
@@ -963,6 +1198,11 @@ impl LBtcSwapTx {
         is_cooperative: Option<Cooperative<'_>>,
         is_discount_ct: bool,
     ) -> Result<Transaction, Error> {
+        if self.swap_script.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "L-USDT refunds require the caller-funded PSET flow".to_string(),
+            ));
+        }
         if self.swap_script.swap_type == SwapType::ReverseSubmarine {
             return Err(Error::Protocol(
                 "Refund Tx signing is not applicable for Reverse Submarine Swaps".to_string(),
@@ -971,7 +1211,7 @@ impl LBtcSwapTx {
 
         if self.kind == SwapTxKind::Claim {
             return Err(Error::Protocol(
-                "Cannot sign refund with a claim-type LBtcSwapTx".to_string(),
+                "Cannot sign refund with a claim-type LiquidSwapTx".to_string(),
             ));
         }
 
@@ -1120,7 +1360,7 @@ impl LBtcSwapTx {
 
         let unblined_utxo = self
             .funding_utxo
-            .unblind(&secp, self.swap_script.blinding_key.secret_key())?;
+            .unblind(&secp, self.swap_script.required_blinding_secret()?)?;
         let asset_id = unblined_utxo.asset;
         let out_abf = AssetBlindingFactor::new(&mut rng);
         let exp_asset = Asset::Explicit(asset_id);
@@ -1336,7 +1576,7 @@ fn convert_public_key(key: elements::secp256k1_zkp::PublicKey) -> secp256k1_musi
     secp256k1_musig::PublicKey::from_slice(&key.serialize()[..]).expect("public key size matches")
 }
 
-impl SwapScriptCommon for LBtcSwapScript {
+impl SwapScriptCommon for LiquidSwapScript {
     fn swap_type(&self) -> SwapType {
         self.swap_type
     }
@@ -1402,6 +1642,150 @@ fn tx_size(tx: &Transaction, is_discount_ct: bool) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_script(
+        blinding_key: Option<ZKKeyPair>,
+        asset_context: Option<LiquidAssetContext>,
+        expected_amount: u64,
+    ) -> LiquidSwapScript {
+        let secp = Secp256k1::new();
+        let receiver = ZKKeyPair::new(&secp, &mut OsRng);
+        let sender = ZKKeyPair::new(&secp, &mut OsRng);
+        LiquidSwapScript {
+            swap_type: SwapType::Submarine,
+            side: None,
+            funding_addrs: None,
+            hashlock: Preimage::random().hash160,
+            receiver_pubkey: PublicKey::new(receiver.public_key()),
+            locktime: LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey::new(sender.public_key()),
+            blinding_key,
+            asset_context,
+            expected_amount,
+        }
+    }
+
+    fn explicit_output(script: Script, asset: elements::AssetId, value: u64) -> TxOut {
+        TxOut {
+            asset: Asset::Explicit(asset),
+            value: Value::Explicit(value),
+            nonce: elements::confidential::Nonce::Null,
+            script_pubkey: script,
+            witness: TxOutWitness::default(),
+        }
+    }
+
+    #[macros::test_all]
+    fn currency_asset_decoder_accepts_explicit_output_with_zero_blinders() {
+        let asset = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let output = explicit_output(Script::new(), asset, 42);
+
+        let secrets = decode_swap_output(&output, None, asset).unwrap();
+
+        assert_eq!(secrets.asset, asset);
+        assert_eq!(secrets.value, 42);
+        assert_eq!(secrets.asset_bf, AssetBlindingFactor::zero());
+        assert_eq!(secrets.value_bf, ValueBlindingFactor::zero());
+    }
+
+    #[macros::test_all]
+    fn currency_asset_decoder_rejects_wrong_asset_key_and_mixed_encoding() {
+        let secp = Secp256k1::new();
+        let asset = LiquidChain::LiquidRegtest.bitcoin();
+        let other = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let explicit = explicit_output(Script::new(), asset, 42);
+        let key = ZKKeyPair::new(&secp, &mut OsRng);
+
+        assert!(decode_swap_output(&explicit, None, other).is_err());
+        assert!(decode_swap_output(&explicit, Some(key.secret_key()), asset).is_err());
+
+        let mixed = TxOut {
+            asset: Asset::new_confidential(&secp, asset, AssetBlindingFactor::zero()),
+            ..explicit
+        };
+        assert!(decode_swap_output(&mixed, None, asset).is_err());
+    }
+
+    #[macros::test_all]
+    fn explicit_and_confidential_address_validation_is_strict() {
+        let secp = Secp256k1::new();
+        let key = ZKKeyPair::new(&secp, &mut OsRng);
+        let explicit = test_script(None, None, 42);
+        let mut confidential = explicit.clone();
+        confidential.blinding_key = Some(key);
+        let explicit_address = explicit.to_address(LiquidChain::LiquidRegtest).unwrap();
+        let confidential_address = confidential.to_address(LiquidChain::LiquidRegtest).unwrap();
+
+        explicit
+            .validate_address(LiquidChain::LiquidRegtest, explicit_address.to_string())
+            .unwrap();
+        confidential
+            .validate_address(LiquidChain::LiquidRegtest, confidential_address.to_string())
+            .unwrap();
+        assert!(explicit
+            .validate_address(LiquidChain::LiquidRegtest, confidential_address.to_string(),)
+            .is_err());
+        assert!(confidential
+            .validate_address(LiquidChain::LiquidRegtest, explicit_address.to_string(),)
+            .is_err());
+    }
+
+    #[macros::test_all]
+    fn utxo_selection_skips_decoys_and_requires_script_asset_amount_and_txid() {
+        let network = LiquidChain::LiquidRegtest;
+        let swap_asset = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let script = test_script(
+            None,
+            Some(LiquidAssetContext {
+                swap_asset,
+                policy_asset: network.bitcoin(),
+            }),
+            42,
+        );
+        let swap_spk = script.to_address(network).unwrap().script_pubkey();
+        let expected_txid = elements::Txid::from_str(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        )
+        .unwrap();
+        let other_txid = elements::Txid::from_str(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+        .unwrap();
+        let candidates = vec![
+            (
+                OutPoint::new(expected_txid, 0),
+                explicit_output(swap_spk.clone(), network.bitcoin(), 42),
+            ),
+            (
+                OutPoint::new(expected_txid, 1),
+                explicit_output(swap_spk.clone(), swap_asset, 41),
+            ),
+            (
+                OutPoint::new(other_txid, 2),
+                explicit_output(swap_spk.clone(), swap_asset, 42),
+            ),
+            (
+                OutPoint::new(expected_txid, 3),
+                explicit_output(swap_spk, swap_asset, 42),
+            ),
+        ];
+
+        let selected = script
+            .select_utxo(candidates, network, Some(expected_txid))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(selected.0, OutPoint::new(expected_txid, 3));
+    }
 
     #[macros::test_all]
     fn test_tx_size() {

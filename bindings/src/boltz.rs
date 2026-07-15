@@ -7,7 +7,7 @@ use kaleidoswap_sdk::boltz::{
     ChannelInfo, FailureReasonIncorrectAmounts, SubSwapStates, SwapStatus, TransactionInfo,
 };
 use kaleidoswap_sdk::error::Error as CoreError;
-use kaleidoswap_sdk::network::{Chain, Network};
+use kaleidoswap_sdk::network::{Chain, Currency, Network};
 use kaleidoswap_sdk::swaps::boltz::*;
 use kaleidoswap_sdk::util::secrets::Preimage;
 use std::collections::HashMap;
@@ -73,11 +73,15 @@ impl BoltzApiClientV2 {
         &self,
         swap_request: CreateSubmarineRequest,
     ) -> Result<CreateSubmarineResponse, Error> {
+        let from_currency = swap_request
+            .from
+            .resolve_currency(swap_request.from_currency)?;
+        let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
         let response = self
             .inner
             .post_swap_req(&boltz::CreateSubmarineRequest {
-                from: swap_request.from.to_string(),
-                to: swap_request.to.to_string(),
+                from: from_currency.to_string(),
+                to: to_currency.to_string(),
                 invoice: swap_request.invoice.clone(),
                 refund_public_key: swap_request.refund_public_key,
                 pair_hash: swap_request.pair_hash.clone(),
@@ -85,10 +89,11 @@ impl BoltzApiClientV2 {
                 webhook: None,
             })
             .await?;
-        response.validate(
+        response.validate_with_currency(
             &swap_request.invoice,
             &swap_request.refund_public_key,
             swap_request.from,
+            Some(from_currency),
         )?;
         Ok(response)
     }
@@ -98,13 +103,17 @@ impl BoltzApiClientV2 {
         &self,
         swap_request: CreateReverseRequest,
     ) -> Result<CreateReverseResponse, Error> {
+        let from_currency = swap_request
+            .from
+            .resolve_currency(swap_request.from_currency)?;
+        let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
         let response = self
             .inner
             .post_reverse_req(boltz::CreateReverseRequest {
                 invoice_amount: Some(swap_request.invoice_amount),
                 invoice: None,
-                from: swap_request.from.to_string(),
-                to: swap_request.to.to_string(),
+                from: from_currency.to_string(),
+                to: to_currency.to_string(),
                 preimage_hash: Some(
                     swap_request
                         .preimage_hash
@@ -120,10 +129,11 @@ impl BoltzApiClientV2 {
                 webhook: None,
             })
             .await?;
-        response.validate(
+        response.validate_with_currency(
             &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
             &swap_request.claim_public_key,
             swap_request.to,
+            Some(to_currency),
         )?;
         Ok(response)
     }
@@ -133,11 +143,15 @@ impl BoltzApiClientV2 {
         &self,
         swap_request: CreateChainRequest,
     ) -> Result<CreateChainResponse, Error> {
+        let from_currency = swap_request
+            .from
+            .resolve_currency(swap_request.from_currency)?;
+        let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
         let response = self
             .inner
             .post_chain_req(boltz::CreateChainRequest {
-                from: swap_request.from.to_string(),
-                to: swap_request.to.to_string(),
+                from: from_currency.to_string(),
+                to: to_currency.to_string(),
                 preimage_hash: swap_request
                     .preimage_hash
                     .parse::<sha256::Hash>()
@@ -151,11 +165,13 @@ impl BoltzApiClientV2 {
                 webhook: None,
             })
             .await?;
-        response.validate(
+        response.validate_with_currency(
             &swap_request.claim_public_key,
             &swap_request.refund_public_key,
             swap_request.from,
             swap_request.to,
+            Some(from_currency),
+            Some(to_currency),
         )?;
         Ok(response)
     }
@@ -283,6 +299,8 @@ pub struct ChainSwapDetails {
     pub claim_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bip21: Option<String>,
+    pub asset_id: Option<String>,
+    pub fee_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Enum)]
@@ -304,6 +322,10 @@ pub enum SubSwapStates {
 pub struct CreateSubmarineRequest {
     pub from: Chain,
     pub to: Chain,
+    #[uniffi(default = None)]
+    pub from_currency: Option<Currency>,
+    #[uniffi(default = None)]
+    pub to_currency: Option<Currency>,
     pub invoice: String,
     pub refund_public_key: PublicKey,
     #[uniffi(default = None)]
@@ -316,6 +338,10 @@ pub struct CreateSubmarineRequest {
 pub struct CreateReverseRequest {
     pub from: Chain,
     pub to: Chain,
+    #[uniffi(default = None)]
+    pub from_currency: Option<Currency>,
+    #[uniffi(default = None)]
+    pub to_currency: Option<Currency>,
     pub preimage_hash: String,
     pub claim_public_key: PublicKey,
     pub invoice_amount: u64,
@@ -355,6 +381,8 @@ pub struct CreateSubmarineResponse {
     pub swap_tree: SwapTree,
     pub timeout_block_height: u64,
     pub blinding_key: Option<String>,
+    pub asset_id: Option<String>,
+    pub fee_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -368,12 +396,18 @@ pub struct CreateReverseResponse {
     pub onchain_amount: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blinding_key: Option<String>,
+    pub asset_id: Option<String>,
+    pub fee_asset_id: Option<String>,
 }
 
 #[derive(Debug, Record)]
 pub struct CreateChainRequest {
     pub from: Chain,
     pub to: Chain,
+    #[uniffi(default = None)]
+    pub from_currency: Option<Currency>,
+    #[uniffi(default = None)]
+    pub to_currency: Option<Currency>,
     pub preimage_hash: String,
     pub claim_public_key: PublicKey,
     pub refund_public_key: PublicKey,
@@ -467,6 +501,9 @@ pub struct ChainPair {
     pub limits: PairLimits,
     /// Total fees required for the swap
     pub fees: ChainFees,
+    pub from_asset_id: Option<String>,
+    pub to_asset_id: Option<String>,
+    pub fee_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -479,6 +516,9 @@ pub struct ReversePair {
     pub limits: ReverseLimits,
     /// Total fees required for the swap
     pub fees: ReverseFees,
+    pub from_asset_id: Option<String>,
+    pub to_asset_id: Option<String>,
+    pub fee_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -491,12 +531,16 @@ pub struct SubmarinePair {
     pub limits: SubmarinePairLimits,
     /// Total fees required for the swap
     pub fees: SubmarineFees,
+    pub from_asset_id: Option<String>,
+    pub to_asset_id: Option<String>,
+    pub fee_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
 pub struct GetSubmarinePairsResponse {
     pub btc: HashMap<String, SubmarinePair>,
     pub lbtc: HashMap<String, SubmarinePair>,
+    pub lusdt: HashMap<String, SubmarinePair>,
 }
 
 #[uniffi::remote(Record)]

@@ -17,11 +17,50 @@ pub enum Chain {
     Liquid(LiquidChain),
 }
 
+/// Asset selected for a swap independently from the chain network.
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Currency {
+    Btc,
+    LBtc,
+    LUsdt,
+}
+
+impl fmt::Display for Currency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Currency::Btc => write!(f, "BTC"),
+            Currency::LBtc => write!(f, "L-BTC"),
+            Currency::LUsdt => write!(f, "L-USDT"),
+        }
+    }
+}
+
 impl fmt::Display for Chain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Chain::Bitcoin(_) => write!(f, "BTC"),
             Chain::Liquid(_) => write!(f, "L-BTC"),
+        }
+    }
+}
+
+impl Chain {
+    /// Resolve an optional asset selection for this chain.
+    ///
+    /// Omitting the currency preserves the legacy mapping: Bitcoin uses BTC
+    /// and Liquid uses L-BTC.
+    pub fn resolve_currency(self, currency: Option<Currency>) -> Result<Currency, Error> {
+        let currency = currency.unwrap_or(match self {
+            Chain::Bitcoin(_) => Currency::Btc,
+            Chain::Liquid(_) => Currency::LBtc,
+        });
+
+        match (self, currency) {
+            (Chain::Bitcoin(_), Currency::Btc)
+            | (Chain::Liquid(_), Currency::LBtc | Currency::LUsdt) => Ok(currency),
+            (chain, currency) => Err(Error::Protocol(format!(
+                "Currency {currency} is not valid for chain {chain}"
+            ))),
         }
     }
 }
@@ -149,10 +188,10 @@ pub trait BitcoinClient: Send + Sync {
 
 #[macros::async_trait]
 pub trait LiquidClient: Send + Sync {
-    async fn get_address_utxo(
+    async fn get_address_utxos(
         &self,
         address: &elements::Address,
-    ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error>;
+    ) -> Result<Vec<(elements::OutPoint, elements::TxOut)>, Error>;
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error>;
 
@@ -161,4 +200,39 @@ pub trait LiquidClient: Send + Sync {
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error>;
 
     fn network(&self) -> LiquidChain;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn currency_defaults_preserve_legacy_chain_strings() {
+        assert_eq!(
+            Chain::Bitcoin(BitcoinChain::BitcoinRegtest)
+                .resolve_currency(None)
+                .unwrap(),
+            Currency::Btc
+        );
+        assert_eq!(
+            Chain::Liquid(LiquidChain::LiquidRegtest)
+                .resolve_currency(None)
+                .unwrap(),
+            Currency::LBtc
+        );
+    }
+
+    #[test]
+    fn currency_validation_separates_asset_from_network() {
+        let bitcoin = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let liquid = Chain::Liquid(LiquidChain::LiquidRegtest);
+
+        assert_eq!(
+            liquid.resolve_currency(Some(Currency::LUsdt)).unwrap(),
+            Currency::LUsdt
+        );
+        assert!(bitcoin.resolve_currency(Some(Currency::LUsdt)).is_err());
+        assert!(liquid.resolve_currency(Some(Currency::Btc)).is_err());
+        assert_eq!(Currency::LUsdt.to_string(), "L-USDT");
+    }
 }

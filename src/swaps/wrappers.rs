@@ -19,7 +19,7 @@ use crate::error::Error;
 use crate::network::{BitcoinClient, Chain, LiquidChain, LiquidClient, Network};
 use crate::swaps::bitcoin::{BtcSwapScript, BtcSwapTx};
 use crate::swaps::fees::estimate_claim_fee;
-use crate::swaps::liquid::{LBtcSwapScript, LBtcSwapTx};
+use crate::swaps::liquid::{decode_swap_output, LiquidSwapScript, LiquidSwapTx};
 use crate::util::fees::Fee;
 use crate::util::invoice::LightningInvoice;
 use crate::util::secrets::Preimage;
@@ -228,7 +228,7 @@ pub trait SwapScriptCommon {
 #[derive(Clone, Debug)]
 pub enum SwapScriptImpl {
     Bitcoin(Arc<BtcSwapScript>),
-    Liquid(Arc<LBtcSwapScript>),
+    Liquid(Arc<LiquidSwapScript>),
 }
 
 #[derive(Clone, Debug)]
@@ -254,7 +254,7 @@ impl SwapScriptImpl {
         Self::Bitcoin(Arc::new(script))
     }
 
-    pub fn liquid(script: LBtcSwapScript) -> Self {
+    pub fn liquid(script: LiquidSwapScript) -> Self {
         Self::Liquid(Arc::new(script))
     }
 
@@ -292,7 +292,7 @@ impl SwapScript {
             }
             Chain::Liquid(_) => {
                 let script =
-                    LBtcSwapScript::submarine_from_swap_resp(create_swap_response, our_pubkey)?;
+                    LiquidSwapScript::submarine_from_swap_resp(create_swap_response, our_pubkey)?;
                 Ok(SwapScriptImpl::liquid(script))
             }
         };
@@ -311,17 +311,21 @@ impl SwapScript {
                 Ok(SwapScriptImpl::bitcoin(script))
             }
             Chain::Liquid(_) => {
-                let script = LBtcSwapScript::reverse_from_swap_resp(reverse_response, our_pubkey)?;
+                let script =
+                    LiquidSwapScript::reverse_from_swap_resp(reverse_response, our_pubkey)?;
                 Ok(SwapScriptImpl::liquid(script))
             }
         };
 
+        let script = script?;
         let boltz_lockup = Amount::from_sat(reverse_response.onchain_amount);
-        let mrh_amount = match chain {
-            Chain::Bitcoin(_) => None,
-            Chain::Liquid(_) => Some(boltz_lockup - estimate_claim_fee(chain, 0.1)),
+        let mrh_amount = match (&script, chain) {
+            (SwapScriptImpl::Liquid(script), _) if !script.requires_caller_funded_pset() => {
+                Some(boltz_lockup - estimate_claim_fee(chain, 0.1))
+            }
+            _ => None,
         };
-        Ok(Self::new(script?, Some(boltz_lockup), mrh_amount))
+        Ok(Self::new(script, Some(boltz_lockup), mrh_amount))
     }
 
     pub fn chain_from_swap_resp(
@@ -339,7 +343,7 @@ impl SwapScript {
             }
             Chain::Liquid(_) => {
                 let script =
-                    LBtcSwapScript::chain_from_swap_resp(side, chain_swap_details, our_pubkey)?;
+                    LiquidSwapScript::chain_from_swap_resp(side, chain_swap_details, our_pubkey)?;
                 Ok(SwapScriptImpl::liquid(script))
             }
         };
@@ -534,6 +538,14 @@ impl SwapScript {
         claim_address: &str,
         options: DirectTxOptions,
     ) -> Result<(), Error> {
+        if matches!(
+            &self.script,
+            SwapScriptImpl::Liquid(script) if script.requires_caller_funded_pset()
+        ) {
+            return Err(Error::Protocol(
+                "Magic routing is L-BTC-only and is disabled for L-USDT".to_string(),
+            ));
+        }
         chain_client.try_broadcast_tx(direct_tx).await?;
         if let Some(mrh_amount) = self.mrh_amount {
             return SwapScript::check_direct_transaction_inner(
@@ -577,6 +589,14 @@ impl SwapScript {
         preimage: &Preimage,
         params: SwapTransactionParams<'_>,
     ) -> Result<BtcLikeTransaction, Error> {
+        if let SwapScriptImpl::Liquid(script) = &self.script {
+            if script.requires_caller_funded_pset() {
+                return Err(Error::Protocol(
+                    "L-USDT spends require the caller-funded PSET flow".to_string(),
+                ));
+            }
+        }
+
         let cooperative = self
             .get_cooperative(
                 SwapTxKind::Claim,
@@ -644,15 +664,13 @@ impl SwapScript {
                     .await?;
 
                 if self.boltz_lockup.is_some() {
-                    let secrets = super::liquid::unblind_utxo(
-                        chain_client.network(),
-                        utxo.1.clone(),
-                        script.blinding_key.secret_key(),
-                    )?;
+                    let context = script.resolved_asset_context(chain_client.network());
+                    let secrets =
+                        decode_swap_output(&utxo.1, script.blinding_secret(), context.swap_asset)?;
                     self.validate_lockup_amount(Amount::from_sat(secrets.value))?;
                 }
 
-                let tx = LBtcSwapTx::new_claim_with_utxo(
+                let tx = LiquidSwapTx::new_claim_with_utxo(
                     script.as_ref().clone(),
                     params.output_address.clone(),
                     chain_client,
@@ -671,6 +689,14 @@ impl SwapScript {
         &self,
         params: SwapTransactionParams<'_>,
     ) -> Result<BtcLikeTransaction, Error> {
+        if let SwapScriptImpl::Liquid(script) = &self.script {
+            if script.requires_caller_funded_pset() {
+                return Err(Error::Protocol(
+                    "L-USDT spends require the caller-funded PSET flow".to_string(),
+                ));
+            }
+        }
+
         let cooperative = self
             .get_cooperative(
                 SwapTxKind::Refund,
@@ -695,7 +721,7 @@ impl SwapScript {
                     .map(BtcLikeTransaction::bitcoin)
             }
             SwapScriptImpl::Liquid(script) => {
-                let tx = LBtcSwapTx::new_refund(
+                let tx = LiquidSwapTx::new_refund(
                     script.as_ref().clone(),
                     &params.output_address,
                     params.chain_client.require_liquid_client()?,

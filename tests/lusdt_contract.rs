@@ -12,6 +12,13 @@ use lightning_invoice::Bolt11Invoice;
 use secp256k1_musig::musig;
 use serde_json::Value;
 
+use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
+use kaleidoswap_sdk::swaps::boltz::{
+    CreateChainResponse, CreateReverseResponse, CreateSubmarineResponse, GetChainPairsResponse,
+    GetReversePairsResponse, GetSubmarinePairsResponse, Side,
+};
+use kaleidoswap_sdk::LiquidSwapScript;
+
 const GOLDEN: &str = include_str!("fixtures/lusdt-v1/liquid-golden-vectors.json");
 const WIRE: &str = include_str!("fixtures/lusdt-v1/wire-contract.json");
 
@@ -219,6 +226,126 @@ fn wire_fixture_freezes_the_lusdt_v1_contract() {
             "transaction.claimed",
         ]
     );
+}
+
+#[test]
+fn sdk_parses_lusdt_pair_cards_and_asset_extensions() {
+    let fixture: Value = serde_json::from_str(WIRE).unwrap();
+
+    let submarine: GetSubmarinePairsResponse = serde_json::from_value(serde_json::json!({
+        "BTC": {},
+        "L-BTC": {},
+        "L-USDT": value_at(&fixture, "/pairResponses/submarine/L-USDT")
+    }))
+    .unwrap();
+    let reverse: GetReversePairsResponse =
+        serde_json::from_value(value_at(&fixture, "/pairResponses/reverse").clone()).unwrap();
+    let chain: GetChainPairsResponse = serde_json::from_value(serde_json::json!({
+        "BTC": value_at(&fixture, "/pairResponses/chain/BTC"),
+        "L-BTC": {}
+    }))
+    .unwrap();
+
+    let submarine_pair = submarine.get_lusdt_to_btc_pair().unwrap();
+    assert_eq!(
+        submarine_pair.from_asset_id.as_deref(),
+        Some(string_at(&fixture, "/assets/lusdt"))
+    );
+    assert_eq!(
+        submarine_pair.fee_asset_id.as_deref(),
+        Some(string_at(&fixture, "/assets/policy"))
+    );
+    assert_eq!(
+        reverse
+            .get_btc_to_lusdt_pair()
+            .unwrap()
+            .to_asset_id
+            .as_deref(),
+        Some(string_at(&fixture, "/assets/lusdt"))
+    );
+    assert_eq!(
+        chain
+            .get_btc_to_lusdt_pair()
+            .unwrap()
+            .fee_asset_id
+            .as_deref(),
+        Some(string_at(&fixture, "/assets/policy"))
+    );
+}
+
+#[test]
+fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
+    let fixture: Value = serde_json::from_str(WIRE).unwrap();
+    let submarine: CreateSubmarineResponse =
+        serde_json::from_value(value_at(&fixture, "/create/submarine/response").clone()).unwrap();
+    let submarine_refund_key = bitcoin::PublicKey::from_str(string_at(
+        &fixture,
+        "/create/submarine/request/refundPublicKey",
+    ))
+    .unwrap();
+    let submarine_script =
+        LiquidSwapScript::submarine_from_swap_resp(&submarine, submarine_refund_key).unwrap();
+    submarine
+        .validate_with_currency(
+            string_at(&fixture, "/create/submarine/request/invoice"),
+            &submarine_refund_key,
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::LUsdt),
+        )
+        .unwrap();
+    submarine_script
+        .validate_address(LiquidChain::LiquidRegtest, submarine.address.clone())
+        .unwrap();
+    assert!(submarine_script.blinding_key.is_none());
+    assert!(submarine_script.requires_caller_funded_pset());
+    assert_eq!(submarine_script.expected_amount, submarine.expected_amount);
+
+    let mut missing_assets = submarine.clone();
+    missing_assets.asset_id = None;
+    missing_assets.fee_asset_id = None;
+    assert!(missing_assets
+        .validate_with_currency(
+            string_at(&fixture, "/create/submarine/request/invoice"),
+            &submarine_refund_key,
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::LUsdt),
+        )
+        .is_err());
+
+    let reverse: CreateReverseResponse =
+        serde_json::from_value(value_at(&fixture, "/create/reverse/response").clone()).unwrap();
+    let reverse_claim_key = bitcoin::PublicKey::from_str(string_at(
+        &fixture,
+        "/create/reverse/request/claimPublicKey",
+    ))
+    .unwrap();
+    let reverse_script =
+        LiquidSwapScript::reverse_from_swap_resp(&reverse, reverse_claim_key).unwrap();
+    reverse_script
+        .validate_address(LiquidChain::LiquidRegtest, reverse.lockup_address.clone())
+        .unwrap();
+    assert!(reverse_script.blinding_key.is_none());
+
+    let chain: CreateChainResponse =
+        serde_json::from_value(value_at(&fixture, "/create/chain/response").clone()).unwrap();
+    let chain_claim_key = bitcoin::PublicKey::from_str(string_at(
+        &fixture,
+        "/create/chain/userAmountRequest/claimPublicKey",
+    ))
+    .unwrap();
+    let chain_script = LiquidSwapScript::chain_from_swap_resp(
+        Side::Claim,
+        chain.claim_details.clone(),
+        chain_claim_key,
+    )
+    .unwrap();
+    chain_script
+        .validate_address(
+            LiquidChain::LiquidRegtest,
+            chain.claim_details.lockup_address,
+        )
+        .unwrap();
+    assert!(chain_script.requires_caller_funded_pset());
 }
 
 fn pubkey_from_secret(secret: &str) -> PublicKey {
