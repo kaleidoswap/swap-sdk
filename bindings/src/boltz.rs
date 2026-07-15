@@ -23,6 +23,9 @@ pub enum Error {
     #[error("HTTP error: {0}")]
     Http(String),
 
+    #[error("A caller-provided Liquid policy-asset input is required to pay fees")]
+    LiquidFeeAssetRequired,
+
     #[error("{0}")]
     Generic(String),
 }
@@ -31,6 +34,7 @@ impl From<CoreError> for Error {
     fn from(err: CoreError) -> Self {
         match err {
             CoreError::HTTP(s) => Error::Http(s),
+            CoreError::LiquidFeeAssetRequired => Error::LiquidFeeAssetRequired,
             _ => Error::Generic(err.message()),
         }
     }

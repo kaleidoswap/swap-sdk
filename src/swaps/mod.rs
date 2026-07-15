@@ -7,4 +7,5 @@ pub mod magic_routing;
 mod status_stream;
 mod wrappers;
 
+pub use liquid::{FundedLiquidPset, LiquidOutputSecrets, LiquidPsetTemplate, PreparedLiquidSpend};
 pub use wrappers::*;

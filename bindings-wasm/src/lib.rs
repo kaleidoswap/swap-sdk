@@ -902,9 +902,13 @@ use kaleidoswap_sdk::boltz::{
 use kaleidoswap_sdk::fees::Fee;
 use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 use kaleidoswap_sdk::network::Chain;
+use kaleidoswap_sdk::swaps::liquid::{
+    FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
+};
 use kaleidoswap_sdk::swaps::{
     BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
-    SwapScript as CoreSwapScript, SwapTransactionParams, TransactionOptions,
+    LiquidPsetParams as CoreLiquidPsetParams, SwapScript as CoreSwapScript, SwapTransactionParams,
+    TransactionOptions,
 };
 use kaleidoswap_sdk::util::secrets::Preimage as CorePreimage;
 use std::str::FromStr as _;
@@ -989,6 +993,41 @@ impl TxParams {
             self.esplora_timeout_secs,
         )
     }
+    fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
+        kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
+            self.boltz_base_url.clone(),
+            self.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        )
+    }
+}
+
+/// Parameters for preparing a caller-funded Liquid PSET (a plain JS object).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LiquidPsetParams {
+    output_address: String,
+    swap_id: String,
+    max_fee: u64,
+    quoted_fee_cap: u64,
+    boltz_base_url: String,
+    #[serde(default)]
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    liquid_esplora_url: String,
+    #[serde(default)]
+    esplora_timeout_secs: Option<u64>,
+}
+
+impl LiquidPsetParams {
+    fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
+        build_chain_client(
+            &self.network,
+            &None,
+            &Some(self.liquid_esplora_url.clone()),
+            self.esplora_timeout_secs,
+        )
+    }
+
     fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
         kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
             self.boltz_base_url.clone(),
@@ -1116,6 +1155,112 @@ impl SwapScript {
             .await
             .map_err(core_err)?;
         Ok(BtcLikeTransaction { inner: tx })
+    }
+
+    /// Prepare an L-USDT claim PSET. The returned object pins the swap intent
+    /// and must be retained until `finalizeClaim` is called.
+    #[wasm_bindgen(js_name = prepareLiquidClaim)]
+    pub async fn prepare_liquid_claim(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedLiquidSpend, JsValue> {
+        let p: LiquidPsetParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let prepared = self
+            .inner
+            .prepare_liquid_claim(CoreLiquidPsetParams {
+                output_address: p.output_address,
+                max_fee: p.max_fee,
+                quoted_fee_cap: p.quoted_fee_cap,
+                swap_id: p.swap_id,
+                chain_client: &chain_client,
+                boltz_api: &boltz,
+                options: None,
+            })
+            .await
+            .map_err(core_err)?;
+        Ok(PreparedLiquidSpend { inner: prepared })
+    }
+
+    /// Prepare an L-USDT refund PSET.
+    #[wasm_bindgen(js_name = prepareLiquidRefund)]
+    pub async fn prepare_liquid_refund(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedLiquidSpend, JsValue> {
+        let p: LiquidPsetParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let prepared = self
+            .inner
+            .prepare_liquid_refund(CoreLiquidPsetParams {
+                output_address: p.output_address,
+                max_fee: p.max_fee,
+                quoted_fee_cap: p.quoted_fee_cap,
+                swap_id: p.swap_id,
+                chain_client: &chain_client,
+                boltz_api: &boltz,
+                options: None,
+            })
+            .await
+            .map_err(core_err)?;
+        Ok(PreparedLiquidSpend { inner: prepared })
+    }
+}
+
+/// Immutable L-USDT spend intent returned by `prepareLiquidClaim` or
+/// `prepareLiquidRefund`.
+#[wasm_bindgen]
+pub struct PreparedLiquidSpend {
+    inner: CorePreparedLiquidSpend,
+}
+
+#[wasm_bindgen]
+impl PreparedLiquidSpend {
+    /// Return the base64 PSET template and its pinned asset/amount/fee metadata.
+    pub fn template(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.template())
+    }
+
+    /// Validate the funded PSET and add only the swap input's claim witness.
+    #[wasm_bindgen(js_name = finalizeClaim)]
+    pub fn finalize_claim(
+        &self,
+        funded_pset: JsValue,
+        keys_secret_hex: String,
+        preimage_hex: String,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let funded: FundedLiquidPset = from_js(funded_pset)?;
+        let secret = SecretKey::from_str(&keys_secret_hex).map_err(js_err)?;
+        let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let tx = self
+            .inner
+            .finalize_claim(funded, &keys, &preimage)
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::liquid(tx),
+        })
+    }
+
+    /// Validate the funded PSET and add only the swap input's refund witness.
+    #[wasm_bindgen(js_name = finalizeRefund)]
+    pub fn finalize_refund(
+        &self,
+        funded_pset: JsValue,
+        keys_secret_hex: String,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let funded: FundedLiquidPset = from_js(funded_pset)?;
+        let secret = SecretKey::from_str(&keys_secret_hex).map_err(js_err)?;
+        let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let tx = self
+            .inner
+            .finalize_refund(funded, &keys)
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::liquid(tx),
+        })
     }
 }
 

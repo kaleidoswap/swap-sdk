@@ -22,9 +22,12 @@ import type { components } from "./generated/node-types";
 export { BoltzClient } from "../vendor/bindings_wasm.js";
 
 // Client-side swap-script + claim/refund transaction construction. Re-exported
-// as opaque handles; `SwapScript.constructClaim/constructRefund` take a
-// `TxParams` object (below) and return a `BtcLikeTransaction`.
-export { SwapScript, BtcLikeTransaction } from "../vendor/bindings_wasm.js";
+// as opaque handles; their plain-object boundary types are documented below.
+export {
+  SwapScript,
+  PreparedLiquidSpend,
+  BtcLikeTransaction,
+} from "../vendor/bindings_wasm.js";
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.
@@ -55,6 +58,46 @@ export interface TxParams {
    * (submarine/reverse cooperative claims work with the default).
    */
   cooperative?: boolean;
+}
+
+/** Parameters for the caller-funded L-USDT PSET prepare methods. */
+export interface LiquidPsetParams {
+  outputAddress: string;
+  swapId: string;
+  /** Application fee ceiling in policy-asset satoshis. */
+  maxFee: bigint;
+  /** Fee ceiling from the accepted quote. The lower ceiling is pinned. */
+  quotedFeeCap: bigint;
+  boltzBaseUrl: string;
+  boltzTimeoutSecs?: number;
+  network: Network;
+  liquidEsploraUrl: string;
+  esploraTimeoutSecs?: number;
+}
+
+/** Base64 PSET template and immutable swap intent. */
+export interface LiquidPsetTemplate {
+  pset: string;
+  swapInputIndex: number;
+  paymentOutputIndex: number;
+  swapAssetId: string;
+  policyAssetId: string;
+  amount: bigint;
+  maxFee: bigint;
+}
+
+/** Unblinded data for the designated full-value L-USDT payout. */
+export interface LiquidOutputSecrets {
+  assetId: string;
+  value: bigint;
+  assetBlindingFactor: string;
+  valueBlindingFactor: string;
+}
+
+/** Wallet-funded, blinded and wallet-signed PSET returned for finalization. */
+export interface FundedLiquidPset {
+  pset: string;
+  paymentOutputSecrets: LiquidOutputSecrets;
 }
 
 /**

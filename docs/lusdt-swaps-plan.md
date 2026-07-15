@@ -1,10 +1,9 @@
 # Plan: Add native Liquid USDt (L-USDT) swaps alongside L-BTC
 
-> Status: **V1 architecture frozen; executable contract fixtures pending.** The
-> architectural decisions below are the shared SDK ⇄ maker contract. Phase 0
-> must still commit canonical wire-JSON fixtures and cross-repository golden
-> vectors before implementation starts. Confidential maker HTLCs and
-> cooperative MuSig spends are follow-up work, not part of V1.
+> Status: **Phases 0–5 implemented on the L-USDT feature branches.** The
+> executable wire fixtures, explicit maker HTLC path, SDK asset model and
+> caller-funded PSET security boundary are in place. Confidential maker HTLCs
+> and cooperative MuSig spends remain follow-up work, not part of V1.
 
 ## Goal & scope
 
@@ -294,6 +293,13 @@ prepare_liquid_refund(...)
 PreparedLiquidSpend.finalize_claim(funded_pset, keypair, preimage)
 PreparedLiquidSpend.finalize_refund(funded_pset, keypair)
 ```
+
+The prepare calls accept `LiquidPsetParams`, including both the application
+`max_fee` and accepted quote's `quoted_fee_cap`. The immutable template pins
+`min(max_fee, quoted_fee_cap)`. Rust exposes these methods from `SwapScript`;
+UniFFI/Python and WASM expose the same records and prepared-spend object. WASM
+uses `prepareLiquidClaim` / `prepareLiquidRefund` and `finalizeClaim` /
+`finalizeRefund`.
 
 Flow:
 
