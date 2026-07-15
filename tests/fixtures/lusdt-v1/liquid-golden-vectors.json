@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "inputs": {
+    "preimageHash": "a8aca40d423f00ec0a69b1b815169d7412a747e08e5669e80b3106e82975908a",
+    "claimPrivateKey": "4cffad3235065eff2959eabeb36cccaed698bc5a009d43f2ca1ce2d251599f85",
+    "refundPrivateKey": "eb4036423cd9ae6eaa44eb7203047c613aa2c6f52153b6783d53fa4e19173af1",
+    "claimPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
+    "refundPublicKey": "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
+    "timeoutBlockHeight": 123,
+    "leafVersion": 196
+  },
+  "cases": {
+    "submarine": {
+      "aggregationOrder": "claimFirst",
+      "claimLeaf": {
+        "version": 196,
+        "output": "a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+      },
+      "refundLeaf": {
+        "version": 196,
+        "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+      },
+      "internalKey": "4b50abab3e020bc8d4fe59a07324b8e6cf0f622c00080eae40a8797072b6d834",
+      "merkleRoot": "67a0fe19c26fcdfaf07596a2de4b38f12fe90273a1904dd858e0ccfffe25d8f4",
+      "outputKey": "8653d65b77eab8d141b6dfb00600b6207c1fbfdede730dc76a28088856794bd8",
+      "addresses": {
+        "mainnet": "ex1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vq09mzag",
+        "testnet": "tex1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vqwuf9v8",
+        "regtest": "ert1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vqcgyqml"
+      }
+    },
+    "reverse": {
+      "aggregationOrder": "refundFirst",
+      "claimLeaf": {
+        "version": 196,
+        "output": "82012088a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+      },
+      "refundLeaf": {
+        "version": 196,
+        "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+      },
+      "internalKey": "fb0800350e86065b6c62a5f72afd05a24f8f169fe4b10d25e9975db2ebfa53e4",
+      "merkleRoot": "a3e363dd845fb83643aa327556bf79532d72add7468fefb2efe38c6de52005eb",
+      "outputKey": "882a9ab8b0107a75749ca5b5b75981b1017e414840bfc448a19e2984b9328f8b",
+      "addresses": {
+        "mainnet": "ex1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379sl8t88w",
+        "testnet": "tex1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379s77eqkp",
+        "regtest": "ert1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379sg259pe"
+      }
+    }
+  },
+  "aliases": {
+    "chainUserLock": "submarine",
+    "chainServerLock": "reverse"
+  },
+  "bitcoinChainUserLock": {
+    "regtestAddress": "bcrt1phn32h5sdtzy5jqlag3ecjnmymyhfrzklptyep4r3uvs37lqzjycs8ef3mn"
+  }
+}
