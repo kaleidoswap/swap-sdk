@@ -39,7 +39,7 @@ use crate::error::Error;
 use super::{
     boltz::{
         BoltzApiClientV2, ChainSwapDetails, Cooperative, CreateReverseResponse,
-        CreateSubmarineResponse, Side, SwapTxKind, SwapType, ToSign,
+        CreateSubmarineResponse, Side, SwapTree, SwapTxKind, SwapType, ToSign,
     },
     wrappers::SwapScriptCommon,
 };
@@ -268,7 +268,7 @@ impl LiquidSwapScript {
             create_swap_response.fee_asset_id.as_deref(),
         )?;
 
-        Ok(Self {
+        let script = Self {
             swap_type: SwapType::Submarine,
             side: None,
             funding_addrs: Some(funding_addrs),
@@ -279,7 +279,9 @@ impl LiquidSwapScript {
             blinding_key,
             asset_context,
             expected_amount: create_swap_response.expected_amount,
-        })
+        };
+        script.validate_response_tree(&create_swap_response.swap_tree)?;
+        Ok(script)
     }
 
     /// Create the struct for a reverse swap from boltz create response.
@@ -343,7 +345,7 @@ impl LiquidSwapScript {
             reverse_response.fee_asset_id.as_deref(),
         )?;
 
-        Ok(Self {
+        let script = Self {
             swap_type: SwapType::ReverseSubmarine,
             side: None,
             funding_addrs: Some(funding_addrs),
@@ -354,7 +356,9 @@ impl LiquidSwapScript {
             blinding_key,
             asset_context,
             expected_amount: reverse_response.onchain_amount,
-        })
+        };
+        script.validate_response_tree(&reverse_response.swap_tree)?;
+        Ok(script)
     }
 
     /// Create the struct for a chain swap from boltz create response.
@@ -363,6 +367,7 @@ impl LiquidSwapScript {
         chain_swap_details: ChainSwapDetails,
         our_pubkey: PublicKey,
     ) -> Result<Self, Error> {
+        let response_tree = chain_swap_details.swap_tree.clone();
         let claim_script = Script::from_hex(&chain_swap_details.swap_tree.claim_leaf.output)?;
         let refund_script = Script::from_hex(&chain_swap_details.swap_tree.refund_leaf.output)?;
 
@@ -424,7 +429,7 @@ impl LiquidSwapScript {
             chain_swap_details.fee_asset_id.as_deref(),
         )?;
 
-        Ok(Self {
+        let script = Self {
             swap_type: SwapType::Chain,
             side: Some(side),
             funding_addrs: Some(funding_addrs),
@@ -435,7 +440,34 @@ impl LiquidSwapScript {
             blinding_key,
             asset_context,
             expected_amount: chain_swap_details.amount,
-        })
+        };
+        script.validate_response_tree(&response_tree)?;
+        Ok(script)
+    }
+
+    /// Require the wire tree itself to be the canonical script tree implied by
+    /// the parsed swap fields. Parsing only the interesting pushes is unsafe:
+    /// trailing opcodes, alternate encodings, or a different leaf version can
+    /// preserve those pushes while committing the server address to a tree the
+    /// SDK would not actually spend.
+    fn validate_response_tree(&self, response_tree: &SwapTree) -> Result<(), Error> {
+        let leaf_version = LeafVersion::default().as_u8();
+        if response_tree.claim_leaf.version != leaf_version
+            || response_tree.refund_leaf.version != leaf_version
+        {
+            return Err(Error::Protocol(format!(
+                "Liquid swap tree must use leaf version {leaf_version:#04x}"
+            )));
+        }
+
+        let claim = Script::from_hex(&response_tree.claim_leaf.output)?;
+        let refund = Script::from_hex(&response_tree.refund_leaf.output)?;
+        if claim != self.claim_script() || refund != self.refund_script() {
+            return Err(Error::Protocol(
+                "Liquid swap tree contains non-canonical claim or refund script".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     fn claim_script(&self) -> Script {

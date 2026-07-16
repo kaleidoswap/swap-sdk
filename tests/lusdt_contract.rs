@@ -348,6 +348,26 @@ fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
     assert!(chain_script.requires_caller_funded_pset());
 }
 
+#[test]
+fn sdk_rejects_noncanonical_liquid_tree_bytes_and_leaf_versions() {
+    let fixture: Value = serde_json::from_str(WIRE).unwrap();
+    let refund_key = bitcoin::PublicKey::from_str(string_at(
+        &fixture,
+        "/create/submarine/request/refundPublicKey",
+    ))
+    .unwrap();
+
+    let mut trailing_opcode: CreateSubmarineResponse =
+        serde_json::from_value(value_at(&fixture, "/create/submarine/response").clone()).unwrap();
+    trailing_opcode.swap_tree.claim_leaf.output.push_str("00");
+    assert!(LiquidSwapScript::submarine_from_swap_resp(&trailing_opcode, refund_key).is_err());
+
+    let mut wrong_version: CreateSubmarineResponse =
+        serde_json::from_value(value_at(&fixture, "/create/submarine/response").clone()).unwrap();
+    wrong_version.swap_tree.refund_leaf.version = 0xc0;
+    assert!(LiquidSwapScript::submarine_from_swap_resp(&wrong_version, refund_key).is_err());
+}
+
 fn pubkey_from_secret(secret: &str) -> PublicKey {
     let secp = Secp256k1::new();
     let secret = SecretKey::from_str(secret).expect("valid fixture secret key");
