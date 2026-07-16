@@ -3,7 +3,8 @@
 > Status: **Phases 0–5 implemented on the L-USDT feature branches.** The
 > executable wire fixtures, explicit maker HTLC path, SDK asset model and
 > caller-funded PSET security boundary are in place. Confidential maker HTLCs
-> and cooperative MuSig spends remain follow-up work, not part of V1.
+> and cooperative MuSig spends remain follow-up work, not part of V1. PR review
+> hardening is tracked separately in `docs/lusdt-pr-review-remediation-plan.md`.
 
 ## Goal & scope
 
@@ -323,18 +324,27 @@ Flow:
   blind-value proofs verify against its `witness_utxo`; every such asset equals
   `policy_asset`.
 - The designated payout output pays the entire HTLC L-USDT amount to the
-  requested script.
+  requested script and preserves whether that destination was explicit or
+  confidential, including its blinding pubkey.
 - Supplied output secrets recreate the payout commitments.
 - Exactly one empty-script Elements fee output exists; it is explicit and uses
   the policy asset.
 - Every other output is policy-asset change, with PSET asset/amount fields and
   proofs that verify its commitments. Reject unknown asset inputs or outputs.
-- Fee ≤ the cap pinned in `PreparedLiquidSpend` and the quoted cap.
+- Fee is at least the Elements minimum relay fee and ≤ the cap pinned in
+  `PreparedLiquidSpend` and the quoted cap.
 - No L-USDT amount deducted for the network fee.
 - Refund locktime/sequence satisfy the swap timeout.
 - After the funded PSET is returned and validated, freeze the unsigned
   transaction. Signing/finalization may add witness data only; inputs, outputs,
   version, locktime and sequences must remain byte-for-byte unchanged.
+
+The indices returned with the template describe that initial template only.
+Wallets may insert inputs and outputs; finalization re-derives the swap input by
+outpoint and the payout by its pinned script/confidentiality intent. The wallet
+is responsible for sourcing genuine spendable inputs. Offline finalization
+validates commitments and any supplied `non_witness_utxo`, but does not prove
+chain inclusion.
 
 Taproot sighash must use the real `swap_input_index` and `Prevouts::All` over
 **every** actual previous output — remove the current input-zero / single-prevout

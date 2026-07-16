@@ -217,9 +217,14 @@ This library makes the following assumptions:
 - The legacy single-input Liquid claim/refund path is L-BTC-only: one confidential payout output and one explicit
   policy-asset fee output. Magic routing is also L-BTC-only.
 
-- Liquid HTLC discovery validates the exact script, asset, amount, and transaction. Legacy L-BTC HTLCs are
-  confidential and require their blinding key; native L-USDT HTLCs are explicit and must not include one. L-USDT
-  spending uses the caller-funded PSET flow because its Elements fee must be paid separately in L-BTC.
+- Liquid HTLC discovery validates the exact script, asset, and transaction. Claims and all L-USDT spends also require
+  the exact expected amount; legacy L-BTC refunds intentionally reclaim the positive amount actually locked so an
+  underpayment remains refundable. Legacy confidential outputs require their blinding key; native L-USDT HTLCs are
+  explicit and must not include one. L-USDT spending uses the caller-funded PSET flow because its Elements fee must be
+  paid separately in L-BTC.
+
+- Caller-funded PSET finalization is offline. The wallet must source real, spendable Liquid inputs; the SDK validates
+  their commitments and any supplied full previous transactions, but cannot prove chain inclusion without a backend.
 
 # Acknowledgment
 

@@ -664,7 +664,14 @@ use kaleidoswap_sdk::boltz::{
 };
 
 fn core_err(e: kaleidoswap_sdk::error::Error) -> JsValue {
-    JsValue::from_str(&e.message())
+    let error = js_sys::Error::new(&e.message());
+    error.set_name(&e.name());
+    let _ = js_sys::Reflect::set(
+        error.as_ref(),
+        &JsValue::from_str("code"),
+        &JsValue::from_str(&e.name()),
+    );
+    error.into()
 }
 
 /// Map a Boltz chain identifier ("BTC" | "L-BTC") + network to a `Chain`,
@@ -1016,6 +1023,9 @@ struct LiquidPsetParams {
     liquid_esplora_url: String,
     #[serde(default)]
     esplora_timeout_secs: Option<u64>,
+    /// Optional serialized Liquid lockup transaction.
+    #[serde(default)]
+    lockup_tx_hex: Option<String>,
 }
 
 impl LiquidPsetParams {
@@ -1167,6 +1177,13 @@ impl SwapScript {
         let p: LiquidPsetParams = from_js(params)?;
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
+        let options = p
+            .lockup_tx_hex
+            .as_deref()
+            .map(CoreBtcLikeTransaction::from_hex_liquid)
+            .transpose()
+            .map_err(core_err)?
+            .map(|tx| TransactionOptions::default().with_lockup_tx(tx));
         let prepared = self
             .inner
             .prepare_liquid_claim(CoreLiquidPsetParams {
@@ -1176,7 +1193,7 @@ impl SwapScript {
                 swap_id: p.swap_id,
                 chain_client: &chain_client,
                 boltz_api: &boltz,
-                options: None,
+                options,
             })
             .await
             .map_err(core_err)?;
@@ -1192,6 +1209,13 @@ impl SwapScript {
         let p: LiquidPsetParams = from_js(params)?;
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
+        let options = p
+            .lockup_tx_hex
+            .as_deref()
+            .map(CoreBtcLikeTransaction::from_hex_liquid)
+            .transpose()
+            .map_err(core_err)?
+            .map(|tx| TransactionOptions::default().with_lockup_tx(tx));
         let prepared = self
             .inner
             .prepare_liquid_refund(CoreLiquidPsetParams {
@@ -1201,7 +1225,7 @@ impl SwapScript {
                 swap_id: p.swap_id,
                 chain_client: &chain_client,
                 boltz_api: &boltz,
-                options: None,
+                options,
             })
             .await
             .map_err(core_err)?;

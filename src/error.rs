@@ -6,6 +6,7 @@ use serde_json::Value;
 
 /// The Global Error enum. Encodes all possible internal library errors
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     #[cfg(feature = "electrum")]
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

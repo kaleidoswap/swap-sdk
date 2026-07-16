@@ -16,6 +16,12 @@ use elements::{
     SchnorrSig, SchnorrSighashType, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut,
     TxOutSecrets, TxOutWitness,
 };
+
+const MAX_CALLER_FUNDED_PSET_BYTES: usize = 4 * 1024 * 1024;
+const MAX_CALLER_FUNDED_INPUTS: usize = 128;
+const MAX_CALLER_FUNDED_OUTPUTS: usize = 128;
+// Elements Core's default minimum relay fee is 100 sat/kB, or 0.1 sat/vB.
+const LIQUID_MIN_RELAY_FEE_DENOMINATOR: usize = 10;
 use secp256k1_musig::{musig, Scalar};
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -166,7 +172,11 @@ pub type LBtcSwapScript = LiquidSwapScript;
 #[serde(rename_all = "camelCase")]
 pub struct LiquidPsetTemplate {
     pub pset: String,
+    /// Index in this initial template. Wallets may insert inputs; finalization
+    /// locates the protected swap input again by its pinned outpoint.
     pub swap_input_index: u32,
+    /// Index in this initial template. Wallets may insert outputs; finalization
+    /// locates the payout again by its pinned script and confidentiality intent.
     pub payment_output_index: u32,
     pub swap_asset_id: String,
     pub policy_asset_id: String,
@@ -185,6 +195,10 @@ pub struct LiquidOutputSecrets {
 }
 
 /// A wallet-funded, blinded and wallet-signed PSET ready for swap finalization.
+///
+/// The wallet is responsible for sourcing real, spendable chain inputs. The
+/// offline finalizer verifies all supplied commitments and, when present, the
+/// full `non_witness_utxo`, but cannot prove chain inclusion by itself.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FundedLiquidPset {
@@ -623,9 +637,16 @@ impl LiquidSwapScript {
         candidates: impl IntoIterator<Item = (OutPoint, TxOut)>,
         network: LiquidChain,
         expected_txid: Option<elements::Txid>,
+        tx_kind: SwapTxKind,
     ) -> Result<Option<(OutPoint, TxOut)>, Error> {
         let address = self.to_address(network)?;
         let context = self.resolved_asset_context(network);
+        // Exact amounts are part of the security contract for claims and all
+        // caller-funded non-policy-asset spends. Legacy L-BTC refunds retain
+        // their historical behavior: refund whatever positive amount actually
+        // reached the correctly identified HTLC, including underpayments.
+        let require_exact_amount =
+            tx_kind == SwapTxKind::Claim || self.requires_caller_funded_pset();
         let mut first_validation_error = None;
 
         for (outpoint, output) in candidates {
@@ -636,7 +657,10 @@ impl LiquidSwapScript {
             }
 
             match decode_swap_output(&output, self.blinding_secret(), context.swap_asset) {
-                Ok(secrets) if secrets.value == self.expected_amount => {
+                Ok(secrets)
+                    if secrets.value == self.expected_amount
+                        || (!require_exact_amount && secrets.value > 0) =>
+                {
                     return Ok(Some((outpoint, output)));
                 }
                 Ok(secrets) => {
@@ -665,9 +689,18 @@ impl LiquidSwapScript {
         &self,
         liquid_client: &LC,
     ) -> Result<Option<(OutPoint, TxOut)>, Error> {
+        self.fetch_utxo_for_kind(liquid_client, SwapTxKind::Claim)
+            .await
+    }
+
+    async fn fetch_utxo_for_kind<LC: LiquidClient + ?Sized>(
+        &self,
+        liquid_client: &LC,
+        tx_kind: SwapTxKind,
+    ) -> Result<Option<(OutPoint, TxOut)>, Error> {
         let address = self.to_address(liquid_client.network())?;
         let candidates = liquid_client.get_address_utxos(&address).await?;
-        self.select_utxo(candidates, liquid_client.network(), None)
+        self.select_utxo(candidates, liquid_client.network(), None, tx_kind)
     }
 
     pub(crate) async fn fetch_swap_utxo<LC: LiquidClient + ?Sized>(
@@ -679,8 +712,11 @@ impl LiquidSwapScript {
         tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
         let utxo = match lockup_tx {
-            Some(tx) => self.find_utxo(tx, liquid_client.network()).await,
-            None => match self.fetch_utxo(liquid_client).await {
+            Some(tx) => self.find_utxo(tx, liquid_client.network(), tx_kind).await,
+            None => match self
+                .fetch_utxo_for_kind(liquid_client, tx_kind.clone())
+                .await
+            {
                 Ok(Some(r)) => Ok(r),
                 Ok(None) | Err(_) => {
                     self.fetch_lockup_utxo_boltz(
@@ -700,6 +736,7 @@ impl LiquidSwapScript {
         &self,
         tx: &Transaction,
         network: LiquidChain,
+        tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
         let candidates = tx
             .output
@@ -707,7 +744,7 @@ impl LiquidSwapScript {
             .cloned()
             .enumerate()
             .map(|(vout, output)| (OutPoint::new(tx.txid(), vout as u32), output));
-        self.select_utxo(candidates, network, Some(tx.txid()))?
+        self.select_utxo(candidates, network, Some(tx.txid()), tx_kind)?
             .ok_or(Error::Protocol(
                 "No Liquid UTXO matched script, asset, amount, and transaction".to_string(),
             ))
@@ -755,7 +792,7 @@ impl LiquidSwapScript {
             ));
         }
         let tx: Transaction = elements::encode::deserialize(&hex::decode(hex.unwrap())?)?;
-        self.find_utxo(&tx, network).await
+        self.find_utxo(&tx, network, tx_kind).await
     }
 
     // Get the chain genesis hash. Requires for sighash calculation
@@ -786,6 +823,7 @@ pub struct PreparedLiquidSpend {
     funding_outpoint: OutPoint,
     funding_utxo: TxOut,
     payment_script: Script,
+    payment_blinding_key: Option<PublicKey>,
     genesis_hash: BlockHash,
     asset_context: LiquidAssetContext,
     amount: u64,
@@ -848,6 +886,7 @@ impl PreparedLiquidSpend {
         }
         let output_address = Address::from_str(output_address)?;
         let payment_script = output_address.script_pubkey();
+        let payment_blinding_key = output_address.blinding_pubkey.map(PublicKey::new);
         if max_fee == 0 {
             return Err(Error::Protocol(
                 "Liquid fee cap must be greater than zero".to_string(),
@@ -881,6 +920,12 @@ impl PreparedLiquidSpend {
             }],
         };
         let mut pset = PartiallySignedTransaction::from_tx(unsigned);
+        if payment_blinding_key.is_some() {
+            // A PSET output with a blinding key must carry a valid index. The
+            // wallet replaces this placeholder with one of its fee inputs
+            // before blinding; finalization re-derives output indices.
+            pset.outputs_mut()[0].blinder_index = Some(0);
+        }
         let swap_input = &mut pset.inputs_mut()[0];
         swap_input.witness_utxo = Some(funding_utxo.clone());
         swap_input.asset = Some(asset_context.swap_asset);
@@ -902,6 +947,7 @@ impl PreparedLiquidSpend {
             funding_outpoint,
             funding_utxo,
             payment_script,
+            payment_blinding_key,
             genesis_hash,
             asset_context,
             amount: secrets.value,
@@ -966,6 +1012,11 @@ impl PreparedLiquidSpend {
                 "Liquid finalization key does not match the swap spend path".to_string(),
             ));
         }
+        if funded.pset.len() > MAX_CALLER_FUNDED_PSET_BYTES {
+            return Err(Error::Protocol(
+                "Funded Liquid PSET exceeds the maximum supported size".to_string(),
+            ));
+        }
         let pset = PartiallySignedTransaction::from_str(&funded.pset)
             .map_err(|e| Error::Protocol(format!("Invalid funded Liquid PSET: {e}")))?;
         let (mut tx, swap_input_index, prevouts) =
@@ -1012,6 +1063,24 @@ impl PreparedLiquidSpend {
                 "Liquid finalization attempted to mutate the unsigned transaction".to_string(),
             ));
         }
+        let fee = tx
+            .output
+            .iter()
+            .find(|output| output.script_pubkey.is_empty())
+            .and_then(|output| output.value.explicit())
+            .ok_or_else(|| {
+                Error::Protocol(
+                    "Swap PSET must contain one explicit policy-asset fee output".to_string(),
+                )
+            })?;
+        let minimum_fee = tx
+            .discount_vsize()
+            .div_ceil(LIQUID_MIN_RELAY_FEE_DENOMINATOR) as u64;
+        if fee < minimum_fee {
+            return Err(Error::Protocol(format!(
+                "Liquid transaction fee {fee} is below the minimum relay fee {minimum_fee}"
+            )));
+        }
         Ok(tx)
     }
 
@@ -1022,6 +1091,13 @@ impl PreparedLiquidSpend {
     ) -> Result<(Transaction, usize, Vec<TxOut>), Error> {
         pset.sanity_check()
             .map_err(|e| Error::Protocol(format!("Invalid funded Liquid PSET: {e}")))?;
+        if pset.inputs().len() > MAX_CALLER_FUNDED_INPUTS
+            || pset.outputs().len() > MAX_CALLER_FUNDED_OUTPUTS
+        {
+            return Err(Error::Protocol(
+                "Funded Liquid PSET exceeds the supported input/output limit".to_string(),
+            ));
+        }
         let tx = pset
             .extract_tx()
             .map_err(|e| Error::Protocol(format!("Cannot extract funded Liquid PSET: {e}")))?;
@@ -1073,6 +1149,18 @@ impl PreparedLiquidSpend {
             let witness_utxo = input.witness_utxo.clone().ok_or_else(|| {
                 Error::Protocol(format!("Liquid PSET input {index} is missing witness_utxo"))
             })?;
+            if let Some(non_witness_utxo) = &input.non_witness_utxo {
+                if non_witness_utxo.txid() != input.previous_txid
+                    || non_witness_utxo
+                        .output
+                        .get(input.previous_output_index as usize)
+                        != Some(&witness_utxo)
+                {
+                    return Err(Error::Protocol(format!(
+                        "Liquid PSET input {index} has inconsistent non_witness_utxo metadata"
+                    )));
+                }
+            }
             prevouts.push(witness_utxo.clone());
 
             if outpoint == self.funding_outpoint {
@@ -1154,7 +1242,7 @@ impl PreparedLiquidSpend {
                         "Funded Liquid PSET contains multiple payment outputs".to_string(),
                     ));
                 }
-                self.verify_payment_output(output, txout, payment_secrets)?;
+                self.verify_payment_output(index, output, txout, payment_secrets)?;
                 continue;
             }
 
@@ -1200,6 +1288,7 @@ impl PreparedLiquidSpend {
 
     fn verify_payment_output(
         &self,
+        index: usize,
         output: &PsetOutput,
         txout: &TxOut,
         secrets: &LiquidOutputSecrets,
@@ -1214,6 +1303,11 @@ impl PreparedLiquidSpend {
         {
             return Err(Error::Protocol(
                 "Liquid payment output secrets do not describe the full swap payout".to_string(),
+            ));
+        }
+        if output.blinding_key != self.payment_blinding_key {
+            return Err(Error::Protocol(
+                "Funded Liquid PSET changed the payment blinding key".to_string(),
             ));
         }
         let secp = Secp256k1::new();
@@ -1233,12 +1327,33 @@ impl PreparedLiquidSpend {
                 "Liquid payment output secrets do not recreate its commitments".to_string(),
             ));
         }
-        verify_output_metadata(
-            &secp,
-            output,
-            txout,
-            self.template.payment_output_index as usize,
-        )?;
+        match self.payment_blinding_key {
+            None => {
+                if abf != AssetBlindingFactor::zero()
+                    || vbf != ValueBlindingFactor::zero()
+                    || !matches!(txout.asset, Asset::Explicit(_))
+                    || !matches!(txout.value, Value::Explicit(_))
+                    || !txout.nonce.is_null()
+                    || output.ecdh_pubkey.is_some()
+                {
+                    return Err(Error::Protocol(
+                        "Explicit Liquid payment output was unexpectedly blinded".to_string(),
+                    ));
+                }
+            }
+            Some(_) => {
+                if !txout.asset.is_confidential()
+                    || !txout.value.is_confidential()
+                    || txout.nonce.is_null()
+                    || output.ecdh_pubkey.is_none()
+                {
+                    return Err(Error::Protocol(
+                        "Confidential Liquid payment output was not blinded".to_string(),
+                    ));
+                }
+            }
+        }
+        verify_output_metadata(&secp, output, txout, index)?;
         Ok(())
     }
 }
@@ -2376,14 +2491,83 @@ mod tests {
         ];
 
         let selected = script
-            .select_utxo(candidates, network, Some(expected_txid))
+            .select_utxo(candidates, network, Some(expected_txid), SwapTxKind::Claim)
             .unwrap()
             .unwrap();
 
         assert_eq!(selected.0, OutPoint::new(expected_txid, 3));
     }
 
+    #[macros::test_all]
+    fn legacy_lbtc_refunds_accept_actual_amount_but_lusdt_remains_exact() {
+        let network = LiquidChain::LiquidRegtest;
+        let policy_asset = network.bitcoin();
+        let legacy = test_script(None, Some(LiquidAssetContext::legacy_lbtc(network)), 42);
+        let outpoint = OutPoint::new(elements::Txid::all_zeros(), 0);
+        let underpaid = explicit_output(
+            legacy.to_address(network).unwrap().script_pubkey(),
+            policy_asset,
+            21,
+        );
+
+        assert!(legacy
+            .select_utxo(
+                vec![(outpoint, underpaid.clone())],
+                network,
+                None,
+                SwapTxKind::Refund,
+            )
+            .unwrap()
+            .is_some());
+        assert!(legacy
+            .select_utxo(
+                vec![(outpoint, underpaid)],
+                network,
+                None,
+                SwapTxKind::Claim,
+            )
+            .is_err());
+
+        let swap_asset = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let lusdt = test_script(
+            None,
+            Some(LiquidAssetContext {
+                swap_asset,
+                policy_asset,
+            }),
+            42,
+        );
+        let wrong_amount = explicit_output(
+            lusdt.to_address(network).unwrap().script_pubkey(),
+            swap_asset,
+            21,
+        );
+        assert!(lusdt
+            .select_utxo(
+                vec![(outpoint, wrong_amount)],
+                network,
+                None,
+                SwapTxKind::Refund,
+            )
+            .is_err());
+    }
+
     fn prepared_lusdt_claim() -> (
+        PreparedLiquidSpend,
+        elements::AssetId,
+        elements::AssetId,
+        Keypair,
+        Preimage,
+    ) {
+        prepared_lusdt_claim_for(None)
+    }
+
+    fn prepared_lusdt_claim_for(
+        payment_blinding_key: Option<elements::secp256k1_zkp::PublicKey>,
+    ) -> (
         PreparedLiquidSpend,
         elements::AssetId,
         elements::AssetId,
@@ -2416,6 +2600,9 @@ mod tests {
             expected_amount: 42,
         };
         let output_address = script.to_address(network).unwrap().to_unconfidential();
+        let output_address = payment_blinding_key
+            .map(|key| output_address.to_confidential(key))
+            .unwrap_or(output_address);
         let outpoint = OutPoint::new(elements::Txid::all_zeros(), 0);
         let funding_utxo = explicit_output(Script::new(), swap_asset, 42);
         let prepared = PreparedLiquidSpend::new(
@@ -2425,7 +2612,7 @@ mod tests {
             outpoint,
             funding_utxo,
             BlockHash::all_zeros(),
-            3,
+            1_000,
         )
         .unwrap();
         (prepared, swap_asset, policy_asset, keys, preimage)
@@ -2446,15 +2633,15 @@ mod tests {
         );
         let mut wallet_input = PsetInput::from_prevout(wallet_outpoint);
         wallet_input.sequence = Some(Sequence::ZERO);
-        wallet_input.witness_utxo = Some(explicit_output(Script::new(), policy_asset, 10));
+        wallet_input.witness_utxo = Some(explicit_output(Script::new(), policy_asset, 10_000));
         wallet_input.asset = Some(policy_asset);
-        wallet_input.amount = Some(10);
+        wallet_input.amount = Some(10_000);
         wallet_input.final_script_witness = Some(vec![vec![1]]);
         // Insert before the HTLC input to exercise the real, non-zero swap index.
         pset.insert_input(wallet_input, 0);
         pset.add_output(PsetOutput::new_explicit(
             Script::from(vec![0x51]),
-            10 - fee,
+            10_000 - fee,
             policy_asset,
             None,
         ));
@@ -2514,7 +2701,7 @@ mod tests {
             OutPoint::new(elements::Txid::all_zeros(), 0),
             explicit_output(Script::new(), swap_asset, 42),
             BlockHash::all_zeros(),
-            3,
+            1_000,
         )
         .unwrap();
         (prepared, swap_asset, policy_asset, keys)
@@ -2523,8 +2710,8 @@ mod tests {
     #[macros::test_all]
     fn caller_funded_pset_signs_real_swap_index_and_preserves_wallet_witness() {
         let (prepared, swap_asset, policy_asset, keys, preimage) = prepared_lusdt_claim();
-        assert_eq!(prepared.template().max_fee, 3);
-        let pset = fund_explicit_pset(&prepared, policy_asset, 2);
+        assert_eq!(prepared.template().max_fee, 1_000);
+        let pset = fund_explicit_pset(&prepared, policy_asset, 100);
         let funded = FundedLiquidPset {
             pset: pset.to_string(),
             payment_output_secrets: explicit_payment_secrets(swap_asset),
@@ -2541,7 +2728,7 @@ mod tests {
     #[macros::test_all]
     fn caller_funded_refund_pins_timeout_and_adds_only_refund_witness() {
         let (prepared, swap_asset, policy_asset, keys) = prepared_lusdt_refund();
-        let pset = fund_explicit_pset(&prepared, policy_asset, 2);
+        let pset = fund_explicit_pset(&prepared, policy_asset, 100);
         let tx = prepared
             .finalize_refund(
                 FundedLiquidPset {
@@ -2555,7 +2742,7 @@ mod tests {
         assert_eq!(tx.input[0].witness.script_witness, vec![vec![1]]);
         assert_eq!(tx.input[1].witness.script_witness.len(), 3);
 
-        let mut changed = fund_explicit_pset(&prepared, policy_asset, 2);
+        let mut changed = fund_explicit_pset(&prepared, policy_asset, 100);
         changed.global.tx_data.fallback_locktime = Some(LockTime::ZERO);
         assert!(prepared
             .finalize_refund(
@@ -2598,7 +2785,7 @@ mod tests {
     fn caller_funded_pset_rejects_fee_cap_lusdt_skim_and_duplicate_input() {
         let (prepared, swap_asset, policy_asset, keys, preimage) = prepared_lusdt_claim();
 
-        let over_cap = fund_explicit_pset(&prepared, policy_asset, 4);
+        let over_cap = fund_explicit_pset(&prepared, policy_asset, 1_001);
         assert!(prepared
             .finalize_claim(
                 FundedLiquidPset {
@@ -2612,7 +2799,7 @@ mod tests {
             .message()
             .contains("exceeds pinned cap"));
 
-        let mut skim = fund_explicit_pset(&prepared, policy_asset, 2);
+        let mut skim = fund_explicit_pset(&prepared, policy_asset, 100);
         skim.outputs_mut()[0].amount = Some(41);
         assert!(prepared
             .finalize_claim(
@@ -2625,7 +2812,7 @@ mod tests {
             )
             .is_err());
 
-        let mut duplicate = fund_explicit_pset(&prepared, policy_asset, 2);
+        let mut duplicate = fund_explicit_pset(&prepared, policy_asset, 100);
         let cloned = duplicate.inputs()[0].clone();
         duplicate.add_input(cloned);
         assert!(prepared
@@ -2640,6 +2827,79 @@ mod tests {
             .unwrap_err()
             .message()
             .contains("duplicate inputs"));
+    }
+
+    #[macros::test_all]
+    fn caller_funded_pset_rejects_confidentiality_prevout_and_relay_tampering() {
+        let (prepared, swap_asset, policy_asset, keys, preimage) = prepared_lusdt_claim();
+
+        let mut unexpected_blinding = fund_explicit_pset(&prepared, policy_asset, 100);
+        let secp = Secp256k1::new();
+        let blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        unexpected_blinding.outputs_mut()[0].blinding_key =
+            Some(PublicKey::new(blinder.public_key()));
+        unexpected_blinding.outputs_mut()[0].blinder_index = Some(0);
+        let error = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: unexpected_blinding.to_string(),
+                    payment_output_secrets: explicit_payment_secrets(swap_asset),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("payment blinding key"));
+
+        let mut inconsistent_prevout = fund_explicit_pset(&prepared, policy_asset, 100);
+        inconsistent_prevout.inputs_mut()[0].non_witness_utxo = Some(Transaction {
+            version: 2,
+            lock_time: LockTime::ZERO,
+            input: vec![],
+            output: vec![],
+        });
+        let error = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: inconsistent_prevout.to_string(),
+                    payment_output_secrets: explicit_payment_secrets(swap_asset),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("non_witness_utxo"));
+
+        let below_relay = fund_explicit_pset(&prepared, policy_asset, 1);
+        let error = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: below_relay.to_string(),
+                    payment_output_secrets: explicit_payment_secrets(swap_asset),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("minimum relay fee"));
+
+        let payment_blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let (confidential, swap_asset, policy_asset, keys, preimage) =
+            prepared_lusdt_claim_for(Some(payment_blinder.public_key()));
+        let mut downgraded = fund_explicit_pset(&confidential, policy_asset, 100);
+        downgraded.outputs_mut()[0].blinding_key = None;
+        downgraded.outputs_mut()[0].blinder_index = None;
+        let error = confidential
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: downgraded.to_string(),
+                    payment_output_secrets: explicit_payment_secrets(swap_asset),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("payment blinding key"));
     }
 
     #[macros::test_all]
@@ -2697,8 +2957,10 @@ mod tests {
     fn caller_funded_pset_accepts_proven_confidential_input_payout_and_change() {
         use elements::secp256k1_zkp::{RangeProof, SurjectionProof};
 
-        let (prepared, swap_asset, policy_asset, keys, preimage) = prepared_lusdt_claim();
         let secp = Secp256k1::new();
+        let payment_blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let (prepared, swap_asset, policy_asset, keys, preimage) =
+            prepared_lusdt_claim_for(Some(payment_blinder.public_key()));
         let mut pset = PartiallySignedTransaction::from_str(&prepared.template().pset).unwrap();
 
         let wallet_abf = AssetBlindingFactor::new(&mut OsRng);
@@ -2708,9 +2970,13 @@ mod tests {
         else {
             unreachable!()
         };
-        let Value::Confidential(wallet_value_commit) =
-            Value::new_confidential_from_assetid(&secp, 10, policy_asset, wallet_vbf, wallet_abf)
-        else {
+        let Value::Confidential(wallet_value_commit) = Value::new_confidential_from_assetid(
+            &secp,
+            1_000,
+            policy_asset,
+            wallet_vbf,
+            wallet_abf,
+        ) else {
             unreachable!()
         };
         let mut wallet_input = PsetInput::from_prevout(OutPoint::new(
@@ -2729,7 +2995,7 @@ mod tests {
             witness: TxOutWitness::default(),
         });
         wallet_input.asset = Some(policy_asset);
-        wallet_input.amount = Some(10);
+        wallet_input.amount = Some(1_000);
         wallet_input.blind_asset_proof = Some(Box::new(
             SurjectionProof::blind_asset_proof(&mut OsRng, &secp, policy_asset, wallet_abf)
                 .unwrap(),
@@ -2738,7 +3004,7 @@ mod tests {
             RangeProof::blind_value_proof(
                 &mut OsRng,
                 &secp,
-                10,
+                1_000,
                 wallet_value_commit,
                 wallet_asset_commit,
                 wallet_vbf,
@@ -2748,13 +3014,12 @@ mod tests {
         wallet_input.final_script_witness = Some(vec![vec![1]]);
         pset.insert_input(wallet_input, 0);
 
-        let payment_blinder = ZKKeyPair::new(&secp, &mut OsRng);
         pset.outputs_mut()[0].blinding_key = Some(PublicKey::new(payment_blinder.public_key()));
         pset.outputs_mut()[0].blinder_index = Some(0);
         let change_blinder = ZKKeyPair::new(&secp, &mut OsRng);
         let mut change = PsetOutput::new_explicit(
             Script::from(vec![0x52]),
-            8,
+            900,
             policy_asset,
             Some(PublicKey::new(change_blinder.public_key())),
         );
@@ -2762,7 +3027,7 @@ mod tests {
         pset.add_output(change);
         pset.add_output(PsetOutput::new_explicit(
             Script::new(),
-            2,
+            100,
             policy_asset,
             None,
         ));
@@ -2773,7 +3038,7 @@ mod tests {
             TxOutSecrets {
                 asset: policy_asset,
                 asset_bf: wallet_abf,
-                value: 10,
+                value: 1_000,
                 value_bf: wallet_vbf,
             },
         );
@@ -2806,7 +3071,7 @@ mod tests {
         assert!(tx.output[0].asset.is_confidential());
         assert!(tx.output[0].value.is_confidential());
         assert!(tx.output[1].asset.is_confidential());
-        assert_eq!(tx.output[2].value, Value::Explicit(2));
+        assert_eq!(tx.output[2].value, Value::Explicit(100));
     }
 
     #[macros::test_all]

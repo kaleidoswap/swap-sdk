@@ -36,6 +36,10 @@ pub struct LiquidPsetParams {
     pub swap_id: String,
     pub chain_client: Arc<ChainClient>,
     pub boltz_api: Arc<BoltzApiClientV2>,
+    /// Optional locally available Liquid lockup transaction. Supplying it
+    /// avoids depending on API/indexer transaction discovery.
+    #[uniffi(default = None)]
+    pub lockup_tx: Option<Arc<BtcLikeTransaction>>,
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -235,7 +239,9 @@ impl SwapScript {
                 swap_id: params.swap_id.clone(),
                 chain_client: &params.chain_client.0,
                 boltz_api: &params.boltz_api.inner,
-                options: None,
+                options: params.lockup_tx.as_ref().map(|tx| {
+                    swaps_bitcoin::TransactionOptions::default().with_lockup_tx(tx.0.clone())
+                }),
             })
             .await?;
         Ok(PreparedLiquidSpend(prepared))
@@ -255,7 +261,9 @@ impl SwapScript {
                 swap_id: params.swap_id.clone(),
                 chain_client: &params.chain_client.0,
                 boltz_api: &params.boltz_api.inner,
-                options: None,
+                options: params.lockup_tx.as_ref().map(|tx| {
+                    swaps_bitcoin::TransactionOptions::default().with_lockup_tx(tx.0.clone())
+                }),
             })
             .await?;
         Ok(PreparedLiquidSpend(prepared))
