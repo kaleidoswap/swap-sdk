@@ -274,6 +274,26 @@ fn sdk_parses_lusdt_pair_cards_and_asset_extensions() {
 }
 
 #[test]
+fn pair_responses_accept_omitted_empty_currency_buckets() {
+    let fixture: Value = serde_json::from_str(WIRE).unwrap();
+
+    let submarine: GetSubmarinePairsResponse = serde_json::from_value(serde_json::json!({
+        "L-USDT": value_at(&fixture, "/pairResponses/submarine/L-USDT")
+    }))
+    .unwrap();
+    assert!(submarine.btc.is_empty());
+    assert!(submarine.lbtc.is_empty());
+    assert!(submarine.get_lusdt_to_btc_pair().is_some());
+
+    let reverse: GetReversePairsResponse = serde_json::from_value(serde_json::json!({})).unwrap();
+    assert!(reverse.btc.is_empty());
+
+    let chain: GetChainPairsResponse = serde_json::from_value(serde_json::json!({})).unwrap();
+    assert!(chain.btc.is_empty());
+    assert!(chain.lbtc.is_empty());
+}
+
+#[test]
 fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
     let fixture: Value = serde_json::from_str(WIRE).unwrap();
     let submarine: CreateSubmarineResponse =

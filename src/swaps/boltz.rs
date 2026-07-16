@@ -278,9 +278,9 @@ pub struct SubmarinePair {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetSubmarinePairsResponse {
-    #[serde(rename = "BTC")]
+    #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, SubmarinePair>,
-    #[serde(rename = "L-BTC")]
+    #[serde(rename = "L-BTC", default)]
     pub lbtc: HashMap<String, SubmarinePair>,
     #[serde(rename = "L-USDT", default)]
     pub lusdt: HashMap<String, SubmarinePair>,
@@ -319,7 +319,7 @@ impl GetSubmarinePairsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetReversePairsResponse {
-    #[serde(rename = "BTC")]
+    #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ReversePair>,
 }
 
@@ -344,9 +344,9 @@ impl GetReversePairsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetChainPairsResponse {
-    #[serde(rename = "BTC")]
+    #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ChainPair>,
-    #[serde(rename = "L-BTC")]
+    #[serde(rename = "L-BTC", default)]
     pub lbtc: HashMap<String, ChainPair>,
 }
 
