@@ -12,11 +12,12 @@ use lightning_invoice::Bolt11Invoice;
 use secp256k1_musig::musig;
 use serde_json::Value;
 
-use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
+use kaleidoswap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
 use kaleidoswap_sdk::swaps::boltz::{
     CreateChainResponse, CreateReverseResponse, CreateSubmarineResponse, GetChainPairsResponse,
     GetReversePairsResponse, GetSubmarinePairsResponse, Side,
 };
+use kaleidoswap_sdk::util::secrets::Preimage;
 use kaleidoswap_sdk::LiquidSwapScript;
 
 const GOLDEN: &str = include_str!("fixtures/lusdt-v1/liquid-golden-vectors.json");
@@ -389,6 +390,18 @@ fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
         "/create/reverse/request/claimPublicKey",
     ))
     .unwrap();
+    let reverse_preimage =
+        Preimage::from_sha256_str(string_at(&fixture, "/create/reverse/request/preimageHash"))
+            .unwrap();
+    reverse
+        .validate_with_currency_and_asset_context(
+            &reverse_preimage,
+            &reverse_claim_key,
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::LUsdt),
+            expected_assets,
+        )
+        .unwrap();
     let reverse_script =
         LiquidSwapScript::reverse_from_swap_resp(&reverse, reverse_claim_key).unwrap();
     reverse_script
@@ -403,6 +416,23 @@ fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
         "/create/chain/userAmountRequest/claimPublicKey",
     ))
     .unwrap();
+    let chain_refund_key = bitcoin::PublicKey::from_str(string_at(
+        &fixture,
+        "/create/chain/userAmountRequest/refundPublicKey",
+    ))
+    .unwrap();
+    chain
+        .validate_with_currency_and_asset_context(
+            &chain_claim_key,
+            &chain_refund_key,
+            Chain::Bitcoin(BitcoinChain::BitcoinRegtest),
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::Btc),
+            Some(Currency::LUsdt),
+            None,
+            expected_assets,
+        )
+        .unwrap();
     let chain_script = LiquidSwapScript::chain_from_swap_resp(
         Side::Claim,
         chain.claim_details.clone(),

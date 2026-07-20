@@ -1,10 +1,10 @@
 # Plan: Add native Liquid USDt (L-USDT) swaps alongside L-BTC
 
-> Status: **Phases 0–5 implemented on the L-USDT feature branches.** The
-> executable wire fixtures, explicit maker HTLC path, SDK asset model and
-> caller-funded PSET security boundary are in place. Confidential maker HTLCs
-> and cooperative MuSig spends remain follow-up work, not part of V1. PR review
-> hardening is tracked separately in `docs/lusdt-pr-review-remediation-plan.md`.
+> Status: **Phases 0–6 implemented on the L-USDT feature branches.** The
+> standalone public-SDK regtest matrix is green with runtime pair asset IDs,
+> and the atomic route activation migration is committed. Merge remains gated
+> on both feature-branch PRs completing CI. Confidential maker HTLCs and
+> cooperative MuSig spends remain follow-up work, not part of V1.
 
 ## Goal & scope
 
@@ -74,7 +74,7 @@ reject those addresses even with otherwise-correct JSON.
 |---|---|---|
 | Submarine / deposit | `submarine_swap_tree` | `ClaimFirst` |
 | Reverse / server lock | `reverse_swap_tree` | `RefundFirst` |
-| Chain user lock | Same as submarine | `ClaimFirst` |
+| Chain user lock | `reverse_swap_tree` claim leaf (32-byte size check) | `ClaimFirst` |
 | Chain server lock | Same as reverse | `RefundFirst` |
 
 - Add `maker_swap::create_chain_lockup`, backed by `reverse_swap_tree`.

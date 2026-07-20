@@ -167,14 +167,14 @@
           "swapTree": {
             "claimLeaf": {
               "version": 192,
-              "output": "a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+              "output": "82012088a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
             },
             "refundLeaf": {
               "version": 192,
               "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
             }
           },
-          "lockupAddress": "bcrt1phn32h5sdtzy5jqlag3ecjnmymyhfrzklptyep4r3uvs37lqzjycs8ef3mn",
+          "lockupAddress": "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr",
           "serverPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
           "timeoutBlockHeight": 123,
           "amount": 100000
