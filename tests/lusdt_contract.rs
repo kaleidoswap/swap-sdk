@@ -18,7 +18,7 @@ use kaleidoswap_sdk::swaps::boltz::{
     GetReversePairsResponse, GetSubmarinePairsResponse, Side,
 };
 use kaleidoswap_sdk::util::secrets::Preimage;
-use kaleidoswap_sdk::LiquidSwapScript;
+use kaleidoswap_sdk::{BtcSwapScript, LiquidSwapScript};
 
 const GOLDEN: &str = include_str!("fixtures/lusdt-v1/liquid-golden-vectors.json");
 const WIRE: &str = include_str!("fixtures/lusdt-v1/wire-contract.json");
@@ -607,6 +607,49 @@ fn sdk_derives_the_canonical_liquid_taproot_vectors() {
         }
     }
 
-    assert_eq!(string_at(&fixture, "/aliases/chainUserLock"), "submarine");
+    // Chain user lock is a hybrid: the reverse-style claim leaf (OP_SIZE 32) with
+    // claim-first aggregation. It is deliberately NOT the submarine tree.
+    assert_eq!(
+        string_at(&fixture, "/aliases/chainUserLock/claimLeaf"),
+        "reverse"
+    );
+    assert_eq!(
+        string_at(&fixture, "/aliases/chainUserLock/aggregationOrder"),
+        "claimFirst"
+    );
     assert_eq!(string_at(&fixture, "/aliases/chainServerLock"), "reverse");
+}
+
+#[test]
+fn golden_and_wire_agree_on_the_canonical_bitcoin_chain_user_lock() {
+    let golden: Value = serde_json::from_str(GOLDEN).unwrap();
+    let wire: Value = serde_json::from_str(WIRE).unwrap();
+
+    // Regression guard for the deposit-shape correction. Both frozen-contract
+    // fixtures must describe exactly one BTC chain user-lock address; if the
+    // wire-contract shape changes again, this fails loudly instead of letting
+    // the golden vectors silently drift back to the old submarine shape.
+    let golden_address = string_at(&golden, "/bitcoinChainUserLock/regtestAddress");
+    let wire_address = string_at(&wire, "/create/chain/response/lockupDetails/lockupAddress");
+    assert_eq!(
+        golden_address, wire_address,
+        "golden bitcoinChainUserLock must equal the wire-contract chain lockup address"
+    );
+
+    // And that shared address must be exactly what the SDK's own production
+    // reconstruction derives for the reverse-style (OP_SIZE 32) user lock, so the
+    // frozen value can never diverge from real SDK behavior.
+    let chain: CreateChainResponse =
+        serde_json::from_value(value_at(&wire, "/create/chain/response").clone()).unwrap();
+    let refund_key = bitcoin::PublicKey::from_str(string_at(
+        &wire,
+        "/create/chain/userAmountRequest/refundPublicKey",
+    ))
+    .unwrap();
+    let lockup_script =
+        BtcSwapScript::chain_from_swap_resp(Side::Lockup, chain.lockup_details.clone(), refund_key)
+            .unwrap();
+    lockup_script
+        .validate_address(BitcoinChain::BitcoinRegtest, golden_address.to_string())
+        .unwrap();
 }

@@ -50,10 +50,14 @@
     }
   },
   "aliases": {
-    "chainUserLock": "submarine",
+    "chainUserLock": {
+      "note": "Chain user lock reuses the reverse-style claim leaf (OP_SIZE 32) with claim-first aggregation. It is deliberately NOT the submarine tree; the claim leaf carries the 32-byte size check so the preimage is cross-leg compatible.",
+      "claimLeaf": "reverse",
+      "aggregationOrder": "claimFirst"
+    },
     "chainServerLock": "reverse"
   },
   "bitcoinChainUserLock": {
-    "regtestAddress": "bcrt1phn32h5sdtzy5jqlag3ecjnmymyhfrzklptyep4r3uvs37lqzjycs8ef3mn"
+    "regtestAddress": "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr"
   }
 }
