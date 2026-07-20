@@ -47,14 +47,29 @@
         "testnet": "tex1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379s77eqkp",
         "regtest": "ert1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379sg259pe"
       }
+    },
+    "bitcoinChainUserLock": {
+      "aggregationOrder": "claimFirst",
+      "claimLeaf": {
+        "version": 192,
+        "output": "82012088a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+      },
+      "refundLeaf": {
+        "version": 192,
+        "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+      },
+      "internalKey": "4b50abab3e020bc8d4fe59a07324b8e6cf0f622c00080eae40a8797072b6d834",
+      "merkleRoot": "db15370e2959c45040655d69f77ca06253d4da25fea203b468bd12f05b192810",
+      "outputKey": "54bf3ad2af060c4181eaaeef39f307a9327d8fb4693f44e260fa89f7b3964933",
+      "addresses": {
+        "mainnet": "bc1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesk3zklk",
+        "testnet": "tb1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyespe5e9e",
+        "regtest": "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr"
+      }
     }
   },
   "aliases": {
-    "chainUserLock": {
-      "note": "Chain user lock reuses the reverse-style claim leaf (OP_SIZE 32) with claim-first aggregation. It is deliberately NOT the submarine tree; the claim leaf carries the 32-byte size check so the preimage is cross-leg compatible.",
-      "claimLeaf": "reverse",
-      "aggregationOrder": "claimFirst"
-    },
+    "chainUserLock": "bitcoinChainUserLock",
     "chainServerLock": "reverse"
   },
   "bitcoinChainUserLock": {

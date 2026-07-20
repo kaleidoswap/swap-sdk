@@ -1,6 +1,10 @@
 use std::str::FromStr;
 
 use bitcoin::hashes::{ripemd160, Hash};
+use bitcoin::taproot::{
+    LeafVersion as BitcoinLeafVersion, TaprootBuilder as BitcoinTaprootBuilder,
+};
+use bitcoin::{Address as BitcoinAddress, Network as BitcoinNetwork, ScriptBuf};
 use elements::{
     opcodes::all::{OP_CHECKSIG, OP_CHECKSIGVERIFY, OP_CLTV, OP_EQUALVERIFY, OP_HASH160, OP_SIZE},
     script::Builder,
@@ -607,15 +611,9 @@ fn sdk_derives_the_canonical_liquid_taproot_vectors() {
         }
     }
 
-    // Chain user lock is a hybrid: the reverse-style claim leaf (OP_SIZE 32) with
-    // claim-first aggregation. It is deliberately NOT the submarine tree.
     assert_eq!(
-        string_at(&fixture, "/aliases/chainUserLock/claimLeaf"),
-        "reverse"
-    );
-    assert_eq!(
-        string_at(&fixture, "/aliases/chainUserLock/aggregationOrder"),
-        "claimFirst"
+        string_at(&fixture, "/aliases/chainUserLock"),
+        "bitcoinChainUserLock"
     );
     assert_eq!(string_at(&fixture, "/aliases/chainServerLock"), "reverse");
 }
@@ -624,12 +622,90 @@ fn sdk_derives_the_canonical_liquid_taproot_vectors() {
 fn golden_and_wire_agree_on_the_canonical_bitcoin_chain_user_lock() {
     let golden: Value = serde_json::from_str(GOLDEN).unwrap();
     let wire: Value = serde_json::from_str(WIRE).unwrap();
+    let case = value_at(&golden, "/cases/bitcoinChainUserLock");
+
+    assert_eq!(string_at(case, "/aggregationOrder"), "claimFirst");
+    let claim_version = value_at(case, "/claimLeaf/version").as_u64().unwrap() as u8;
+    let refund_version = value_at(case, "/refundLeaf/version").as_u64().unwrap() as u8;
+    assert_eq!(claim_version, 0xc0);
+    assert_eq!(refund_version, 0xc0);
+
+    let claim = pubkey_from_secret(string_at(&golden, "/inputs/claimPrivateKey"));
+    let refund = pubkey_from_secret(string_at(&golden, "/inputs/refundPrivateKey"));
+    let (_, internal) = musig_internal_key(claim, refund);
+    assert_eq!(
+        hex::encode(internal.serialize()),
+        string_at(case, "/internalKey")
+    );
+
+    let preimage_hash = hex::decode(string_at(&golden, "/inputs/preimageHash")).unwrap();
+    let hashlock = ripemd160::Hash::hash(&preimage_hash);
+    let timeout = value_at(&golden, "/inputs/timeoutBlockHeight")
+        .as_i64()
+        .unwrap();
+    let (canonical_claim, canonical_refund) = scripts("reverse", hashlock, claim, refund, timeout);
+    assert_eq!(
+        hex::encode(canonical_claim.as_bytes()),
+        string_at(case, "/claimLeaf/output")
+    );
+    assert_eq!(
+        hex::encode(canonical_refund.as_bytes()),
+        string_at(case, "/refundLeaf/output")
+    );
+
+    let claim_script = ScriptBuf::from_bytes(
+        hex::decode(string_at(case, "/claimLeaf/output")).expect("valid claim leaf hex"),
+    );
+    let refund_script = ScriptBuf::from_bytes(
+        hex::decode(string_at(case, "/refundLeaf/output")).expect("valid refund leaf hex"),
+    );
+    let spend_info = BitcoinTaprootBuilder::new()
+        .add_leaf_with_ver(
+            1,
+            claim_script,
+            BitcoinLeafVersion::from_consensus(claim_version).unwrap(),
+        )
+        .unwrap()
+        .add_leaf_with_ver(
+            1,
+            refund_script,
+            BitcoinLeafVersion::from_consensus(refund_version).unwrap(),
+        )
+        .unwrap()
+        .finalize(&bitcoin::secp256k1::Secp256k1::new(), internal)
+        .expect("complete Bitcoin two-leaf tree");
+    let merkle_root = spend_info.merkle_root().expect("two-leaf merkle root");
+    assert_eq!(
+        hex::encode(merkle_root.to_byte_array()),
+        string_at(case, "/merkleRoot")
+    );
+    assert_eq!(
+        hex::encode(spend_info.output_key().to_x_only_public_key().serialize()),
+        string_at(case, "/outputKey")
+    );
+
+    for (network, network_name) in [
+        (BitcoinNetwork::Bitcoin, "mainnet"),
+        (BitcoinNetwork::Testnet, "testnet"),
+        (BitcoinNetwork::Regtest, "regtest"),
+    ] {
+        let address = BitcoinAddress::p2tr_tweaked(spend_info.output_key(), network);
+        assert_eq!(
+            address.to_string(),
+            string_at(case, &format!("/addresses/{network_name}"))
+        );
+    }
 
     // Regression guard for the deposit-shape correction. Both frozen-contract
     // fixtures must describe exactly one BTC chain user-lock address; if the
     // wire-contract shape changes again, this fails loudly instead of letting
     // the golden vectors silently drift back to the old submarine shape.
-    let golden_address = string_at(&golden, "/bitcoinChainUserLock/regtestAddress");
+    let golden_address = string_at(case, "/addresses/regtest");
+    assert_eq!(
+        golden_address,
+        string_at(&golden, "/bitcoinChainUserLock/regtestAddress"),
+        "legacy v1 address field must remain synchronized with the full case"
+    );
     let wire_address = string_at(&wire, "/create/chain/response/lockupDetails/lockupAddress");
     assert_eq!(
         golden_address, wire_address,
