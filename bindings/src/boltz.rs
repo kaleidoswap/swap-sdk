@@ -10,6 +10,7 @@ use kaleidoswap_sdk::error::Error as CoreError;
 use kaleidoswap_sdk::network::{Chain, Currency, Network};
 use kaleidoswap_sdk::swaps::boltz::*;
 use kaleidoswap_sdk::util::secrets::Preimage;
+use kaleidoswap_sdk::LiquidAssetContext;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -81,6 +82,17 @@ impl BoltzApiClientV2 {
             .from
             .resolve_currency(swap_request.from_currency)?;
         let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (Currency::LUsdt, _) | (_, Currency::LUsdt)
+        ) {
+            self.inner
+                .get_submarine_pairs()
+                .await?
+                .expected_liquid_asset_context(from_currency, to_currency)?
+        } else {
+            None
+        };
         let response = self
             .inner
             .post_swap_req(&boltz::CreateSubmarineRequest {
@@ -93,11 +105,12 @@ impl BoltzApiClientV2 {
                 webhook: None,
             })
             .await?;
-        response.validate_with_currency(
+        response.validate_with_currency_and_asset_context(
             &swap_request.invoice,
             &swap_request.refund_public_key,
             swap_request.from,
             Some(from_currency),
+            expected_asset_context,
         )?;
         Ok(response)
     }
@@ -111,6 +124,17 @@ impl BoltzApiClientV2 {
             .from
             .resolve_currency(swap_request.from_currency)?;
         let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (Currency::LUsdt, _) | (_, Currency::LUsdt)
+        ) {
+            self.inner
+                .get_reverse_pairs()
+                .await?
+                .expected_liquid_asset_context(from_currency, to_currency)?
+        } else {
+            None
+        };
         let response = self
             .inner
             .post_reverse_req(boltz::CreateReverseRequest {
@@ -133,11 +157,12 @@ impl BoltzApiClientV2 {
                 webhook: None,
             })
             .await?;
-        response.validate_with_currency(
+        response.validate_with_currency_and_asset_context(
             &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
             &swap_request.claim_public_key,
             swap_request.to,
             Some(to_currency),
+            expected_asset_context,
         )?;
         Ok(response)
     }
@@ -151,6 +176,25 @@ impl BoltzApiClientV2 {
             .from
             .resolve_currency(swap_request.from_currency)?;
         let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (Currency::LUsdt, _) | (_, Currency::LUsdt)
+        ) {
+            self.inner
+                .get_chain_pairs()
+                .await?
+                .expected_liquid_asset_context(from_currency, to_currency)?
+        } else {
+            None
+        };
+        let (from_asset_context, to_asset_context): (
+            Option<LiquidAssetContext>,
+            Option<LiquidAssetContext>,
+        ) = match (from_currency, to_currency) {
+            (Currency::LUsdt, _) => (expected_asset_context, None),
+            (_, Currency::LUsdt) => (None, expected_asset_context),
+            _ => (None, None),
+        };
         let response = self
             .inner
             .post_chain_req(boltz::CreateChainRequest {
@@ -169,13 +213,15 @@ impl BoltzApiClientV2 {
                 webhook: None,
             })
             .await?;
-        response.validate_with_currency(
+        response.validate_with_currency_and_asset_context(
             &swap_request.claim_public_key,
             &swap_request.refund_public_key,
             swap_request.from,
             swap_request.to,
             Some(from_currency),
             Some(to_currency),
+            from_asset_context,
+            to_asset_context,
         )?;
         Ok(response)
     }

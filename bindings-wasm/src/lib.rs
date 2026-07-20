@@ -674,14 +674,42 @@ fn core_err(e: kaleidoswap_sdk::error::Error) -> JsValue {
     error.into()
 }
 
-/// Map a Boltz chain identifier ("BTC" | "L-BTC") + network to a `Chain`,
-/// for validating create-swap responses.
-fn chain_from_boltz(s: &str, network: &str) -> Result<kaleidoswap_sdk::network::Chain, JsValue> {
+/// Resolve a Boltz asset identifier to its chain and currency before posting a
+/// create request, so an unsupported asset cannot leave an orphan server swap.
+fn asset_from_boltz(
+    s: &str,
+    network: &str,
+) -> Result<
+    (
+        kaleidoswap_sdk::network::Chain,
+        kaleidoswap_sdk::network::Currency,
+    ),
+    JsValue,
+> {
+    use kaleidoswap_sdk::network::{Chain, Currency};
+
     let net = parse_network(network)?;
     match s {
-        "BTC" => Ok(kaleidoswap_sdk::network::Chain::Bitcoin(net.into())),
-        "L-BTC" => Ok(kaleidoswap_sdk::network::Chain::Liquid(net.into())),
-        other => Err(JsValue::from_str(&format!("unsupported chain '{other}'"))),
+        "BTC" => Ok((Chain::Bitcoin(net.into()), Currency::Btc)),
+        "L-BTC" => Ok((Chain::Liquid(net.into()), Currency::LBtc)),
+        "L-USDT" => Ok((Chain::Liquid(net.into()), Currency::LUsdt)),
+        other => Err(JsValue::from_str(&format!(
+            "unsupported Boltz asset '{other}'"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod boltz_asset_tests {
+    use super::*;
+    use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
+
+    #[test]
+    fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
+        let (chain, currency) = asset_from_boltz("L-USDT", "regtest").unwrap();
+
+        assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidRegtest));
+        assert_eq!(currency, Currency::LUsdt);
     }
 }
 
@@ -748,10 +776,31 @@ impl BoltzClient {
         req: JsValue,
     ) -> Result<JsValue, JsValue> {
         let req: CreateSubmarineRequest = from_js(req)?;
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (kaleidoswap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+        ) {
+            self.inner
+                .get_submarine_pairs()
+                .await
+                .map_err(core_err)?
+                .expected_liquid_asset_context(from_currency, to_currency)
+                .map_err(core_err)?
+        } else {
+            None
+        };
         let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
-        let chain = chain_from_boltz(&req.from, &network)?;
-        resp.validate(&req.invoice, &req.refund_public_key, chain)
-            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &req.invoice,
+            &req.refund_public_key,
+            from_chain,
+            Some(from_currency),
+            expected_asset_context,
+        )
+        .map_err(core_err)?;
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
@@ -765,6 +814,22 @@ impl BoltzClient {
         let to = req.to.clone();
         let preimage_hash = req.preimage_hash;
         let invoice = req.invoice.clone();
+        let (_, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&to, &network)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (kaleidoswap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+        ) {
+            self.inner
+                .get_reverse_pairs()
+                .await
+                .map_err(core_err)?
+                .expected_liquid_asset_context(from_currency, to_currency)
+                .map_err(core_err)?
+        } else {
+            None
+        };
         let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
         // Validate the returned tree/address regardless of request form: derive
         // the payment hash from `preimage_hash` or, in the invoice form, from the
@@ -779,9 +844,14 @@ impl BoltzClient {
                 "reverse swap request needs preimageHash or invoice",
             ));
         };
-        let chain = chain_from_boltz(&to, &network)?;
-        resp.validate(&preimage, &claim_pk, chain)
-            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &preimage,
+            &claim_pk,
+            to_chain,
+            Some(to_currency),
+            expected_asset_context,
+        )
+        .map_err(core_err)?;
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
@@ -804,11 +874,39 @@ impl BoltzClient {
                 ))
             }
         };
-        let from_chain = chain_from_boltz(&req.from, &network)?;
-        let to_chain = chain_from_boltz(&req.to, &network)?;
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (kaleidoswap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+        ) {
+            self.inner
+                .get_chain_pairs()
+                .await
+                .map_err(core_err)?
+                .expected_liquid_asset_context(from_currency, to_currency)
+                .map_err(core_err)?
+        } else {
+            None
+        };
+        let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
+            (kaleidoswap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
+            (_, kaleidoswap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
+            _ => (None, None),
+        };
         let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
-        resp.validate(&claim_pk, &refund_pk, from_chain, to_chain)
-            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &claim_pk,
+            &refund_pk,
+            from_chain,
+            to_chain,
+            Some(from_currency),
+            Some(to_currency),
+            from_asset_context,
+            to_asset_context,
+        )
+        .map_err(core_err)?;
         to_js(&resp)
     }
 

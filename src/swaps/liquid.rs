@@ -71,7 +71,9 @@ pub struct LiquidAssetContext {
 }
 
 impl LiquidAssetContext {
-    fn from_response(
+    /// Parse a swap/fee asset pair, preserving legacy responses only when both
+    /// extensions are absent.
+    pub fn from_asset_ids(
         asset_id: Option<&str>,
         fee_asset_id: Option<&str>,
     ) -> Result<Option<Self>, Error> {
@@ -263,7 +265,7 @@ impl LiquidSwapScript {
             .as_deref()
             .map(|key| ZKKeyPair::from_seckey_str(&Secp256k1::new(), key))
             .transpose()?;
-        let asset_context = LiquidAssetContext::from_response(
+        let asset_context = LiquidAssetContext::from_asset_ids(
             create_swap_response.asset_id.as_deref(),
             create_swap_response.fee_asset_id.as_deref(),
         )?;
@@ -340,7 +342,7 @@ impl LiquidSwapScript {
             .as_deref()
             .map(|key| ZKKeyPair::from_seckey_str(&Secp256k1::new(), key))
             .transpose()?;
-        let asset_context = LiquidAssetContext::from_response(
+        let asset_context = LiquidAssetContext::from_asset_ids(
             reverse_response.asset_id.as_deref(),
             reverse_response.fee_asset_id.as_deref(),
         )?;
@@ -424,7 +426,7 @@ impl LiquidSwapScript {
             .as_deref()
             .map(|key| ZKKeyPair::from_seckey_str(&Secp256k1::new(), key))
             .transpose()?;
-        let asset_context = LiquidAssetContext::from_response(
+        let asset_context = LiquidAssetContext::from_asset_ids(
             chain_swap_details.asset_id.as_deref(),
             chain_swap_details.fee_asset_id.as_deref(),
         )?;
@@ -585,19 +587,23 @@ impl LiquidSwapScript {
         &self,
         network: LiquidChain,
         currency: Currency,
+        expected_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
         let context = self.resolved_asset_context(network);
         match currency {
             Currency::LBtc
                 if context.swap_asset == network.bitcoin()
-                    && context.policy_asset == network.bitcoin() =>
+                    && context.policy_asset == network.bitcoin()
+                    && self.blinding_key.is_some() =>
             {
                 Ok(())
             }
             Currency::LUsdt
                 if self.asset_context.is_some()
+                    && expected_context.is_some_and(|expected| expected == context)
                     && context.swap_asset != context.policy_asset
-                    && context.policy_asset == network.bitcoin() =>
+                    && context.policy_asset == network.bitcoin()
+                    && self.blinding_key.is_none() =>
             {
                 Ok(())
             }
@@ -2332,6 +2338,12 @@ impl SwapScriptCommon for LiquidSwapScript {
         pub_nonce: &str,
         transaction_hash: &str,
     ) -> Result<(musig::PartialSignature, musig::PublicNonce), Error> {
+        if self.requires_caller_funded_pset() {
+            return Err(Error::Protocol(
+                "Cooperative Liquid signing is disabled for L-USDT".to_string(),
+            ));
+        }
+
         // Step 1: Start with a Musig KeyAgg Cache
         let pubkeys = [self.receiver_pubkey.inner, self.sender_pubkey.inner];
         let [a, b] = convert_pubkeys_for_musig(&pubkeys);
@@ -2477,6 +2489,89 @@ mod tests {
         assert!(confidential
             .validate_address(LiquidChain::LiquidRegtest, explicit_address.to_string(),)
             .is_err());
+    }
+
+    #[macros::test_all]
+    fn currency_validation_pins_lusdt_and_requires_confidential_lbtc() {
+        let network = LiquidChain::LiquidRegtest;
+        let policy_asset = network.bitcoin();
+        let expected_lusdt = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let unexpected_asset = elements::AssetId::from_str(
+            "2222222222222222222222222222222222222222222222222222222222222222",
+        )
+        .unwrap();
+        let expected_context = LiquidAssetContext {
+            swap_asset: expected_lusdt,
+            policy_asset,
+        };
+
+        let lusdt = test_script(None, Some(expected_context), 42);
+        lusdt
+            .validate_currency(network, Currency::LUsdt, Some(expected_context))
+            .unwrap();
+        assert!(lusdt
+            .validate_currency(network, Currency::LUsdt, None)
+            .is_err());
+
+        let substituted = test_script(
+            None,
+            Some(LiquidAssetContext {
+                swap_asset: unexpected_asset,
+                policy_asset,
+            }),
+            42,
+        );
+        assert!(substituted
+            .validate_currency(network, Currency::LUsdt, Some(expected_context))
+            .is_err());
+
+        let secp = Secp256k1::new();
+        let confidential_lusdt = test_script(
+            Some(ZKKeyPair::new(&secp, &mut OsRng)),
+            Some(expected_context),
+            42,
+        );
+        assert!(confidential_lusdt
+            .validate_currency(network, Currency::LUsdt, Some(expected_context))
+            .is_err());
+
+        let explicit_lbtc = test_script(None, None, 42);
+        assert!(explicit_lbtc
+            .validate_currency(network, Currency::LBtc, None)
+            .is_err());
+
+        let confidential_lbtc = test_script(Some(ZKKeyPair::new(&secp, &mut OsRng)), None, 42);
+        confidential_lbtc
+            .validate_currency(network, Currency::LBtc, None)
+            .unwrap();
+    }
+
+    #[macros::test_all]
+    fn shared_partial_sign_rejects_lusdt_before_parsing_server_data() {
+        let network = LiquidChain::LiquidRegtest;
+        let script = test_script(
+            None,
+            Some(LiquidAssetContext {
+                swap_asset: elements::AssetId::from_str(
+                    "1111111111111111111111111111111111111111111111111111111111111111",
+                )
+                .unwrap(),
+                policy_asset: network.bitcoin(),
+            }),
+            42,
+        );
+        let keys = Keypair::new(&bitcoin::secp256k1::Secp256k1::new(), &mut OsRng);
+
+        let error = script
+            .partial_sign(&keys, "invalid nonce", "invalid hash")
+            .unwrap_err();
+
+        assert!(error
+            .message()
+            .contains("Cooperative Liquid signing is disabled for L-USDT"));
     }
 
     #[macros::test_all]

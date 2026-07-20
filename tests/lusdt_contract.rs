@@ -271,6 +271,28 @@ fn sdk_parses_lusdt_pair_cards_and_asset_extensions() {
             .as_deref(),
         Some(string_at(&fixture, "/assets/policy"))
     );
+
+    let expected_swap_asset = elements::AssetId::from_str(string_at(&fixture, "/assets/lusdt"))
+        .expect("fixture L-USDT asset id");
+    let expected_policy_asset = elements::AssetId::from_str(string_at(&fixture, "/assets/policy"))
+        .expect("fixture policy asset id");
+    for context in [
+        submarine
+            .expected_liquid_asset_context(Currency::LUsdt, Currency::Btc)
+            .unwrap()
+            .unwrap(),
+        reverse
+            .expected_liquid_asset_context(Currency::Btc, Currency::LUsdt)
+            .unwrap()
+            .unwrap(),
+        chain
+            .expected_liquid_asset_context(Currency::Btc, Currency::LUsdt)
+            .unwrap()
+            .unwrap(),
+    ] {
+        assert_eq!(context.swap_asset, expected_swap_asset);
+        assert_eq!(context.policy_asset, expected_policy_asset);
+    }
 }
 
 #[test]
@@ -296,6 +318,11 @@ fn pair_responses_accept_omitted_empty_currency_buckets() {
 #[test]
 fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
     let fixture: Value = serde_json::from_str(WIRE).unwrap();
+    let submarine_pairs: GetSubmarinePairsResponse =
+        serde_json::from_value(value_at(&fixture, "/pairResponses/submarine").clone()).unwrap();
+    let expected_assets = submarine_pairs
+        .expected_liquid_asset_context(Currency::LUsdt, Currency::Btc)
+        .unwrap();
     let submarine: CreateSubmarineResponse =
         serde_json::from_value(value_at(&fixture, "/create/submarine/response").clone()).unwrap();
     let submarine_refund_key = bitcoin::PublicKey::from_str(string_at(
@@ -305,12 +332,21 @@ fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
     .unwrap();
     let submarine_script =
         LiquidSwapScript::submarine_from_swap_resp(&submarine, submarine_refund_key).unwrap();
-    submarine
+    assert!(submarine
         .validate_with_currency(
             string_at(&fixture, "/create/submarine/request/invoice"),
             &submarine_refund_key,
             Chain::Liquid(LiquidChain::LiquidRegtest),
             Some(Currency::LUsdt),
+        )
+        .is_err());
+    submarine
+        .validate_with_currency_and_asset_context(
+            string_at(&fixture, "/create/submarine/request/invoice"),
+            &submarine_refund_key,
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::LUsdt),
+            expected_assets,
         )
         .unwrap();
     submarine_script
@@ -324,11 +360,25 @@ fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
     missing_assets.asset_id = None;
     missing_assets.fee_asset_id = None;
     assert!(missing_assets
-        .validate_with_currency(
+        .validate_with_currency_and_asset_context(
             string_at(&fixture, "/create/submarine/request/invoice"),
             &submarine_refund_key,
             Chain::Liquid(LiquidChain::LiquidRegtest),
             Some(Currency::LUsdt),
+            expected_assets,
+        )
+        .is_err());
+
+    let mut wrong_asset = submarine.clone();
+    wrong_asset.asset_id =
+        Some("2222222222222222222222222222222222222222222222222222222222222222".to_string());
+    assert!(wrong_asset
+        .validate_with_currency_and_asset_context(
+            string_at(&fixture, "/create/submarine/request/invoice"),
+            &submarine_refund_key,
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::LUsdt),
+            expected_assets,
         )
         .is_err());
 
