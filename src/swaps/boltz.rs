@@ -17,11 +17,11 @@
 //!     output_amount - base_fees - claim_fee
 //! );
 
-use crate::network::Network;
+use crate::network::{Currency, Network};
 #[cfg(feature = "ws")]
 use crate::util::ensure_rustls_crypto_provider;
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
-use crate::{BtcSwapScript, LBtcSwapScript};
+use crate::{BtcSwapScript, LiquidAssetContext, LiquidSwapScript};
 use bitcoin::secp256k1;
 use bitcoin::{hashes::sha256, hex::DisplayHex, PublicKey};
 use lightning_invoice::Bolt11Invoice;
@@ -227,6 +227,15 @@ pub struct ChainPair {
     pub limits: PairLimits,
     /// Total fees required for the swap
     pub fees: ChainFees,
+    /// Asset locked on the input side when it is a Liquid asset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_asset_id: Option<String>,
+    /// Asset paid on the output side when it is a Liquid asset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_asset_id: Option<String>,
+    /// Elements policy asset used for transaction fees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_asset_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -240,6 +249,12 @@ pub struct ReversePair {
     pub limits: ReverseLimits,
     /// Total fees required for the swap
     pub fees: ReverseFees,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_asset_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -253,14 +268,22 @@ pub struct SubmarinePair {
     pub limits: SubmarinePairLimits,
     /// Total fees required for the swap
     pub fees: SubmarineFees,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_asset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetSubmarinePairsResponse {
-    #[serde(rename = "BTC")]
+    #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, SubmarinePair>,
-    #[serde(rename = "L-BTC")]
+    #[serde(rename = "L-BTC", default)]
     pub lbtc: HashMap<String, SubmarinePair>,
+    #[serde(rename = "L-USDT", default)]
+    pub lusdt: HashMap<String, SubmarinePair>,
 }
 
 impl GetSubmarinePairsResponse {
@@ -287,11 +310,42 @@ impl GetSubmarinePairsResponse {
     pub fn get_lbtc_to_lbtc_pair(&self) -> Option<SubmarinePair> {
         self.lbtc.get("L-BTC").cloned()
     }
+
+    /// Get the L-USDT to BTC pair data from the response.
+    pub fn get_lusdt_to_btc_pair(&self) -> Option<SubmarinePair> {
+        self.lusdt.get("BTC").cloned()
+    }
+
+    /// Resolve the Liquid assets committed by the selected public pair card.
+    pub fn expected_liquid_asset_context(
+        &self,
+        from: Currency,
+        to: Currency,
+    ) -> Result<Option<LiquidAssetContext>, Error> {
+        match (from, to) {
+            (Currency::LUsdt, Currency::Btc) => self
+                .lusdt
+                .get("BTC")
+                .ok_or_else(|| Error::Protocol("L-USDT/BTC submarine pair missing".to_string()))
+                .and_then(|pair| {
+                    require_pair_asset_context(
+                        pair.from_asset_id.as_deref(),
+                        pair.fee_asset_id.as_deref(),
+                        "L-USDT/BTC submarine pair",
+                    )
+                    .map(Some)
+                }),
+            (Currency::LUsdt, _) | (_, Currency::LUsdt) => Err(Error::Protocol(
+                "Unsupported L-USDT submarine pair".to_string(),
+            )),
+            _ => Ok(None),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetReversePairsResponse {
-    #[serde(rename = "BTC")]
+    #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ReversePair>,
 }
 
@@ -307,13 +361,44 @@ impl GetReversePairsResponse {
     pub fn get_btc_to_lbtc_pair(&self) -> Option<ReversePair> {
         self.btc.get("L-BTC").cloned()
     }
+
+    /// Get the BTC to L-USDT pair data from the response.
+    pub fn get_btc_to_lusdt_pair(&self) -> Option<ReversePair> {
+        self.btc.get("L-USDT").cloned()
+    }
+
+    /// Resolve the Liquid assets committed by the selected public pair card.
+    pub fn expected_liquid_asset_context(
+        &self,
+        from: Currency,
+        to: Currency,
+    ) -> Result<Option<LiquidAssetContext>, Error> {
+        match (from, to) {
+            (Currency::Btc, Currency::LUsdt) => self
+                .btc
+                .get("L-USDT")
+                .ok_or_else(|| Error::Protocol("BTC/L-USDT reverse pair missing".to_string()))
+                .and_then(|pair| {
+                    require_pair_asset_context(
+                        pair.to_asset_id.as_deref(),
+                        pair.fee_asset_id.as_deref(),
+                        "BTC/L-USDT reverse pair",
+                    )
+                    .map(Some)
+                }),
+            (Currency::LUsdt, _) | (_, Currency::LUsdt) => Err(Error::Protocol(
+                "Unsupported L-USDT reverse pair".to_string(),
+            )),
+            _ => Ok(None),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetChainPairsResponse {
-    #[serde(rename = "BTC")]
+    #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ChainPair>,
-    #[serde(rename = "L-BTC")]
+    #[serde(rename = "L-BTC", default)]
     pub lbtc: HashMap<String, ChainPair>,
 }
 
@@ -329,6 +414,49 @@ impl GetChainPairsResponse {
     pub fn get_lbtc_to_btc_pair(&self) -> Option<ChainPair> {
         self.lbtc.get("BTC").cloned()
     }
+
+    /// Get the BTC to L-USDT atomic pair data from the response.
+    pub fn get_btc_to_lusdt_pair(&self) -> Option<ChainPair> {
+        self.btc.get("L-USDT").cloned()
+    }
+
+    /// Resolve the Liquid assets committed by the selected public pair card.
+    pub fn expected_liquid_asset_context(
+        &self,
+        from: Currency,
+        to: Currency,
+    ) -> Result<Option<LiquidAssetContext>, Error> {
+        match (from, to) {
+            (Currency::Btc, Currency::LUsdt) => self
+                .btc
+                .get("L-USDT")
+                .ok_or_else(|| Error::Protocol("BTC/L-USDT chain pair missing".to_string()))
+                .and_then(|pair| {
+                    require_pair_asset_context(
+                        pair.to_asset_id.as_deref(),
+                        pair.fee_asset_id.as_deref(),
+                        "BTC/L-USDT chain pair",
+                    )
+                    .map(Some)
+                }),
+            (Currency::LUsdt, _) | (_, Currency::LUsdt) => {
+                Err(Error::Protocol("Unsupported L-USDT chain pair".to_string()))
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+fn require_pair_asset_context(
+    asset_id: Option<&str>,
+    fee_asset_id: Option<&str>,
+    pair: &str,
+) -> Result<LiquidAssetContext, Error> {
+    LiquidAssetContext::from_asset_ids(asset_id, fee_asset_id)?.ok_or_else(|| {
+        Error::Protocol(format!(
+            "{pair} must provide both the swap and fee asset ids"
+        ))
+    })
 }
 
 /// Reference Documnetation: <https://api.boltz.exchange/swagger>
@@ -912,6 +1040,10 @@ pub struct CreateSubmarineResponse {
     pub timeout_block_height: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blinding_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_asset_id: Option<String>,
 }
 impl CreateSubmarineResponse {
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
@@ -921,6 +1053,29 @@ impl CreateSubmarineResponse {
         our_pubkey: &PublicKey,
         chain: Chain,
     ) -> Result<(), Error> {
+        self.validate_with_currency(invoice, our_pubkey, chain, None)
+    }
+
+    pub fn validate_with_currency(
+        &self,
+        invoice: &str,
+        our_pubkey: &PublicKey,
+        chain: Chain,
+        currency: Option<Currency>,
+    ) -> Result<(), Error> {
+        self.validate_with_currency_and_asset_context(invoice, our_pubkey, chain, currency, None)
+    }
+
+    /// Validate a create response against both the requested currency and the
+    /// asset ids from the pair card the caller accepted.
+    pub fn validate_with_currency_and_asset_context(
+        &self,
+        invoice: &str,
+        our_pubkey: &PublicKey,
+        chain: Chain,
+        currency: Option<Currency>,
+        expected_asset_context: Option<LiquidAssetContext>,
+    ) -> Result<(), Error> {
         let preimage = Preimage::from_invoice_str(invoice)?;
 
         match chain {
@@ -929,7 +1084,13 @@ impl CreateSubmarineResponse {
                 boltz_sub_script.validate_address(bitcoin_chain, self.address.clone())
             }
             Chain::Liquid(liquid_chain) => {
-                let boltz_sub_script = LBtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
+                let boltz_sub_script =
+                    LiquidSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
+                boltz_sub_script.validate_currency(
+                    liquid_chain,
+                    chain.resolve_currency(currency)?,
+                    expected_asset_context,
+                )?;
                 if boltz_sub_script.hashlock != preimage.hash160 {
                     return Err(Error::Protocol(format!(
                         "Hash160 mismatch: {},{}",
@@ -1224,6 +1385,10 @@ pub struct CreateReverseResponse {
     pub onchain_amount: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub blinding_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_asset_id: Option<String>,
 }
 impl CreateReverseResponse {
     /// Validate reverse swap response
@@ -1234,6 +1399,29 @@ impl CreateReverseResponse {
         preimage: &Preimage,
         our_pubkey: &PublicKey,
         chain: Chain,
+    ) -> Result<(), Error> {
+        self.validate_with_currency(preimage, our_pubkey, chain, None)
+    }
+
+    pub fn validate_with_currency(
+        &self,
+        preimage: &Preimage,
+        our_pubkey: &PublicKey,
+        chain: Chain,
+        currency: Option<Currency>,
+    ) -> Result<(), Error> {
+        self.validate_with_currency_and_asset_context(preimage, our_pubkey, chain, currency, None)
+    }
+
+    /// Validate a create response against both the requested currency and the
+    /// asset ids from the pair card the caller accepted.
+    pub fn validate_with_currency_and_asset_context(
+        &self,
+        preimage: &Preimage,
+        our_pubkey: &PublicKey,
+        chain: Chain,
+        currency: Option<Currency>,
+        expected_asset_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
         if let Some(invoice) = &self.invoice {
             // Boltz will only return a BOLT11 invoice if the invoice is not provided
@@ -1253,7 +1441,12 @@ impl CreateReverseResponse {
                 boltz_rev_script.validate_address(bitcoin_chain, self.lockup_address.clone())
             }
             Chain::Liquid(liquid_chain) => {
-                let boltz_rev_script = LBtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
+                let boltz_rev_script = LiquidSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
+                boltz_rev_script.validate_currency(
+                    liquid_chain,
+                    chain.resolve_currency(currency)?,
+                    expected_asset_context,
+                )?;
                 boltz_rev_script.validate_address(liquid_chain, self.lockup_address.clone())
             }
         }
@@ -1282,6 +1475,10 @@ pub struct ChainSwapDetails {
     pub claim_address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bip21: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_asset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1322,19 +1519,75 @@ impl CreateChainResponse {
         from_chain: Chain,
         to_chain: Chain,
     ) -> Result<(), Error> {
+        self.validate_with_currency(
+            claim_pubkey,
+            refund_pubkey,
+            from_chain,
+            to_chain,
+            None,
+            None,
+        )
+    }
+
+    pub fn validate_with_currency(
+        &self,
+        claim_pubkey: &PublicKey,
+        refund_pubkey: &PublicKey,
+        from_chain: Chain,
+        to_chain: Chain,
+        from_currency: Option<Currency>,
+        to_currency: Option<Currency>,
+    ) -> Result<(), Error> {
+        self.validate_with_currency_and_asset_context(
+            claim_pubkey,
+            refund_pubkey,
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            None,
+            None,
+        )
+    }
+
+    /// Validate both create-response legs against their requested currencies
+    /// and the asset ids from the pair card the caller accepted.
+    #[allow(clippy::too_many_arguments)]
+    pub fn validate_with_currency_and_asset_context(
+        &self,
+        claim_pubkey: &PublicKey,
+        refund_pubkey: &PublicKey,
+        from_chain: Chain,
+        to_chain: Chain,
+        from_currency: Option<Currency>,
+        to_currency: Option<Currency>,
+        from_asset_context: Option<LiquidAssetContext>,
+        to_asset_context: Option<LiquidAssetContext>,
+    ) -> Result<(), Error> {
         self.validate_side(
             Side::Lockup,
             from_chain,
+            from_currency,
+            from_asset_context,
             &self.lockup_details,
             refund_pubkey,
         )?;
-        self.validate_side(Side::Claim, to_chain, &self.claim_details, claim_pubkey)
+        self.validate_side(
+            Side::Claim,
+            to_chain,
+            to_currency,
+            to_asset_context,
+            &self.claim_details,
+            claim_pubkey,
+        )
     }
 
     fn validate_side(
         &self,
         side: Side,
         chain: Chain,
+        currency: Option<Currency>,
+        expected_asset_context: Option<LiquidAssetContext>,
         details: &ChainSwapDetails,
         our_pubkey: &PublicKey,
     ) -> Result<(), Error> {
@@ -1346,7 +1599,12 @@ impl CreateChainResponse {
             }
             Chain::Liquid(liquid_chain) => {
                 let boltz_chain_script =
-                    LBtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
+                    LiquidSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
+                boltz_chain_script.validate_currency(
+                    liquid_chain,
+                    chain.resolve_currency(currency)?,
+                    expected_asset_context,
+                )?;
                 boltz_chain_script.validate_address(liquid_chain, details.lockup_address.clone())
             }
         }

@@ -6,6 +6,7 @@ use serde_json::Value;
 
 /// The Global Error enum. Encodes all possible internal library errors
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     #[cfg(feature = "electrum")]
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -37,6 +38,9 @@ pub enum Error {
     WebSocket(Box<tokio_tungstenite_wasm::Error>),
     Taproot(String),
     Musig2(String),
+    /// A non-policy-asset Liquid spend cannot pay its transaction fee without
+    /// at least one caller-provided policy-asset input.
+    LiquidFeeAssetRequired,
     Generic(String),
     HTTPStatusNotSuccess(reqwest::StatusCode, Value),
 }
@@ -288,6 +292,7 @@ impl Error {
             Error::WebSocket(_) => "WebSocket",
             Error::Taproot(_) => "Taproot",
             Error::Musig2(_) => "Musig2",
+            Error::LiquidFeeAssetRequired => "liquid_fee_asset_required",
             Error::Generic(_) => "Generic",
             Error::HTTPStatusNotSuccess(_, _) => "HTTPStatusNotSuccess",
         }
@@ -327,6 +332,9 @@ impl Error {
             Error::WebSocket(e) => e.to_string(),
             Error::Taproot(e) => e.clone(),
             Error::Musig2(e) => e.clone(),
+            Error::LiquidFeeAssetRequired => {
+                "A caller-provided Liquid policy-asset input is required to pay fees".to_string()
+            }
             Error::Generic(e) => e.clone(),
             Error::HTTPStatusNotSuccess(status, body) => {
                 format!("HTTP Status Not Success: {status}, {body}")

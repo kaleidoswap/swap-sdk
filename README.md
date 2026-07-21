@@ -209,18 +209,22 @@ make wasm-regtest-test # runs regtest tests (requires the regtest environment)
 
 This library makes the following assumptions:
 
-- Reverse swaps spend only 1 utxo
-
-When we fetch utxos, we expect a single utxo funded with the exact amount of the swap. If the amount does not match
-or if there is more than one utxo, we do not claim the transaction.
+- A reverse swap has one designated HTLC input. Discovery may return multiple UTXOs, but the SDK selects only the
+  output matching the exact script, asset, amount, and expected transaction id when one is available.
 
 - Bitcoin reverse swap sweep/drain is 1 output
 
-- Liquid reverse swap sweep/drain is 1 confidential output and 1 explicit fee output
+- The legacy single-input Liquid claim/refund path is L-BTC-only: one confidential payout output and one explicit
+  policy-asset fee output. Magic routing is also L-BTC-only.
 
-- Liquid reverse swap utxo is always confidential
-  If the swap service funds the swap script with Explicit values, the library will error. It currently only handles
-  Confidential transactions.
+- Liquid HTLC discovery validates the exact script, asset, and transaction. Claims and all L-USDT spends also require
+  the exact expected amount; legacy L-BTC refunds intentionally reclaim the positive amount actually locked so an
+  underpayment remains refundable. Legacy confidential outputs require their blinding key; native L-USDT HTLCs are
+  explicit and must not include one. L-USDT spending uses the caller-funded PSET flow because its Elements fee must be
+  paid separately in L-BTC.
+
+- Caller-funded PSET finalization is offline. The wallet must source real, spendable Liquid inputs; the SDK validates
+  their commitments and any supplied full previous transactions, but cannot prove chain inclusion without a backend.
 
 # Acknowledgment
 

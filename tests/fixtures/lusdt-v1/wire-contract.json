@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 1,
+  "network": "regtest",
+  "assets": {
+    "lusdt": "1111111111111111111111111111111111111111111111111111111111111111",
+    "policy": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+  },
+  "amountSemantics": {
+    "limits": "inputAssetBaseUnits",
+    "rate": "outputAssetBaseUnitsPerInputAssetBaseUnit",
+    "quotedFees": "outputAssetBaseUnits",
+    "elementsFeeOutput": "feeAssetId"
+  },
+  "pairResponses": {
+    "submarine": {
+      "L-USDT": {
+        "BTC": {
+          "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "rate": 0.00001,
+          "limits": {
+            "minimal": 1000000000,
+            "maximal": 1000000000000,
+            "maximalZeroConf": 0,
+            "minimalBatched": null
+          },
+          "fees": {
+            "percentage": 0.5,
+            "minerFees": 500
+          },
+          "fromAssetId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "feeAssetId": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+        }
+      }
+    },
+    "reverse": {
+      "BTC": {
+        "L-USDT": {
+          "hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "rate": 100000,
+          "limits": {
+            "minimal": 10000,
+            "maximal": 10000000
+          },
+          "fees": {
+            "percentage": 0.5,
+            "minerFees": {
+              "lockup": 1000,
+              "claim": 200
+            }
+          },
+          "toAssetId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "feeAssetId": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+        }
+      }
+    },
+    "chain": {
+      "BTC": {
+        "L-USDT": {
+          "hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "rate": 100000,
+          "limits": {
+            "minimal": 10000,
+            "maximal": 10000000,
+            "maximalZeroConf": 0
+          },
+          "fees": {
+            "percentage": 0.5,
+            "minerFees": {
+              "server": 1000,
+              "user": {
+                "lockup": 200,
+                "claim": 100
+              }
+            }
+          },
+          "toAssetId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "feeAssetId": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+        }
+      }
+    }
+  },
+  "create": {
+    "submarine": {
+      "request": {
+        "from": "L-USDT",
+        "to": "BTC",
+        "invoice": "lnbcrt1m1p5yacvqdpcfdskcetfv3h4xampwqsyct242dz9ggrrdah8gunpvd6zqenf0p682un9pp54zk2gr2z8uqwcznfkxup295awsf2w3lq3etxn6qtxyrws2t4jz9qsp5yg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3q9qrsgqcqpj78hwdxr5dw8w3zaynvdha5h05esc74f66qdctn5z4au4p8uv9ktrl4pv0zjq3gf3vhh3z8u3due920cu08wzxc8crthpl62584e74qcqt9xqn5",
+        "refundPublicKey": "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
+        "pairHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "response": {
+        "id": "submarine-lusdt-v1",
+        "acceptZeroConf": false,
+        "address": "ert1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vqcgyqml",
+        "bip21": "",
+        "claimPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
+        "expectedAmount": 10100000000,
+        "referralId": null,
+        "swapTree": {
+          "claimLeaf": {
+            "version": 196,
+            "output": "a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+          },
+          "refundLeaf": {
+            "version": 196,
+            "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+          }
+        },
+        "timeoutBlockHeight": 123,
+        "assetId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "feeAssetId": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+      }
+    },
+    "reverse": {
+      "request": {
+        "from": "BTC",
+        "to": "L-USDT",
+        "preimageHash": "a8aca40d423f00ec0a69b1b815169d7412a747e08e5669e80b3106e82975908a",
+        "claimPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
+        "invoiceAmount": 100000,
+        "pairHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "response": {
+        "id": "reverse-lusdt-v1",
+        "invoice": "lnbcrt1m1p5yacvqdpcfdskcetfv3h4xampwqsyct242dz9ggrrdah8gunpvd6zqenf0p682un9pp54zk2gr2z8uqwcznfkxup295awsf2w3lq3etxn6qtxyrws2t4jz9qsp5yg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3q9qrsgqcqpj78hwdxr5dw8w3zaynvdha5h05esc74f66qdctn5z4au4p8uv9ktrl4pv0zjq3gf3vhh3z8u3due920cu08wzxc8crthpl62584e74qcqt9xqn5",
+        "swapTree": {
+          "claimLeaf": {
+            "version": 196,
+            "output": "82012088a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+          },
+          "refundLeaf": {
+            "version": 196,
+            "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+          }
+        },
+        "lockupAddress": "ert1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379sg259pe",
+        "refundPublicKey": "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
+        "timeoutBlockHeight": 123,
+        "onchainAmount": 9949998800,
+        "blindingKey": null,
+        "assetId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "feeAssetId": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+      }
+    },
+    "chain": {
+      "userAmountRequest": {
+        "from": "BTC",
+        "to": "L-USDT",
+        "preimageHash": "a8aca40d423f00ec0a69b1b815169d7412a747e08e5669e80b3106e82975908a",
+        "claimPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
+        "refundPublicKey": "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
+        "userLockAmount": 100000,
+        "pairHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "serverAmountRequest": {
+        "from": "BTC",
+        "to": "L-USDT",
+        "preimageHash": "a8aca40d423f00ec0a69b1b815169d7412a747e08e5669e80b3106e82975908a",
+        "claimPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
+        "refundPublicKey": "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
+        "serverLockAmount": 9949998700,
+        "pairHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "response": {
+        "id": "chain-lusdt-v1",
+        "lockupDetails": {
+          "swapTree": {
+            "claimLeaf": {
+              "version": 192,
+              "output": "82012088a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+            },
+            "refundLeaf": {
+              "version": 192,
+              "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+            }
+          },
+          "lockupAddress": "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr",
+          "serverPublicKey": "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
+          "timeoutBlockHeight": 123,
+          "amount": 100000
+        },
+        "claimDetails": {
+          "swapTree": {
+            "claimLeaf": {
+              "version": 196,
+              "output": "82012088a914124b4a204760441dc802c445d4987ba1bd967e6d882083d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668cac"
+            },
+            "refundLeaf": {
+              "version": 196,
+              "output": "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1"
+            }
+          },
+          "lockupAddress": "ert1p3q4f4w9szpa82ayu5k6mwkvpkyqhus2ggzlugj9pnc5cfwfj379sg259pe",
+          "serverPublicKey": "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
+          "timeoutBlockHeight": 123,
+          "amount": 9949998700,
+          "blindingKey": null,
+          "assetId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "feeAssetId": "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"
+        }
+      }
+    }
+  },
+  "transactionLookups": {
+    "submarine": {
+      "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "hex": "00",
+      "timeoutBlockHeight": 123,
+      "timeoutEta": null
+    },
+    "reverse": {
+      "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "hex": "00",
+      "timeoutBlockHeight": 123
+    },
+    "chain": {
+      "userLock": {
+        "transaction": {
+          "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "hex": "00"
+        },
+        "timeout": {
+          "blockHeight": 123,
+          "eta": null
+        }
+      },
+      "serverLock": {
+        "transaction": {
+          "id": "9999999999999999999999999999999999999999999999999999999999999999",
+          "hex": "00"
+        },
+        "timeout": {
+          "blockHeight": 123
+        }
+      }
+    },
+    "transactionNotFound": {
+      "error": "transaction_not_found"
+    }
+  },
+  "websocketStatusSequence": [
+    "swap.created",
+    "transaction.mempool",
+    "transaction.confirmed",
+    "transaction.server.mempool",
+    "transaction.server.confirmed",
+    "transaction.claimed"
+  ]
+}

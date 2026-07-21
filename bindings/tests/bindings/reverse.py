@@ -31,8 +31,8 @@ async def swap(to_chain: kaleidoswap_sdk.Chain):
     asyncio.create_task(ws_client.run_ws_loop())
 
     # Monitor the swap status via WebSocket
-    await ws_client.subscribe_swap(swap_id)
     updates = ws_client.updates()
+    await ws_client.subscribe_swap(swap_id)
 
     # Wait for initial status
     await next_status(updates, "swap.created")

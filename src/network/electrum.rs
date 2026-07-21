@@ -215,33 +215,40 @@ impl ElectrumLiquidClient {
 
 #[macros::async_trait]
 impl LiquidClient for ElectrumLiquidClient {
-    async fn get_address_utxo(
+    async fn get_address_utxos(
         &self,
         address: &elements::Address,
-    ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error> {
-        let history = self.inner.script_get_history(bitcoin::Script::from_bytes(
-            address.to_unconfidential().script_pubkey().as_bytes(),
-        ))?;
-        if history.is_empty() {
-            return Err(Error::Protocol("No Transaction History".to_string()));
-        }
-        let bitcoin_txid = if let Some(last) = history.last() {
-            last.tx_hash
-        } else {
-            return Err(Error::Protocol(
-                "Unexpected empty history after check".to_string(),
-            ));
-        };
-        let raw_tx = self.inner.transaction_get_raw(&bitcoin_txid)?;
-        let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
-        for (vout, output) in tx.clone().output.into_iter().enumerate() {
-            if output.script_pubkey == address.script_pubkey() {
-                let outpoint_0 = elements::OutPoint::new(tx.txid(), vout as u32);
+    ) -> Result<Vec<(elements::OutPoint, elements::TxOut)>, Error> {
+        let script = address.to_unconfidential().script_pubkey();
+        let history = self
+            .inner
+            .script_get_history(bitcoin::Script::from_bytes(script.as_bytes()))?;
+        let mut transactions = Vec::with_capacity(history.len());
 
-                return Ok(Some((outpoint_0, output)));
+        for entry in history {
+            let raw_tx = self.inner.transaction_get_raw(&entry.tx_hash)?;
+            transactions.push(elements::encode::deserialize::<elements::Transaction>(
+                &raw_tx,
+            )?);
+        }
+
+        let spent_outputs = transactions
+            .iter()
+            .flat_map(|tx| tx.input.iter().map(|input| input.previous_output))
+            .collect::<HashSet<_>>();
+        let mut outputs = Vec::new();
+
+        for tx in transactions {
+            let txid = tx.txid();
+            for (vout, output) in tx.output.into_iter().enumerate() {
+                let outpoint = elements::OutPoint::new(txid, vout as u32);
+                if output.script_pubkey == script && !spent_outputs.contains(&outpoint) {
+                    outputs.push((outpoint, output));
+                }
             }
         }
-        Ok(None)
+
+        Ok(outputs)
     }
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error> {

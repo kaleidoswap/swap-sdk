@@ -124,6 +124,11 @@ impl BoltzWsApi {
         self.error_notifier.subscribe()
     }
 
+    /// Returns a receiver for swap status updates.
+    ///
+    /// Create the receiver before calling [`Self::subscribe_swap`]. The server can send the
+    /// current swap status immediately, and broadcast receivers do not replay updates emitted
+    /// before they were created.
     pub fn updates(&self) -> broadcast::Receiver<SwapStatus> {
         self.update_notifier.subscribe()
     }

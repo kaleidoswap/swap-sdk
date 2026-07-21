@@ -1,6 +1,6 @@
 use kaleidoswap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
 use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidoswap_sdk::network::{BitcoinChain, Chain, LiquidChain, Network};
+use kaleidoswap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain, Network};
 use kaleidoswap_sdk::swaps::ChainClient as CoreClient;
 
 use crate::boltz::Error;
@@ -31,6 +31,13 @@ pub enum BitcoinChain {
 pub enum Chain {
     Bitcoin(BitcoinChain),
     Liquid(LiquidChain),
+}
+
+#[uniffi::remote(Enum)]
+pub enum Currency {
+    Btc,
+    LBtc,
+    LUsdt,
 }
 
 #[derive(uniffi::Record)]

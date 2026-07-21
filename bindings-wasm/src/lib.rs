@@ -664,17 +664,52 @@ use kaleidoswap_sdk::boltz::{
 };
 
 fn core_err(e: kaleidoswap_sdk::error::Error) -> JsValue {
-    JsValue::from_str(&e.message())
+    let error = js_sys::Error::new(&e.message());
+    error.set_name(&e.name());
+    let _ = js_sys::Reflect::set(
+        error.as_ref(),
+        &JsValue::from_str("code"),
+        &JsValue::from_str(&e.name()),
+    );
+    error.into()
 }
 
-/// Map a Boltz chain identifier ("BTC" | "L-BTC") + network to a `Chain`,
-/// for validating create-swap responses.
-fn chain_from_boltz(s: &str, network: &str) -> Result<kaleidoswap_sdk::network::Chain, JsValue> {
+/// Resolve a Boltz asset identifier to its chain and currency before posting a
+/// create request, so an unsupported asset cannot leave an orphan server swap.
+fn asset_from_boltz(
+    s: &str,
+    network: &str,
+) -> Result<
+    (
+        kaleidoswap_sdk::network::Chain,
+        kaleidoswap_sdk::network::Currency,
+    ),
+    JsValue,
+> {
+    use kaleidoswap_sdk::network::{Chain, Currency};
+
     let net = parse_network(network)?;
     match s {
-        "BTC" => Ok(kaleidoswap_sdk::network::Chain::Bitcoin(net.into())),
-        "L-BTC" => Ok(kaleidoswap_sdk::network::Chain::Liquid(net.into())),
-        other => Err(JsValue::from_str(&format!("unsupported chain '{other}'"))),
+        "BTC" => Ok((Chain::Bitcoin(net.into()), Currency::Btc)),
+        "L-BTC" => Ok((Chain::Liquid(net.into()), Currency::LBtc)),
+        "L-USDT" => Ok((Chain::Liquid(net.into()), Currency::LUsdt)),
+        other => Err(JsValue::from_str(&format!(
+            "unsupported Boltz asset '{other}'"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod boltz_asset_tests {
+    use super::*;
+    use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
+
+    #[test]
+    fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
+        let (chain, currency) = asset_from_boltz("L-USDT", "regtest").unwrap();
+
+        assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidRegtest));
+        assert_eq!(currency, Currency::LUsdt);
     }
 }
 
@@ -741,10 +776,31 @@ impl BoltzClient {
         req: JsValue,
     ) -> Result<JsValue, JsValue> {
         let req: CreateSubmarineRequest = from_js(req)?;
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (kaleidoswap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+        ) {
+            self.inner
+                .get_submarine_pairs()
+                .await
+                .map_err(core_err)?
+                .expected_liquid_asset_context(from_currency, to_currency)
+                .map_err(core_err)?
+        } else {
+            None
+        };
         let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
-        let chain = chain_from_boltz(&req.from, &network)?;
-        resp.validate(&req.invoice, &req.refund_public_key, chain)
-            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &req.invoice,
+            &req.refund_public_key,
+            from_chain,
+            Some(from_currency),
+            expected_asset_context,
+        )
+        .map_err(core_err)?;
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
@@ -758,6 +814,22 @@ impl BoltzClient {
         let to = req.to.clone();
         let preimage_hash = req.preimage_hash;
         let invoice = req.invoice.clone();
+        let (_, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&to, &network)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (kaleidoswap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+        ) {
+            self.inner
+                .get_reverse_pairs()
+                .await
+                .map_err(core_err)?
+                .expected_liquid_asset_context(from_currency, to_currency)
+                .map_err(core_err)?
+        } else {
+            None
+        };
         let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
         // Validate the returned tree/address regardless of request form: derive
         // the payment hash from `preimage_hash` or, in the invoice form, from the
@@ -772,9 +844,14 @@ impl BoltzClient {
                 "reverse swap request needs preimageHash or invoice",
             ));
         };
-        let chain = chain_from_boltz(&to, &network)?;
-        resp.validate(&preimage, &claim_pk, chain)
-            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &preimage,
+            &claim_pk,
+            to_chain,
+            Some(to_currency),
+            expected_asset_context,
+        )
+        .map_err(core_err)?;
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
@@ -797,11 +874,39 @@ impl BoltzClient {
                 ))
             }
         };
-        let from_chain = chain_from_boltz(&req.from, &network)?;
-        let to_chain = chain_from_boltz(&req.to, &network)?;
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let expected_asset_context = if matches!(
+            (from_currency, to_currency),
+            (kaleidoswap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+        ) {
+            self.inner
+                .get_chain_pairs()
+                .await
+                .map_err(core_err)?
+                .expected_liquid_asset_context(from_currency, to_currency)
+                .map_err(core_err)?
+        } else {
+            None
+        };
+        let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
+            (kaleidoswap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
+            (_, kaleidoswap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
+            _ => (None, None),
+        };
         let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
-        resp.validate(&claim_pk, &refund_pk, from_chain, to_chain)
-            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &claim_pk,
+            &refund_pk,
+            from_chain,
+            to_chain,
+            Some(from_currency),
+            Some(to_currency),
+            from_asset_context,
+            to_asset_context,
+        )
+        .map_err(core_err)?;
         to_js(&resp)
     }
 
@@ -902,9 +1007,13 @@ use kaleidoswap_sdk::boltz::{
 use kaleidoswap_sdk::fees::Fee;
 use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 use kaleidoswap_sdk::network::Chain;
+use kaleidoswap_sdk::swaps::liquid::{
+    FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
+};
 use kaleidoswap_sdk::swaps::{
     BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
-    SwapScript as CoreSwapScript, SwapTransactionParams, TransactionOptions,
+    LiquidPsetParams as CoreLiquidPsetParams, SwapScript as CoreSwapScript, SwapTransactionParams,
+    TransactionOptions,
 };
 use kaleidoswap_sdk::util::secrets::Preimage as CorePreimage;
 use std::str::FromStr as _;
@@ -989,6 +1098,44 @@ impl TxParams {
             self.esplora_timeout_secs,
         )
     }
+    fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
+        kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
+            self.boltz_base_url.clone(),
+            self.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        )
+    }
+}
+
+/// Parameters for preparing a caller-funded Liquid PSET (a plain JS object).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LiquidPsetParams {
+    output_address: String,
+    swap_id: String,
+    max_fee: u64,
+    quoted_fee_cap: u64,
+    boltz_base_url: String,
+    #[serde(default)]
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    liquid_esplora_url: String,
+    #[serde(default)]
+    esplora_timeout_secs: Option<u64>,
+    /// Optional serialized Liquid lockup transaction.
+    #[serde(default)]
+    lockup_tx_hex: Option<String>,
+}
+
+impl LiquidPsetParams {
+    fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
+        build_chain_client(
+            &self.network,
+            &None,
+            &Some(self.liquid_esplora_url.clone()),
+            self.esplora_timeout_secs,
+        )
+    }
+
     fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
         kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
             self.boltz_base_url.clone(),
@@ -1117,6 +1264,126 @@ impl SwapScript {
             .map_err(core_err)?;
         Ok(BtcLikeTransaction { inner: tx })
     }
+
+    /// Prepare an L-USDT claim PSET. The returned object pins the swap intent
+    /// and must be retained until `finalizeClaim` is called.
+    #[wasm_bindgen(js_name = prepareLiquidClaim)]
+    pub async fn prepare_liquid_claim(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedLiquidSpend, JsValue> {
+        let p: LiquidPsetParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let options = p
+            .lockup_tx_hex
+            .as_deref()
+            .map(CoreBtcLikeTransaction::from_hex_liquid)
+            .transpose()
+            .map_err(core_err)?
+            .map(|tx| TransactionOptions::default().with_lockup_tx(tx));
+        let prepared = self
+            .inner
+            .prepare_liquid_claim(CoreLiquidPsetParams {
+                output_address: p.output_address,
+                max_fee: p.max_fee,
+                quoted_fee_cap: p.quoted_fee_cap,
+                swap_id: p.swap_id,
+                chain_client: &chain_client,
+                boltz_api: &boltz,
+                options,
+            })
+            .await
+            .map_err(core_err)?;
+        Ok(PreparedLiquidSpend { inner: prepared })
+    }
+
+    /// Prepare an L-USDT refund PSET.
+    #[wasm_bindgen(js_name = prepareLiquidRefund)]
+    pub async fn prepare_liquid_refund(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedLiquidSpend, JsValue> {
+        let p: LiquidPsetParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let options = p
+            .lockup_tx_hex
+            .as_deref()
+            .map(CoreBtcLikeTransaction::from_hex_liquid)
+            .transpose()
+            .map_err(core_err)?
+            .map(|tx| TransactionOptions::default().with_lockup_tx(tx));
+        let prepared = self
+            .inner
+            .prepare_liquid_refund(CoreLiquidPsetParams {
+                output_address: p.output_address,
+                max_fee: p.max_fee,
+                quoted_fee_cap: p.quoted_fee_cap,
+                swap_id: p.swap_id,
+                chain_client: &chain_client,
+                boltz_api: &boltz,
+                options,
+            })
+            .await
+            .map_err(core_err)?;
+        Ok(PreparedLiquidSpend { inner: prepared })
+    }
+}
+
+/// Immutable L-USDT spend intent returned by `prepareLiquidClaim` or
+/// `prepareLiquidRefund`.
+#[wasm_bindgen]
+pub struct PreparedLiquidSpend {
+    inner: CorePreparedLiquidSpend,
+}
+
+#[wasm_bindgen]
+impl PreparedLiquidSpend {
+    /// Return the base64 PSET template and its pinned asset/amount/fee metadata.
+    pub fn template(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.template())
+    }
+
+    /// Validate the funded PSET and add only the swap input's claim witness.
+    #[wasm_bindgen(js_name = finalizeClaim)]
+    pub fn finalize_claim(
+        &self,
+        funded_pset: JsValue,
+        keys_secret_hex: String,
+        preimage_hex: String,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let funded: FundedLiquidPset = from_js(funded_pset)?;
+        let secret = SecretKey::from_str(&keys_secret_hex).map_err(js_err)?;
+        let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let tx = self
+            .inner
+            .finalize_claim(funded, &keys, &preimage)
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::liquid(tx),
+        })
+    }
+
+    /// Validate the funded PSET and add only the swap input's refund witness.
+    #[wasm_bindgen(js_name = finalizeRefund)]
+    pub fn finalize_refund(
+        &self,
+        funded_pset: JsValue,
+        keys_secret_hex: String,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let funded: FundedLiquidPset = from_js(funded_pset)?;
+        let secret = SecretKey::from_str(&keys_secret_hex).map_err(js_err)?;
+        let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let tx = self
+            .inner
+            .finalize_refund(funded, &keys)
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::liquid(tx),
+        })
+    }
 }
 
 /// A signed Bitcoin/Liquid transaction produced by claim/refund construction.
@@ -1171,8 +1438,8 @@ impl BtcLikeTransaction {
 // JS usage:
 //   const ws = new BoltzWsApi(wsUrl);
 //   ws.runWsLoop();                       // do NOT await — runs in background
-//   await ws.subscribeSwap(swapId);
 //   const updates = ws.updates();
+//   await ws.subscribeSwap(swapId);
 //   for (;;) { const status = await updates.next(); ... }
 //
 // `runWsLoop` is a *sync* method returning a Promise: it clones the inner Arc and

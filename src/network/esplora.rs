@@ -228,33 +228,31 @@ impl EsploraLiquidClient {
 
 #[macros::async_trait]
 impl LiquidClient for EsploraLiquidClient {
-    async fn get_address_utxo(
+    async fn get_address_utxos(
         &self,
         address: &elements::Address,
-    ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error> {
+    ) -> Result<Vec<(elements::OutPoint, elements::TxOut)>, Error> {
         let utxos_url = format!("{}/address/{}/utxo", self.base_url, address);
         let utxos_response = get_with_retry(&self.client, &utxos_url, self.timeout).await?;
         let utxos: Vec<Utxo> = serde_json::from_str(&utxos_response.text().await?)?;
+        let mut outputs = Vec::new();
 
-        let txid = &utxos
-            .last()
-            .ok_or(Error::Protocol(
-                "Esplora could not find a Liquid UTXO for script".to_string(),
-            ))?
-            .txid;
-
-        let raw_tx_url = format!("{}/tx/{}/raw", self.base_url, txid);
-        let raw_tx_response = get_with_retry(&self.client, &raw_tx_url, self.timeout).await?;
-        let raw_tx = raw_tx_response.bytes().await?;
-        let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
-        for (vout, output) in tx.clone().output.into_iter().enumerate() {
-            if output.script_pubkey == address.script_pubkey() {
-                let outpoint_0 = elements::OutPoint::new(tx.txid(), vout as u32);
-
-                return Ok(Some((outpoint_0, output)));
+        for utxo in utxos {
+            let raw_tx_url = format!("{}/tx/{}/raw", self.base_url, utxo.txid);
+            let raw_tx_response = get_with_retry(&self.client, &raw_tx_url, self.timeout).await?;
+            let raw_tx = raw_tx_response.bytes().await?;
+            let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
+            if let Some(output) = tx.output.get(utxo.vout as usize) {
+                if output.script_pubkey == address.script_pubkey() {
+                    outputs.push((
+                        elements::OutPoint::new(tx.txid(), utxo.vout),
+                        output.clone(),
+                    ));
+                }
             }
         }
-        Ok(None)
+
+        Ok(outputs)
     }
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error> {
@@ -395,6 +393,7 @@ pub struct Status {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Utxo {
     pub txid: String,
+    pub vout: u32,
 }
 
 #[cfg(test)]

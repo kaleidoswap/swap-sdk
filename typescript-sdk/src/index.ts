@@ -8,7 +8,10 @@
 // types and the Python pydantic models).
 
 import initWasm, {
+  BtcLikeTransaction,
+  PreparedLiquidSpend as WasmPreparedLiquidSpend,
   RlnClient as WasmRlnClient,
+  SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
 import type { components } from "./generated/node-types";
@@ -21,10 +24,7 @@ import type { components } from "./generated/node-types";
 // boundary as the RLN types).
 export { BoltzClient } from "../vendor/bindings_wasm.js";
 
-// Client-side swap-script + claim/refund transaction construction. Re-exported
-// as opaque handles; `SwapScript.constructClaim/constructRefund` take a
-// `TxParams` object (below) and return a `BtcLikeTransaction`.
-export { SwapScript, BtcLikeTransaction } from "../vendor/bindings_wasm.js";
+export { BtcLikeTransaction };
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.
@@ -55,6 +55,159 @@ export interface TxParams {
    * (submarine/reverse cooperative claims work with the default).
    */
   cooperative?: boolean;
+}
+
+/** Parameters for the caller-funded L-USDT PSET prepare methods. */
+export interface LiquidPsetParams {
+  outputAddress: string;
+  swapId: string;
+  /** Application fee ceiling in policy-asset satoshis. */
+  maxFee: bigint;
+  /** Fee ceiling from the accepted quote. The lower ceiling is pinned. */
+  quotedFeeCap: bigint;
+  boltzBaseUrl: string;
+  boltzTimeoutSecs?: number;
+  network: Network;
+  liquidEsploraUrl: string;
+  esploraTimeoutSecs?: number;
+  /** Optional serialized Liquid lockup transaction for local discovery. */
+  lockupTxHex?: string;
+}
+
+/** Base64 PSET template and immutable swap intent. */
+export interface LiquidPsetTemplate {
+  pset: string;
+  swapInputIndex: number;
+  paymentOutputIndex: number;
+  swapAssetId: string;
+  policyAssetId: string;
+  amount: bigint;
+  maxFee: bigint;
+}
+
+/** Unblinded data for the designated full-value L-USDT payout. */
+export interface LiquidOutputSecrets {
+  assetId: string;
+  value: bigint;
+  assetBlindingFactor: string;
+  valueBlindingFactor: string;
+}
+
+/** Wallet-funded, blinded and wallet-signed PSET returned for finalization. */
+export interface FundedLiquidPset {
+  pset: string;
+  paymentOutputSecrets: LiquidOutputSecrets;
+}
+
+/** Stable error shape thrown by core swap operations across the WASM boundary. */
+export interface KaleidoSwapError extends Error {
+  readonly code: string;
+}
+
+/** Narrow an unknown rejection without parsing its human-readable message. */
+export function isKaleidoSwapError(error: unknown): error is KaleidoSwapError {
+  return (
+    error instanceof Error &&
+    typeof (error as { code?: unknown }).code === "string"
+  );
+}
+
+/** Typed façade over the generated immutable caller-funded Liquid spend. */
+export class PreparedLiquidSpend {
+  private constructor(private readonly inner: WasmPreparedLiquidSpend) {}
+
+  private static fromWasm(inner: WasmPreparedLiquidSpend): PreparedLiquidSpend {
+    return new PreparedLiquidSpend(inner);
+  }
+
+  template(): LiquidPsetTemplate {
+    return this.inner.template() as LiquidPsetTemplate;
+  }
+
+  finalizeClaim(
+    fundedPset: FundedLiquidPset,
+    keysSecretHex: string,
+    preimageHex: string,
+  ): BtcLikeTransaction {
+    return this.inner.finalizeClaim(fundedPset, keysSecretHex, preimageHex);
+  }
+
+  finalizeRefund(
+    fundedPset: FundedLiquidPset,
+    keysSecretHex: string,
+  ): BtcLikeTransaction {
+    return this.inner.finalizeRefund(fundedPset, keysSecretHex);
+  }
+
+  free(): void {
+    this.inner.free();
+  }
+
+  static wrap(inner: WasmPreparedLiquidSpend): PreparedLiquidSpend {
+    return PreparedLiquidSpend.fromWasm(inner);
+  }
+}
+
+/** Typed façade over swap reconstruction and transaction construction. */
+export class SwapScript {
+  private constructor(private readonly inner: WasmSwapScript) {}
+
+  static fromSubmarine(
+    chainKind: "bitcoin" | "liquid",
+    network: Network,
+    response: unknown,
+    ourPubkeyHex: string,
+  ): SwapScript {
+    return new SwapScript(
+      WasmSwapScript.fromSubmarine(chainKind, network, response, ourPubkeyHex),
+    );
+  }
+
+  static fromReverse(
+    chainKind: "bitcoin" | "liquid",
+    network: Network,
+    response: unknown,
+    ourPubkeyHex: string,
+  ): SwapScript {
+    return new SwapScript(
+      WasmSwapScript.fromReverse(chainKind, network, response, ourPubkeyHex),
+    );
+  }
+
+  static fromChain(
+    chainKind: "bitcoin" | "liquid",
+    network: Network,
+    side: "lockup" | "claim",
+    details: unknown,
+    ourPubkeyHex: string,
+  ): SwapScript {
+    return new SwapScript(
+      WasmSwapScript.fromChain(chainKind, network, side, details, ourPubkeyHex),
+    );
+  }
+
+  constructClaim(
+    preimageHex: string,
+    params: TxParams,
+  ): Promise<BtcLikeTransaction> {
+    return this.inner.constructClaim(preimageHex, params);
+  }
+
+  constructRefund(params: TxParams): Promise<BtcLikeTransaction> {
+    return this.inner.constructRefund(params);
+  }
+
+  async prepareLiquidClaim(params: LiquidPsetParams): Promise<PreparedLiquidSpend> {
+    return PreparedLiquidSpend.wrap(await this.inner.prepareLiquidClaim(params));
+  }
+
+  async prepareLiquidRefund(params: LiquidPsetParams): Promise<PreparedLiquidSpend> {
+    return PreparedLiquidSpend.wrap(await this.inner.prepareLiquidRefund(params));
+  }
+
+  free(): void {
+    this.inner.free();
+  }
 }
 
 /**

@@ -44,8 +44,8 @@ async def swap(
     )
 
     # Monitor the swap status via WebSocket
-    await ws_client.subscribe_swap(swap_id)
     updates = ws_client.updates()
+    await ws_client.subscribe_swap(swap_id)
 
     await next_status(updates, "swap.created")
 

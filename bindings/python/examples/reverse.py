@@ -63,8 +63,8 @@ async def main():
     asyncio.create_task(ws_client.run_ws_loop())
 
     # Monitor the swap status via WebSocket
-    await ws_client.subscribe_swap(swap_id)
     updates = ws_client.updates()
+    await ws_client.subscribe_swap(swap_id)
     while True:
         update = await updates.next()
         status = update.status

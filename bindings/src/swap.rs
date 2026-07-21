@@ -28,6 +28,117 @@ pub struct SwapTransactionParams {
     pub options: Option<TransactionOptions>,
 }
 
+#[derive(uniffi::Record)]
+pub struct LiquidPsetParams {
+    pub output_address: String,
+    pub max_fee: u64,
+    pub quoted_fee_cap: u64,
+    pub swap_id: String,
+    pub chain_client: Arc<ChainClient>,
+    pub boltz_api: Arc<BoltzApiClientV2>,
+    /// Optional locally available Liquid lockup transaction. Supplying it
+    /// avoids depending on API/indexer transaction discovery.
+    #[uniffi(default = None)]
+    pub lockup_tx: Option<Arc<BtcLikeTransaction>>,
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct LiquidPsetTemplate {
+    pub pset: String,
+    pub swap_input_index: u32,
+    pub payment_output_index: u32,
+    pub swap_asset_id: String,
+    pub policy_asset_id: String,
+    pub amount: u64,
+    pub max_fee: u64,
+}
+
+impl From<swaps_bitcoin::liquid::LiquidPsetTemplate> for LiquidPsetTemplate {
+    fn from(template: swaps_bitcoin::liquid::LiquidPsetTemplate) -> Self {
+        Self {
+            pset: template.pset,
+            swap_input_index: template.swap_input_index,
+            payment_output_index: template.payment_output_index,
+            swap_asset_id: template.swap_asset_id,
+            policy_asset_id: template.policy_asset_id,
+            amount: template.amount,
+            max_fee: template.max_fee,
+        }
+    }
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct LiquidOutputSecrets {
+    pub asset_id: String,
+    pub value: u64,
+    pub asset_blinding_factor: String,
+    pub value_blinding_factor: String,
+}
+
+impl From<LiquidOutputSecrets> for swaps_bitcoin::liquid::LiquidOutputSecrets {
+    fn from(secrets: LiquidOutputSecrets) -> Self {
+        Self {
+            asset_id: secrets.asset_id,
+            value: secrets.value,
+            asset_blinding_factor: secrets.asset_blinding_factor,
+            value_blinding_factor: secrets.value_blinding_factor,
+        }
+    }
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct FundedLiquidPset {
+    pub pset: String,
+    pub payment_output_secrets: LiquidOutputSecrets,
+}
+
+impl From<FundedLiquidPset> for swaps_bitcoin::liquid::FundedLiquidPset {
+    fn from(funded: FundedLiquidPset) -> Self {
+        Self {
+            pset: funded.pset,
+            payment_output_secrets: funded.payment_output_secrets.into(),
+        }
+    }
+}
+
+#[derive(Debug, uniffi::Object)]
+pub struct PreparedLiquidSpend(swaps_bitcoin::liquid::PreparedLiquidSpend);
+
+#[uniffi::export]
+impl PreparedLiquidSpend {
+    #[uniffi::method]
+    pub fn template(&self) -> LiquidPsetTemplate {
+        self.0.template().into()
+    }
+
+    #[uniffi::method]
+    pub fn finalize_claim(
+        &self,
+        funded_pset: FundedLiquidPset,
+        keys: &KeyPair,
+        preimage: &Preimage,
+    ) -> Result<BtcLikeTransaction, Error> {
+        self.0
+            .finalize_claim(funded_pset.into(), &keys.inner, &preimage.0)
+            .map(swaps_bitcoin::BtcLikeTransaction::liquid)
+            .map(BtcLikeTransaction)
+            .map_err(Into::into)
+    }
+
+    #[uniffi::method]
+    pub fn finalize_refund(
+        &self,
+        funded_pset: FundedLiquidPset,
+        keys: &KeyPair,
+    ) -> Result<BtcLikeTransaction, Error> {
+        self.0
+            .finalize_refund(funded_pset.into(), &keys.inner)
+            .map(swaps_bitcoin::BtcLikeTransaction::liquid)
+            .map(BtcLikeTransaction)
+            .map_err(Into::into)
+    }
+}
+
 impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParams<'a> {
     fn from(params: &'a SwapTransactionParams) -> Self {
         swaps_bitcoin::SwapTransactionParams {
@@ -112,6 +223,50 @@ impl SwapScript {
     ) -> Result<BtcLikeTransaction, Error> {
         let tx = self.0.construct_refund(params.into()).await?;
         Ok(BtcLikeTransaction(tx))
+    }
+
+    #[uniffi::method]
+    pub async fn prepare_liquid_claim(
+        &self,
+        params: &LiquidPsetParams,
+    ) -> Result<PreparedLiquidSpend, Error> {
+        let prepared = self
+            .0
+            .prepare_liquid_claim(swaps_bitcoin::LiquidPsetParams {
+                output_address: params.output_address.clone(),
+                max_fee: params.max_fee,
+                quoted_fee_cap: params.quoted_fee_cap,
+                swap_id: params.swap_id.clone(),
+                chain_client: &params.chain_client.0,
+                boltz_api: &params.boltz_api.inner,
+                options: params.lockup_tx.as_ref().map(|tx| {
+                    swaps_bitcoin::TransactionOptions::default().with_lockup_tx(tx.0.clone())
+                }),
+            })
+            .await?;
+        Ok(PreparedLiquidSpend(prepared))
+    }
+
+    #[uniffi::method]
+    pub async fn prepare_liquid_refund(
+        &self,
+        params: &LiquidPsetParams,
+    ) -> Result<PreparedLiquidSpend, Error> {
+        let prepared = self
+            .0
+            .prepare_liquid_refund(swaps_bitcoin::LiquidPsetParams {
+                output_address: params.output_address.clone(),
+                max_fee: params.max_fee,
+                quoted_fee_cap: params.quoted_fee_cap,
+                swap_id: params.swap_id.clone(),
+                chain_client: &params.chain_client.0,
+                boltz_api: &params.boltz_api.inner,
+                options: params.lockup_tx.as_ref().map(|tx| {
+                    swaps_bitcoin::TransactionOptions::default().with_lockup_tx(tx.0.clone())
+                }),
+            })
+            .await?;
+        Ok(PreparedLiquidSpend(prepared))
     }
 
     #[uniffi::method]
