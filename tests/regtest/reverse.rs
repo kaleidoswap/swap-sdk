@@ -78,8 +78,8 @@ async fn swap(chain: Chain, chain_client: &ChainClient) {
         SwapScript::reverse_from_swap_resp(chain, &reverse_resp, claim_public_key).unwrap();
     let swap_id = reverse_resp.id.clone();
 
-    ws_api.subscribe_swap(&swap_id).await.unwrap();
     let mut updates = ws_api.updates();
+    ws_api.subscribe_swap(&swap_id).await.unwrap();
 
     next_status(&mut updates, "swap.created").await.unwrap();
 
@@ -184,8 +184,8 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
         SwapScript::reverse_from_swap_resp(chain, &reverse_resp, claim_public_key).unwrap();
     let swap_id = reverse_resp.id.clone();
 
-    ws_api.subscribe_swap(&swap_id).await.unwrap();
     let mut updates = ws_api.updates();
+    ws_api.subscribe_swap(&swap_id).await.unwrap();
 
     next_status(&mut updates, "swap.created").await.unwrap();
 

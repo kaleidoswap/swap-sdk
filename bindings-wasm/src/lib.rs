@@ -1438,8 +1438,8 @@ impl BtcLikeTransaction {
 // JS usage:
 //   const ws = new BoltzWsApi(wsUrl);
 //   ws.runWsLoop();                       // do NOT await — runs in background
-//   await ws.subscribeSwap(swapId);
 //   const updates = ws.updates();
+//   await ws.subscribeSwap(swapId);
 //   for (;;) { const status = await updates.next(); ... }
 //
 // `runWsLoop` is a *sync* method returning a Promise: it clones the inner Arc and
