@@ -593,8 +593,7 @@ impl LiquidSwapScript {
         match currency {
             Currency::LBtc
                 if context.swap_asset == network.bitcoin()
-                    && context.policy_asset == network.bitcoin()
-                    && self.blinding_key.is_some() =>
+                    && context.policy_asset == network.bitcoin() =>
             {
                 Ok(())
             }
@@ -2492,7 +2491,7 @@ mod tests {
     }
 
     #[macros::test_all]
-    fn currency_validation_pins_lusdt_and_requires_confidential_lbtc() {
+    fn currency_validation_pins_lusdt_and_accepts_both_lbtc_encodings() {
         let network = LiquidChain::LiquidRegtest;
         let policy_asset = network.bitcoin();
         let expected_lusdt = elements::AssetId::from_str(
@@ -2539,9 +2538,9 @@ mod tests {
             .is_err());
 
         let explicit_lbtc = test_script(None, None, 42);
-        assert!(explicit_lbtc
+        explicit_lbtc
             .validate_currency(network, Currency::LBtc, None)
-            .is_err());
+            .unwrap();
 
         let confidential_lbtc = test_script(Some(ZKKeyPair::new(&secp, &mut OsRng)), None, 42);
         confidential_lbtc

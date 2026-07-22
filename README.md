@@ -219,9 +219,9 @@ This library makes the following assumptions:
 
 - Liquid HTLC discovery validates the exact script, asset, and transaction. Claims and all L-USDT spends also require
   the exact expected amount; legacy L-BTC refunds intentionally reclaim the positive amount actually locked so an
-  underpayment remains refundable. Legacy confidential outputs require their blinding key; native L-USDT HTLCs are
-  explicit and must not include one. L-USDT spending uses the caller-funded PSET flow because its Elements fee must be
-  paid separately in L-BTC.
+  underpayment remains refundable. L-BTC HTLCs may be confidential with their matching blinding key or explicit
+  without one; native L-USDT HTLCs are explicit and must not include a key. L-USDT spending uses the caller-funded
+  PSET flow because its Elements fee must be paid separately in L-BTC.
 
 - Caller-funded PSET finalization is offline. The wallet must source real, spendable Liquid inputs; the SDK validates
   their commitments and any supplied full previous transactions, but cannot prove chain inclusion without a backend.
