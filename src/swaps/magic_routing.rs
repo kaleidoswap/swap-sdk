@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use super::boltz::BoltzApiClientV2;
-use crate::network::LiquidChain;
+use crate::network::{BitcoinChain, LiquidChain};
 use crate::{error::Error, network::Chain};
 use bitcoin::{
     hashes::{sha256, Hash},
@@ -13,11 +13,6 @@ use bitcoin::{
 use lightning_invoice::{Bolt11Invoice, RouteHintHop};
 
 const MAGIC_ROUTING_HINT_CONSTANT: u64 = 596385002596073472;
-const LBTC_TESTNET_ASSET_HASH: &str =
-    "144c654344aa716d6f3abcc1ca90e5641e4e2a7f633bc09fe3baf64585819a49";
-const LBTC_MAINNET_ASSET_HASH: &str =
-    "6f0279e9ed041c3d710a9f57d0c02928416460c4b722ae3457a11eec381c526d";
-
 pub type Bip21Components = (String, String, bitcoin::Amount, Option<String>);
 
 /// Decodes the provided invoice to find the magic routing hint.
@@ -33,54 +28,65 @@ pub fn find_magic_routing_hint(invoice: &str) -> Result<Option<RouteHintHop>, Er
 
 /// Parse a BIP21 String and get the network, address, asset_id if present
 pub fn parse_bip21(uri: &str) -> Result<Bip21Components, Error> {
-    let parts: Vec<&str> = uri.split('?').collect();
-
-    let (network_address, params) = (parts[0], parts[1]);
+    let (network_address, params) = uri
+        .split_once('?')
+        .ok_or_else(|| Error::Generic("BIP21 URI must contain a query string".to_string()))?;
+    if params.contains('?') {
+        return Err(Error::Generic(
+            "BIP21 URI contains more than one query separator".to_string(),
+        ));
+    }
 
     // Extract network and address
-    let mut network_address_parts = network_address.split(':');
-    let network = match network_address_parts.next() {
-        Some(r) => r.into(),
-        None => {
-            return Err(Error::Generic(
-                "Unable to extract network from bip21 string".to_string(),
-            ))
-        }
-    };
-    let address = match network_address_parts.next() {
-        Some(r) => r.into(),
-        None => {
-            return Err(Error::Generic(
-                "Unable to extract address from bip21 string".to_string(),
-            ))
-        }
-    };
+    let (network, address) = network_address.split_once(':').ok_or_else(|| {
+        Error::Generic("Unable to extract network and address from BIP21 string".to_string())
+    })?;
+    if network.is_empty() || address.is_empty() {
+        return Err(Error::Generic(
+            "BIP21 network and address must not be empty".to_string(),
+        ));
+    }
 
     // Parse URI parameters
-    let params: Vec<&str> = params.split('&').collect();
     let mut amount = bitcoin::Amount::from_sat(0);
     let mut assetid = None::<String>;
+    let mut amount_seen = false;
 
-    for param in params {
-        let pair: Vec<&str> = param.split('=').collect();
-        match pair[0] {
+    for param in params.split('&') {
+        let (key, value) = param
+            .split_once('=')
+            .ok_or_else(|| Error::Generic(format!("Malformed BIP21 parameter: {param}")))?;
+        if value.is_empty() {
+            return Err(Error::Generic(format!(
+                "BIP21 parameter {key} must not be empty"
+            )));
+        }
+        match key {
             "amount" => {
-                amount = match bitcoin::Amount::from_str_in(pair[1], bitcoin::Denomination::Bitcoin)
-                {
-                    Ok(r) => r,
-                    Err(e) => {
-                        return Err(Error::Generic(format!(
-                            "Unable to parse amount from string: {e}"
-                        )))
-                    }
+                if amount_seen {
+                    return Err(Error::Generic(
+                        "BIP21 URI contains duplicate amount parameters".to_string(),
+                    ));
                 }
+                amount_seen = true;
+                amount = bitcoin::Amount::from_str_in(value, bitcoin::Denomination::Bitcoin)
+                    .map_err(|e| {
+                        Error::Generic(format!("Unable to parse amount from string: {e}"))
+                    })?;
             }
-            "assetid" => assetid = Some(pair[1].into()),
+            "assetid" => {
+                if assetid.is_some() {
+                    return Err(Error::Generic(
+                        "BIP21 URI contains duplicate assetid parameters".to_string(),
+                    ));
+                }
+                assetid = Some(value.into());
+            }
             _ => {}
         }
     }
 
-    Ok((network, address, amount, assetid))
+    Ok((network.into(), address.into(), amount, assetid))
 }
 
 /// Check for magic routing hint in invoice. If present, get the BIP21 from Boltz and verify it.
@@ -93,35 +99,81 @@ pub async fn check_for_mrh(
     if let Some(route_hint) = find_magic_routing_hint(invoice)? {
         let mrh_resp = boltz_api_v2.get_mrh_bip21(invoice).await?;
 
-        let (_, address, amount, assetid) = verify_mrh_signature(
+        let (bip21_network, address, amount, assetid) = verify_mrh_signature(
             &mrh_resp.bip21,
             &route_hint.src_node_id.to_string(),
             &mrh_resp.signature,
         )?;
-
-        match network {
-            Chain::Liquid(LiquidChain::LiquidTestnet) => {
-                if assetid != Some(LBTC_TESTNET_ASSET_HASH.to_string()) {
-                    return Err(Error::Protocol(
-                        "Asset Id missmatch in Magic Routing Hint".to_string(),
-                    ));
-                }
-            }
-
-            Chain::Liquid(LiquidChain::Liquid) => {
-                if assetid != Some(LBTC_MAINNET_ASSET_HASH.to_string()) {
-                    return Err(Error::Protocol(
-                        "Asset Id missmatch in Magic Routing Hint".to_string(),
-                    ));
-                }
-            }
-            _ => (),
-        }
+        validate_mrh_destination(
+            &bip21_network,
+            &address,
+            amount,
+            assetid.as_deref(),
+            network,
+        )?;
 
         Ok(Some((address, amount)))
     } else {
         Ok(None)
     }
+}
+
+fn validate_mrh_destination(
+    bip21_network: &str,
+    address: &str,
+    amount: bitcoin::Amount,
+    assetid: Option<&str>,
+    chain: Chain,
+) -> Result<(), Error> {
+    if amount == bitcoin::Amount::ZERO {
+        return Err(Error::Protocol(
+            "Magic Routing Hint amount must be greater than zero".to_string(),
+        ));
+    }
+
+    match chain {
+        Chain::Liquid(liquid_chain) => {
+            let expected_scheme = match liquid_chain {
+                LiquidChain::Liquid => "liquidnetwork",
+                LiquidChain::LiquidTestnet | LiquidChain::LiquidRegtest => "liquidtestnet",
+            };
+            if bip21_network != expected_scheme {
+                return Err(Error::Protocol(
+                    "Network mismatch in Magic Routing Hint".to_string(),
+                ));
+            }
+
+            let parsed = elements::Address::from_str(address)?;
+            let expected_params: &'static elements::AddressParams = liquid_chain.into();
+            if parsed.params != expected_params || parsed.to_string() != address {
+                return Err(Error::Protocol(
+                    "Address network mismatch in Magic Routing Hint".to_string(),
+                ));
+            }
+
+            let expected_asset = liquid_chain.bitcoin().to_string();
+            if assetid != Some(expected_asset.as_str()) {
+                return Err(Error::Protocol(
+                    "Asset Id mismatch in Magic Routing Hint".to_string(),
+                ));
+            }
+        }
+        Chain::Bitcoin(bitcoin_chain) => {
+            if bip21_network != "bitcoin" || assetid.is_some() {
+                return Err(Error::Protocol(
+                    "Network or asset mismatch in Magic Routing Hint".to_string(),
+                ));
+            }
+            let expected_network = match bitcoin_chain {
+                BitcoinChain::Bitcoin => bitcoin::Network::Bitcoin,
+                BitcoinChain::BitcoinTestnet => bitcoin::Network::Testnet,
+                BitcoinChain::BitcoinRegtest => bitcoin::Network::Regtest,
+            };
+            bitcoin::Address::from_str(address)?.require_network(expected_network)?;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn verify_mrh_signature(
@@ -152,8 +204,13 @@ pub fn sign_address(addr: &str, keys: &Keypair) -> Result<Signature, Error> {
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::key::Keypair;
+    use bitcoin::secp256k1::{Secp256k1, SecretKey};
+
+    use crate::network::{Chain, LiquidChain};
     use crate::swaps::magic_routing::{
-        find_magic_routing_hint, parse_bip21, MAGIC_ROUTING_HINT_CONSTANT,
+        find_magic_routing_hint, parse_bip21, sign_address, validate_mrh_destination,
+        verify_mrh_signature, MAGIC_ROUTING_HINT_CONSTANT,
     };
 
     #[macros::test_all]
@@ -194,6 +251,84 @@ mod tests {
 
             assert_eq!(parsed_amount_sat, amount_sat);
         }
+    }
+
+    #[macros::test_all]
+    fn malformed_bip21_is_rejected_without_panicking() {
+        for uri in [
+            "liquidtestnet:ert1invalid",
+            "?amount=0.1",
+            "liquidtestnet:?amount=0.1",
+            "liquidtestnet:ert1invalid?amount",
+            "liquidtestnet:ert1invalid?amount=",
+            "liquidtestnet:ert1invalid?amount=0.1&amount=0.2",
+            "liquidtestnet:ert1invalid?amount=0.1?assetid=00",
+        ] {
+            assert!(parse_bip21(uri).is_err(), "accepted malformed URI: {uri}");
+        }
+    }
+
+    #[macros::test_all]
+    fn mrh_signature_rejects_address_tampering() {
+        let secp = Secp256k1::new();
+        let keypair = Keypair::from_secret_key(
+            &secp,
+            &SecretKey::from_slice(&[0x42; 32]).expect("valid test secret"),
+        );
+        let address = "ert1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vqcgyqml";
+        let signature = sign_address(address, &keypair).unwrap();
+        let bip21 = format!(
+            "liquidtestnet:{address}?amount=0.00001000&assetid={}",
+            LiquidChain::LiquidRegtest.bitcoin()
+        );
+
+        verify_mrh_signature(
+            &bip21,
+            &keypair.public_key().to_string(),
+            &signature.to_string(),
+        )
+        .unwrap();
+
+        let tampered = bip21.replace(
+            address,
+            "ert1pqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+        );
+        assert!(verify_mrh_signature(
+            &tampered,
+            &keypair.public_key().to_string(),
+            &signature.to_string(),
+        )
+        .is_err());
+    }
+
+    #[macros::test_all]
+    fn mrh_destination_rejects_wrong_network_asset_and_zero_amount() {
+        let address = "ert1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vqcgyqml";
+        let asset = LiquidChain::LiquidRegtest.bitcoin().to_string();
+        let chain = Chain::Liquid(LiquidChain::LiquidRegtest);
+        let amount = bitcoin::Amount::from_sat(1_000);
+
+        validate_mrh_destination("liquidtestnet", address, amount, Some(&asset), chain).unwrap();
+        assert!(
+            validate_mrh_destination("liquidnetwork", address, amount, Some(&asset), chain)
+                .is_err()
+        );
+        assert!(validate_mrh_destination(
+            "liquidtestnet",
+            address,
+            amount,
+            Some(&LiquidChain::LiquidTestnet.bitcoin().to_string()),
+            chain,
+        )
+        .is_err());
+        assert!(validate_mrh_destination(
+            "liquidtestnet",
+            address,
+            bitcoin::Amount::ZERO,
+            Some(&asset),
+            chain,
+        )
+        .is_err());
     }
 
     #[macros::test_all]
