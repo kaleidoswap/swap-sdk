@@ -43,6 +43,21 @@ The generated files are committed; regenerate after updating the spec.
   the typed surface (`RlnClient`, `BoltzClient`, `SwapScript`, `SwapMasterKey`,
   `BoltzWsApi`).
 
+## L-USDT examples
+
+Executable Rust examples for the complete L-USDT/BTC pair workflow are in
+[`examples/`](examples/README.md):
+
+```bash
+cargo run --example lusdt_submarine
+cargo run --example lusdt_reverse
+```
+
+The submarine example covers validated L-USDT funding for a BTC Lightning
+invoice. The reverse example covers response validation and the wallet-neutral,
+caller-funded PSET claim flow required to receive L-USDT while paying Liquid
+fees in L-BTC.
+
 ---
 
 # The swap engine (Boltz protocol)
