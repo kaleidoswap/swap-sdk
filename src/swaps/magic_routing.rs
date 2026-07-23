@@ -133,11 +133,17 @@ fn validate_mrh_destination(
 
     match chain {
         Chain::Liquid(liquid_chain) => {
-            let expected_scheme = match liquid_chain {
-                LiquidChain::Liquid => "liquidnetwork",
-                LiquidChain::LiquidTestnet | LiquidChain::LiquidRegtest => "liquidtestnet",
+            let scheme_matches = match liquid_chain {
+                LiquidChain::Liquid => bip21_network == "liquidnetwork",
+                LiquidChain::LiquidTestnet => bip21_network == "liquidtestnet",
+                // Boltz uses `liquidnetwork` for its Elements regtest backend,
+                // while Kaleido Maker uses `liquidtestnet`. The address params
+                // and policy asset below still unambiguously enforce regtest.
+                LiquidChain::LiquidRegtest => {
+                    matches!(bip21_network, "liquidnetwork" | "liquidtestnet")
+                }
             };
-            if bip21_network != expected_scheme {
+            if !scheme_matches {
                 return Err(Error::Protocol(
                     "Network mismatch in Magic Routing Hint".to_string(),
                 ));
@@ -302,17 +308,17 @@ mod tests {
     }
 
     #[macros::test_all]
-    fn mrh_destination_rejects_wrong_network_asset_and_zero_amount() {
-        let address = "ert1psefavkmha2udzsdkm7cqvq9kyp7pl077meesm3m29qygs4nef0vqcgyqml";
+    fn mrh_destination_validates_liquid_regtest_network_asset_and_amount() {
+        // Upstream Boltz emits a `liquidnetwork` URI with an Elements regtest
+        // address, while Kaleido Maker emits `liquidtestnet` for the same chain.
+        let address = "el1pqtl0qtngg839weftqsjq5kplk4aeq52l30z0pawjamw4vp8peyuswfuatpvq3emule96g7pkun4jl0u7mtausxaquzlqt2rcsqearadvq2vm50jvcl0j";
         let asset = LiquidChain::LiquidRegtest.bitcoin().to_string();
         let chain = Chain::Liquid(LiquidChain::LiquidRegtest);
         let amount = bitcoin::Amount::from_sat(1_000);
 
         validate_mrh_destination("liquidtestnet", address, amount, Some(&asset), chain).unwrap();
-        assert!(
-            validate_mrh_destination("liquidnetwork", address, amount, Some(&asset), chain)
-                .is_err()
-        );
+        validate_mrh_destination("liquidnetwork", address, amount, Some(&asset), chain).unwrap();
+        assert!(validate_mrh_destination("bitcoin", address, amount, Some(&asset), chain).is_err());
         assert!(validate_mrh_destination(
             "liquidtestnet",
             address,
