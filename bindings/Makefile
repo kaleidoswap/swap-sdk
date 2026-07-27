@@ -34,6 +34,18 @@ build-python-sdist:
 inspect-python-artifacts:
 	cd python && python3 scripts/inspect_artifacts.py
 
+inspect-python-wheels:
+	cd python && python3 scripts/inspect_artifacts.py --wheel-only
+
+inspect-python-sdist:
+	cd python && python3 scripts/inspect_artifacts.py --sdist-only
+
+smoke-python-wheel:
+	cd python && uv run python scripts/smoke_artifact.py wheel
+
+smoke-python-sdist:
+	cd python && uv run python scripts/smoke_artifact.py sdist
+
 build-python-manylinux:
 	docker run --rm $(DOCKER_PLATFORM_ARG) \
 		-v "$(REPO_ROOT):/io" \

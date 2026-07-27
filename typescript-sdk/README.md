@@ -50,3 +50,19 @@ import { toJson } from "@kaleidoswap/sdk";
 
 console.log(toJson({ amount: 1000n }));
 ```
+
+## Development checks
+
+Build fresh WASM bindings from the repository root before running the package
+checks:
+
+```sh
+make wasm-pack-build
+cd typescript-sdk
+npm ci
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run smoke:package
+```

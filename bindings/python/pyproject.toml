@@ -46,6 +46,7 @@ package = false
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator[ruff]==0.71.0",
     "maturin==1.14.1",
     "ruff>=0.12.7",
 ]

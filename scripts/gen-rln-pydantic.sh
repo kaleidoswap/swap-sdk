@@ -9,7 +9,8 @@
 # The boundary-type list is parsed from the `json_ffi_types!` block in
 # bindings/src/rln.rs, so that Rust file stays the single source of truth.
 #
-# Requires: uv (for uvx), python3. Run with: make generate-rln-pydantic
+# Requires: uv. The generator and its transitive dependencies are locked by
+# bindings/python/uv.lock. Run with: make generate-rln-pydantic
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,8 +19,8 @@ MODELS="$ROOT_DIR/bindings/python/kaleidoswap_sdk/rln_types.py"
 RLN_RS="$ROOT_DIR/bindings/src/rln.rs"
 UNIFFI_TOML="$ROOT_DIR/bindings/uniffi.toml"
 
-command -v uvx >/dev/null 2>&1 || {
-  echo "❌ uvx (uv) not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+command -v uv >/dev/null 2>&1 || {
+  echo "❌ uv not found. Install: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
   exit 1
 }
 
@@ -27,7 +28,7 @@ echo "→ Generating pydantic models → bindings/python/kaleidoswap_sdk/rln_typ
 # Capture output so we can filter the noisy deprecation warnings WITHOUT masking
 # a real codegen failure (a bare `| grep ... || true` would swallow the exit).
 set +e
-codegen_out="$(uvx --from "datamodel-code-generator[ruff]" datamodel-codegen \
+codegen_out="$(uv run --project "$ROOT_DIR/bindings/python" --locked datamodel-codegen \
   --input "$SPEC" --output "$MODELS" \
   --input-file-type openapi --output-model-type pydantic_v2.BaseModel \
   --use-standard-collections --use-annotated --use-schema-description \

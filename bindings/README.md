@@ -66,12 +66,16 @@ Build the source distribution separately:
 ```bash
 make build-python-sdist
 make inspect-python-artifacts
+make smoke-python-wheel
+make smoke-python-sdist
 ```
 
 The sdist contains Rust and Python source and must not contain prebuilt `.so`,
 `.dylib`, or `.dll` files. `inspect-python-artifacts` enforces the native wheel
 tag, required package contents, and the absence of regtest credentials or
-prebuilt libraries in the sdist.
+prebuilt libraries in the sdist. The smoke targets create isolated environments,
+install the selected archive, import the package-local RLN models, and execute a
+native SDK operation.
 
 ### Generated Files
 

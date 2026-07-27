@@ -1,10 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +15,39 @@ try {
       encoding: "utf8",
     }),
   );
-  tarballPath = join(packageRoot, packResult[0].filename);
+  const [{ filename, files }] = packResult;
+  tarballPath = join(packageRoot, filename);
+
+  const paths = files.map(({ path }) => path);
+  const requiredPaths = [
+    "LICENSE",
+    "README.md",
+    "dist/index.d.ts",
+    "dist/index.js",
+    "package.json",
+    "vendor/bindings_wasm.d.ts",
+    "vendor/bindings_wasm.js",
+    "vendor/bindings_wasm_bg.wasm",
+    "vendor/bindings_wasm_bg.wasm.d.ts",
+  ];
+  const missing = requiredPaths.filter((path) => !paths.includes(path));
+  if (missing.length > 0) {
+    throw new Error(
+      `npm package is missing required files: ${missing.join(", ")}`,
+    );
+  }
+
+  const allowedRoots = ["dist/", "vendor/"];
+  const unexpected = paths.filter(
+    (path) =>
+      !requiredPaths.includes(path) &&
+      !allowedRoots.some((root) => path.startsWith(root)),
+  );
+  if (unexpected.length > 0) {
+    throw new Error(
+      `npm package contains unexpected files: ${unexpected.join(", ")}`,
+    );
+  }
 
   writeFileSync(
     join(consumerRoot, "package.json"),

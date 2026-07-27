@@ -1,4 +1,5 @@
 UNAME := $(shell uname)
+CARGO_TYPIFY_VERSION ?= 0.7.0
 
 # secp256k1-sys needs a wasm-capable clang to cross-compile its C to wasm.
 # Prefer the versioned llvm@21 keg, fall back to unversioned llvm.
@@ -39,9 +40,9 @@ sync-version:
 # --- Codegen: RGB Lightning Node (RLN) types --------------------------------
 # Generates rln-client/src/types.rs from the OpenAPI 3.1 spec using typify
 # (types only; the client is hand-written), matching the kaleido-sdk approach.
-# Requires: python3 (+PyYAML) and cargo-typify (`cargo install cargo-typify`).
+# Requires: uv and cargo-typify 0.7.0.
 generate-rln-types:
-	bash scripts/gen-rln-types.sh
+	CARGO_TYPIFY_VERSION=$(CARGO_TYPIFY_VERSION) bash scripts/gen-rln-types.sh
 
 # Generates the Python-side RLN artifacts: pydantic models
 # (package-local rln_types.py) + the uniffi.toml custom-type mapping.
@@ -68,7 +69,16 @@ wasm-pack-build:
 # Uses the openapi-typescript Node API (scripts/generate-types.mjs) to map
 # integer fields to `bigint`, matching the wasm boundary's BigInt serialization.
 generate-ts-types:
-	cd typescript-sdk && npm install --no-audit --no-fund --silent && npm run generate:types
+	cd typescript-sdk && npm ci --ignore-scripts --no-audit --no-fund && npm run generate:types
+
+# Rebuild all OpenAPI-derived sources exclusively from the committed spec and
+# repository-pinned tool inputs, then fail if the checked-in outputs drift.
+check-generated: generate-rln generate-ts-types
+	git diff --exit-code -- \
+		rln-client/src/types.rs \
+		bindings/python/kaleidoswap_sdk/rln_types.py \
+		bindings/uniffi.toml \
+		typescript-sdk/src/generated/node-types.ts
 
 build: cargo-build cargo-clippy
 

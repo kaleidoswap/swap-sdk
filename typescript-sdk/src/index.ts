@@ -18,7 +18,10 @@ import type { InitInput } from "../vendor/bindings_wasm.js";
 import type { components } from "./generated/node-types";
 
 /** URL of the packaged WebAssembly binary. */
-export const wasmUrl = new URL("../vendor/bindings_wasm_bg.wasm", import.meta.url);
+export const wasmUrl = new URL(
+  "../vendor/bindings_wasm_bg.wasm",
+  import.meta.url,
+);
 
 // Boltz swap API client. Re-exported from the wasm module as-is: its request/
 // response payloads are currently untyped (`any`) because the Boltz swap DTOs are
@@ -201,12 +204,20 @@ export class SwapScript {
     return this.inner.constructRefund(params);
   }
 
-  async prepareLiquidClaim(params: LiquidPsetParams): Promise<PreparedLiquidSpend> {
-    return PreparedLiquidSpend.wrap(await this.inner.prepareLiquidClaim(params));
+  async prepareLiquidClaim(
+    params: LiquidPsetParams,
+  ): Promise<PreparedLiquidSpend> {
+    return PreparedLiquidSpend.wrap(
+      await this.inner.prepareLiquidClaim(params),
+    );
   }
 
-  async prepareLiquidRefund(params: LiquidPsetParams): Promise<PreparedLiquidSpend> {
-    return PreparedLiquidSpend.wrap(await this.inner.prepareLiquidRefund(params));
+  async prepareLiquidRefund(
+    params: LiquidPsetParams,
+  ): Promise<PreparedLiquidSpend> {
+    return PreparedLiquidSpend.wrap(
+      await this.inner.prepareLiquidRefund(params),
+    );
   }
 
   free(): void {
@@ -242,7 +253,9 @@ export function toJson(value: unknown, space?: string | number): string {
  * client. Browsers can omit `input`. Node consumers must read {@link wasmUrl}
  * and pass its bytes because Node's `fetch` does not load `file:` URLs.
  */
-export async function init(input?: InitInput | Promise<InitInput>): Promise<void> {
+export async function init(
+  input?: InitInput | Promise<InitInput>,
+): Promise<void> {
   await initWasm(input === undefined ? undefined : { module_or_path: input });
 }
 
@@ -251,7 +264,11 @@ export class RlnClient {
   private constructor(private readonly inner: WasmRlnClient) {}
 
   /** Create a client. `init()` must have resolved first. */
-  static connect(baseUrl: string, token?: string, timeoutSecs?: bigint): RlnClient {
+  static connect(
+    baseUrl: string,
+    token?: string,
+    timeoutSecs?: bigint,
+  ): RlnClient {
     return new RlnClient(new WasmRlnClient(baseUrl, token, timeoutSecs));
   }
 
@@ -280,7 +297,9 @@ export class RlnClient {
   }
 
   // Invoices
-  lnInvoice(req: Schemas["LNInvoiceRequest"]): Promise<Schemas["LNInvoiceResponse"]> {
+  lnInvoice(
+    req: Schemas["LNInvoiceRequest"],
+  ): Promise<Schemas["LNInvoiceResponse"]> {
     return this.inner.lnInvoice(req);
   }
   decodeLnInvoice(
@@ -295,10 +314,14 @@ export class RlnClient {
   }
 
   // Payments
-  sendPayment(req: Schemas["SendPaymentRequest"]): Promise<Schemas["SendPaymentResponse"]> {
+  sendPayment(
+    req: Schemas["SendPaymentRequest"],
+  ): Promise<Schemas["SendPaymentResponse"]> {
     return this.inner.sendPayment(req);
   }
-  getPayment(req: Schemas["GetPaymentRequest"]): Promise<Schemas["GetPaymentResponse"]> {
+  getPayment(
+    req: Schemas["GetPaymentRequest"],
+  ): Promise<Schemas["GetPaymentResponse"]> {
     return this.inner.getPayment(req);
   }
   listPayments(): Promise<Schemas["ListPaymentsResponse"]> {
@@ -309,7 +332,9 @@ export class RlnClient {
   }
 
   // RGB
-  rgbInvoice(req: Schemas["RgbInvoiceRequest"]): Promise<Schemas["RgbInvoiceResponse"]> {
+  rgbInvoice(
+    req: Schemas["RgbInvoiceRequest"],
+  ): Promise<Schemas["RgbInvoiceResponse"]> {
     return this.inner.rgbInvoice(req);
   }
   decodeRgbInvoice(
@@ -317,7 +342,9 @@ export class RlnClient {
   ): Promise<Schemas["DecodeRGBInvoiceResponse"]> {
     return this.inner.decodeRgbInvoice(req);
   }
-  listAssets(req: Schemas["ListAssetsRequest"]): Promise<Schemas["ListAssetsResponse"]> {
+  listAssets(
+    req: Schemas["ListAssetsRequest"],
+  ): Promise<Schemas["ListAssetsResponse"]> {
     return this.inner.listAssets(req);
   }
   assetBalance(
@@ -333,7 +360,9 @@ export class RlnClient {
   listChannels(): Promise<Schemas["ListChannelsResponse"]> {
     return this.inner.listChannels();
   }
-  openChannel(req: Schemas["OpenChannelRequest"]): Promise<Schemas["OpenChannelResponse"]> {
+  openChannel(
+    req: Schemas["OpenChannelRequest"],
+  ): Promise<Schemas["OpenChannelResponse"]> {
     return this.inner.openChannel(req);
   }
   closeChannel(req: Schemas["CloseChannelRequest"]): Promise<void> {
@@ -344,7 +373,9 @@ export class RlnClient {
   }
 
   // Swaps (maker / taker)
-  makerInit(req: Schemas["MakerInitRequest"]): Promise<Schemas["MakerInitResponse"]> {
+  makerInit(
+    req: Schemas["MakerInitRequest"],
+  ): Promise<Schemas["MakerInitResponse"]> {
     return this.inner.makerInit(req);
   }
   makerExecute(req: Schemas["MakerExecuteRequest"]): Promise<void> {
@@ -380,7 +411,9 @@ export class RlnClient {
   }
 
   // ---- BTC on-chain ------------------------------------------------------
-  btcBalance(req: Schemas["BtcBalanceRequest"]): Promise<Schemas["BtcBalanceResponse"]> {
+  btcBalance(
+    req: Schemas["BtcBalanceRequest"],
+  ): Promise<Schemas["BtcBalanceResponse"]> {
     return this.inner.btcBalance(req);
   }
   sendBtc(req: Schemas["SendBtcRequest"]): Promise<Schemas["SendBtcResponse"]> {
@@ -399,7 +432,9 @@ export class RlnClient {
   createUtxos(req: Schemas["CreateUtxosRequest"]): Promise<void> {
     return this.inner.createUtxos(req);
   }
-  estimateFee(req: Schemas["EstimateFeeRequest"]): Promise<Schemas["EstimateFeeResponse"]> {
+  estimateFee(
+    req: Schemas["EstimateFeeRequest"],
+  ): Promise<Schemas["EstimateFeeResponse"]> {
     return this.inner.estimateFee(req);
   }
 

@@ -5,24 +5,37 @@
 # hand-written): OpenAPI 3.1 `components.schemas` are JSON Schema 2020-12, so we
 # lift them into a `$defs` document and run typify over it.
 #
-# Requires: python3 (+PyYAML), cargo-typify (`cargo install cargo-typify`).
+# Requires: uv, cargo-typify 0.7.0.
 # Run with: make generate-rln-types
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SPEC="$ROOT_DIR/specs/rgb-lightning-node.yaml"
 OUT="$ROOT_DIR/rln-client/src/types.rs"
+CARGO_TYPIFY_VERSION="${CARGO_TYPIFY_VERSION:-0.7.0}"
 
 command -v cargo-typify >/dev/null 2>&1 || {
-  echo "❌ cargo-typify not found. Install with: cargo install cargo-typify --locked" >&2
+  echo "❌ cargo-typify not found. Install with: cargo install cargo-typify --version ${CARGO_TYPIFY_VERSION} --locked" >&2
   exit 1
 }
+
+command -v uv >/dev/null 2>&1 || {
+  echo "❌ uv not found" >&2
+  exit 1
+}
+
+installed_typify_version="$(cargo typify --version | awk '{print $2}')"
+if [[ "$installed_typify_version" != "$CARGO_TYPIFY_VERSION" ]]; then
+  echo "❌ cargo-typify ${CARGO_TYPIFY_VERSION} is required; found ${installed_typify_version}" >&2
+  exit 1
+fi
 
 TMP="$(mktemp -t rln-schema-XXXXXX.json)"
 trap 'rm -f "$TMP"' EXIT
 
 echo "→ Extracting components.schemas → JSON Schema 2020-12"
-python3 "$ROOT_DIR/scripts/openapi_schemas_to_jsonschema.py" "$SPEC" "$TMP"
+uv run --project "$ROOT_DIR/bindings/python" --locked \
+  python "$ROOT_DIR/scripts/openapi_schemas_to_jsonschema.py" "$SPEC" "$TMP"
 
 echo "→ Running typify"
 cargo typify --output "$OUT" "$TMP"

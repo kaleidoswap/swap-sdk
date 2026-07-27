@@ -81,17 +81,24 @@ def inspect_sdist(path: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("dist", nargs="?", type=Path, default=Path("dist"))
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--wheel-only", action="store_true")
+    mode.add_argument("--sdist-only", action="store_true")
     args = parser.parse_args()
 
     wheels = sorted(args.dist.glob("*.whl"))
     sdists = sorted(args.dist.glob("*.tar.gz"))
-    require(bool(wheels), f"no wheels found in {args.dist}")
-    require(bool(sdists), f"no source distributions found in {args.dist}")
+    if not args.sdist_only:
+        require(bool(wheels), f"no wheels found in {args.dist}")
+    if not args.wheel_only:
+        require(bool(sdists), f"no source distributions found in {args.dist}")
 
-    for wheel in wheels:
-        inspect_wheel(wheel)
-    for sdist in sdists:
-        inspect_sdist(sdist)
+    if not args.sdist_only:
+        for wheel in wheels:
+            inspect_wheel(wheel)
+    if not args.wheel_only:
+        for sdist in sdists:
+            inspect_sdist(sdist)
 
 
 if __name__ == "__main__":

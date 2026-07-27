@@ -26,6 +26,12 @@ as-is — it is the valuable, hard-to-rewrite core we are building on.
   metadata.
 - Harden the npm package manifest and contents, document the browser-first
   runtime contract, and add a clean-consumer WASM initialization smoke test.
+- Add pull-request packaging CI for five native Python wheel targets, source
+  reconstruction from the sdist, and clean artifact installation.
+- Add locked TypeScript lint, formatting, unit-test, build, audit, tarball
+  inspection, and consumer-install checks.
+- Rebuild every OpenAPI-derived Rust, Python, and TypeScript source from the
+  committed specification with pinned generators and reject generated drift.
 
 ### Added — RGB Lightning Node (RLN) client (`rln-client` crate)
 

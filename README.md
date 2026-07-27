@@ -30,9 +30,12 @@ make generate-rln-types     # rln-client/src/types.rs (typify)
 make generate-rln-pydantic  # package-local Python models + uniffi.toml mapping
 make generate-rln           # both of the above
 make generate-ts-types      # typescript-sdk/src/generated/node-types.ts (integer -> bigint)
+make check-generated        # regenerate from pinned inputs and reject drift
 ```
 
-The generated files are committed; regenerate after updating the spec.
+The generated files are committed. Pull-request CI regenerates them solely from
+the committed spec and locked tool inputs; it never downloads a newer API
+specification.
 
 ## Bindings
 
@@ -42,6 +45,11 @@ The generated files are committed; regenerate after updating the spec.
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
   the typed surface (`RlnClient`, `BoltzClient`, `SwapScript`, `SwapMasterKey`,
   `BoltzWsApi`).
+
+Pull-request packaging CI builds and clean-installs Python wheels for Linux
+x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64. It also reconstructs
+the native package from the Python sdist and installs the packed npm tarball in
+an isolated Node consumer.
 
 ---
 
