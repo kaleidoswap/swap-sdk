@@ -44,7 +44,7 @@ generate-rln-types:
 	bash scripts/gen-rln-types.sh
 
 # Generates the Python-side RLN artifacts: pydantic models
-# (bindings/python/rln_types.py) + the uniffi.toml custom-type mapping.
+# (package-local rln_types.py) + the uniffi.toml custom-type mapping.
 # Requires: uv, python3.
 generate-rln-pydantic:
 	bash scripts/gen-rln-pydantic.sh
@@ -73,10 +73,10 @@ generate-ts-types:
 build: cargo-build cargo-clippy
 
 cargo-build:
-	cargo build --all-targets --all-features
+	cargo build -p kaleidoswap-sdk --all-targets --all-features
 
 wasm-build:
-	cargo build --target=wasm32-unknown-unknown --all-features
+	cargo build -p kaleidoswap-sdk --target=wasm32-unknown-unknown --all-features
 
 clippy: cargo-clippy wasm-clippy
 
@@ -85,16 +85,16 @@ test: cargo-test wasm-test
 regtest-test: cargo-regtest-test wasm-regtest-test
 
 cargo-clippy:
-	cargo clippy --all-targets --all-features -- -D warnings
+	cargo clippy -p kaleidoswap-sdk --all-targets --all-features -- -D warnings
 
 cargo-test:
-	cargo test --features "esplora, electrum, lnurl, ws"  -- --nocapture
+	cargo test -p kaleidoswap-sdk --features "esplora, electrum, lnurl, ws"  -- --nocapture
 
 cargo-regtest-test:
-	$(REGTEST_PREFIX) cargo test --features "electrum, regtest, ws" -- --nocapture
+	$(REGTEST_PREFIX) cargo test -p kaleidoswap-sdk --features "electrum, regtest, ws" -- --nocapture
 
 wasm-clippy:
-	$(CLANG_PREFIX) cargo clippy --target=wasm32-unknown-unknown --all-features -- -D warnings
+	$(CLANG_PREFIX) cargo clippy -p kaleidoswap-sdk --target=wasm32-unknown-unknown --all-features -- -D warnings
 
 BROWSER ?= firefox
 

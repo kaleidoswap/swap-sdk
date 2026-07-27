@@ -5,6 +5,9 @@ authors = ["KaleidoSwap"]
 description = "RGB Lightning Node (RLN) types and client for the KaleidoSwap SDK"
 license = "MIT"
 edition = "2021"
+repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+homepage = "https://kaleidoswap.com"
+include = ["/src/**", "/Cargo.toml"]
 
 # `src/types.rs` is generated from the OpenAPI 3.1 spec by typify (see
 # scripts/gen-rln-types.sh / `make generate-rln-types`) and must not be edited.

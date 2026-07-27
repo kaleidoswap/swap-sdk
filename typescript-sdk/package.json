@@ -5,13 +5,40 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "vendor", "src"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "vendor", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaleidoswap/kaleidoswap-sdk.git",
+    "directory": "typescript-sdk"
+  },
+  "homepage": "https://github.com/kaleidoswap/kaleidoswap-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/kaleidoswap/kaleidoswap-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "generate:types": "node scripts/generate-types.mjs",
     "vendor:wasm": "rm -rf vendor && mkdir -p vendor && cp ../bindings-wasm/pkg/bindings_wasm.js ../bindings-wasm/pkg/bindings_wasm.d.ts ../bindings-wasm/pkg/bindings_wasm_bg.wasm ../bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts vendor/",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run vendor:wasm && npm run build",
-    "build": "tsc"
+    "build": "tsc",
+    "smoke:package": "node scripts/smoke-package.mjs"
   },
   "devDependencies": {
     "openapi-typescript": "^7",

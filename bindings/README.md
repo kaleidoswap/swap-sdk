@@ -55,18 +55,34 @@ make build-python
 make build-python-manylinux
 ```
 
-Use `build-python-manylinux` for release artifacts. It builds in manylinux,
-repairs the wheel with `auditwheel`, removes the intermediate `py3-none-any`
-wheel, and smoke-tests both the repaired wheel and the sdist.
+`build-python` uses Maturin's UniFFI backend and creates a correctly
+platform-tagged wheel. Use `build-python-manylinux` for Linux release artifacts;
+the Maturin manylinux image builds and audits the wheel directly. Set
+`MANYLINUX_PLATFORM=linux/arm64` to build the aarch64 variant on a host with
+container emulation support.
+
+Build the source distribution separately:
+
+```bash
+make build-python-sdist
+make inspect-python-artifacts
+```
+
+The sdist contains Rust and Python source and must not contain prebuilt `.so`,
+`.dylib`, or `.dll` files. `inspect-python-artifacts` enforces the native wheel
+tag, required package contents, and the absence of regtest credentials or
+prebuilt libraries in the sdist.
 
 ### Generated Files
 
 The build process generates:
 
-- `libkaleidoswap_sdk.so` - The compiled Rust library
-- `kaleidoswap_sdk.py` - Python bindings module
-- `dist/kaleidoswap_sdk-*.whl` - Installable Python wheel
-- `dist/kaleidoswap_sdk-*.tar.gz` - Installable source distribution
+- `python/dist/kaleidoswap_sdk-*-<platform>.whl` - native wheel
+- `python/dist/kaleidoswap_sdk-*.tar.gz` - source distribution
+
+Maturin generates the UniFFI Python module and packages it with the native
+library under the `kaleidoswap_sdk` package. The generated files are build
+artifacts and are not committed.
 
 ### Testing
 

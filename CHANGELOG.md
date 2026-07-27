@@ -20,6 +20,12 @@ as-is — it is the valuable, hard-to-rewrite core we are building on.
   enabled.
 - Document the existing public PyPI name/version collision; production PyPI
   publishing remains intentionally disabled until it is resolved.
+- Package Python bindings with Maturin/UniFFI as platform-tagged native wheels
+  instead of embedding native libraries in a universal Hatch wheel.
+- Make the Python RLN models package-relative and include complete distribution
+  metadata.
+- Harden the npm package manifest and contents, document the browser-first
+  runtime contract, and add a clean-consumer WASM initialization smoke test.
 
 ### Added — RGB Lightning Node (RLN) client (`rln-client` crate)
 

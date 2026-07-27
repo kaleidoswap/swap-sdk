@@ -4,7 +4,8 @@ version = "1.0.0"
 edition = "2021"
 license = "MIT"
 description = "Proc macros for kaleidoswap-sdk"
-repository = "https://github.com/SatoshiPortal/boltz-rust"
+repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+include = ["/src/**", "/Cargo.toml"]
 
 [lib]
 proc-macro = true

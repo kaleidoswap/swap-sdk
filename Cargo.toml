@@ -1,16 +1,34 @@
 [package]
 name = "kaleidoswap-sdk"
-description = "a boltz exchange client for swaps between BTC/LBTC & LN"
+description = "KaleidoSwap atomic swaps and RGB Lightning Node SDK"
 authors = ["i5hi <ishi@satoshiportal.com>", "Rajarshi Maitra <raj@bitshala.org>"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+homepage = "https://kaleidoswap.com"
+readme = "README.md"
+include = [
+    "/src/**",
+    "/bindings/uniffi-workspace-shim.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [lib]
 name = "kaleidoswap_sdk"
 path = "src/lib.rs"
 doctest = false
 crate-type = ["lib"]
+
+[[bin]]
+# Maturin 1.14 discovers UniFFI generators through workspace metadata, but
+# invokes the selected name with bindings/Cargo.toml. This matching root target
+# makes discovery deterministic; Cargo then runs the real bindings-owned bin.
+name = "uniffi-bindgen"
+path = "bindings/uniffi-workspace-shim.rs"
 
 [workspace]
 members = [

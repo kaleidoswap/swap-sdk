@@ -6,14 +6,14 @@ Build the bindings first (from bindings/):
 Then run:
     uv run --with pydantic python examples/rln.py
 
-Request/response types are pydantic models (rln_types), converted to/from JSON
+Request/response types are package-bundled pydantic models, converted to/from JSON
 across the FFI boundary automatically — you never touch raw JSON.
 """
 
 import asyncio
 
 import kaleidoswap_sdk
-import rln_types
+from kaleidoswap_sdk import rln_types
 
 
 async def main() -> None:
@@ -38,7 +38,7 @@ async def main() -> None:
 
     # RGB: list assets (typed request + response).
     assets = await client.list_assets(
-        rln_types.ListAssetsRequest(filter_asset_schemas=None)
+        rln_types.ListAssetsRequest(filter_asset_schemas=[])
     )
     print("assets:", assets)
 

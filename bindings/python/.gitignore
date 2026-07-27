@@ -4,6 +4,10 @@ __pycache__
 *.dll
 .venv
 dist
+# Legacy top-level output from the pre-Maturin build.
 kaleidoswap_sdk.py
+kaleidoswap_sdk/kaleidoswap_sdk/kaleidoswap_sdk.py
+kaleidoswap_sdk/kaleidoswap_sdk/__init__.py
 # NOTE: rln_types.py is generated but committed (like the models in
-# kaleido-sdk); regenerate with `make generate-rln-pydantic`.
+# kaleido-sdk); the top-level file is a source-test compatibility shim.
+# Regenerate package models with `make generate-rln-pydantic`.
