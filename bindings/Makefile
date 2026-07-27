@@ -10,6 +10,7 @@ PYTHON_NATIVE_DIR := python/kaleidoswap_sdk/kaleidoswap_sdk
 
 build-debug:
 	cargo build
+	mkdir -p $(PYTHON_NATIVE_DIR)
 	cp $(CARGO_TARGET_DIR)/debug/$(DYLIB) $(PYTHON_NATIVE_DIR)/
 	cargo run --bin uniffi-bindgen -- \
 		generate --language python --no-format \
@@ -24,6 +25,7 @@ generate-python-glue: build-debug
 build-release:
 	cargo build --release
 	cargo build  # Also build debug for uniffi to read metadata
+	mkdir -p $(PYTHON_NATIVE_DIR)
 	cp $(CARGO_TARGET_DIR)/release/$(DYLIB) $(PYTHON_NATIVE_DIR)/
 	cargo run --bin uniffi-bindgen -- \
 		generate --language python --no-format \
