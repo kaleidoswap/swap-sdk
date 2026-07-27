@@ -83,8 +83,7 @@ check-generated: generate-rln generate-python-bindings generate-ts-types
 	git diff --exit-code -- \
 		rln-client/src/types.rs \
 		bindings/python/kaleidoswap_sdk/rln_types.py \
-		bindings/python/_generated/__init__.py \
-		bindings/python/_generated/kaleidoswap_sdk.py \
+		bindings/python/kaleidoswap_sdk/_generated_uniffi.py \
 		bindings/uniffi.toml \
 		typescript-sdk/src/generated/node-types.ts
 

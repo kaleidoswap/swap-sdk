@@ -105,10 +105,6 @@ jobs:
           rust-toolchain: ${{ env.RUST_VERSION }}
           target: ${{ matrix.target }}
           working-directory: bindings/python
-      - name: Normalize generated UniFFI bindings
-        run: >-
-          python bindings/python/scripts/kaleidoswap_build_backend.py
-          bindings/python/dist
       - name: Inspect wheel contents and platform tag
         run: >-
           python bindings/python/scripts/inspect_artifacts.py

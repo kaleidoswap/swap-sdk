@@ -60,12 +60,8 @@ def inspect_wheel(path: Path) -> None:
             )
 
     require(
-        "kaleidoswap_sdk/kaleidoswap_sdk/kaleidoswap_sdk.py" in names,
-        f"{path.name} is missing package-local generated UniFFI bindings",
-    )
-    require(
-        "kaleidoswap_sdk/kaleidoswap_sdk/__init__.py" in names,
-        f"{path.name} is missing the generated UniFFI package initializer",
+        "kaleidoswap_sdk/_generated_uniffi.py" in names,
+        f"{path.name} is missing the package-local UniFFI fallback",
     )
     require(
         any(name.endswith(NATIVE_SUFFIXES) for name in names),
@@ -98,15 +94,13 @@ def inspect_sdist(path: Path) -> None:
     required_suffixes = (
         "/Cargo.lock",
         "/LICENSE",
-        "/_generated/__init__.py",
-        "/_generated/kaleidoswap_sdk.py",
         "/bindings/Cargo.toml",
         "/bindings/uniffi.toml",
+        "/kaleidoswap_sdk/_generated_uniffi.py",
         "/kaleidoswap_sdk/rln_types.py",
         "/macros/Cargo.toml",
         "/pyproject.toml",
         "/rln-client/Cargo.toml",
-        "/scripts/kaleidoswap_build_backend.py",
     )
     for suffix in required_suffixes:
         require(

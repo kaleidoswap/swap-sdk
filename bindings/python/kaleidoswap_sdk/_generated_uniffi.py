@@ -483,16 +483,13 @@ def _uniffi_load_indirect():
         # We could use `os.add_dll_directory` to configure the search path, but
         # it doesn't feel right to mess with application-wide settings. Let's
         # assume that the `.dll` is next to the `.py` file and load by full path.
-        libname = os.path.join(
-            os.path.dirname(__file__),
-            "{}.dll",
-        )
+        libname = "{}.dll"
     else:
         # Anything else must be an ELF platform - Linux, *BSD, Solaris/illumos
         libname = "lib{}.so"
 
     libname = libname.format("kaleidoswap_sdk")
-    path = os.path.join(os.path.dirname(__file__), libname)
+    path = os.path.join(os.path.dirname(__file__), "kaleidoswap_sdk", libname)
     lib = ctypes.cdll.LoadLibrary(path)
     return lib
 

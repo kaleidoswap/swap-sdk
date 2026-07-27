@@ -18,9 +18,9 @@ build-debug:
 	cp scripts/uniffi-package-init.py $(PYTHON_NATIVE_DIR)/__init__.py
 
 generate-python-glue: build-debug
-	cp $(PYTHON_NATIVE_DIR)/kaleidoswap_sdk.py python/_generated/kaleidoswap_sdk.py
-	cp $(PYTHON_NATIVE_DIR)/__init__.py python/_generated/__init__.py
-	cd python && uv run ruff format _generated/kaleidoswap_sdk.py
+	cp $(PYTHON_NATIVE_DIR)/kaleidoswap_sdk.py python/kaleidoswap_sdk/_generated_uniffi.py
+	cd python && uv run ruff format kaleidoswap_sdk/_generated_uniffi.py
+	cd python && python3 scripts/prepare_uniffi_fallback.py
 
 build-release:
 	cargo build --release
@@ -34,10 +34,9 @@ build-release:
 
 build-python:
 	cd python && uv run maturin build --release --locked --out dist
-	cd python && python3 scripts/kaleidoswap_build_backend.py dist
 
 build-python-sdist:
-	cd python && uv build --sdist --out-dir dist
+	cd python && uv run maturin sdist --out dist
 
 inspect-python-artifacts:
 	cd python && python3 scripts/inspect_artifacts.py
@@ -60,7 +59,6 @@ build-python-manylinux:
 		-w /io/bindings/python \
 		"$(MANYLINUX_IMAGE)" \
 		build --release --locked --compatibility manylinux_2_28 --out dist
-	cd python && python3 scripts/kaleidoswap_build_backend.py dist
 
 format-python:
 	# Also formats Python tests

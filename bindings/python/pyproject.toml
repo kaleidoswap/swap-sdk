@@ -30,18 +30,12 @@ Issues = "https://github.com/kaleidoswap/kaleidoswap-sdk/issues"
 
 [build-system]
 requires = ["maturin==1.14.1"]
-build-backend = "kaleidoswap_build_backend"
-backend-path = ["scripts"]
+build-backend = "maturin"
 
 [tool.maturin]
 bindings = "uniffi"
 manifest-path = "../Cargo.toml"
 strip = true
-include = [
-    { path = "_generated/__init__.py", format = "sdist" },
-    { path = "_generated/kaleidoswap_sdk.py", format = "sdist" },
-    { path = "scripts/kaleidoswap_build_backend.py", format = "sdist" },
-]
 # Wheel commands pass --locked. Do not set it globally: Maturin prunes the
 # unrelated WASM workspace member from an sdist, so Cargo must remove that
 # member's unused entries from the bundled workspace lockfile during install.
@@ -51,7 +45,7 @@ include = [
 package = false
 
 [tool.ruff]
-extend-exclude = ["_generated/kaleidoswap_sdk.py"]
+extend-exclude = ["kaleidoswap_sdk/_generated_uniffi.py"]
 
 [dependency-groups]
 dev = [

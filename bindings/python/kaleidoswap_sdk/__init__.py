@@ -8,4 +8,11 @@ from . import rln_types
 # that generated detail private while exposing the models from this package.
 sys.modules.setdefault("rln_types", rln_types)
 
-from .kaleidoswap_sdk import *  # noqa: F403
+try:
+    from .kaleidoswap_sdk import Preimage as _preimage_probe  # noqa: F401
+except ImportError:
+    # Maturin can omit its generated Python glue from manylinux and sdist
+    # wheels while still packaging the native library in this subdirectory.
+    from ._generated_uniffi import *  # noqa: F403
+else:
+    from .kaleidoswap_sdk import *  # noqa: F403
