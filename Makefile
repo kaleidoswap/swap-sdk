@@ -53,6 +53,12 @@ generate-rln-pydantic:
 # Regenerate every RLN codegen artifact (Rust types + Python models + mapping).
 generate-rln: generate-rln-types generate-rln-pydantic
 
+# Generate the committed platform-independent UniFFI Python glue fallback.
+# Maturin normally creates the same files while building a wheel; the release
+# backend injects this snapshot only when cross-platform staging omits them.
+generate-python-bindings:
+	$(MAKE) -C bindings generate-python-glue
+
 # --- wasm / TypeScript binding ----------------------------------------------
 # Builds the wasm-bindgen package (bindings-wasm/pkg) for the browser/TS SDK.
 # Needs a wasm-capable clang (see CLANG_PREFIX / `brew install llvm@21`).
@@ -73,10 +79,12 @@ generate-ts-types:
 
 # Rebuild all OpenAPI-derived sources exclusively from the committed spec and
 # repository-pinned tool inputs, then fail if the checked-in outputs drift.
-check-generated: generate-rln generate-ts-types
+check-generated: generate-rln generate-python-bindings generate-ts-types
 	git diff --exit-code -- \
 		rln-client/src/types.rs \
 		bindings/python/kaleidoswap_sdk/rln_types.py \
+		bindings/python/_generated/__init__.py \
+		bindings/python/_generated/kaleidoswap_sdk.py \
 		bindings/uniffi.toml \
 		typescript-sdk/src/generated/node-types.ts
 

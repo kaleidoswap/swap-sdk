@@ -85,8 +85,11 @@ The build process generates:
 - `python/dist/kaleidoswap_sdk-*.tar.gz` - source distribution
 
 Maturin generates the UniFFI Python module and packages it with the native
-library under the `kaleidoswap_sdk` package. The generated files are build
-artifacts and are not committed.
+library under the `kaleidoswap_sdk` package. A platform-independent snapshot of
+that generated Python glue is committed under `python/_generated` and checked
+for drift. The PEP 517 backend injects the snapshot only if Maturin omits the
+glue during a cross-platform or sdist build. Native libraries remain
+uncommitted build artifacts.
 
 ### Testing
 

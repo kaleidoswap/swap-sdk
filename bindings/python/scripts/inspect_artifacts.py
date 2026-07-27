@@ -4,6 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import csv
+import hashlib
+import io
 import tarfile
 from pathlib import Path
 from zipfile import ZipFile
@@ -27,10 +31,41 @@ def inspect_wheel(path: Path) -> None:
     require(not path.name.endswith("-any.whl"), f"{path.name} is a universal wheel")
     with ZipFile(path) as archive:
         names = archive.namelist()
+        record_names = [name for name in names if name.endswith(".dist-info/RECORD")]
+        require(
+            len(record_names) == 1,
+            f"{path.name} must contain exactly one .dist-info/RECORD",
+        )
+        record_name = record_names[0]
+        rows = list(csv.reader(io.StringIO(archive.read(record_name).decode())))
+        records = {row[0]: row[1:] for row in rows if row}
+        require(
+            set(names) == set(records),
+            f"{path.name} RECORD does not enumerate every archive member",
+        )
+        for name, (digest, size) in records.items():
+            if name == record_name:
+                require(
+                    not digest and not size,
+                    f"{path.name} RECORD entry must not hash itself",
+                )
+                continue
+            data = archive.read(name)
+            actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(
+                b"="
+            )
+            require(
+                digest == f"sha256={actual.decode()}" and size == str(len(data)),
+                f"{path.name} has an invalid RECORD entry for {name}",
+            )
 
     require(
-        any(name.endswith("/kaleidoswap_sdk.py") for name in names),
-        f"{path.name} is missing generated UniFFI bindings",
+        "kaleidoswap_sdk/kaleidoswap_sdk/kaleidoswap_sdk.py" in names,
+        f"{path.name} is missing package-local generated UniFFI bindings",
+    )
+    require(
+        "kaleidoswap_sdk/kaleidoswap_sdk/__init__.py" in names,
+        f"{path.name} is missing the generated UniFFI package initializer",
     )
     require(
         any(name.endswith(NATIVE_SUFFIXES) for name in names),
@@ -63,12 +98,15 @@ def inspect_sdist(path: Path) -> None:
     required_suffixes = (
         "/Cargo.lock",
         "/LICENSE",
+        "/_generated/__init__.py",
+        "/_generated/kaleidoswap_sdk.py",
         "/bindings/Cargo.toml",
         "/bindings/uniffi.toml",
         "/kaleidoswap_sdk/rln_types.py",
         "/macros/Cargo.toml",
         "/pyproject.toml",
         "/rln-client/Cargo.toml",
+        "/scripts/kaleidoswap_build_backend.py",
     )
     for suffix in required_suffixes:
         require(

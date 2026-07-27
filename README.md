@@ -29,6 +29,7 @@ The RLN types in all three languages are generated from `specs/rgb-lightning-nod
 make generate-rln-types     # rln-client/src/types.rs (typify)
 make generate-rln-pydantic  # package-local Python models + uniffi.toml mapping
 make generate-rln           # both of the above
+make generate-python-bindings # platform-independent UniFFI Python glue fallback
 make generate-ts-types      # typescript-sdk/src/generated/node-types.ts (integer -> bigint)
 make check-generated        # regenerate from pinned inputs and reject drift
 ```

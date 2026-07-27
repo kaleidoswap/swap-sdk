@@ -16,6 +16,11 @@ build-debug:
 		--library $(CARGO_TARGET_DIR)/debug/$(DYLIB) --out-dir $(PYTHON_NATIVE_DIR)/
 	cp scripts/uniffi-package-init.py $(PYTHON_NATIVE_DIR)/__init__.py
 
+generate-python-glue: build-debug
+	cp $(PYTHON_NATIVE_DIR)/kaleidoswap_sdk.py python/_generated/kaleidoswap_sdk.py
+	cp $(PYTHON_NATIVE_DIR)/__init__.py python/_generated/__init__.py
+	cd python && uv run ruff format _generated/kaleidoswap_sdk.py
+
 build-release:
 	cargo build --release
 	cargo build  # Also build debug for uniffi to read metadata
@@ -27,9 +32,10 @@ build-release:
 
 build-python:
 	cd python && uv run maturin build --release --locked --out dist
+	cd python && python3 scripts/kaleidoswap_build_backend.py dist
 
 build-python-sdist:
-	cd python && uv run maturin sdist --out dist
+	cd python && uv build --sdist --out-dir dist
 
 inspect-python-artifacts:
 	cd python && python3 scripts/inspect_artifacts.py
@@ -52,6 +58,7 @@ build-python-manylinux:
 		-w /io/bindings/python \
 		"$(MANYLINUX_IMAGE)" \
 		build --release --locked --compatibility manylinux_2_28 --out dist
+	cd python && python3 scripts/kaleidoswap_build_backend.py dist
 
 format-python:
 	# Also formats Python tests
