@@ -10,6 +10,17 @@ through the existing UniFFI bindings, and renames the crate family accordingly.
 The Boltz swap engine (scripts, MuSig2, PSBT construction, key derivation) is kept
 as-is — it is the valuable, hard-to-rewrite core we are building on.
 
+### Release engineering
+
+- Reset the synchronized Rust, Python, and TypeScript public release line to
+  `0.1.0`.
+- Add commands to display, synchronize, and validate every public package
+  version and lockfile.
+- Validate version consistency in pull-request CI before release automation is
+  enabled.
+- Document the existing public PyPI name/version collision; production PyPI
+  publishing remains intentionally disabled until it is resolved.
+
 ### Added — RGB Lightning Node (RLN) client (`rln-client` crate)
 
 A new workspace crate providing typed access to the RLN HTTP API.

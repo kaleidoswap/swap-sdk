@@ -33,6 +33,8 @@ jobs:
         run: rustup update
       - name: Check fmt
         run: cargo fmt --all -- --check
+      - name: Validate public SDK versions
+        run: make validate-versions
       - name: Clippy
         run: make cargo-clippy
       - name: Clippy wasm

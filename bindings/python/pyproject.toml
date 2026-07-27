@@ -1,6 +1,6 @@
 [project]
 name = "kaleidoswap_sdk"
-version = "0.4.1"
+version = "0.1.0"
 description = "KaleidoSwap SDK — atomic swaps (Boltz protocol) + RGB Lightning Node client"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -14,6 +14,28 @@ REGTEST_PREFIX = LND_MACAROON_HEX=$(LND_MACAROON_HEX) BITCOIND_COOKIE=$(BITCOIND
 init:
 	cargo install wasm-pack --version 0.14.0 --locked
 
+# --- Release versions --------------------------------------------------------
+# The Rust crate, Python distribution, and npm package share one public version.
+versions:
+	@python3 scripts/release_version.py show
+
+validate-versions:
+	@python3 scripts/release_version.py validate
+
+validate-release-version:
+	@if [ -z "$(TAG)" ]; then \
+		echo "Usage: make validate-release-version TAG=vX.Y.Z" >&2; \
+		exit 1; \
+	fi
+	@bash scripts/validate_release_version.sh "$(TAG)"
+
+sync-version:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make sync-version VERSION=X.Y.Z" >&2; \
+		exit 1; \
+	fi
+	@python3 scripts/release_version.py sync "$(VERSION)"
+
 # --- Codegen: RGB Lightning Node (RLN) types --------------------------------
 # Generates rln-client/src/types.rs from the OpenAPI 3.1 spec using typify
 # (types only; the client is hand-written), matching the kaleido-sdk approach.
