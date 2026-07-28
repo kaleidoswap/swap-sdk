@@ -52,6 +52,32 @@ x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64. It also reconstructs
 the native package from the Python sdist and installs the packed npm tarball in
 an isolated Node consumer.
 
+## Releases
+
+All public SDK surfaces share one stable `X.Y.Z` version. A release candidate
+starts only when a strict `vX.Y.Z` tag points to a commit reachable from
+`trunk`, and the tag must match the Rust, Python, and TypeScript manifests and
+lockfiles. `make validate-release-version TAG=vX.Y.Z` validates that contract.
+
+The tag workflow builds five native Python wheels, one source distribution,
+and one npm tarball. Those files are uploaded once, then a common
+`release-ready` gate downloads and inspects the exact bytes, verifies the
+cross-platform inventory and package metadata, performs clean-install smoke
+tests, and generates `SHA256SUMS`, `release-manifest.json`, and an SPDX 2.3
+artifact manifest. Only that validated bundle may cross a publication boundary.
+Per-tag concurrency and immutable, attempt-specific workflow artifacts prevent
+parallel or resumed runs from silently mixing outputs. An existing GitHub
+release is never overwritten.
+
+Phase 3 intentionally leaves all registry publishers disabled. Public PyPI in
+particular cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that name to
+`kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist. The
+Python distribution can be published only after an explicit decision to use a
+different name, a version above the existing line, or a different registry.
+Trusted registry publishers and protected release approval are configured in
+the following release phase; no long-lived registry credential belongs in this
+workflow.
+
 ---
 
 # The swap engine (Boltz protocol)

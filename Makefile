@@ -30,6 +30,12 @@ validate-release-version:
 	fi
 	@bash scripts/validate_release_version.sh "$(TAG)"
 
+check-release-workflow:
+	@python3 scripts/check_release_workflow.py
+
+test-release-automation:
+	@python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
 sync-version:
 	@if [ -z "$(VERSION)" ]; then \
 		echo "Usage: make sync-version VERSION=X.Y.Z" >&2; \
@@ -54,8 +60,8 @@ generate-rln-pydantic:
 generate-rln: generate-rln-types generate-rln-pydantic
 
 # Generate the committed platform-independent UniFFI Python glue fallback.
-# Maturin normally creates the same files while building a wheel; the release
-# backend injects this snapshot only when cross-platform staging omits them.
+# Maturin normally creates the same files while building a wheel. The package
+# imports this snapshot only when cross-platform staging omits generated glue.
 generate-python-bindings:
 	$(MAKE) -C bindings generate-python-glue
 

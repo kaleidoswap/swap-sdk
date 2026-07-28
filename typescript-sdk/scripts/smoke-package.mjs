@@ -1,52 +1,61 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-sdk-npm-"));
-let tarballPath;
+const suppliedTarball = process.argv[2];
+let tarballPath = suppliedTarball
+  ? isAbsolute(suppliedTarball)
+    ? suppliedTarball
+    : resolve(process.cwd(), suppliedTarball)
+  : undefined;
+let removeTarball = false;
 
 try {
-  const packResult = JSON.parse(
-    execFileSync("npm", ["pack", "--json"], {
-      cwd: packageRoot,
-      encoding: "utf8",
-    }),
-  );
-  const [{ filename, files }] = packResult;
-  tarballPath = join(packageRoot, filename);
-
-  const paths = files.map(({ path }) => path);
-  const requiredPaths = [
-    "LICENSE",
-    "README.md",
-    "dist/index.d.ts",
-    "dist/index.js",
-    "package.json",
-    "vendor/bindings_wasm.d.ts",
-    "vendor/bindings_wasm.js",
-    "vendor/bindings_wasm_bg.wasm",
-    "vendor/bindings_wasm_bg.wasm.d.ts",
-  ];
-  const missing = requiredPaths.filter((path) => !paths.includes(path));
-  if (missing.length > 0) {
-    throw new Error(
-      `npm package is missing required files: ${missing.join(", ")}`,
+  if (!tarballPath) {
+    const packResult = JSON.parse(
+      execFileSync("npm", ["pack", "--json"], {
+        cwd: packageRoot,
+        encoding: "utf8",
+      }),
     );
-  }
+    const [{ filename, files }] = packResult;
+    tarballPath = join(packageRoot, filename);
+    removeTarball = true;
 
-  const allowedRoots = ["dist/", "vendor/"];
-  const unexpected = paths.filter(
-    (path) =>
-      !requiredPaths.includes(path) &&
-      !allowedRoots.some((root) => path.startsWith(root)),
-  );
-  if (unexpected.length > 0) {
-    throw new Error(
-      `npm package contains unexpected files: ${unexpected.join(", ")}`,
+    const paths = files.map(({ path }) => path);
+    const requiredPaths = [
+      "LICENSE",
+      "README.md",
+      "dist/index.d.ts",
+      "dist/index.js",
+      "package.json",
+      "vendor/bindings_wasm.d.ts",
+      "vendor/bindings_wasm.js",
+      "vendor/bindings_wasm_bg.wasm",
+      "vendor/bindings_wasm_bg.wasm.d.ts",
+    ];
+    const missing = requiredPaths.filter((path) => !paths.includes(path));
+    if (missing.length > 0) {
+      throw new Error(
+        `npm package is missing required files: ${missing.join(", ")}`,
+      );
+    }
+
+    const allowedRoots = ["dist/", "vendor/"];
+    const unexpected = paths.filter(
+      (path) =>
+        !requiredPaths.includes(path) &&
+        !allowedRoots.some((root) => path.startsWith(root)),
     );
+    if (unexpected.length > 0) {
+      throw new Error(
+        `npm package contains unexpected files: ${unexpected.join(", ")}`,
+      );
+    }
   }
 
   writeFileSync(
@@ -89,11 +98,11 @@ try {
 
   const packed = readFileSync(tarballPath);
   if (packed.length === 0) {
-    throw new Error("npm pack produced an empty archive");
+    throw new Error("npm package archive is empty");
   }
-  console.log("npm package smoke test passed");
+  console.log(`npm package smoke test passed: ${tarballPath}`);
 } finally {
-  if (tarballPath) {
+  if (removeTarball && tarballPath) {
     rmSync(tarballPath, { force: true });
   }
   rmSync(consumerRoot, { recursive: true, force: true });
