@@ -87,9 +87,14 @@ npm automatically emits provenance for a public package from this public
 repository. The TestPyPI job uses the immutable-pinned PyPA publisher action and
 uploads attestations with the exact wheels and sdist.
 
-The registry-completion gate accepts a skipped publisher only when its
-repository variable is false. The draft GitHub release is created only after
-every enabled publisher reports success.
+Production activation requires npm publishing to be enabled; a production tag
+cannot create a GitHub-only release. TestPyPI remains optional. After each
+enabled publisher succeeds, a separate read-only job downloads the registry
+package, matches its bytes and complete inventory against
+`release-manifest.json`, and repeats clean-consumer smoke tests. The final
+GitHub release is published from the sealed ten-file bundle and finalized
+changelog only after every enabled registry and post-publication verifier
+succeeds.
 
 ## Non-publishing release rehearsal
 
@@ -187,6 +192,12 @@ updates, and deletion of matching `v*` tags to the three repository
 administrators above. These repository settings are external state and must be
 audited before every release.
 
+The `trunk` branch must require pull requests, at least one independent
+approval, resolved conversations, current required checks, and protection
+against force pushes and deletion. Administrators are subject to the same
+rules. Do not push a release tag until the protection API confirms those
+settings.
+
 ## Registry trusted-publisher setup
 
 Trusted-publisher configuration is registry-side state and cannot be committed
@@ -250,6 +261,66 @@ The package owner must:
 This bootstrap is a release blocker, not a reason to add an npm token to the
 workflow.
 
+## v0.1.0 activation checklist
+
+The tag is the irreversible release trigger. Run this checklist only after the
+release pull request has merged to `trunk`.
+
+1. Confirm the final `0.1.0` changelog, manifests, and lockfiles:
+
+   ```sh
+   git switch trunk
+   git pull --ff-only origin trunk
+   make validate-release-readiness TAG=v0.1.0
+   ```
+
+2. Confirm `@kaleidoswap/sdk@0.1.0` and
+   `kaleidoswap_sdk==0.1.0` are still absent from npm and TestPyPI:
+
+   ```sh
+   NPM_PUBLISH_ENABLED=false \
+   PYPI_PUBLISH_ENABLED=false \
+   TEST_PYPI_PUBLISH_ENABLED=false \
+   python3 scripts/check_registry_availability.py 0.1.0 --check-test-pypi
+   ```
+
+3. Confirm `trunk` branch protection, the active `Protect release tags`
+   ruleset, the `v*` release-environment policy, required reviewers, and
+   `can_admins_bypass: false`.
+4. Have a second maintainer verify the npm trusted-publisher fields. Set
+   `NPM_PUBLISH_ENABLED=true`; production activation deliberately fails while
+   this variable is false.
+5. If the TestPyPI pending publisher is configured and reviewed, set
+   `TEST_PYPI_PUBLISH_ENABLED=true`. Otherwise leave it `false`; public PyPI
+   remains hardcoded off.
+6. Have an administrator create and push the annotated tag:
+
+   ```sh
+   git tag -a v0.1.0 -m "KaleidoSwap SDK v0.1.0"
+   git push origin v0.1.0
+   ```
+
+7. A required reviewer other than the tag pusher approves the `release`
+   environment. Do not use administrator bypass.
+8. Monitor the tag workflow through artifact construction, OIDC publication,
+   registry download/hash verification, clean Node/Firefox and Python consumer
+   tests, and final GitHub release publication.
+9. Download and independently verify the ten GitHub release assets:
+
+   ```sh
+   mkdir release-v0.1.0
+   gh release download v0.1.0 \
+     --repo kaleidoswap/kaleidoswap-sdk \
+     --dir release-v0.1.0
+   python3 scripts/verify_release_bundle.py release-v0.1.0 \
+     --version 0.1.0 \
+     --tag v0.1.0 \
+     --commit "$(git rev-list -n 1 v0.1.0)"
+   ```
+
+10. Retain the workflow URL, registry URLs, `SHA256SUMS`,
+    `release-manifest.json`, and `release.spdx.json` in the release record.
+
 ## Partial-publication recovery
 
 External registries cannot participate in an atomic transaction. If one
@@ -262,16 +333,16 @@ publisher succeeds and another fails:
    accepted.
 4. If the failed registry accepted no files, rerun failed jobs only. GitHub
    leaves the successful publisher untouched and retries the failed publisher,
-   completion gate, and GitHub-release stage.
+   post-publication verifier, completion gate, and GitHub-release job.
 5. If TestPyPI accepted only part of the Python file set, remove that incomplete
    TestPyPI release through its project controls before rerunning failed jobs.
    Never mix files from separate workflow attempts.
 6. If npm accepted the tarball, treat that version as immutable. Complete only
    the missing registry from the same validated bundle or prepare a coordinated
    patch release; never rebuild or overwrite the npm version.
-7. The GitHub release remains absent because its job depends on the
-   registry-completion gate. Create it only after all enabled registries are
-   consistent.
+7. The GitHub release remains absent because its job depends on the registry
+   publication and verification gate. It is created automatically only after
+   all enabled registries are consistent.
 
 ## Public PyPI blocker
 

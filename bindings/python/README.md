@@ -4,9 +4,29 @@ Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between B
 
 ## Installation
 
+Public PyPI's normalized `kaleidoswap-sdk` project belongs to an older release
+line, so an unqualified `pip install kaleidoswap_sdk==0.1.0` does **not** install
+this repository's v0.1.0 package.
+
+Install a platform wheel attached to the GitHub `v0.1.0` release:
+
 ```bash
-pip install kaleidoswap_sdk
+python -m pip install ./kaleidoswap_sdk-0.1.0-<platform>.whl
 ```
+
+If the optional TestPyPI release is enabled, download this package from
+TestPyPI without dependency resolution, then install that exact file so runtime
+dependencies resolve from the normal index:
+
+```bash
+python -m pip download --no-deps \
+  --index-url https://test.pypi.org/simple/ \
+  kaleidoswap_sdk==0.1.0
+python -m pip install ./kaleidoswap_sdk-0.1.0-<platform>.whl
+```
+
+Python 3.11+ is supported on Linux x86_64/aarch64, macOS x86_64/arm64, and
+Windows x86_64.
 
 ## Quick Start
 

@@ -21,6 +21,19 @@ the KaleidoSwap layers are built on top of it.
 | `specs/` | `rgb-lightning-node.yaml` — the OpenAPI 3.1 spec, single source of truth for the Rust/Python/TypeScript RLN types |
 | `macros/` | Proc-macros (wasm-compatible `async_trait`, cross-target `test_all`) |
 
+## Installation and supported runtimes
+
+| Surface | Install | Supported v0.1.x runtime |
+|---|---|---|
+| Rust | `kaleidoswap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Python | Install a release wheel from GitHub or the enabled TestPyPI/private registry | Python 3.11+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
+| TypeScript | `npm install @kaleidoswap/sdk@0.1.0` | Browser-first; Node 22+ with explicit packaged WASM bytes |
+
+Public PyPI cannot host this repository's Python `0.1.0` under the unchanged
+distribution name. Do not use an unqualified `pip install kaleidoswap_sdk` for
+this release; see [the release guide](docs/releasing.md#public-pypi-blocker) for
+the collision and supported artifact sources.
+
 ## Code generation
 
 The RLN types in all three languages are generated from `specs/rgb-lightning-node.yaml`:
@@ -70,13 +83,16 @@ parallel or resumed runs from silently mixing outputs. An existing GitHub
 release is never overwritten.
 
 Registry publishing uses job-scoped OIDC behind the protected GitHub `release`
-environment; no long-lived registry credential belongs in the workflow. npm
-and TestPyPI remain default-off repository switches until their exact trusted
-publisher identities have been configured and reviewed. Public PyPI is always
-disabled because it cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that
-name to `kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist.
-See [`docs/releasing.md`](docs/releasing.md) for the publisher bootstrap,
-approval boundary, and partial-publication recovery procedure.
+environment; no long-lived registry credential belongs in the workflow. A
+production tag requires npm publishing to be explicitly enabled, while
+TestPyPI remains optional. Every enabled registry package is downloaded again,
+hash-matched to the sealed manifest, and clean-consumer tested before CI
+publishes the final GitHub release. Public PyPI is always disabled because it
+cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that name to
+`kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist. See
+[`docs/releasing.md`](docs/releasing.md) for the activation checklist,
+publisher bootstrap, approval boundary, and partial-publication recovery
+procedure.
 
 Release and packaging changes also run the same job graph in non-publishing
 rehearsal mode. The rehearsal builds and clean-installs every exact artifact,

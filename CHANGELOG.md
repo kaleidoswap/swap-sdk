@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-28
+
 This release turns the `boltz-rust` fork into the foundation of the **KaleidoSwap
 SDK**: it adds a first-class client for the RGB Lightning Node (RLN), exposes it
 through the existing UniFFI bindings, and renames the crate family accordingly.
@@ -32,6 +34,17 @@ as-is — it is the valuable, hard-to-rewrite core we are building on.
   inspection, and consumer-install checks.
 - Rebuild every OpenAPI-derived Rust, Python, and TypeScript source from the
   committed specification with pinned generators and reject generated drift.
+- Coordinate tag releases through one immutable bundle containing five native
+  Python wheels, one source distribution, and one npm tarball, plus checksums,
+  a release manifest, and an SPDX artifact SBOM.
+- Publish npm and optional TestPyPI artifacts through job-scoped OIDC behind the
+  protected `release` environment, without long-lived registry credentials.
+- Exercise the exact production artifact graph in a read-only rehearsal,
+  including clean Node and Firefox consumers and deliberate preflight, npm, and
+  wheel-inventory failures.
+- Download enabled registry packages after publication, require their bytes and
+  inventories to match the sealed release manifest, and repeat clean-consumer
+  smoke tests before publishing the final GitHub release.
 
 ### Added — RGB Lightning Node (RLN) client (`rln-client` crate)
 

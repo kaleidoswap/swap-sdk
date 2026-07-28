@@ -18,6 +18,9 @@ on:
         required: true
         type: string
     outputs:
+      commit:
+        description: Peeled source commit represented by the tag or rehearsal ref
+        value: ${{ jobs.preflight.outputs.commit }}
       release_id:
         description: Immutable workflow artifact identifier
         value: ${{ jobs.preflight.outputs.release_id }}
@@ -53,6 +56,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
+      commit: ${{ steps.release.outputs.commit }}
       release_id: ${{ steps.release.outputs.release_id }}
       tag: ${{ steps.release.outputs.tag }}
       version: ${{ steps.release.outputs.version }}
@@ -94,6 +98,8 @@ jobs:
             python3 scripts/validate_release_ref.py \
               "${effective_tag}" "${GITHUB_SHA}" origin/trunk
           fi
+          commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
           echo "release_id=${RELEASE_ID}" >> "${GITHUB_OUTPUT}"
           echo "tag=${effective_tag}" >> "${GITHUB_OUTPUT}"
           echo "version=${effective_tag#v}" >> "${GITHUB_OUTPUT}"
@@ -315,7 +321,7 @@ jobs:
           python3 scripts/assemble_release.py release-artifacts
           --version "${{ needs.preflight.outputs.version }}"
           --tag "${{ needs.preflight.outputs.tag }}"
-          --commit "${GITHUB_SHA}"
+          --commit "${{ needs.preflight.outputs.commit }}"
       - name: Clean-install exact Linux wheel
         run: |
           mkdir wheel-smoke
@@ -359,13 +365,13 @@ jobs:
           python3 scripts/verify_release_bundle.py release-artifacts
           --version "${{ needs.preflight.outputs.version }}"
           --tag "${{ needs.preflight.outputs.tag }}"
-          --commit "${GITHUB_SHA}"
+          --commit "${{ needs.preflight.outputs.commit }}"
       - name: Record rehearsal result
         run: |
           {
             echo "## Release rehearsal passed"
             echo
-            echo "- Source: \`${GITHUB_SHA}\`"
+            echo "- Source: \`${{ needs.preflight.outputs.commit }}\`"
             echo "- Intended tag: \`${{ needs.preflight.outputs.tag }}\`"
             echo "- Exact packages: 7"
             echo "- Intended GitHub release assets: 10"

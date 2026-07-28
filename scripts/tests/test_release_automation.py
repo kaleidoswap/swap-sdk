@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import io
 import json
 import os
@@ -24,7 +25,9 @@ def load_script(name: str):
 
 
 assemble_release = load_script("assemble_release")
+published = load_script("download_published_artifacts")
 registry = load_script("check_registry_availability")
+release_notes = load_script("release_notes")
 release_ref = load_script("validate_release_ref")
 release_version = load_script("release_version")
 verify_bundle = load_script("verify_release_bundle")
@@ -131,6 +134,186 @@ class RegistryAvailabilityTests(unittest.TestCase):
         ):
             self.assertEqual(registry.main(), 0)
         self.assertEqual(require_available.call_count, 2)
+
+
+class ReleaseNotesTests(unittest.TestCase):
+    def test_finalized_release_notes_are_extracted(self) -> None:
+        contents = """# Changelog
+
+## [Unreleased]
+
+## [0.1.0] - 2026-07-28
+
+### Added
+
+- Release automation.
+
+## [0.0.1]
+
+- Previous release.
+"""
+        self.assertEqual(
+            release_notes.extract_release_notes(contents, "0.1.0"),
+            "### Added\n\n- Release automation.",
+        )
+
+    def test_missing_release_notes_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "no finalized"):
+            release_notes.extract_release_notes(
+                "# Changelog\n\n## [Unreleased]\n", "0.1.0"
+            )
+
+    def test_empty_release_notes_are_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "empty"):
+            release_notes.extract_release_notes(
+                "# Changelog\n\n## [0.1.0]\n\n## [0.0.1]\n\nPrevious.",
+                "0.1.0",
+            )
+
+
+class PublishedArtifactTests(unittest.TestCase):
+    @staticmethod
+    def entry(contents: bytes) -> dict:
+        return {
+            "sha256": hashlib.sha256(contents).hexdigest(),
+            "size": len(contents),
+        }
+
+    def test_npm_download_must_match_sealed_bundle(self) -> None:
+        contents = b"exact npm tarball"
+        entries = {"kaleidoswap-sdk-0.1.0.tgz": self.entry(contents)}
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp)
+            with (
+                mock.patch.object(
+                    published,
+                    "request_json",
+                    return_value={
+                        "name": "@kaleidoswap/sdk",
+                        "version": "0.1.0",
+                        "dist": {"tarball": "https://registry.example/sdk.tgz"},
+                    },
+                ),
+                mock.patch.object(
+                    published,
+                    "download",
+                    side_effect=lambda _url, destination: destination.write_bytes(
+                        contents
+                    ),
+                ),
+            ):
+                path = published.download_npm(
+                    entries,
+                    output,
+                    "0.1.0",
+                    registry="https://registry.example",
+                    attempts=1,
+                    delay=0,
+                )
+        self.assertEqual(path.name, "kaleidoswap-sdk-0.1.0.tgz")
+
+    def test_npm_download_rejects_changed_bytes(self) -> None:
+        entries = {"kaleidoswap-sdk-0.1.0.tgz": self.entry(b"expected")}
+        with tempfile.TemporaryDirectory() as temp:
+            with (
+                mock.patch.object(
+                    published,
+                    "request_json",
+                    return_value={
+                        "name": "@kaleidoswap/sdk",
+                        "version": "0.1.0",
+                        "dist": {"tarball": "https://registry.example/sdk.tgz"},
+                    },
+                ),
+                mock.patch.object(
+                    published,
+                    "download",
+                    side_effect=lambda _url, destination: destination.write_bytes(
+                        b"changed"
+                    ),
+                ),
+                self.assertRaisesRegex(ValueError, "size mismatch"),
+            ):
+                published.download_npm(
+                    entries,
+                    Path(temp),
+                    "0.1.0",
+                    registry="https://registry.example",
+                    attempts=1,
+                    delay=0,
+                )
+
+    def test_testpypi_inventory_and_downloads_match_sealed_bundle(self) -> None:
+        contents = b"exact Python artifact"
+        names = (
+            "kaleidoswap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl",
+            "kaleidoswap_sdk-0.1.0-py3-none-manylinux_2_28_aarch64.whl",
+            "kaleidoswap_sdk-0.1.0-py3-none-macosx_10_12_x86_64.whl",
+            "kaleidoswap_sdk-0.1.0-py3-none-macosx_11_0_arm64.whl",
+            "kaleidoswap_sdk-0.1.0-py3-none-win_amd64.whl",
+            "kaleidoswap_sdk-0.1.0.tar.gz",
+        )
+        entries = {name: self.entry(contents) for name in names}
+        payload = {
+            "info": {"version": "0.1.0"},
+            "urls": [
+                {
+                    "filename": name,
+                    "digests": {"sha256": entries[name]["sha256"]},
+                    "url": f"https://registry.example/{name}",
+                }
+                for name in names
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            with (
+                mock.patch.object(published, "request_json", return_value=payload),
+                mock.patch.object(
+                    published,
+                    "download",
+                    side_effect=lambda _url, destination: destination.write_bytes(
+                        contents
+                    ),
+                ),
+            ):
+                wheel, sdist = published.download_test_pypi(
+                    entries,
+                    Path(temp),
+                    "0.1.0",
+                    registry="https://registry.example",
+                    attempts=1,
+                    delay=0,
+                )
+        self.assertTrue(wheel.name.endswith("manylinux_2_28_x86_64.whl"))
+        self.assertTrue(sdist.name.endswith(".tar.gz"))
+
+    def test_testpypi_missing_artifact_is_rejected(self) -> None:
+        contents = b"artifact"
+        wheel = "kaleidoswap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl"
+        sdist = "kaleidoswap_sdk-0.1.0.tar.gz"
+        entries = {wheel: self.entry(contents), sdist: self.entry(contents)}
+        payload = {
+            "info": {"version": "0.1.0"},
+            "urls": [
+                {
+                    "filename": sdist,
+                    "digests": {"sha256": entries[sdist]["sha256"]},
+                    "url": "https://registry.example/sdist",
+                }
+            ],
+        }
+        with (
+            mock.patch.object(published, "request_json", return_value=payload),
+            self.assertRaisesRegex(ValueError, "inventory"),
+        ):
+            published.download_test_pypi(
+                entries,
+                Path("/unused"),
+                "0.1.0",
+                registry="https://registry.example",
+                attempts=1,
+                delay=0,
+            )
 
 
 class ReleaseArtifactTests(unittest.TestCase):
@@ -314,6 +497,40 @@ class WorkflowInvariantTests(unittest.TestCase):
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         with self.assertRaisesRegex(ValueError, "exactly two"):
             workflow.validate(contents + "\n# id-token: write\n")
+
+    def test_production_release_requires_npm_activation(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            'test "${NPM_PUBLISH_ENABLED}" = "true"',
+            'test "${NPM_PUBLISH_ENABLED}" = "false"',
+            1,
+        )
+        with self.assertRaisesRegex(ValueError, "activation"):
+            workflow.validate(changed)
+
+    def test_registry_download_verification_is_required(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "scripts/download_published_artifacts.py",
+            "scripts/omitted_registry_verifier.py",
+        )
+        with self.assertRaisesRegex(ValueError, "missing invariants"):
+            workflow.validate(changed)
+
+    def test_production_github_release_cannot_remain_draft(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "draft"):
+            workflow.validate(contents + "\n  # --draft\n")
+
+    def test_release_metadata_uses_peeled_source_commit(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        build = (ROOT / ".github/workflows/release-build.yaml").read_text()
+        changed = build.replace(
+            '--commit "${{ needs.preflight.outputs.commit }}"',
+            '--commit "${GITHUB_SHA}"',
+        )
+        with self.assertRaisesRegex(ValueError, "peeled"):
+            workflow.validate(contents, build_contents=changed)
 
     def test_rehearsal_caller_cannot_request_oidc(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()

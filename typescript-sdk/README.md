@@ -6,7 +6,7 @@ Lightning Node client.
 ## Install
 
 ```sh
-npm install @kaleidoswap/sdk
+npm install @kaleidoswap/sdk@0.1.0
 ```
 
 ## Browser usage

@@ -30,6 +30,10 @@ validate-release-version:
 	fi
 	@bash scripts/validate_release_version.sh "$(TAG)"
 
+validate-release-readiness: validate-release-version
+	@python3 scripts/release_notes.py "$(patsubst v%,%,$(TAG))" >/dev/null
+	@echo "Validated local release readiness for $(TAG)"
+
 check-release-workflow:
 	@python3 scripts/check_release_workflow.py
 
