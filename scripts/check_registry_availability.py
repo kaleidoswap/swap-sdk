@@ -80,6 +80,11 @@ def main() -> int:
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
     parser.add_argument("--python-package", default="kaleidoswap_sdk")
     parser.add_argument("--test-pypi-registry", default="https://test.pypi.org/pypi")
+    parser.add_argument(
+        "--check-test-pypi",
+        action="store_true",
+        help="check TestPyPI availability even while its publisher is disabled",
+    )
     args = parser.parse_args()
     try:
         _, test_pypi_enabled = validate_configuration()
@@ -89,7 +94,7 @@ def main() -> int:
             args.version,
             "npm",
         )
-        if test_pypi_enabled:
+        if test_pypi_enabled or args.check_test_pypi:
             require_version_available(
                 args.test_pypi_registry,
                 args.python_package,

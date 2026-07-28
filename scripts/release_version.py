@@ -67,21 +67,24 @@ def validate(expected: str | None = None) -> str:
     unique_versions = set(discovered.values())
     if len(unique_versions) != 1:
         details = "\n".join(
-            f"  {component}: {version}"
-            for component, version in discovered.items()
+            f"  {component}: {version}" for component, version in discovered.items()
         )
         raise ValueError(f"public SDK versions do not match:\n{details}")
 
     version = unique_versions.pop()
     if not VERSION_PATTERN.fullmatch(version):
-        raise ValueError(
-            f"SDK version must be stable SemVer X.Y.Z, found {version!r}"
-        )
+        raise ValueError(f"SDK version must be stable SemVer X.Y.Z, found {version!r}")
     if expected is not None and version != expected:
         raise ValueError(
             f"SDK version {version} does not match expected version {expected}"
         )
     return version
+
+
+def validate_tag(tag: str) -> str:
+    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
+        raise ValueError(f"release tag must use the format vX.Y.Z, found {tag!r}")
+    return validate(tag[1:])
 
 
 def replace_section_version(path: Path, section: str, version: str) -> None:
@@ -103,13 +106,9 @@ def replace_lock_package_version(path: Path, name: str, version: str) -> None:
         rf'(?ms)(^\[\[package\]\]\s*^name\s*=\s*"{re.escape(name)}"\s*'
         rf'^version\s*=\s*")[^"]+(")'
     )
-    updated, count = package_pattern.subn(
-        rf"\g<1>{version}\g<2>", contents, count=1
-    )
+    updated, count = package_pattern.subn(rf"\g<1>{version}\g<2>", contents, count=1)
     if count != 1:
-        raise ValueError(
-            f"could not update {name!r} in {path.relative_to(ROOT)}"
-        )
+        raise ValueError(f"could not update {name!r} in {path.relative_to(ROOT)}")
     path.write_text(updated, encoding="utf-8")
 
 
@@ -134,12 +133,8 @@ def sync(version: str) -> None:
         )
 
     replace_section_version(ROOT / "Cargo.toml", "package", version)
-    replace_lock_package_version(
-        ROOT / "Cargo.lock", "kaleidoswap-sdk", version
-    )
-    replace_section_version(
-        ROOT / "bindings/python/pyproject.toml", "project", version
-    )
+    replace_lock_package_version(ROOT / "Cargo.lock", "kaleidoswap-sdk", version)
+    replace_section_version(ROOT / "bindings/python/pyproject.toml", "project", version)
     replace_lock_package_version(
         ROOT / "bindings/python/uv.lock", "kaleidoswap-sdk", version
     )
@@ -173,11 +168,7 @@ def main() -> int:
             version = validate()
             print(f"Validated public SDK version {version}")
         elif args.command == "validate-tag":
-            if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", args.tag):
-                raise ValueError(
-                    f"release tag must use the format vX.Y.Z, found {args.tag!r}"
-                )
-            version = validate(args.tag[1:])
+            version = validate_tag(args.tag)
             print(f"Validated release tag v{version}")
         elif args.command == "sync":
             sync(args.version)

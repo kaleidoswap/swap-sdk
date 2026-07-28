@@ -1,0 +1,50 @@
+name: release rehearsal
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/release-build.yaml"
+      - ".github/workflows/release.yaml"
+      - ".github/workflows/release-rehearsal.yaml"
+      - "bindings/**"
+      - "bindings-wasm/**"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "Makefile"
+      - "scripts/assemble_release.py"
+      - "scripts/check_registry_availability.py"
+      - "scripts/release_version.py"
+      - "scripts/validate_release_ref.py"
+      - "scripts/verify_release_bundle.py"
+      - "typescript-sdk/**"
+  workflow_dispatch:
+    inputs:
+      failure_case:
+        description: Deliberate failure expected to stop before publication
+        required: true
+        type: choice
+        default: none
+        options:
+          - none
+          - malformed-tag
+          - version-mismatch
+          - missing-wheel
+          - npm-smoke
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-rehearsal-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  rehearse:
+    name: Rehearse v0.1.0 without publication
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-build.yaml
+    with:
+      failure_case: ${{ inputs.failure_case || 'none' }}
+      rehearsal: true
+      release_tag: v0.1.0

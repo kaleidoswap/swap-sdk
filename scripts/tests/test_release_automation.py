@@ -25,6 +25,9 @@ def load_script(name: str):
 
 assemble_release = load_script("assemble_release")
 registry = load_script("check_registry_availability")
+release_ref = load_script("validate_release_ref")
+release_version = load_script("release_version")
+verify_bundle = load_script("verify_release_bundle")
 workflow = load_script("check_release_workflow")
 
 
@@ -103,6 +106,32 @@ class RegistryAvailabilityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "true or false"):
                 registry.validate_configuration()
 
+    def test_rehearsal_checks_testpypi_while_publisher_is_disabled(self) -> None:
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "NPM_PUBLISH_ENABLED": "false",
+                    "PYPI_PUBLISH_ENABLED": "false",
+                    "TEST_PYPI_PUBLISH_ENABLED": "false",
+                },
+                clear=True,
+            ),
+            mock.patch.object(
+                registry, "require_version_available"
+            ) as require_available,
+            mock.patch(
+                "sys.argv",
+                [
+                    "check_registry_availability.py",
+                    "0.1.0",
+                    "--check-test-pypi",
+                ],
+            ),
+        ):
+            self.assertEqual(registry.main(), 0)
+        self.assertEqual(require_available.call_count, 2)
+
 
 class ReleaseArtifactTests(unittest.TestCase):
     def make_npm_tarball(self, directory: Path, version: str) -> Path:
@@ -149,6 +178,112 @@ class ReleaseArtifactTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "five wheels"):
                 assemble_release.collect_artifacts(directory, "0.1.0")
 
+    def test_invalid_npm_archive_is_rejected_before_release_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_inventory(directory, "0.1.0")
+            npm = next(directory.glob("*.tgz"))
+            with tarfile.open(npm, "w:gz") as archive:
+                package = b'{"name":"@kaleidoswap/sdk","version":"0.1.0"}'
+                info = tarfile.TarInfo("package/package.json")
+                info.size = len(package)
+                archive.addfile(info, io.BytesIO(package))
+            with self.assertRaisesRegex(ValueError, "missing required files"):
+                assemble_release.collect_artifacts(directory, "0.1.0")
+
+    def make_release_bundle(self, directory: Path) -> None:
+        self.make_inventory(directory, "0.1.0")
+        artifacts = assemble_release.collect_artifacts(directory, "0.1.0")
+        assemble_release.write_release_metadata(
+            directory,
+            artifacts,
+            "0.1.0",
+            "v0.1.0",
+            "HEAD",
+        )
+
+    def test_exact_release_bundle_is_verified(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_release_bundle(directory)
+            verify_bundle.verify(
+                directory,
+                version="0.1.0",
+                tag="v0.1.0",
+                commit="HEAD",
+            )
+
+    def test_tampered_release_bundle_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_release_bundle(directory)
+            next(directory.glob("*win_amd64.whl")).write_bytes(b"tampered")
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                verify_bundle.verify(
+                    directory,
+                    version="0.1.0",
+                    tag="v0.1.0",
+                    commit="HEAD",
+                )
+
+    def test_unexpected_release_asset_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_release_bundle(directory)
+            (directory / "unexpected.txt").write_text("unexpected")
+            with self.assertRaisesRegex(ValueError, "expected 10 release assets"):
+                verify_bundle.verify(
+                    directory,
+                    version="0.1.0",
+                    tag="v0.1.0",
+                    commit="HEAD",
+                )
+
+
+class ReleaseRefTests(unittest.TestCase):
+    def test_malformed_rehearsal_tag_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "format vX.Y.Z"):
+            release_version.validate_tag("release-0.1.0")
+
+    def test_rehearsal_version_mismatch_is_rejected(self) -> None:
+        with (
+            mock.patch.object(
+                release_version,
+                "versions",
+                return_value={
+                    "Rust package": "0.1.0",
+                    "Rust lockfile": "0.1.0",
+                    "Python package": "0.1.0",
+                    "Python lockfile": "0.1.0",
+                    "TypeScript package": "0.1.0",
+                    "TypeScript lockfile": "0.1.0",
+                },
+            ),
+            self.assertRaisesRegex(ValueError, "does not match"),
+        ):
+            release_version.validate_tag("v0.1.1")
+
+    def test_rehearsal_source_must_be_based_on_trunk(self) -> None:
+        with (
+            mock.patch.object(release_ref, "validate_tag"),
+            mock.patch.object(
+                release_ref,
+                "git",
+                side_effect=["source-commit", "trunk-commit"],
+            ),
+            mock.patch.object(release_ref, "require_ancestor") as require_ancestor,
+        ):
+            release_ref.validate_rehearsal_ref(
+                "v0.1.0",
+                "source-sha",
+                "origin/trunk",
+            )
+        require_ancestor.assert_called_once_with(
+            "trunk-commit",
+            "source-commit",
+            "source-commit is not based on origin/trunk",
+        )
+
 
 class WorkflowInvariantTests(unittest.TestCase):
     def test_committed_workflow_passes(self) -> None:
@@ -163,8 +298,8 @@ class WorkflowInvariantTests(unittest.TestCase):
     def test_mutable_action_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         changed = contents.replace(
-            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-            "actions/checkout@v7",
+            "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+            "actions/setup-node@v7",
             1,
         )
         with self.assertRaisesRegex(ValueError, "mutable"):
@@ -179,6 +314,22 @@ class WorkflowInvariantTests(unittest.TestCase):
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         with self.assertRaisesRegex(ValueError, "exactly two"):
             workflow.validate(contents + "\n# id-token: write\n")
+
+    def test_rehearsal_caller_cannot_request_oidc(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        rehearsal = (
+            ROOT / ".github/workflows/release-rehearsal.yaml"
+        ).read_text() + "\n# id-token: write\n"
+        with self.assertRaisesRegex(ValueError, "release authority"):
+            workflow.validate(contents, rehearsal)
+
+    def test_read_only_build_cannot_request_oidc(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        build = (
+            ROOT / ".github/workflows/release-build.yaml"
+        ).read_text() + "\n# id-token: write\n"
+        with self.assertRaisesRegex(ValueError, "release authority"):
+            workflow.validate(contents, build_contents=build)
 
 
 if __name__ == "__main__":

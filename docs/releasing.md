@@ -48,9 +48,11 @@ already-tested artifacts without rebuilding them.
 
 ## Release architecture
 
-A `v*` tag starts `.github/workflows/release.yaml`. The preflight rejects a
-malformed tag, version drift, a commit that is not reachable from `trunk`, an
-occupied enabled-registry version, or an invalid publisher flag.
+A `v*` tag starts `.github/workflows/release.yaml`. That production-only
+wrapper calls the read-only `.github/workflows/release-build.yaml` artifact
+graph, then owns the protected publisher and GitHub-release jobs. The preflight
+rejects a malformed tag, version drift, a commit that is not reachable from
+`trunk`, an occupied enabled-registry version, or an invalid publisher flag.
 
 The workflow builds five native Python wheels, one Python sdist, and one npm
 tarball. The `release-ready` job downloads those exact files, validates the
@@ -88,6 +90,74 @@ uploads attestations with the exact wheels and sdist.
 The registry-completion gate accepts a skipped publisher only when its
 repository variable is false. The draft GitHub release is created only after
 every enabled publisher reports success.
+
+## Non-publishing release rehearsal
+
+Both `.github/workflows/release.yaml` and
+`.github/workflows/release-rehearsal.yaml` call the same read-only
+`.github/workflows/release-build.yaml` artifact graph. The rehearsal passes
+`rehearsal: true`; it does not copy or approximate the release build. The
+rehearsal:
+
+- validates the intended tag against all version sources;
+- requires the untagged rehearsal commit to be based on `trunk`;
+- checks that `0.1.0` is available on npm and TestPyPI;
+- builds the same five wheels, sdist, npm tarball, and fresh WASM bindings;
+- clean-installs the exact Python artifacts and npm tarball;
+- initializes the exact npm tarball in both clean Node and headless Firefox
+  consumers;
+- generates and re-verifies `SHA256SUMS`, `release-manifest.json`, and
+  `release.spdx.json`;
+- verifies that the intended GitHub release contains exactly seven packages
+  and three metadata files.
+
+The reusable build workflow contains no publisher, protected environment,
+`id-token: write`, or `contents: write` declaration. Both OIDC publisher jobs,
+the registry-completion gate, and GitHub release creation exist only in the
+tag-triggered production wrapper. The rehearsal caller has only
+`contents: read`; GitHub therefore cannot grant its graph registry or deployment
+authority, regardless of repository publisher variables.
+
+A pull request automatically runs the successful rehearsal when release,
+binding, or TypeScript packaging inputs change. After this workflow exists on
+`trunk`, an operator can run the successful case explicitly:
+
+```sh
+gh workflow run release-rehearsal.yaml \
+  --repo kaleidoswap/kaleidoswap-sdk \
+  --ref trunk \
+  -f failure_case=none
+```
+
+The manual workflow also exposes four deliberate failure cases:
+
+| `failure_case` | Expected stopping point |
+|---|---|
+| `malformed-tag` | preflight tag-format validation |
+| `version-mismatch` | preflight manifest/tag version validation |
+| `missing-wheel` | common release-ready inventory gate |
+| `npm-smoke` | clean npm consumer test before artifact upload |
+
+For example:
+
+```sh
+gh workflow run release-rehearsal.yaml \
+  --repo kaleidoswap/kaleidoswap-sdk \
+  --ref trunk \
+  -f failure_case=missing-wheel
+```
+
+An unhappy-path run is successful evidence only when the workflow fails at its
+documented stopping point, no `release-bundle-*` artifact is produced, no
+deployment approval is requested, and no registry or GitHub release changes.
+Do not rerun a deliberate failure as though it were an infrastructure failure.
+
+For a successful run, download the `release-bundle-rehearsal-*` artifact and
+retain it with the workflow URL. Its manifest binds every filename and SHA-256
+to the rehearsed source commit and intended tag. Publication rehearsal on
+TestPyPI remains optional because the exact wheels and sdist are already
+clean-installed from the workflow bundle; actual TestPyPI publication requires
+the pending trusted publisher described below.
 
 ## Protected GitHub release boundary
 

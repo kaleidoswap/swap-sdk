@@ -1,35 +1,54 @@
 #!/usr/bin/env python3
-"""Static invariants for the tag-only release workflow."""
+"""Static invariants for production release and read-only rehearsal workflows."""
 
 from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/release.yaml"
+BUILD_WORKFLOW = ROOT / ".github/workflows/release-build.yaml"
+REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
 
-REQUIRED_SNIPPETS = (
+PRODUCTION_REQUIRED = (
     'tags:\n      - "v*"',
     "group: release-${{ github.ref }}",
     "cancel-in-progress: false",
     'PYPI_PUBLISH_ENABLED: "false"',
     "NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}",
     "TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}",
-    "release-ready:",
+    "uses: ./.github/workflows/release-build.yaml",
     "publish-npm:",
     "publish-testpypi:",
     "registry-publish-complete:",
     "stage-github-release:",
-    "release-build-python-wheel-${{ matrix.name }}-${{ github.run_attempt }}",
-    "release-bundle-${{ github.ref_name }}-${{ github.run_attempt }}",
-    "scripts/assemble_release.py",
-    "SHA256SUMS",
-    "release.spdx.json",
+    "release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}",
     "npm publish release-artifacts/*.tgz --access public",
     "pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247",
 )
+
+BUILD_REQUIRED = (
+    "workflow_call:",
+    "release-ready:",
+    "rehearsal-complete:",
+    "release-build-python-wheel-${{ matrix.name }}-${{ github.run_attempt }}",
+    "release-bundle-${{ env.RELEASE_ID }}-${{ github.run_attempt }}",
+    "scripts/assemble_release.py",
+    "scripts/verify_release_bundle.py",
+    "SHA256SUMS",
+    "release.spdx.json",
+)
+
+REHEARSAL_FAILURE_CASES = {
+    "malformed-tag",
+    "missing-wheel",
+    "none",
+    "npm-smoke",
+    "version-mismatch",
+}
 
 
 def job_section(contents: str, name: str, next_name: str) -> str:
@@ -40,18 +59,54 @@ def job_section(contents: str, name: str, next_name: str) -> str:
     return contents.split(start, 1)[1].split(end, 1)[0]
 
 
-def validate(contents: str) -> None:
-    missing = [snippet for snippet in REQUIRED_SNIPPETS if snippet not in contents]
+def require_snippets(contents: str, snippets: tuple[str, ...], label: str) -> None:
+    missing = [snippet for snippet in snippets if snippet not in contents]
     if missing:
-        raise ValueError(f"release workflow is missing invariants: {missing}")
-    if "--skip-existing" in contents:
-        raise ValueError("release workflow must never skip an existing version")
-    mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", contents)
+        raise ValueError(f"{label} workflow is missing invariants: {missing}")
+
+
+def validate(
+    contents: str,
+    rehearsal_contents: str | None = None,
+    build_contents: str | None = None,
+) -> None:
+    if rehearsal_contents is None:
+        rehearsal_contents = REHEARSAL_WORKFLOW.read_text(encoding="utf-8")
+    if build_contents is None:
+        build_contents = BUILD_WORKFLOW.read_text(encoding="utf-8")
+
+    require_snippets(contents, PRODUCTION_REQUIRED, "production release")
+    require_snippets(build_contents, BUILD_REQUIRED, "release build")
+    combined = contents + build_contents + rehearsal_contents
+    if "--skip-existing" in combined:
+        raise ValueError("release workflows must never skip an existing version")
+
+    mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
     invalid = [ref for ref in mutable_actions if not re.fullmatch(r"[0-9a-f]{40}", ref)]
     if invalid:
-        raise ValueError(f"release workflow has mutable action refs: {invalid}")
+        raise ValueError(f"release workflows have mutable action refs: {invalid}")
+
     if contents.count("id-token: write") != 2:
         raise ValueError("OIDC permission must be scoped to exactly two publish jobs")
+    read_only_authority = (
+        "id-token: write",
+        "environment: release",
+        "contents: write",
+        "npm publish ",
+        "pypa/gh-action-pypi-publish@",
+        "gh release create",
+    )
+    found_read_only_authority = [
+        authority
+        for authority in read_only_authority
+        if authority in build_contents or authority in rehearsal_contents
+    ]
+    if found_read_only_authority:
+        raise ValueError(
+            "read-only release build/rehearsal contains release authority: "
+            f"{found_read_only_authority}"
+        )
+
     forbidden_credentials = (
         "secrets.NPM",
         "secrets.PYPI",
@@ -59,13 +114,25 @@ def validate(contents: str) -> None:
         "username:",
     )
     found_credentials = [
-        credential for credential in forbidden_credentials if credential in contents
+        credential for credential in forbidden_credentials if credential in combined
     ]
     if found_credentials:
         raise ValueError(
-            f"release workflow contains stored registry credentials: "
+            "release workflows contain stored registry credentials: "
             f"{found_credentials}"
         )
+
+    build_call = job_section(contents, "release-ready", "publish-npm")
+    for snippet in (
+        "permissions:\n      contents: read",
+        "uses: ./.github/workflows/release-build.yaml",
+        "failure_case: none",
+        "rehearsal: false",
+        "release_tag: ${{ github.ref_name }}",
+    ):
+        if snippet not in build_call:
+            raise ValueError(f"production build call is missing {snippet!r}")
+
     npm_job = job_section(contents, "publish-npm", "publish-testpypi")
     test_pypi_job = job_section(
         contents, "publish-testpypi", "registry-publish-complete"
@@ -77,23 +144,101 @@ def validate(contents: str) -> None:
             raise ValueError(f"{name} publisher must use the release environment")
         if "id-token: write" not in job:
             raise ValueError(f"{name} publisher must have job-scoped OIDC")
+
     release_job = contents.split("  stage-github-release:", 1)[1]
-    if "needs: registry-publish-complete" not in release_job:
-        raise ValueError("GitHub release must depend on the registry completion gate")
+    if "- registry-publish-complete" not in release_job:
+        raise ValueError("GitHub release must depend on registry completion")
+    if "- release-ready" not in release_job:
+        raise ValueError("GitHub release must consume build workflow outputs")
     registry_job = job_section(
         contents, "registry-publish-complete", "stage-github-release"
     )
     if "- release-ready" not in registry_job:
         raise ValueError("registry completion gate must depend on release-ready")
 
+    typescript_job = job_section(build_contents, "typescript-package", "release-ready")
+    if "node scripts/smoke-package.mjs release-dist/*.tgz" not in typescript_job:
+        raise ValueError("npm package must pass its clean-consumer smoke test")
+    if (
+        "node scripts/smoke-browser-package.mjs release-dist/*.tgz"
+        not in typescript_job
+    ):
+        raise ValueError("npm package must pass its clean-browser smoke test")
+    if "inputs.rehearsal && inputs.failure_case == 'npm-smoke'" not in typescript_job:
+        raise ValueError("rehearsal must expose a deliberate npm smoke failure")
+
+    release_ready_job = job_section(
+        build_contents, "release-ready", "rehearsal-complete"
+    )
+    if (
+        "needs:" not in release_ready_job
+        or "- typescript-package" not in release_ready_job
+    ):
+        raise ValueError("release-ready must depend on the npm smoke-tested package")
+    if (
+        "inputs.rehearsal && inputs.failure_case == 'missing-wheel'"
+        not in release_ready_job
+    ):
+        raise ValueError("rehearsal must expose a deliberate missing-wheel failure")
+
+    rehearsal_job = build_contents.split("  rehearsal-complete:", 1)[1]
+    for snippet in (
+        "if: ${{ inputs.rehearsal }}",
+        "- preflight",
+        "- release-ready",
+        "scripts/verify_release_bundle.py",
+    ):
+        if snippet not in rehearsal_job:
+            raise ValueError(f"rehearsal verification is missing {snippet!r}")
+
+    rehearsal_required = (
+        "pull_request:",
+        "workflow_dispatch:",
+        "uses: ./.github/workflows/release-build.yaml",
+        "rehearsal: true",
+        "release_tag: v",
+        "permissions:\n  contents: read",
+        "permissions:\n      contents: read",
+    )
+    require_snippets(rehearsal_contents, rehearsal_required, "release rehearsal")
+    failure_cases = set(
+        re.findall(
+            r"^\s{10}- ([a-z-]+)$",
+            rehearsal_contents,
+            flags=re.MULTILINE,
+        )
+    )
+    if failure_cases != REHEARSAL_FAILURE_CASES:
+        raise ValueError(
+            f"release rehearsal failure cases differ: {sorted(failure_cases)}"
+        )
+
+    release_tag = re.search(
+        r"^\s+release_tag:\s+(v[0-9]+\.[0-9]+\.[0-9]+)$",
+        rehearsal_contents,
+        flags=re.MULTILINE,
+    )
+    if release_tag is None:
+        raise ValueError("release rehearsal must declare a stable release tag")
+    with (ROOT / "Cargo.toml").open("rb") as file:
+        version = tomllib.load(file)["package"]["version"]
+    if release_tag.group(1) != f"v{version}":
+        raise ValueError(
+            f"release rehearsal tag {release_tag.group(1)} does not match v{version}"
+        )
+
 
 def main() -> int:
     try:
-        validate(WORKFLOW.read_text(encoding="utf-8"))
+        validate(
+            WORKFLOW.read_text(encoding="utf-8"),
+            REHEARSAL_WORKFLOW.read_text(encoding="utf-8"),
+            BUILD_WORKFLOW.read_text(encoding="utf-8"),
+        )
     except (OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    print("Validated release workflow invariants")
+    print("Validated production release and read-only rehearsal workflow invariants")
     return 0
 
 

@@ -78,6 +78,12 @@ name to `kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist.
 See [`docs/releasing.md`](docs/releasing.md) for the publisher bootstrap,
 approval boundary, and partial-publication recovery procedure.
 
+Release and packaging changes also run the same job graph in non-publishing
+rehearsal mode. The rehearsal builds and clean-installs every exact artifact,
+exercises the npm tarball in Node and Firefox, and verifies the checksums,
+manifest, SBOM, and intended GitHub release inventory without requesting
+registry or deployment authority.
+
 ---
 
 # The swap engine (Boltz protocol)
