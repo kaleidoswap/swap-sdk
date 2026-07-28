@@ -15,8 +15,11 @@ REQUIRED_SNIPPETS = (
     "group: release-${{ github.ref }}",
     "cancel-in-progress: false",
     'PYPI_PUBLISH_ENABLED: "false"',
-    'NPM_PUBLISH_ENABLED: "false"',
+    "NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}",
+    "TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}",
     "release-ready:",
+    "publish-npm:",
+    "publish-testpypi:",
     "registry-publish-complete:",
     "stage-github-release:",
     "release-build-python-wheel-${{ matrix.name }}-${{ github.run_attempt }}",
@@ -24,7 +27,17 @@ REQUIRED_SNIPPETS = (
     "scripts/assemble_release.py",
     "SHA256SUMS",
     "release.spdx.json",
+    "npm publish release-artifacts/*.tgz --access public",
+    "pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247",
 )
+
+
+def job_section(contents: str, name: str, next_name: str) -> str:
+    start = f"  {name}:"
+    end = f"  {next_name}:"
+    if start not in contents or end not in contents:
+        raise ValueError(f"could not find workflow job boundary {name!r}")
+    return contents.split(start, 1)[1].split(end, 1)[0]
 
 
 def validate(contents: str) -> None:
@@ -37,13 +50,40 @@ def validate(contents: str) -> None:
     invalid = [ref for ref in mutable_actions if not re.fullmatch(r"[0-9a-f]{40}", ref)]
     if invalid:
         raise ValueError(f"release workflow has mutable action refs: {invalid}")
+    if contents.count("id-token: write") != 2:
+        raise ValueError("OIDC permission must be scoped to exactly two publish jobs")
+    forbidden_credentials = (
+        "secrets.NPM",
+        "secrets.PYPI",
+        "password:",
+        "username:",
+    )
+    found_credentials = [
+        credential for credential in forbidden_credentials if credential in contents
+    ]
+    if found_credentials:
+        raise ValueError(
+            f"release workflow contains stored registry credentials: "
+            f"{found_credentials}"
+        )
+    npm_job = job_section(contents, "publish-npm", "publish-testpypi")
+    test_pypi_job = job_section(
+        contents, "publish-testpypi", "registry-publish-complete"
+    )
+    for name, job in (("npm", npm_job), ("TestPyPI", test_pypi_job)):
+        if "needs: release-ready" not in job:
+            raise ValueError(f"{name} publisher must depend on release-ready")
+        if "environment: release" not in job:
+            raise ValueError(f"{name} publisher must use the release environment")
+        if "id-token: write" not in job:
+            raise ValueError(f"{name} publisher must have job-scoped OIDC")
     release_job = contents.split("  stage-github-release:", 1)[1]
     if "needs: registry-publish-complete" not in release_job:
         raise ValueError("GitHub release must depend on the registry completion gate")
-    registry_job = contents.split("  registry-publish-complete:", 1)[1].split(
-        "  stage-github-release:", 1
-    )[0]
-    if "needs: release-ready" not in registry_job:
+    registry_job = job_section(
+        contents, "registry-publish-complete", "stage-github-release"
+    )
+    if "- release-ready" not in registry_job:
         raise ValueError("registry completion gate must depend on release-ready")
 
 

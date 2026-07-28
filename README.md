@@ -69,14 +69,14 @@ Per-tag concurrency and immutable, attempt-specific workflow artifacts prevent
 parallel or resumed runs from silently mixing outputs. An existing GitHub
 release is never overwritten.
 
-Phase 3 intentionally leaves all registry publishers disabled. Public PyPI in
-particular cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that name to
-`kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist. The
-Python distribution can be published only after an explicit decision to use a
-different name, a version above the existing line, or a different registry.
-Trusted registry publishers and protected release approval are configured in
-the following release phase; no long-lived registry credential belongs in this
-workflow.
+Registry publishing uses job-scoped OIDC behind the protected GitHub `release`
+environment; no long-lived registry credential belongs in the workflow. npm
+and TestPyPI remain default-off repository switches until their exact trusted
+publisher identities have been configured and reviewed. Public PyPI is always
+disabled because it cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that
+name to `kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist.
+See [`docs/releasing.md`](docs/releasing.md) for the publisher bootstrap,
+approval boundary, and partial-publication recovery procedure.
 
 ---
 

@@ -16,10 +16,12 @@ env:
   CARGO_TYPIFY_VERSION: "0.7.0"
   MATURIN_VERSION: "1.14.1"
   NODE_VERSION: "22.23.1"
-  NPM_PUBLISH_ENABLED: "false"
+  NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}
+  NPM_PUBLISH_VERSION: "11.5.1"
   PYPI_PUBLISH_ENABLED: "false"
   PYTHON_VERSION: "3.11.9"
   RUST_VERSION: "1.88.0"
+  TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}
   UV_VERSION: "0.11.16"
   WASM_PACK_VERSION: "0.14.0"
 
@@ -43,7 +45,7 @@ jobs:
           python3 scripts/validate_release_ref.py \
             "${GITHUB_REF_NAME}" "${GITHUB_SHA}" origin/trunk
           echo "version=${GITHUB_REF_NAME#v}" >> "${GITHUB_OUTPUT}"
-      - name: Verify registry availability and disabled publishers
+      - name: Verify registry availability and publisher configuration
         run: >-
           python3 scripts/check_registry_availability.py
           "${GITHUB_REF_NAME#v}"
@@ -264,16 +266,97 @@ jobs:
           path: release-artifacts/
           retention-days: 30
 
-  registry-publish-complete:
-    name: Registry publication gate (disabled in Phase 3)
+  publish-npm:
+    name: Publish exact npm tarball with OIDC
+    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
     needs: release-ready
     runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 10
     steps:
-      - name: Confirm registry publishers remain disabled
+      - name: Set up Node without a package cache
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - name: Install the pinned OIDC-capable npm CLI
+        run: >-
+          npm install --global npm@${NPM_PUBLISH_VERSION}
+          --ignore-scripts --no-audit --no-fund
+      - name: Verify npm trusted-publishing prerequisites
         run: |
-          test "${NPM_PUBLISH_ENABLED}" = "false"
+          test "$(npm --version)" = "${NPM_PUBLISH_VERSION}"
+          test -z "${NODE_AUTH_TOKEN:-}"
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ github.ref_name }}-${{ github.run_attempt }}
+          path: release-artifacts
+      - name: Publish the exact validated npm tarball
+        run: npm publish release-artifacts/*.tgz --access public
+
+  publish-testpypi:
+    name: Publish exact Python artifacts to TestPyPI with OIDC
+    if: ${{ vars.TEST_PYPI_PUBLISH_ENABLED == 'true' }}
+    needs: release-ready
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 10
+    steps:
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ github.ref_name }}-${{ github.run_attempt }}
+          path: release-artifacts
+      - name: Select the exact validated Python artifacts
+        run: |
+          mkdir python-release-artifacts
+          cp release-artifacts/*.whl python-release-artifacts/
+          cp release-artifacts/*.tar.gz python-release-artifacts/
+      - name: Publish to TestPyPI with attestations
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          attestations: true
+          packages-dir: python-release-artifacts
+          repository-url: https://test.pypi.org/legacy/
+
+  registry-publish-complete:
+    name: Registry publication completion gate
+    if: ${{ always() }}
+    needs:
+      - release-ready
+      - publish-npm
+      - publish-testpypi
+    runs-on: ubuntu-24.04
+    env:
+      NPM_RESULT: ${{ needs.publish-npm.result }}
+      RELEASE_READY_RESULT: ${{ needs.release-ready.result }}
+      TEST_PYPI_RESULT: ${{ needs.publish-testpypi.result }}
+    steps:
+      - name: Require every enabled registry to succeed
+        run: |
+          test "${RELEASE_READY_RESULT}" = "success"
+
+          if [ "${NPM_PUBLISH_ENABLED}" = "true" ]; then
+            test "${NPM_RESULT}" = "success"
+          else
+            test "${NPM_RESULT}" = "skipped"
+          fi
+
+          if [ "${TEST_PYPI_PUBLISH_ENABLED}" = "true" ]; then
+            test "${TEST_PYPI_RESULT}" = "success"
+          else
+            test "${TEST_PYPI_RESULT}" = "skipped"
+          fi
+
           test "${PYPI_PUBLISH_ENABLED}" = "false"
-          echo "No registry publisher is enabled in Phase 3."
 
   stage-github-release:
     name: Stage draft GitHub release
@@ -305,4 +388,4 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --title "KaleidoSwap SDK ${GITHUB_REF_NAME}" \
             --verify-tag \
-            --notes "Validated release candidate. Registry publishing is disabled pending Phase 4 trusted-publisher configuration."
+            --notes "Validated release candidate. Every enabled registry publish completed through the protected OIDC release boundary."

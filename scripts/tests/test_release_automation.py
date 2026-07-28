@@ -29,11 +29,26 @@ workflow = load_script("check_release_workflow")
 
 
 class RegistryAvailabilityTests(unittest.TestCase):
+    def test_python_json_api_url_has_json_suffix(self) -> None:
+        self.assertEqual(
+            registry.version_url(
+                "https://test.pypi.org/pypi",
+                "kaleidoswap_sdk",
+                "0.1.0",
+                json_api=True,
+            ),
+            "https://test.pypi.org/pypi/kaleidoswap_sdk/0.1.0/json",
+        )
+
     def test_404_means_version_is_available(self) -> None:
         error = urllib.error.HTTPError("https://registry.example", 404, "", {}, None)
+        self.addCleanup(error.close)
         with mock.patch.object(registry.urllib.request, "urlopen", side_effect=error):
             registry.require_version_available(
-                "https://registry.example", "@kaleidoswap/sdk", "0.1.0"
+                "https://registry.example",
+                "@kaleidoswap/sdk",
+                "0.1.0",
+                "npm",
             )
 
     def test_existing_version_is_rejected(self) -> None:
@@ -44,16 +59,48 @@ class RegistryAvailabilityTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "already exists"):
                 registry.require_version_available(
-                    "https://registry.example", "@kaleidoswap/sdk", "0.1.0"
+                    "https://registry.example",
+                    "@kaleidoswap/sdk",
+                    "0.1.0",
+                    "npm",
                 )
 
     def test_public_pypi_must_be_explicitly_disabled(self) -> None:
         with mock.patch.dict(
             os.environ,
-            {"PYPI_PUBLISH_ENABLED": "true", "NPM_PUBLISH_ENABLED": "false"},
+            {
+                "NPM_PUBLISH_ENABLED": "false",
+                "PYPI_PUBLISH_ENABLED": "true",
+                "TEST_PYPI_PUBLISH_ENABLED": "false",
+            },
             clear=True,
         ):
             with self.assertRaisesRegex(ValueError, "public PyPI"):
+                registry.validate_configuration()
+
+    def test_oidc_registry_flags_accept_enabled_publishers(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NPM_PUBLISH_ENABLED": "true",
+                "PYPI_PUBLISH_ENABLED": "false",
+                "TEST_PYPI_PUBLISH_ENABLED": "true",
+            },
+            clear=True,
+        ):
+            self.assertEqual(registry.validate_configuration(), (True, True))
+
+    def test_registry_flags_reject_implicit_values(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {
+                "NPM_PUBLISH_ENABLED": "1",
+                "PYPI_PUBLISH_ENABLED": "false",
+                "TEST_PYPI_PUBLISH_ENABLED": "false",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(ValueError, "true or false"):
                 registry.validate_configuration()
 
 
@@ -122,6 +169,16 @@ class WorkflowInvariantTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "mutable"):
             workflow.validate(changed)
+
+    def test_registry_secret_is_rejected(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "stored registry credentials"):
+            workflow.validate(contents + "\n# secrets.NPM_TOKEN\n")
+
+    def test_extra_oidc_permission_is_rejected(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "exactly two"):
+            workflow.validate(contents + "\n# id-token: write\n")
 
 
 if __name__ == "__main__":

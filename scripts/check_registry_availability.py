@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail unless the npm release version is unused and public PyPI is disabled."""
+"""Validate release registry flags and ensure enabled versions are unused."""
 
 from __future__ import annotations
 
@@ -12,13 +12,27 @@ import urllib.parse
 import urllib.request
 
 
-def version_url(registry: str, package: str, version: str) -> str:
+def version_url(
+    registry: str,
+    package: str,
+    version: str,
+    *,
+    json_api: bool = False,
+) -> str:
     encoded = urllib.parse.quote(package, safe="")
-    return f"{registry.rstrip('/')}/{encoded}/{version}"
+    suffix = "/json" if json_api else ""
+    return f"{registry.rstrip('/')}/{encoded}/{version}{suffix}"
 
 
-def require_version_available(registry: str, package: str, version: str) -> None:
-    url = version_url(registry, package, version)
+def require_version_available(
+    registry: str,
+    package: str,
+    version: str,
+    registry_name: str,
+    *,
+    json_api: bool = False,
+) -> None:
+    url = version_url(registry, package, version, json_api=json_api)
     request = urllib.request.Request(
         url,
         headers={"Accept": "application/json", "User-Agent": "kaleidoswap-release"},
@@ -28,30 +42,35 @@ def require_version_available(registry: str, package: str, version: str) -> None
             payload = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 404:
-            print(f"npm version is available: {package}@{version}")
+            print(f"{registry_name} version is available: {package}@{version}")
             return
         raise ValueError(
-            f"npm registry returned HTTP {error.code} for {url}"
+            f"{registry_name} returned HTTP {error.code} for {url}"
         ) from error
     except (OSError, urllib.error.URLError) as error:
         raise ValueError(
-            f"could not verify npm registry availability: {error}"
+            f"could not verify {registry_name} availability: {error}"
         ) from error
     published = payload.get("version", version)
-    raise ValueError(f"npm version already exists: {package}@{published}")
+    raise ValueError(f"{registry_name} version already exists: {package}@{published}")
 
 
-def validate_configuration() -> None:
-    if os.environ.get("PYPI_PUBLISH_ENABLED", "").lower() != "false":
+def flag(name: str) -> bool:
+    value = os.environ.get(name, "").lower()
+    if value not in {"true", "false"}:
+        raise ValueError(f"{name} must be explicitly set to true or false")
+    return value == "true"
+
+
+def validate_configuration() -> tuple[bool, bool]:
+    npm_enabled = flag("NPM_PUBLISH_ENABLED")
+    test_pypi_enabled = flag("TEST_PYPI_PUBLISH_ENABLED")
+    if flag("PYPI_PUBLISH_ENABLED"):
         raise ValueError(
             "public PyPI publishing must remain explicitly disabled until the "
             "name/version collision is resolved"
         )
-    if os.environ.get("NPM_PUBLISH_ENABLED", "").lower() != "false":
-        raise ValueError(
-            "Phase 3 must not enable npm publishing before trusted publishing "
-            "and release approval are configured"
-        )
+    return npm_enabled, test_pypi_enabled
 
 
 def main() -> int:
@@ -59,10 +78,25 @@ def main() -> int:
     parser.add_argument("version")
     parser.add_argument("--npm-package", default="@kaleidoswap/sdk")
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
+    parser.add_argument("--python-package", default="kaleidoswap_sdk")
+    parser.add_argument("--test-pypi-registry", default="https://test.pypi.org/pypi")
     args = parser.parse_args()
     try:
-        validate_configuration()
-        require_version_available(args.npm_registry, args.npm_package, args.version)
+        _, test_pypi_enabled = validate_configuration()
+        require_version_available(
+            args.npm_registry,
+            args.npm_package,
+            args.version,
+            "npm",
+        )
+        if test_pypi_enabled:
+            require_version_available(
+                args.test_pypi_registry,
+                args.python_package,
+                args.version,
+                "TestPyPI",
+                json_api=True,
+            )
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
