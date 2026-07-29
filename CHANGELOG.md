@@ -225,6 +225,42 @@ Second review round:
     Number and BigInt. Python/native are unaffected (that path was already exact:
     serde_json prints u64 losslessly and Python ints are arbitrary-precision).
 
+L-BTC / magic-routing round:
+
+- **Explicit L-BTC HTLCs are accepted *and* spendable.** `validate_currency` no
+  longer requires a blinding key for L-BTC, since KaleidoSwap Maker creates
+  explicit L-BTC HTLCs and correctly omits `blindingKey`. The legacy
+  single-input claim/refund builders were relaxed in the same change: they now
+  source their funding secrets from the shared `unblind_swap_output` instead of
+  demanding a blinding secret, so an explicit HTLC can actually be claimed or
+  refunded. Without this the SDK would have accepted a swap it could not
+  finish — a submarine user could fund a lockup and then be unable to build the
+  timeout refund. The payout destination may now also be explicit. The one
+  pairing that cannot work, and is rejected up front, is a confidential HTLC
+  swept to an explicit destination: its input blinding factors would have no
+  blinded output to balance against.
+- **Caller-funded Liquid spends pin the payout address to the swap's chain.**
+  `prepare_liquid_claim`/`prepare_liquid_refund` now parse `output_address` with
+  the client's `LiquidChain` before any lookup or broadcast. `Address::from_str`
+  alone accepts another network's encoding, so a wrong-network or mistyped
+  address previously surfaced only after the hold invoice had been paid.
+- **`parse_bip21` no longer panics, and is stricter (behavior change).** It
+  previously indexed into split results and would panic on a URI with no `?` or
+  a parameter with no `=` — a latent DoS on maker-controlled input. It now
+  returns errors instead, and additionally rejects duplicate `amount`/`assetid`
+  parameters, empty parameter values, and more than one query separator. This is
+  an observable API change for a `pub` function: URIs that previously panicked
+  or silently parsed now return `Error::Generic`.
+- **Magic routing validates the whole destination, not just the asset.**
+  `check_for_mrh` now checks the BIP21 scheme against the swap's chain, requires
+  the address to be canonical and to belong to that chain, pins the policy asset
+  per network, and rejects a zero amount. Bitcoin chains are covered too — the
+  previous `_ => ()` arm meant a `liquidnetwork:` URI could be returned as the
+  destination for a Bitcoin payment. Liquid regtest accepts both
+  `liquidnetwork` and `liquidtestnet`, since Boltz and KaleidoSwap Maker
+  disagree on the scheme for Elements regtest; the address params and policy
+  asset still pin the chain.
+
 ### Dependencies
 
 - New crate `rln-client`: `serde`, `serde_json`, optional `reqwest` (feature

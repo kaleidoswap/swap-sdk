@@ -9,8 +9,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
+use kaleidoswap_sdk::elements::{Address as ElementsAddress, AddressParams};
 use kaleidoswap_sdk::network::esplora::EsploraLiquidClient;
-use kaleidoswap_sdk::network::{Chain, Currency};
+use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
 use kaleidoswap_sdk::swaps::boltz::CreateReverseRequest;
 use kaleidoswap_sdk::swaps::{
     BtcLikeTransaction, ChainClient, FundedLiquidPset, LiquidPsetParams, SwapScript,
@@ -23,12 +24,28 @@ use lusdt_common::{
     wait_for_status,
 };
 
+/// Read `LUSDT_CLAIM_ADDRESS` and require that it encodes an address for
+/// `chain`, so a testnet address can never be handed to a mainnet swap.
+fn claim_address_for(chain: LiquidChain) -> Result<String> {
+    let address = required_env("LUSDT_CLAIM_ADDRESS")?;
+    let params: &'static AddressParams = chain.into();
+    let parsed = ElementsAddress::parse_with_params(&address, params)
+        .with_context(|| format!("LUSDT_CLAIM_ADDRESS is not a valid {chain:?} address"))?;
+    if parsed.blinding_pubkey.is_none() {
+        println!("note: LUSDT_CLAIM_ADDRESS is explicit; the L-USDT payout will be unblinded");
+    }
+    Ok(address)
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let (network, liquid_chain) = network()?;
     let api = api_client();
     let invoice_amount = optional_u64("INVOICE_AMOUNT_SATS", 100_000)?;
-    let claim_address = required_env("LUSDT_CLAIM_ADDRESS")?;
+    // Pin the payout address to the selected chain up front. Waiting until the
+    // claim is prepared would surface a typo or a wrong-network address only
+    // after the hold invoice had already been paid.
+    let claim_address = claim_address_for(liquid_chain)?;
     let esplora_url = optional_env("LIQUID_ESPLORA_URL", "http://localhost:4003/api");
     let template_path = PathBuf::from(optional_env(
         "LUSDT_PSET_TEMPLATE",

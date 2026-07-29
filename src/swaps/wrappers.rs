@@ -738,6 +738,19 @@ impl SwapScript {
             }
         };
         let liquid_client = params.chain_client.require_liquid_client()?;
+        // Pin the payout destination to this swap's chain before anything is
+        // broadcast or fetched. `Address::from_str` alone accepts another
+        // network's encoding and would silently convert it to a script on the
+        // wrong chain, so a mistyped or wrong-network address has to fail here
+        // rather than after the invoice is paid.
+        let network = liquid_client.network();
+        elements::Address::parse_with_params(&params.output_address, network.into()).map_err(
+            |_| {
+                Error::Protocol(format!(
+                    "Liquid payout address is not valid for {network:?}"
+                ))
+            },
+        )?;
         let lockup_tx = params.options.and_then(|options| options.lockup_tx);
         if let Some(lockup_tx) = &lockup_tx {
             params.chain_client.try_broadcast_tx(lockup_tx).await?;
@@ -900,6 +913,101 @@ mod tests {
         };
 
         BtcLikeTransaction::Liquid(tx)
+    }
+
+    /// An L-USDT claim must reject a payout address from another Liquid network
+    /// before it touches the chain, otherwise the mistake only surfaces after
+    /// the hold invoice has been paid.
+    #[tokio::test]
+    async fn prepare_liquid_claim_rejects_a_wrong_network_payout_address() {
+        use crate::network::esplora::EsploraLiquidClient;
+        use crate::swaps::liquid::LiquidAssetContext;
+        use crate::util::secrets::Preimage;
+        use bitcoin::key::rand::rngs::OsRng;
+
+        let chain = LiquidChain::LiquidRegtest;
+        let secp = bitcoin::secp256k1::Secp256k1::new();
+        let keys = bitcoin::secp256k1::Keypair::new(&secp, &mut OsRng);
+        let script = SwapScript::new(
+            SwapScriptImpl::liquid(LiquidSwapScript {
+                swap_type: SwapType::ReverseSubmarine,
+                side: None,
+                funding_addrs: None,
+                hashlock: Preimage::random().hash160,
+                receiver_pubkey: bitcoin::PublicKey::new(keys.public_key()),
+                locktime: elements::LockTime::from_height(200).unwrap(),
+                sender_pubkey: bitcoin::PublicKey::new(keys.public_key()),
+                blinding_key: None,
+                asset_context: Some(LiquidAssetContext {
+                    swap_asset: elements::AssetId::from_str(
+                        "1111111111111111111111111111111111111111111111111111111111111111",
+                    )
+                    .unwrap(),
+                    policy_asset: chain.bitcoin(),
+                }),
+                expected_amount: 100_000,
+            }),
+            None,
+            None,
+        );
+        // Guard the premise: this is the caller-funded PSET flow.
+        assert!(
+            matches!(&script.script, SwapScriptImpl::Liquid(inner) if inner.requires_caller_funded_pset())
+        );
+
+        let chain_client = ChainClient::new().with_liquid(EsploraLiquidClient::new(
+            chain,
+            "http://127.0.0.1:1/api",
+            1,
+        ));
+        let boltz_api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".to_string(), None);
+        // A mainnet address, offered to a regtest swap.
+        let mainnet_address = elements::Address::p2wpkh(
+            &elements::bitcoin::PublicKey::new(keys.public_key()),
+            None,
+            LiquidChain::Liquid.into(),
+        )
+        .to_string();
+
+        let error = script
+            .prepare_liquid_claim(LiquidPsetParams {
+                output_address: mainnet_address,
+                max_fee: 1_000,
+                quoted_fee_cap: 1_000,
+                swap_id: "swap".to_string(),
+                chain_client: &chain_client,
+                boltz_api: &boltz_api,
+                options: None,
+            })
+            .await
+            .expect_err("a mainnet payout address must not be accepted for a regtest swap");
+        assert!(
+            error
+                .to_string()
+                .contains("Liquid payout address is not valid for"),
+            "rejected for the wrong reason: {error}"
+        );
+
+        // The matching regtest address gets past the address check and only
+        // then fails on the unreachable Esplora backend.
+        let error = script
+            .prepare_liquid_claim(LiquidPsetParams {
+                output_address: generate_regtest_address(),
+                max_fee: 1_000,
+                quoted_fee_cap: 1_000,
+                swap_id: "swap".to_string(),
+                chain_client: &chain_client,
+                boltz_api: &boltz_api,
+                options: None,
+            })
+            .await
+            .expect_err("no backend is listening");
+        assert!(
+            !error
+                .to_string()
+                .contains("Liquid payout address is not valid for"),
+            "a same-network address must pass the address check: {error}"
+        );
     }
 
     #[test]

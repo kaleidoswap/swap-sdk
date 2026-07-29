@@ -99,13 +99,25 @@ pub async fn wait_for_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The union of the terminal non-success states of `SubSwapStates` and
+/// `RevSwapStates`. Both directions share this helper, and a state that is
+/// unreachable for one of them is simply never observed. Missing any of these
+/// would leave the caller polling until `KALEIDO_WAIT_TIMEOUT_SECS` instead of
+/// reporting the outcome.
 fn is_failure_status(status: &str) -> bool {
     matches!(
         status,
+        // Both directions: the swap window closed.
         "swap.expired"
-            | "swap.failed"
+            // Submarine: the user underpaid the lockup, or the Maker could not
+            // pay the invoice and the lockup now needs a timeout refund.
             | "transaction.lockupFailed"
-            | "transaction.failed"
             | "invoice.failedToPay"
+            // Reverse: the hold invoice was cancelled before it was paid, the
+            // Maker could not lock up, or it reclaimed its own lockup because
+            // the claim never landed.
+            | "invoice.expired"
+            | "transaction.failed"
+            | "transaction.refunded"
     )
 }
