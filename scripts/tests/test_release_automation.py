@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import tarfile
 import tempfile
 import unittest
@@ -599,6 +600,75 @@ class WorkflowInvariantTests(unittest.TestCase):
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         self.assertNotIn("github.run_attempt", build)
         self.assertNotIn("github.run_attempt", contents)
+
+
+class WorkflowExpressionTests(unittest.TestCase):
+    """Evaluate the release-build env expressions under Actions' falsy rules.
+
+    GitHub Actions returns operand values from `&&`/`||` and treats "" as falsy,
+    so `a && b || c` silently substitutes `c` whenever `b` is empty. An empty
+    release_tag is meaningful here, so it must not pass through such a fallback.
+    """
+
+    FALSY = {"", "0", "false", "null"}
+
+    @classmethod
+    def evaluate(cls, expression: str, context: dict[str, str]) -> str:
+        """Evaluate a chain of `&&`/`||` over context lookups and literals."""
+        tokens = re.split(r"\s+(&&|\|\|)\s+", expression.strip())
+
+        def value(token: str) -> str:
+            token = token.strip()
+            literal = re.fullmatch(r"'([^']*)'", token)
+            if literal:
+                return literal.group(1)
+            if token not in context:
+                raise AssertionError(f"unhandled operand {token!r}")
+            return context[token]
+
+        result = value(tokens[0])
+        for operator, operand in zip(tokens[1::2], tokens[2::2]):
+            truthy = result not in cls.FALSY
+            if operator == "&&":
+                result = value(operand) if truthy else result
+            else:
+                result = result if truthy else value(operand)
+        return result
+
+    def env_expression(self, name: str) -> str:
+        build = (ROOT / ".github/workflows/release-build.yaml").read_text()
+        match = re.search(
+            rf"^  {re.escape(name)}: \$\{{\{{(.+?)\}}\}}$", build, flags=re.MULTILINE
+        )
+        assert match is not None, f"{name} is not a single-line expression"
+        return match.group(1)
+
+    def test_empty_rehearsal_tag_survives_to_the_script(self) -> None:
+        result = self.evaluate(
+            self.env_expression("RELEASE_TAG"),
+            {
+                "inputs.rehearsal": "true",
+                "inputs.release_tag": "",
+                "github.ref_name": "9/merge",
+            },
+        )
+        self.assertEqual(
+            result,
+            "",
+            "an empty rehearsal release_tag must reach preflight so it can derive "
+            "the tag; a `||` fallback would substitute the pull-request ref",
+        )
+
+    def test_production_tag_is_passed_through(self) -> None:
+        result = self.evaluate(
+            self.env_expression("RELEASE_TAG"),
+            {
+                "inputs.rehearsal": "false",
+                "inputs.release_tag": "v0.1.0",
+                "github.ref_name": "v0.1.0",
+            },
+        )
+        self.assertEqual(result, "v0.1.0")
 
 
 class RuntimeVersionTests(unittest.TestCase):

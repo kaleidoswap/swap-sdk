@@ -47,7 +47,11 @@ env:
   PYTHON_VERSION: "3.11.9"
   REHEARSAL: ${{ inputs.rehearsal && 'true' || 'false' }}
   RELEASE_ID: ${{ inputs.rehearsal && format('rehearsal-{0}', github.run_id) || github.ref_name }}
-  RELEASE_TAG: ${{ inputs.rehearsal && inputs.release_tag || github.ref_name }}
+  # Passed through verbatim. An empty value is meaningful — it tells preflight to
+  # derive the tag — so this must not route through a `||` fallback: Actions
+  # treats "" as falsy and would silently substitute github.ref_name, which is
+  # "<pr>/merge" on a pull request.
+  RELEASE_TAG: ${{ inputs.release_tag }}
   REHEARSAL_FAILURE_CASE: ${{ inputs.rehearsal && inputs.failure_case || 'none' }}
   RUST_VERSION: "1.88.0"
   TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}
