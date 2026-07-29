@@ -92,8 +92,6 @@ Addressing PR review (Codex):
   address/tree is rejected before the caller funds it.
 - **Python call sites use the `boltz_api` keyword.** The examples/binding tests
   still passed `kaleidoswap_sdk=` after the field rename; updated to `boltz_api=`.
-- **`requires-python` bumped to `>=3.11`**; the manylinux build uses `cp311`
-  accordingly.
 - **The TS package bundles the wasm output** (`typescript-sdk/vendor/`, populated
   by `make wasm-pack-build`) and imports it via an in-package path, so a published
   `@kaleidoswap/sdk` resolves without escaping the package.
