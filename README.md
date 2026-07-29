@@ -229,8 +229,10 @@ This library makes the following assumptions:
 
 - Bitcoin reverse swap sweep/drain is 1 output
 
-- The legacy single-input Liquid claim/refund path is L-BTC-only: one confidential payout output and one explicit
-  policy-asset fee output. Magic routing is also L-BTC-only.
+- The legacy single-input Liquid claim/refund path is L-BTC-only: one payout output and one explicit policy-asset fee
+  output. The payout is confidential when the destination address carries a blinding key and explicit otherwise, except
+  that a confidential HTLC cannot be swept to an explicit destination — its input blinding factors would have no
+  blinded output to balance against. Magic routing is also L-BTC-only.
 
 - Liquid HTLC discovery validates the exact script, asset, and transaction. Claims and all L-USDT spends also require
   the exact expected amount; legacy L-BTC refunds intentionally reclaim the positive amount actually locked so an
