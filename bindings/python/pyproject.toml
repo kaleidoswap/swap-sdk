@@ -1,12 +1,10 @@
 [project]
 name = "kaleidoswap_sdk"
 version = "0.4.1"
-description = "KaleidoSwap SDK — atomic swaps (Boltz protocol) + RGB Lightning Node client"
+description = "KaleidoSwap SDK — atomic swaps (Boltz protocol) between Bitcoin, Lightning, and Liquid"
 readme = "README.md"
 requires-python = ">=3.11"
-# pydantic backs the generated RLN models (rln_types.py) that the uniffi
-# custom-type converters hydrate at the FFI boundary.
-dependencies = ["pydantic>=2"]
+dependencies = []
 
 [project.urls]
 Homepage = "https://kaleidoswap.com"
@@ -18,7 +16,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-include = ["libkaleidoswap_sdk.so", "libkaleidoswap_sdk.dylib", "kaleidoswap_sdk.py", "rln_types.py"]
+include = ["libkaleidoswap_sdk.so", "libkaleidoswap_sdk.dylib", "kaleidoswap_sdk.py"]
 ignore-vcs = true
 
 [dependency-groups]

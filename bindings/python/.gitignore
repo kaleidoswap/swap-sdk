@@ -5,5 +5,3 @@ __pycache__
 .venv
 dist
 kaleidoswap_sdk.py
-# NOTE: rln_types.py is generated but committed (like the models in
-# kaleido-sdk); regenerate with `make generate-rln-pydantic`.

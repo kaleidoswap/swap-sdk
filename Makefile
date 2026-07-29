@@ -14,22 +14,6 @@ REGTEST_PREFIX = LND_MACAROON_HEX=$(LND_MACAROON_HEX) BITCOIND_COOKIE=$(BITCOIND
 init:
 	cargo install wasm-pack --version 0.14.0 --locked
 
-# --- Codegen: RGB Lightning Node (RLN) types --------------------------------
-# Generates rln-client/src/types.rs from the OpenAPI 3.1 spec using typify
-# (types only; the client is hand-written), matching the kaleido-sdk approach.
-# Requires: python3 (+PyYAML) and cargo-typify (`cargo install cargo-typify`).
-generate-rln-types:
-	bash scripts/gen-rln-types.sh
-
-# Generates the Python-side RLN artifacts: pydantic models
-# (bindings/python/rln_types.py) + the uniffi.toml custom-type mapping.
-# Requires: uv, python3.
-generate-rln-pydantic:
-	bash scripts/gen-rln-pydantic.sh
-
-# Regenerate every RLN codegen artifact (Rust types + Python models + mapping).
-generate-rln: generate-rln-types generate-rln-pydantic
-
 # --- wasm / TypeScript binding ----------------------------------------------
 # Builds the wasm-bindgen package (bindings-wasm/pkg) for the browser/TS SDK.
 # Needs a wasm-capable clang (see CLANG_PREFIX / `brew install llvm@21`).
@@ -41,12 +25,6 @@ wasm-pack-build:
 	cp bindings-wasm/pkg/bindings_wasm.js bindings-wasm/pkg/bindings_wasm.d.ts \
 	   bindings-wasm/pkg/bindings_wasm_bg.wasm bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts \
 	   typescript-sdk/vendor/
-
-# Regenerate the TypeScript domain types from the RLN OpenAPI spec.
-# Uses the openapi-typescript Node API (scripts/generate-types.mjs) to map
-# integer fields to `bigint`, matching the wasm boundary's BigInt serialization.
-generate-ts-types:
-	cd typescript-sdk && npm install --no-audit --no-fund --silent && npm run generate:types
 
 build: cargo-build cargo-clippy
 

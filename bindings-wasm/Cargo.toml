@@ -8,9 +8,9 @@ description = "WebAssembly (wasm-bindgen) bindings for the KaleidoSwap SDK"
 # Browser/TS binding surface. Separate from the UniFFI `bindings` crate because
 # wasm-bindgen and UniFFI are different export mechanisms targeting different
 # runtimes (browser vs native FFI). Build with wasm-pack (see Makefile:
-# `make wasm-pack-build`). RLN types + swap types cross to JS as plain JS objects
-# via serde-wasm-bindgen; TS callers type them with the openapi-typescript models
-# in typescript-sdk/src/generated/node-types.ts.
+# `make wasm-pack-build`). Swap types cross to JS as plain JS objects via
+# serde-wasm-bindgen; TS callers type them with the hand-written interfaces in
+# typescript-sdk/src/index.ts.
 [lib]
 crate-type = ["cdylib", "rlib"]
 
@@ -29,6 +29,5 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # `sync` names the broadcast::Receiver / Mutex used by the WS status stream.
 tokio = { version = "1", default-features = false, features = ["sync"] }
-rln-client = { path = "../rln-client" }
 # `ws` enables the Boltz WebSocket swap-status stream (BoltzWsApi).
 kaleidoswap-sdk = { path = "..", default-features = false, features = ["esplora", "ws"] }
