@@ -14,8 +14,55 @@ let tarballPath = suppliedTarball
   : undefined;
 let removeTarball = false;
 
+const requiredPaths = [
+  "LICENSE",
+  "README.md",
+  "dist/index.d.ts",
+  "dist/index.js",
+  "package.json",
+  "vendor/bindings_wasm.d.ts",
+  "vendor/bindings_wasm.js",
+  "vendor/bindings_wasm_bg.wasm",
+  "vendor/bindings_wasm_bg.wasm.d.ts",
+];
+const allowedRoots = ["dist/", "vendor/"];
+
+/** Enforce the tarball contents allowlist. Runs for a packed OR supplied archive. */
+function assertPackageContents(paths) {
+  const missing = requiredPaths.filter((path) => !paths.includes(path));
+  if (missing.length > 0) {
+    throw new Error(
+      `npm package is missing required files: ${missing.join(", ")}`,
+    );
+  }
+
+  const unexpected = paths.filter(
+    (path) =>
+      !requiredPaths.includes(path) &&
+      !allowedRoots.some((root) => path.startsWith(root)),
+  );
+  if (unexpected.length > 0) {
+    throw new Error(
+      `npm package contains unexpected files: ${unexpected.join(", ")}`,
+    );
+  }
+}
+
+/** List a tarball's members as package-relative paths, matching `npm pack --json`. */
+function listTarball(archive) {
+  return execFileSync("tar", ["-tzf", archive], { encoding: "utf8" })
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0 && !entry.endsWith("/"))
+    .map((entry) => entry.replace(/^package\//, ""));
+}
+
 try {
-  if (!tarballPath) {
+  if (tarballPath) {
+    // A supplied tarball is the exact byte stream a release would publish, so
+    // it must satisfy the same allowlist as one we pack ourselves.
+    assertPackageContents(listTarball(tarballPath));
+  } else {
     const packResult = JSON.parse(
       execFileSync("npm", ["pack", "--json"], {
         cwd: packageRoot,
@@ -25,37 +72,7 @@ try {
     const [{ filename, files }] = packResult;
     tarballPath = join(packageRoot, filename);
     removeTarball = true;
-
-    const paths = files.map(({ path }) => path);
-    const requiredPaths = [
-      "LICENSE",
-      "README.md",
-      "dist/index.d.ts",
-      "dist/index.js",
-      "package.json",
-      "vendor/bindings_wasm.d.ts",
-      "vendor/bindings_wasm.js",
-      "vendor/bindings_wasm_bg.wasm",
-      "vendor/bindings_wasm_bg.wasm.d.ts",
-    ];
-    const missing = requiredPaths.filter((path) => !paths.includes(path));
-    if (missing.length > 0) {
-      throw new Error(
-        `npm package is missing required files: ${missing.join(", ")}`,
-      );
-    }
-
-    const allowedRoots = ["dist/", "vendor/"];
-    const unexpected = paths.filter(
-      (path) =>
-        !requiredPaths.includes(path) &&
-        !allowedRoots.some((root) => path.startsWith(root)),
-    );
-    if (unexpected.length > 0) {
-      throw new Error(
-        `npm package contains unexpected files: ${unexpected.join(", ")}`,
-      );
-    }
+    assertPackageContents(files.map(({ path }) => path));
   }
 
   writeFileSync(

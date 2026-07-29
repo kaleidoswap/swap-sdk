@@ -548,6 +548,67 @@ class WorkflowInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "release authority"):
             workflow.validate(contents, build_contents=build)
 
+    def test_rehearsal_cannot_hardcode_a_version(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        rehearsal = (
+            (ROOT / ".github/workflows/release-rehearsal.yaml")
+            .read_text()
+            .replace('release_tag: ""', "release_tag: v0.1.0")
+        )
+        with self.assertRaisesRegex(ValueError, "must not hardcode a version"):
+            workflow.validate(contents, rehearsal)
+
+    def test_rehearsal_must_not_require_an_unclaimed_version(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        build = (
+            (ROOT / ".github/workflows/release-build.yaml")
+            .read_text()
+            .replace("--flags-only", "--check-test-pypi")
+        )
+        with self.assertRaisesRegex(ValueError, "still be unclaimed"):
+            workflow.validate(contents, build_contents=build)
+
+    def test_publisher_must_reverify_sealed_bytes(self) -> None:
+        contents = (
+            (ROOT / ".github/workflows/release.yaml")
+            .read_text()
+            .replace(
+                "sha256sum --check --strict SHA256SUMS",
+                "true # skipped",
+                1,
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "re-verify the sealed bundle"):
+            workflow.validate(contents)
+
+    def test_github_release_must_verify_the_sealed_bundle(self) -> None:
+        contents = (
+            (ROOT / ".github/workflows/release.yaml")
+            .read_text()
+            .replace(
+                "scripts/verify_release_bundle.py",
+                "scripts/omitted_bundle_verifier.py",
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "verify the sealed bundle"):
+            workflow.validate(contents)
+
+    def test_release_artifact_names_are_stable_across_attempts(self) -> None:
+        """Re-running failed jobs must find the bundle the first attempt sealed."""
+        build = (ROOT / ".github/workflows/release-build.yaml").read_text()
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        self.assertNotIn("github.run_attempt", build)
+        self.assertNotIn("github.run_attempt", contents)
+
+
+class RuntimeVersionTests(unittest.TestCase):
+    def test_python_package_reports_a_version_without_a_second_source(self) -> None:
+        source = (ROOT / "bindings/python/kaleidoswap_sdk/__init__.py").read_text()
+        self.assertIn("__version__", source)
+        # Derived from installed metadata, so it can never drift from pyproject.
+        self.assertIn("_distribution_version", source)
+        self.assertNotIn('__version__ = "0.1.0"', source)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -75,8 +75,11 @@ jobs:
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
           path: release-artifacts
+      - name: Re-verify the sealed bundle bytes before publishing
+        working-directory: release-artifacts
+        run: sha256sum --check --strict SHA256SUMS
       - name: Publish the exact validated npm tarball
         run: npm publish release-artifacts/*.tgz --access public
 
@@ -94,8 +97,11 @@ jobs:
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
           path: release-artifacts
+      - name: Re-verify the sealed bundle bytes before publishing
+        working-directory: release-artifacts
+        run: sha256sum --check --strict SHA256SUMS
       - name: Select the exact validated Python artifacts
         run: |
           mkdir python-release-artifacts
@@ -130,7 +136,7 @@ jobs:
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
           path: release-artifacts
       - name: Download and hash-match the published npm tarball
         run: >-
@@ -170,7 +176,7 @@ jobs:
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
           path: release-artifacts
       - name: Verify TestPyPI inventory and download smoke artifacts
         run: >-
@@ -242,8 +248,14 @@ jobs:
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
           path: release-artifacts
+      - name: Verify the sealed bundle against its manifest, checksums, and SBOM
+        run: >-
+          python3 scripts/verify_release_bundle.py release-artifacts
+          --version "${{ needs.release-ready.outputs.version }}"
+          --tag "${{ needs.release-ready.outputs.tag }}"
+          --commit "${{ needs.release-ready.outputs.commit }}"
       - name: Refuse to replace an existing release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -79,6 +79,7 @@ Both publisher jobs:
 - use the protected GitHub `release` environment;
 - receive job-scoped `id-token: write`, while every other job remains unable to
   request an OIDC token;
+- re-verify the sealed bundle's SHA-256 checksums before publishing;
 - publish the exact validated archive without `--skip-existing`;
 - contain no npm, PyPI, or TestPyPI password or long-lived token.
 
@@ -101,12 +102,15 @@ succeeds.
 Both `.github/workflows/release.yaml` and
 `.github/workflows/release-rehearsal.yaml` call the same read-only
 `.github/workflows/release-build.yaml` artifact graph. The rehearsal passes
-`rehearsal: true`; it does not copy or approximate the release build. The
+`rehearsal: true` and an empty `release_tag`, so preflight derives the intended
+tag from the committed manifests and no workflow file carries a version
+literal. It does not copy or approximate the release build. The
 rehearsal:
 
 - validates the intended tag against all version sources;
 - requires the untagged rehearsal commit to be based on `trunk`;
-- checks that `0.1.0` is available on npm and TestPyPI;
+- validates the publisher flags without requiring the version to still be
+  unclaimed, so the rehearsal keeps passing after that version ships;
 - builds the same five wheels, sdist, npm tarball, and fresh WASM bindings;
 - clean-installs the exact Python artifacts and npm tarball;
 - initializes the exact npm tarball in both clean Node and headless Firefox
@@ -333,7 +337,12 @@ publisher succeeds and another fails:
    accepted.
 4. If the failed registry accepted no files, rerun failed jobs only. GitHub
    leaves the successful publisher untouched and retries the failed publisher,
-   post-publication verifier, completion gate, and GitHub-release job.
+   post-publication verifier, completion gate, and GitHub-release job. This
+   works because release artifact names are attempt-independent, so the retried
+   jobs download the same sealed bundle the first attempt validated. Never
+   rerun *all* jobs: the build jobs would try to re-upload artifact names that
+   already exist and fail, which is the intended protection against silently
+   rebuilding a published version.
 5. If TestPyPI accepted only part of the Python file set, remove that incomplete
    TestPyPI release through its project controls before rerunning failed jobs.
    Never mix files from separate workflow attempts.
@@ -343,6 +352,25 @@ publisher succeeds and another fails:
 7. The GitHub release remains absent because its job depends on the registry
    publication and verification gate. It is created automatically only after
    all enabled registries are consistent.
+8. If rerunning failed jobs cannot succeed — for example npm already holds the
+   version, so a fresh preflight would correctly reject it — publish the GitHub
+   release by hand from the retained bundle. Verify before uploading, and never
+   assemble the assets from anything but that bundle:
+
+   ```sh
+   gh run download <run-id> \
+     --repo kaleidoswap/kaleidoswap-sdk \
+     --name "release-bundle-v0.1.0" \
+     --dir release-v0.1.0
+   python3 scripts/verify_release_bundle.py release-v0.1.0 \
+     --version 0.1.0 --tag v0.1.0 \
+     --commit "$(git rev-list -n 1 v0.1.0)"
+   gh release create v0.1.0 release-v0.1.0/* \
+     --repo kaleidoswap/kaleidoswap-sdk \
+     --title "KaleidoSwap SDK v0.1.0" \
+     --verify-tag --latest \
+     --notes-file <(python3 scripts/release_notes.py 0.1.0)
+   ```
 
 ## Public PyPI blocker
 

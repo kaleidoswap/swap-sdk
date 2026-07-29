@@ -14,9 +14,13 @@ on:
         type: boolean
         default: false
       release_tag:
-        description: Intended vX.Y.Z tag for rehearsal metadata and validation
-        required: true
+        description: >-
+          Intended vX.Y.Z tag for rehearsal metadata and validation. Leave empty
+          to derive it from the committed manifests, so no workflow file has to
+          carry a version literal.
+        required: false
         type: string
+        default: ""
     outputs:
       commit:
         description: Peeled source commit represented by the tag or rehearsal ref
@@ -78,11 +82,19 @@ jobs:
               ;;
           esac
 
-          effective_tag="${RELEASE_TAG}"
+          intended_tag="${RELEASE_TAG}"
+          if [ -z "${intended_tag}" ]; then
+            # Only a rehearsal may derive its tag; a real release must be told
+            # the tag it was triggered by.
+            test "${REHEARSAL}" = "true"
+            intended_tag="v$(python3 scripts/release_version.py current)"
+          fi
+
+          effective_tag="${intended_tag}"
           if [ "${REHEARSAL_FAILURE_CASE}" = "malformed-tag" ]; then
-            effective_tag="release-${RELEASE_TAG#v}"
+            effective_tag="release-${intended_tag#v}"
           elif [ "${REHEARSAL_FAILURE_CASE}" = "version-mismatch" ]; then
-            version="${RELEASE_TAG#v}"
+            version="${intended_tag#v}"
             major="${version%%.*}"
             remainder="${version#*.}"
             minor="${remainder%%.*}"
@@ -105,9 +117,12 @@ jobs:
           echo "version=${effective_tag#v}" >> "${GITHUB_OUTPUT}"
       - name: Verify registry availability and publisher configuration
         run: |
+          # A rehearsal must not assert that the current version is unclaimed:
+          # after v0.1.0 ships, that would fail on every later pull request.
+          # Only the tag path — which is about to occupy the version — checks it.
           if [ "${REHEARSAL}" = "true" ]; then
             python3 scripts/check_registry_availability.py \
-              "${{ steps.release.outputs.version }}" --check-test-pypi
+              "${{ steps.release.outputs.version }}" --flags-only
           else
             python3 scripts/check_registry_availability.py \
               "${{ steps.release.outputs.version }}"
@@ -180,7 +195,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
-          name: release-build-python-wheel-${{ matrix.name }}-${{ github.run_attempt }}
+          name: release-build-python-wheel-${{ matrix.name }}
           path: bindings/python/dist/*.whl
           retention-days: 7
 
@@ -215,7 +230,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
-          name: release-build-python-sdist-${{ github.run_attempt }}
+          name: release-build-python-sdist
           path: bindings/python/dist/*.tar.gz
           retention-days: 7
 
@@ -275,7 +290,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
-          name: release-build-npm-package-${{ github.run_attempt }}
+          name: release-build-npm-package
           path: typescript-sdk/release-dist/*.tgz
           retention-days: 7
 
@@ -310,7 +325,7 @@ jobs:
         with:
           merge-multiple: true
           path: release-artifacts
-          pattern: release-build-*-${{ github.run_attempt }}
+          pattern: release-build-*
       - name: Exercise a deliberate missing-wheel failure
         if: ${{ inputs.rehearsal && inputs.failure_case == 'missing-wheel' }}
         run: rm release-artifacts/*win_amd64.whl
@@ -339,7 +354,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           if-no-files-found: error
-          name: release-bundle-${{ env.RELEASE_ID }}-${{ github.run_attempt }}
+          name: release-bundle-${{ env.RELEASE_ID }}
           path: release-artifacts/
           retention-days: 30
 
@@ -358,7 +373,7 @@ jobs:
       - name: Download exact validated rehearsal bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
-          name: release-bundle-${{ env.RELEASE_ID }}-${{ github.run_attempt }}
+          name: release-bundle-${{ env.RELEASE_ID }}
           path: release-artifacts
       - name: Verify checksums, manifest, SBOM, and intended release assets
         run: >-

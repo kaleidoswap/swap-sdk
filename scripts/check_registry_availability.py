@@ -85,9 +85,20 @@ def main() -> int:
         action="store_true",
         help="check TestPyPI availability even while its publisher is disabled",
     )
+    parser.add_argument(
+        "--flags-only",
+        action="store_true",
+        help=(
+            "validate publisher flags without contacting a registry; a rehearsal "
+            "must not require the current version to still be unclaimed"
+        ),
+    )
     args = parser.parse_args()
     try:
         _, test_pypi_enabled = validate_configuration()
+        if args.flags_only:
+            print("Validated publisher configuration without a registry check")
+            return 0
         require_version_available(
             args.npm_registry,
             args.npm_package,

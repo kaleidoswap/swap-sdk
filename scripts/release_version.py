@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -100,18 +101,6 @@ def replace_section_version(path: Path, section: str, version: str) -> None:
     path.write_text(updated, encoding="utf-8")
 
 
-def replace_lock_package_version(path: Path, name: str, version: str) -> None:
-    contents = path.read_text(encoding="utf-8")
-    package_pattern = re.compile(
-        rf'(?ms)(^\[\[package\]\]\s*^name\s*=\s*"{re.escape(name)}"\s*'
-        rf'^version\s*=\s*")[^"]+(")'
-    )
-    updated, count = package_pattern.subn(rf"\g<1>{version}\g<2>", contents, count=1)
-    if count != 1:
-        raise ValueError(f"could not update {name!r} in {path.relative_to(ROOT)}")
-    path.write_text(updated, encoding="utf-8")
-
-
 def replace_json_versions(path: Path, version: str, expected_count: int) -> None:
     contents = path.read_text(encoding="utf-8")
     version_pattern = re.compile(r'(?m)(^\s*"version": ")[^"]+(",?$)')
@@ -126,6 +115,25 @@ def replace_json_versions(path: Path, version: str, expected_count: int) -> None
     path.write_text(updated, encoding="utf-8")
 
 
+def relock(command: list[str], cwd: Path, lockfile: Path) -> None:
+    """Let the package manager rewrite its own lockfile.
+
+    Hand-editing a lockfile can only ever approximate what the tool would
+    produce; running the tool cannot silently desync it from the manifest.
+    """
+    try:
+        subprocess.run(command, cwd=cwd, check=True, capture_output=True, text=True)
+    except FileNotFoundError as error:
+        raise ValueError(
+            f"{command[0]} is required to update {lockfile.relative_to(ROOT)}"
+        ) from error
+    except subprocess.CalledProcessError as error:
+        raise ValueError(
+            f"{' '.join(command)} failed while updating "
+            f"{lockfile.relative_to(ROOT)}:\n{error.stderr.strip()}"
+        ) from error
+
+
 def sync(version: str) -> None:
     if not VERSION_PATTERN.fullmatch(version):
         raise ValueError(
@@ -133,15 +141,34 @@ def sync(version: str) -> None:
         )
 
     replace_section_version(ROOT / "Cargo.toml", "package", version)
-    replace_lock_package_version(ROOT / "Cargo.lock", "kaleidoswap-sdk", version)
     replace_section_version(ROOT / "bindings/python/pyproject.toml", "project", version)
-    replace_lock_package_version(
-        ROOT / "bindings/python/uv.lock", "kaleidoswap-sdk", version
-    )
-
     replace_json_versions(ROOT / "typescript-sdk/package.json", version, 1)
-    # npm lockfile v3 repeats the root package version under packages[""].
-    replace_json_versions(ROOT / "typescript-sdk/package-lock.json", version, 2)
+
+    # Manifests are the source of truth; every lockfile is regenerated from them
+    # by its own tool. None of these commands upgrade a dependency: they only
+    # reconcile the local package version already written above.
+    relock(
+        ["cargo", "metadata", "--format-version", "1", "--offline"],
+        ROOT,
+        ROOT / "Cargo.lock",
+    )
+    relock(
+        ["uv", "lock"],
+        ROOT / "bindings/python",
+        ROOT / "bindings/python/uv.lock",
+    )
+    relock(
+        [
+            "npm",
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+        ],
+        ROOT / "typescript-sdk",
+        ROOT / "typescript-sdk/package-lock.json",
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -149,6 +176,8 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("show")
     subparsers.add_parser("validate")
+    # Machine-readable single value, so no workflow needs a version literal.
+    subparsers.add_parser("current")
 
     validate_tag = subparsers.add_parser("validate-tag")
     validate_tag.add_argument("tag")
@@ -167,6 +196,8 @@ def main() -> int:
         elif args.command == "validate":
             version = validate()
             print(f"Validated public SDK version {version}")
+        elif args.command == "current":
+            print(validate())
         elif args.command == "validate-tag":
             version = validate_tag(args.tag)
             print(f"Validated release tag v{version}")

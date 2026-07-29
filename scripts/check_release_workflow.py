@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import re
 import sys
-import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,7 +27,7 @@ PRODUCTION_REQUIRED = (
     "verify-testpypi:",
     "registry-publish-complete:",
     "publish-github-release:",
-    "release-bundle-${{ needs.release-ready.outputs.release_id }}-${{ github.run_attempt }}",
+    "release-bundle-${{ needs.release-ready.outputs.release_id }}",
     "npm publish release-artifacts/*.tgz --access public",
     "pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247",
     "scripts/download_published_artifacts.py",
@@ -41,8 +40,8 @@ BUILD_REQUIRED = (
     "commit: ${{ steps.release.outputs.commit }}",
     "release-ready:",
     "rehearsal-complete:",
-    "release-build-python-wheel-${{ matrix.name }}-${{ github.run_attempt }}",
-    "release-bundle-${{ env.RELEASE_ID }}-${{ github.run_attempt }}",
+    "release-build-python-wheel-${{ matrix.name }}",
+    "release-bundle-${{ env.RELEASE_ID }}",
     "scripts/assemble_release.py",
     "scripts/verify_release_bundle.py",
     "SHA256SUMS",
@@ -150,6 +149,8 @@ def validate(
             raise ValueError(f"{name} publisher must use the release environment")
         if "id-token: write" not in job:
             raise ValueError(f"{name} publisher must have job-scoped OIDC")
+        if "sha256sum --check --strict SHA256SUMS" not in job:
+            raise ValueError(f"{name} publisher must re-verify the sealed bundle bytes")
 
     activation_job = job_section(contents, "release-activation", "release-ready")
     for snippet in (
@@ -191,6 +192,8 @@ def validate(
         raise ValueError("production GitHub release must not remain a draft")
     if "--notes-file release-notes.md" not in release_job:
         raise ValueError("GitHub release must use the finalized changelog")
+    if "scripts/verify_release_bundle.py" not in release_job:
+        raise ValueError("GitHub release must verify the sealed bundle")
     registry_job = job_section(
         contents, "registry-publish-complete", "publish-github-release"
     )
@@ -247,7 +250,6 @@ def validate(
         "workflow_dispatch:",
         "uses: ./.github/workflows/release-build.yaml",
         "rehearsal: true",
-        "release_tag: v",
         "permissions:\n  contents: read",
         "permissions:\n      contents: read",
     )
@@ -264,18 +266,17 @@ def validate(
             f"release rehearsal failure cases differ: {sorted(failure_cases)}"
         )
 
-    release_tag = re.search(
-        r"^\s+release_tag:\s+(v[0-9]+\.[0-9]+\.[0-9]+)$",
-        rehearsal_contents,
-        flags=re.MULTILINE,
-    )
-    if release_tag is None:
-        raise ValueError("release rehearsal must declare a stable release tag")
-    with (ROOT / "Cargo.toml").open("rb") as file:
-        version = tomllib.load(file)["package"]["version"]
-    if release_tag.group(1) != f"v{version}":
+    if re.search(r"^\s+release_tag:\s+v[0-9]", rehearsal_contents, flags=re.MULTILINE):
         raise ValueError(
-            f"release rehearsal tag {release_tag.group(1)} does not match v{version}"
+            "release rehearsal must not hardcode a version; leave release_tag "
+            "empty so preflight derives it from the committed manifests"
+        )
+    if "scripts/release_version.py current" not in build_contents:
+        raise ValueError("rehearsal preflight must derive its tag from manifests")
+    if "--flags-only" not in build_contents:
+        raise ValueError(
+            "rehearsal preflight must validate publisher flags without requiring "
+            "the current version to still be unclaimed"
         )
 
 

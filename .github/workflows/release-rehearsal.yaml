@@ -42,11 +42,13 @@ concurrency:
 
 jobs:
   rehearse:
-    name: Rehearse v0.1.0 without publication
+    name: Rehearse the committed version without publication
     permissions:
       contents: read
     uses: ./.github/workflows/release-build.yaml
     with:
       failure_case: ${{ inputs.failure_case || 'none' }}
       rehearsal: true
-      release_tag: v0.1.0
+      # Deliberately empty: preflight derives the tag from the committed
+      # manifests, so bumping the version never requires a workflow edit.
+      release_tag: ""

@@ -1,7 +1,10 @@
 REPO_ROOT := $(abspath ..)
 CARGO_TARGET_DIR ?= ../target
 MATURIN_VERSION ?= 1.14.1
-MANYLINUX_IMAGE ?= ghcr.io/pyo3/maturin:v$(MATURIN_VERSION)
+# Pinned by digest: this container compiles the Linux release wheels, so a
+# mutable tag would let the build inputs change under a fixed release version.
+MANYLINUX_DIGEST ?= sha256:2665227312dd1eab1c29c70a001dc8aac53155a2d048bede3b2df7f1691c8e38
+MANYLINUX_IMAGE ?= ghcr.io/pyo3/maturin@$(MANYLINUX_DIGEST)
 DOCKER_PLATFORM_ARG := $(if $(MANYLINUX_PLATFORM),--platform $(MANYLINUX_PLATFORM),)
 UNAME := $(shell uname)
 DYLIB_EXT := $(if $(filter Darwin,$(UNAME)),dylib,so)

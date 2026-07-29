@@ -111,8 +111,13 @@ test: cargo-test wasm-test
 
 regtest-test: cargo-regtest-test wasm-regtest-test
 
+# Lint every native workspace member. bindings-wasm is excluded because its
+# secp256k1 C dependency only cross-compiles under the wasm clang; it is
+# covered by wasm-clippy instead.
+NATIVE_CRATES = -p kaleidoswap-sdk -p bindings -p kaleidoswap-sdk-macros -p rln-client
+
 cargo-clippy:
-	cargo clippy -p kaleidoswap-sdk --all-targets --all-features -- -D warnings
+	cargo clippy $(NATIVE_CRATES) --all-targets --all-features -- -D warnings
 
 cargo-test:
 	cargo test -p kaleidoswap-sdk --features "esplora, electrum, lnurl, ws"  -- --nocapture
@@ -121,7 +126,7 @@ cargo-regtest-test:
 	$(REGTEST_PREFIX) cargo test -p kaleidoswap-sdk --features "electrum, regtest, ws" -- --nocapture
 
 wasm-clippy:
-	$(CLANG_PREFIX) cargo clippy -p kaleidoswap-sdk --target=wasm32-unknown-unknown --all-features -- -D warnings
+	$(CLANG_PREFIX) cargo clippy -p kaleidoswap-sdk -p bindings-wasm --target=wasm32-unknown-unknown --all-features -- -D warnings
 
 BROWSER ?= firefox
 
