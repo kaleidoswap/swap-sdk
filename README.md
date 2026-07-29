@@ -43,6 +43,21 @@ The generated files are committed; regenerate after updating the spec.
   the typed surface (`RlnClient`, `BoltzClient`, `SwapScript`, `SwapMasterKey`,
   `BoltzWsApi`).
 
+## L-USDT examples
+
+Executable Rust examples for the complete L-USDT/BTC pair workflow are in
+[`examples/`](examples/README.md):
+
+```bash
+cargo run --example lusdt_submarine
+cargo run --example lusdt_reverse
+```
+
+The submarine example covers validated L-USDT funding for a BTC Lightning
+invoice. The reverse example covers response validation and the wallet-neutral,
+caller-funded PSET claim flow required to receive L-USDT while paying Liquid
+fees in L-BTC.
+
 ---
 
 # The swap engine (Boltz protocol)
@@ -214,14 +229,16 @@ This library makes the following assumptions:
 
 - Bitcoin reverse swap sweep/drain is 1 output
 
-- The legacy single-input Liquid claim/refund path is L-BTC-only: one confidential payout output and one explicit
-  policy-asset fee output. Magic routing is also L-BTC-only.
+- The legacy single-input Liquid claim/refund path is L-BTC-only: one payout output and one explicit policy-asset fee
+  output. The payout is confidential when the destination address carries a blinding key and explicit otherwise, except
+  that a confidential HTLC cannot be swept to an explicit destination — its input blinding factors would have no
+  blinded output to balance against. Magic routing is also L-BTC-only.
 
 - Liquid HTLC discovery validates the exact script, asset, and transaction. Claims and all L-USDT spends also require
   the exact expected amount; legacy L-BTC refunds intentionally reclaim the positive amount actually locked so an
-  underpayment remains refundable. Legacy confidential outputs require their blinding key; native L-USDT HTLCs are
-  explicit and must not include one. L-USDT spending uses the caller-funded PSET flow because its Elements fee must be
-  paid separately in L-BTC.
+  underpayment remains refundable. L-BTC HTLCs may be confidential with their matching blinding key or explicit
+  without one; native L-USDT HTLCs are explicit and must not include a key. L-USDT spending uses the caller-funded
+  PSET flow because its Elements fee must be paid separately in L-BTC.
 
 - Caller-funded PSET finalization is offline. The wallet must source real, spendable Liquid inputs; the SDK validates
   their commitments and any supplied full previous transactions, but cannot prove chain inclusion without a backend.
