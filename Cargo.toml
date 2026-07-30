@@ -17,7 +17,6 @@ members = [
     "bindings",
     "bindings-wasm",
     "macros",
-    "rln-client",
 ]
 
 [workspace.dependencies]

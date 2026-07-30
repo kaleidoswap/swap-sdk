@@ -1,6 +1,6 @@
 # KaleidoSwap SDK Python Bindings
 
-Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between Bitcoin, Lightning, and Liquid, plus a typed client for the RGB Lightning Node (RLN).
+Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between Bitcoin, Lightning, and Liquid.
 
 ## Installation
 
@@ -53,4 +53,3 @@ Complete working examples are available in the `examples/` directory:
 - [`reverse.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
 - [`submarine.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
 - [`chain.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)
-- [`rln.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/rln.py) - RGB Lightning Node client (typed pydantic requests/responses)

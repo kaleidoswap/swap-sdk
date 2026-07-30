@@ -19,9 +19,8 @@ Boltz-v2 Liquid swap engine, alongside the existing L-BTC support, using:
 This fits both repositories without exposing the maker wallet or redesigning the
 Boltz v2 protocol.
 
-> Not RGB-USDT. All existing `USDT`/`Tether` strings in this repo belong to the
-> RGB Lightning Node (RLN) client (`rln-client/`, `specs/rgb-lightning-node.yaml`)
-> — a separate mechanism. Nothing here touches RLN.
+> Not RGB-USDT. This plan covers native Liquid USDt only — the Liquid asset
+> issued on the Elements chain, not an RGB-issued token.
 
 ### Supported swap directions (V1)
 
