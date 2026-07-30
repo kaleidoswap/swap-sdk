@@ -4,7 +4,7 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "kaleidoswap-sdk"
-version = "0.4.1"
+version = "0.1.0"
 source = { editable = "." }
 
 [package.dev-dependencies]

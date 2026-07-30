@@ -280,6 +280,9 @@ pub struct SubmarinePair {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetSubmarinePairsResponse {
+    // `default`: a maker need not serve every asset (e.g. the KaleidoSwap
+    // maker advertises no L-BTC submarine pairs) — a missing key is an empty
+    // map, not a deserialization failure.
     #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, SubmarinePair>,
     #[serde(rename = "L-BTC", default)]
@@ -347,6 +350,8 @@ impl GetSubmarinePairsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetReversePairsResponse {
+    // `default`: tolerate a maker with no BTC reverse pairs (see the
+    // submarine-pairs note).
     #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ReversePair>,
 }
@@ -398,6 +403,7 @@ impl GetReversePairsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetChainPairsResponse {
+    // `default`: see the submarine-pairs note.
     #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ChainPair>,
     #[serde(rename = "L-BTC", default)]
