@@ -1,4 +1,4 @@
-// KaleidoSwap SDK — TypeScript surface.
+// KaleidoSwap swap SDK — TypeScript surface.
 //
 // Wraps the wasm-bindgen client (bindings-wasm/pkg) with typed signatures. The
 // wasm boundary passes plain JS objects (typed `any`); this layer restores the
@@ -207,7 +207,9 @@ export class SwapScript {
 
 /**
  * `JSON.stringify` that encodes `bigint` values as decimal strings — plain
- * `JSON.stringify` throws on BigInt. Use for logging/persisting SDK responses.
+ * `JSON.stringify` throws on BigInt (the wasm boundary serializes Rust
+ * i64/u64 as BigInt so amounts never lose precision through an f64). Use for
+ * logging/persisting SDK responses.
  */
 export function toJson(value: unknown, space?: string | number): string {
   return JSON.stringify(

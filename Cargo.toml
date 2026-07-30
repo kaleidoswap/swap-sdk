@@ -1,8 +1,10 @@
 [package]
 name = "kaleidoswap-sdk"
-description = "a boltz exchange client for swaps between BTC/LBTC & LN"
-authors = ["i5hi <ishi@satoshiportal.com>", "Rajarshi Maitra <raj@bitshala.org>"]
-version = "0.4.1"
+description = "KaleidoSwap swap SDK — client-side Boltz-protocol atomic swaps across Bitcoin, Lightning, and Liquid"
+# Fork of boltz-rust (SatoshiPortal) — the swap engine is their work (MIT);
+# see README for provenance and acknowledgments.
+authors = ["KaleidoSwap <info@kaleidoswap.com>"]
+version = "0.1.0"
 edition = "2021"
 license = "MIT"
 

@@ -38,6 +38,8 @@ use std::time::Duration;
 pub const BOLTZ_TESTNET_URL_V2: &str = "https://api.testnet.boltz.exchange/v2";
 pub const BOLTZ_MAINNET_URL_V2: &str = "https://api.boltz.exchange/v2";
 pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
+/// The KaleidoSwap maker on signet/Mutinynet — the SDK's testnet default.
+pub const KALEIDOSWAP_TESTNET_URL_V2: &str = "https://maker.signet.kaleidoswap.com/v2";
 
 #[cfg(feature = "ws")]
 pub use crate::swaps::status_stream::{BoltzWsApi, BoltzWsConfig};
@@ -278,6 +280,9 @@ pub struct SubmarinePair {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetSubmarinePairsResponse {
+    // `default`: a maker need not serve every asset (e.g. the KaleidoSwap
+    // maker advertises no L-BTC submarine pairs) — a missing key is an empty
+    // map, not a deserialization failure.
     #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, SubmarinePair>,
     #[serde(rename = "L-BTC", default)]
@@ -345,6 +350,8 @@ impl GetSubmarinePairsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetReversePairsResponse {
+    // `default`: tolerate a maker with no BTC reverse pairs (see the
+    // submarine-pairs note).
     #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ReversePair>,
 }
@@ -396,6 +403,7 @@ impl GetReversePairsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetChainPairsResponse {
+    // `default`: see the submarine-pairs note.
     #[serde(rename = "BTC", default)]
     pub btc: HashMap<String, ChainPair>,
     #[serde(rename = "L-BTC", default)]
@@ -477,13 +485,27 @@ impl BoltzApiClientV2 {
         }
     }
 
-    pub fn default(network: Network) -> Self {
+    /// Client pointed at the default **KaleidoSwap maker** for a network.
+    ///
+    /// - `Testnet` → the signet/Mutinynet maker ([`KALEIDOSWAP_TESTNET_URL_V2`]).
+    /// - `Regtest` → the local regtest harness ([`BOLTZ_REGTEST`]).
+    /// - `Mainnet` → **errors**: no mainnet KaleidoSwap maker is live yet, and
+    ///   defaulting to a third-party endpoint would silently route swaps away
+    ///   from the maker this SDK targets. Pass an explicit `base_url` via
+    ///   [`BoltzApiClientV2::new`] (e.g. [`BOLTZ_MAINNET_URL_V2`] for Boltz).
+    pub fn default(network: Network) -> Result<Self, Error> {
         let base_url = match network {
-            Network::Mainnet => BOLTZ_MAINNET_URL_V2.to_string(),
-            Network::Testnet => BOLTZ_TESTNET_URL_V2.to_string(),
+            Network::Mainnet => {
+                return Err(Error::Protocol(
+                    "no mainnet KaleidoSwap maker yet — pass an explicit base_url \
+                     via BoltzApiClientV2::new"
+                        .to_string(),
+                ))
+            }
+            Network::Testnet => KALEIDOSWAP_TESTNET_URL_V2.to_string(),
             Network::Regtest => BOLTZ_REGTEST.to_string(),
         };
-        Self::new(base_url, None)
+        Ok(Self::new(base_url, None))
     }
 
     pub fn with_client(

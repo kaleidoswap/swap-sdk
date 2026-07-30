@@ -10,6 +10,20 @@ renames the crate family accordingly. The Boltz swap engine (scripts, MuSig2,
 PSBT construction, key derivation) is kept as-is — it is the valuable,
 hard-to-rewrite core we are building on.
 
+### Changed — swaps-only publish surface + KaleidoSwap maker defaults
+
+Phase 0 of the SDK architecture plan: the published SDK is the **swap
+protocol only**, pointed at **our** maker.
+
+- **De-Boltz defaults**: `BoltzApiClientV2::default()` / `forNetwork()` now
+  target the KaleidoSwap maker — testnet → `maker.signet.kaleidoswap.com/v2`,
+  regtest → the local harness, **mainnet → error** until the mainnet maker is
+  live (no silent routing to third-party endpoints). `boltz.exchange` remains
+  reachable via an explicit `base_url`; the `BOLTZ_*` constants are kept.
+- **Identity**: crate/wheel version `0.4.1` → `0.1.0`, KaleidoSwap
+  description/authors; npm package renamed `@kaleidoswap/sdk` →
+  **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.
+
 ### Added — WebAssembly / TypeScript bindings (`bindings-wasm` + `typescript-sdk`)
 
 Browser-facing SDK, mirroring the Python surface for the web.
