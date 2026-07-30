@@ -16,10 +16,22 @@ Phase 0 of the SDK architecture plan: the published SDK is the **swap
 protocol only**, pointed at **our** maker.
 
 - **De-Boltz defaults**: `BoltzApiClientV2::default()` / `forNetwork()` now
-  target the KaleidoSwap maker — testnet → `maker.signet.kaleidoswap.com/v2`,
+  target the KaleidoSwap maker — **signet** → `maker.signet.kaleidoswap.com/v2`,
   regtest → the local harness, **mainnet → error** until the mainnet maker is
-  live (no silent routing to third-party endpoints). `boltz.exchange` remains
-  reachable via an explicit `base_url`; the `BOLTZ_*` constants are kept.
+  live (no silent routing to third-party endpoints). `testnet` continues to
+  resolve to Boltz's testnet3 instance, since KaleidoSwap runs no testnet3
+  maker. `boltz.exchange` remains reachable via an explicit `base_url`; the
+  `BOLTZ_*` constants are kept.
+- **New `Signet` network / `BitcoinSignet` chain**: the KaleidoSwap maker
+  settles on [Mutinynet](https://mutinynet.com), so it needs a chain identity
+  distinct from testnet3. Signet and testnet3 share an address encoding, so
+  without a separate variant a signet maker paired with testnet3 chain access
+  produced no error — just swaps funded and watched on the wrong chain.
+  `Network::Signet` now maps to `BitcoinChain::BitcoinSignet` (Esplora default
+  `https://mutinynet.com/api`) and, on the Liquid side, to `LiquidTestnet`.
+  `ElectrumBitcoinClient::default` **errors** for signet: Mutinynet publishes
+  no public Electrum server, and a vanilla-signet server would silently serve a
+  different chain. `parse_network` accepts `"signet"` in the wasm bindings.
 - **Identity**: crate/wheel version `0.4.1` → `0.1.0`, KaleidoSwap
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.

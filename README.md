@@ -5,9 +5,24 @@ Bitcoin, Lightning, and Liquid, for Rust, Python, and the browser.
 
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
-refund transactions client-side. Defaults point at the KaleidoSwap maker
-(`maker.signet.kaleidoswap.com/v2` on testnet); any Boltz-`/v2`-compatible
-endpoint works via an explicit base URL.
+refund transactions client-side. Any Boltz-`/v2`-compatible endpoint works via
+an explicit base URL.
+
+### Networks
+
+| `Network` | Maker | Bitcoin chain access |
+| --- | --- | --- |
+| `Signet` | KaleidoSwap — `maker.signet.kaleidoswap.com/v2` | `BitcoinSignet` → Mutinynet (`mutinynet.com/api`) |
+| `Testnet` | Boltz testnet3 — `api.testnet.boltz.exchange/v2` | `BitcoinTestnet` → testnet3 |
+| `Regtest` | local harness — `localhost:9001/v2` | `BitcoinRegtest` → local |
+| `Mainnet` | **errors** — no mainnet maker yet | `Bitcoin` |
+
+The KaleidoSwap maker settles on **Mutinynet**, a custom signet. Signet and
+testnet3 share an address encoding, so mixing a signet maker with testnet3
+chain access fails *silently* rather than erroring — always keep the `Network`
+and the chain client on the same row. Mutinynet has no public Electrum server,
+so `ElectrumBitcoinClient::default` errors for signet; use Esplora, or pass your
+own Electrum URL to `ElectrumBitcoinClient::new`.
 
 The crate is a fork of [boltz-rust](https://github.com/SatoshiPortal/boltz-rust):
 the battle-tested swap engine (taproot swap scripts, MuSig2 cooperative signing,

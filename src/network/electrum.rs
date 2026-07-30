@@ -58,6 +58,14 @@ impl ElectrumBitcoinClient {
                 true,
                 DEFAULT_ELECTRUM_TIMEOUT,
             ),
+            // Mutinynet publishes an Esplora API but no public Electrum server,
+            // and pointing at a vanilla-signet server would silently query a
+            // different chain. Refuse rather than guess.
+            BitcoinChain::BitcoinSignet => Err(Error::Protocol(
+                "no default Electrum server for signet — pass an explicit URL \
+                 to ElectrumBitcoinClient::new, or use EsploraBitcoinClient"
+                    .to_string(),
+            )),
             BitcoinChain::BitcoinRegtest => Self::new(
                 network,
                 regtest_url.unwrap_or(DEFAULT_REGTEST_NODE),
@@ -289,6 +297,13 @@ mod tests {
     use bitcoin::{Amount, OutPoint, ScriptBuf, TxIn, TxOut};
     use electrum_client::ElectrumApi;
     use electrum_client::GetHistoryRes;
+
+    /// Mutinynet has no public Electrum server. Refusing beats silently
+    /// pointing at a vanilla-signet server, which serves a different chain.
+    #[test]
+    fn signet_has_no_default_electrum_server() {
+        assert!(ElectrumBitcoinClient::default(BitcoinChain::BitcoinSignet, None).is_err());
+    }
 
     #[test]
     fn test_electrum_default_clients() {

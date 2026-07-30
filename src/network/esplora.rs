@@ -10,6 +10,10 @@ use std::time::Duration;
 
 pub const DEFAULT_MAINNET_NODE: &str = "https://blockstream.info/api";
 pub const DEFAULT_TESTNET_NODE: &str = "https://blockstream.info/testnet/api";
+/// Mutinynet's Esplora. Signets are defined by their challenge, so this is not
+/// interchangeable with a vanilla-signet explorer — it is specifically the
+/// chain the KaleidoSwap maker settles on.
+pub const DEFAULT_SIGNET_NODE: &str = "https://mutinynet.com/api";
 pub const DEFAULT_REGTEST_NODE: &str = "http://localhost:4002/api";
 pub const DEFAULT_LIQUID_MAINNET_NODE: &str = "https://blockstream.info/liquid/api";
 pub const DEFAULT_LIQUID_TESTNET_NODE: &str = "https://blockstream.info/liquidtestnet/api";
@@ -50,6 +54,9 @@ impl EsploraBitcoinClient {
             }
             BitcoinChain::BitcoinTestnet => {
                 Self::new(network, DEFAULT_TESTNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
+            }
+            BitcoinChain::BitcoinSignet => {
+                Self::new(network, DEFAULT_SIGNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
             }
             BitcoinChain::BitcoinRegtest => Self::new(
                 network,
@@ -401,6 +408,17 @@ mod tests {
     use super::*;
     use elements::hex::ToHex;
     use std::str::FromStr;
+
+    /// The signet default must be Mutinynet — the chain the KaleidoSwap maker
+    /// settles on — and never a testnet3 or vanilla-signet explorer.
+    #[test]
+    fn signet_default_points_at_mutinynet() {
+        let client = EsploraBitcoinClient::default(BitcoinChain::BitcoinSignet, None);
+        assert_eq!(client.base_url, DEFAULT_SIGNET_NODE);
+        assert_eq!(client.base_url, "https://mutinynet.com/api");
+        assert_eq!(client.network, BitcoinChain::BitcoinSignet);
+        assert_ne!(client.base_url, DEFAULT_TESTNET_NODE);
+    }
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);

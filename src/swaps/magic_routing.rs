@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use super::boltz::BoltzApiClientV2;
-use crate::network::{BitcoinChain, LiquidChain};
+use crate::network::LiquidChain;
 use crate::{error::Error, network::Chain};
 use bitcoin::{
     hashes::{sha256, Hash},
@@ -170,11 +170,7 @@ fn validate_mrh_destination(
                     "Network or asset mismatch in Magic Routing Hint".to_string(),
                 ));
             }
-            let expected_network = match bitcoin_chain {
-                BitcoinChain::Bitcoin => bitcoin::Network::Bitcoin,
-                BitcoinChain::BitcoinTestnet => bitcoin::Network::Testnet,
-                BitcoinChain::BitcoinRegtest => bitcoin::Network::Regtest,
-            };
+            let expected_network: bitcoin::Network = bitcoin_chain.into();
             bitcoin::Address::from_str(address)?.require_network(expected_network)?;
         }
     }

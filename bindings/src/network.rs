@@ -10,6 +10,7 @@ use crate::swap::BtcLikeTransaction;
 pub enum Network {
     Regtest,
     Testnet,
+    Signet,
     Mainnet,
 }
 
@@ -24,6 +25,7 @@ pub enum LiquidChain {
 pub enum BitcoinChain {
     Bitcoin,
     BitcoinTestnet,
+    BitcoinSignet,
     BitcoinRegtest,
 }
 

@@ -128,6 +128,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
     match s.to_lowercase().as_str() {
         "mainnet" => Ok(Network::Mainnet),
         "testnet" => Ok(Network::Testnet),
+        "signet" => Ok(Network::Signet),
         "regtest" => Ok(Network::Regtest),
         other => Err(JsValue::from_str(&format!("unknown network: {other}"))),
     }
@@ -215,9 +216,13 @@ impl BoltzClient {
         }
     }
 
-    /// Client pointed at the default **KaleidoSwap maker** for a network
-    /// ("testnet" | "regtest"). Rejects "mainnet" — no mainnet maker is live
-    /// yet; pass an explicit base URL to the constructor instead.
+    /// Client pointed at the default maker for a network
+    /// ("signet" | "testnet" | "regtest").
+    ///
+    /// "signet" is the **KaleidoSwap maker** and settles on Mutinynet — pair it
+    /// with signet chain access, not testnet3. "testnet" is Boltz's testnet3
+    /// instance. Rejects "mainnet" — no mainnet maker is live yet; pass an
+    /// explicit base URL to the constructor instead.
     #[wasm_bindgen(js_name = forNetwork)]
     pub fn for_network(network: String) -> Result<BoltzClient, JsValue> {
         Ok(BoltzClient {
