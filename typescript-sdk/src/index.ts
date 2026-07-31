@@ -10,6 +10,13 @@ import initWasm, {
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
+import type { InitInput } from "../vendor/bindings_wasm.js";
+
+/** URL of the packaged WebAssembly binary. */
+export const wasmUrl = new URL(
+  "../vendor/bindings_wasm_bg.wasm",
+  import.meta.url,
+);
 
 // Boltz swap API client. Re-exported from the wasm module as-is: its request/
 // response payloads are currently untyped (`any`) because the Boltz swap DTOs are
@@ -192,12 +199,20 @@ export class SwapScript {
     return this.inner.constructRefund(params);
   }
 
-  async prepareLiquidClaim(params: LiquidPsetParams): Promise<PreparedLiquidSpend> {
-    return PreparedLiquidSpend.wrap(await this.inner.prepareLiquidClaim(params));
+  async prepareLiquidClaim(
+    params: LiquidPsetParams,
+  ): Promise<PreparedLiquidSpend> {
+    return PreparedLiquidSpend.wrap(
+      await this.inner.prepareLiquidClaim(params),
+    );
   }
 
-  async prepareLiquidRefund(params: LiquidPsetParams): Promise<PreparedLiquidSpend> {
-    return PreparedLiquidSpend.wrap(await this.inner.prepareLiquidRefund(params));
+  async prepareLiquidRefund(
+    params: LiquidPsetParams,
+  ): Promise<PreparedLiquidSpend> {
+    return PreparedLiquidSpend.wrap(
+      await this.inner.prepareLiquidRefund(params),
+    );
   }
 
   free(): void {
@@ -221,10 +236,13 @@ export function toJson(value: unknown, space?: string | number): string {
 
 /**
  * Load and instantiate the wasm module. Call once (await it) before creating any
- * client. `input` is an optional URL/Request/Response/BufferSource for the .wasm.
+ * client. Browsers can omit `input`. Node consumers must read {@link wasmUrl}
+ * and pass its bytes because Node's `fetch` does not load `file:` URLs.
  */
-export async function init(input?: Parameters<typeof initWasm>[0]): Promise<void> {
-  await initWasm(input);
+export async function init(
+  input?: InitInput | Promise<InitInput>,
+): Promise<void> {
+  await initWasm(input === undefined ? undefined : { module_or_path: input });
 }
 
 /** A derived swap keypair (hex). */

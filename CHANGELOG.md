@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-28
+
 This release turns the `boltz-rust` fork into the foundation of the **KaleidoSwap
 SDK**: it exposes the swap engine through UniFFI and WebAssembly bindings and
 renames the crate family accordingly. The Boltz swap engine (scripts, MuSig2,
@@ -46,6 +48,39 @@ protocol only**, pointed at **our** maker.
 - **Identity**: crate/wheel version `0.4.1` → `0.1.0`, KaleidoSwap
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.
+
+### Release engineering
+
+- Reset the synchronized Rust, Python, and TypeScript public release line to
+  `0.1.0`.
+- Add commands to display, synchronize, and validate every public package
+  version and lockfile.
+- Validate version consistency in pull-request CI before release automation is
+  enabled.
+- Document the existing public PyPI name/version collision; production PyPI
+  publishing remains intentionally disabled until it is resolved.
+- Package Python bindings with Maturin/UniFFI as platform-tagged native wheels
+  instead of embedding native libraries in a universal Hatch wheel.
+- Include complete Python distribution metadata, license, and classifiers.
+- Harden the npm package manifest and contents, document the browser-first
+  runtime contract, and add a clean-consumer WASM initialization smoke test.
+- Add pull-request packaging CI for five native Python wheel targets, source
+  reconstruction from the sdist, and clean artifact installation.
+- Add locked TypeScript lint, formatting, unit-test, build, audit, tarball
+  inspection, and consumer-install checks.
+- Commit the platform-independent UniFFI Python glue fallback and reject
+  generated drift in CI.
+- Coordinate tag releases through one immutable bundle containing five native
+  Python wheels, one source distribution, and one npm tarball, plus checksums,
+  a release manifest, and an SPDX artifact SBOM.
+- Publish npm and optional TestPyPI artifacts through job-scoped OIDC behind the
+  protected `release` environment, without long-lived registry credentials.
+- Exercise the exact production artifact graph in a read-only rehearsal,
+  including clean Node and Firefox consumers and deliberate preflight, npm, and
+  wheel-inventory failures.
+- Download enabled registry packages after publication, require their bytes and
+  inventories to match the sealed release manifest, and repeat clean-consumer
+  smoke tests before publishing the final GitHub release.
 
 ### Added — WebAssembly / TypeScript bindings (`bindings-wasm` + `typescript-sdk`)
 

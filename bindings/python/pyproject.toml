@@ -4,22 +4,50 @@ version = "0.1.0"
 description = "KaleidoSwap swap SDK — client-side atomic swaps (Boltz protocol)"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE-PYTHON"]
+authors = [{ name = "KaleidoSwap" }]
+keywords = ["bitcoin", "lightning", "liquid", "atomic-swaps"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries",
+]
 dependencies = []
 
 [project.urls]
 Homepage = "https://kaleidoswap.com"
 Repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
 Documentation = "https://docs.kaleidoswap.com"
+Issues = "https://github.com/kaleidoswap/kaleidoswap-sdk/issues"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin==1.14.1"]
+build-backend = "maturin"
 
-[tool.hatch.build]
-include = ["libkaleidoswap_sdk.so", "libkaleidoswap_sdk.dylib", "kaleidoswap_sdk.py"]
-ignore-vcs = true
+[tool.maturin]
+bindings = "uniffi"
+manifest-path = "../Cargo.toml"
+strip = true
+# Wheel commands pass --locked. Do not set it globally: Maturin prunes the
+# unrelated WASM workspace member from an sdist, so Cargo must remove that
+# member's unused entries from the bundled workspace lockfile during install.
+
+[tool.uv]
+# Development tools must not build/install the native project merely to run.
+package = false
+
+[tool.ruff]
+extend-exclude = ["kaleidoswap_sdk/_generated_uniffi.py"]
 
 [dependency-groups]
 dev = [
+    "maturin==1.14.1",
     "ruff>=0.12.7",
 ]

@@ -51,6 +51,29 @@ the KaleidoSwap layers are built on top of it.
 | `typescript-sdk/` | TypeScript SDK (`@kaleidorg/swap-sdk`) wrapping the wasm package with hand-written types |
 | `macros/` | Proc-macros (wasm-compatible `async_trait`, cross-target `test_all`) |
 
+## Installation and supported runtimes
+
+| Surface | Install | Supported v0.1.x runtime |
+|---|---|---|
+| Rust | `kaleidoswap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Python | Install a release wheel from GitHub or the enabled TestPyPI/private registry | Python 3.10+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
+| TypeScript | `npm install @kaleidorg/swap-sdk@0.1.0` | Browser-first; Node 22+ with explicit packaged WASM bytes |
+
+Public PyPI cannot host this repository's Python `0.1.0` under the unchanged
+distribution name. Do not use an unqualified `pip install kaleidoswap_sdk` for
+this release; see [the release guide](docs/releasing.md#public-pypi-blocker) for
+the collision and supported artifact sources.
+
+## Generated sources
+
+```bash
+make generate-python-bindings  # platform-independent UniFFI Python glue fallback
+make check-generated           # regenerate from pinned inputs and reject drift
+```
+
+The generated fallback is committed. Pull-request CI regenerates it solely from
+repository-pinned tool inputs and rejects any drift.
+
 ## Bindings
 
 - **Python (UniFFI):** see [`bindings/`](bindings/README.md). Build with
@@ -59,6 +82,46 @@ the KaleidoSwap layers are built on top of it.
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
   the typed surface (`BoltzClient`, `SwapScript`, `SwapMasterKey`,
   `BoltzWsApi`).
+
+Pull-request packaging CI builds and clean-installs Python wheels for Linux
+x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64. It also reconstructs
+the native package from the Python sdist and installs the packed npm tarball in
+an isolated Node consumer.
+
+## Releases
+
+All public SDK surfaces share one stable `X.Y.Z` version. A release candidate
+starts only when a strict `vX.Y.Z` tag points to a commit reachable from
+`trunk`, and the tag must match the Rust, Python, and TypeScript manifests and
+lockfiles. `make validate-release-version TAG=vX.Y.Z` validates that contract.
+
+The tag workflow builds five native Python wheels, one source distribution,
+and one npm tarball. Those files are uploaded once, then a common
+`release-ready` gate downloads and inspects the exact bytes, verifies the
+cross-platform inventory and package metadata, performs clean-install smoke
+tests, and generates `SHA256SUMS`, `release-manifest.json`, and an SPDX 2.3
+artifact manifest. Only that validated bundle may cross a publication boundary.
+Per-tag concurrency and immutable, attempt-specific workflow artifacts prevent
+parallel or resumed runs from silently mixing outputs. An existing GitHub
+release is never overwritten.
+
+Registry publishing uses job-scoped OIDC behind the protected GitHub `release`
+environment; no long-lived registry credential belongs in the workflow. A
+production tag requires npm publishing to be explicitly enabled, while
+TestPyPI remains optional. Every enabled registry package is downloaded again,
+hash-matched to the sealed manifest, and clean-consumer tested before CI
+publishes the final GitHub release. Public PyPI is always disabled because it
+cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that name to
+`kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist. See
+[`docs/releasing.md`](docs/releasing.md) for the activation checklist,
+publisher bootstrap, approval boundary, and partial-publication recovery
+procedure.
+
+Release and packaging changes also run the same job graph in non-publishing
+rehearsal mode. The rehearsal builds and clean-installs every exact artifact,
+exercises the npm tarball in Node and Firefox, and verifies the checksums,
+manifest, SBOM, and intended GitHub release inventory without requesting
+registry or deployment authority.
 
 ## L-USDT examples
 

@@ -1,0 +1,283 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.23.1"
+  NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}
+  NPM_PUBLISH_VERSION: "11.5.1"
+  PYPI_PUBLISH_ENABLED: "false"
+  TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}
+
+jobs:
+  release-activation:
+    name: Require an activated production release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Require npm publication and finalized release notes
+        run: |
+          test "${NPM_PUBLISH_ENABLED}" = "true"
+          test "${PYPI_PUBLISH_ENABLED}" = "false"
+          case "${TEST_PYPI_PUBLISH_ENABLED}" in
+            true|false) ;;
+            *) exit 1 ;;
+          esac
+          python3 scripts/release_notes.py "${GITHUB_REF_NAME#v}" >/dev/null
+
+  release-ready:
+    name: Build and validate exact release bundle
+    needs: release-activation
+    permissions:
+      contents: read
+    uses: ./.github/workflows/release-build.yaml
+    with:
+      failure_case: none
+      rehearsal: false
+      release_tag: ${{ github.ref_name }}
+
+  publish-npm:
+    name: Publish exact npm tarball with OIDC
+    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
+    needs: release-ready
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 10
+    steps:
+      - name: Set up Node without a package cache
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - name: Install the pinned OIDC-capable npm CLI
+        run: >-
+          npm install --global npm@${NPM_PUBLISH_VERSION}
+          --ignore-scripts --no-audit --no-fund
+      - name: Verify npm trusted-publishing prerequisites
+        run: |
+          test "$(npm --version)" = "${NPM_PUBLISH_VERSION}"
+          test -z "${NODE_AUTH_TOKEN:-}"
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
+          path: release-artifacts
+      - name: Re-verify the sealed bundle bytes before publishing
+        working-directory: release-artifacts
+        run: sha256sum --check --strict SHA256SUMS
+      - name: Publish the exact validated npm tarball
+        run: npm publish release-artifacts/*.tgz --access public
+
+  publish-testpypi:
+    name: Publish exact Python artifacts to TestPyPI with OIDC
+    if: ${{ vars.TEST_PYPI_PUBLISH_ENABLED == 'true' }}
+    needs: release-ready
+    runs-on: ubuntu-24.04
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 10
+    steps:
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
+          path: release-artifacts
+      - name: Re-verify the sealed bundle bytes before publishing
+        working-directory: release-artifacts
+        run: sha256sum --check --strict SHA256SUMS
+      - name: Select the exact validated Python artifacts
+        run: |
+          mkdir python-release-artifacts
+          cp release-artifacts/*.whl python-release-artifacts/
+          cp release-artifacts/*.tar.gz python-release-artifacts/
+      - name: Publish to TestPyPI with attestations
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+        with:
+          attestations: true
+          packages-dir: python-release-artifacts
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-npm:
+    name: Verify published npm package
+    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
+    needs:
+      - release-ready
+      - publish-npm
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
+          path: release-artifacts
+      - name: Download and hash-match the published npm tarball
+        run: >-
+          python3 scripts/download_published_artifacts.py
+          release-artifacts registry-npm
+          --version "${{ needs.release-ready.outputs.version }}"
+          --npm
+      - name: Clean-install the registry npm tarball in Node
+        working-directory: typescript-sdk
+        run: node scripts/smoke-package.mjs ../registry-npm/*.tgz
+      - name: Clean-install the registry npm tarball in Firefox
+        working-directory: typescript-sdk
+        run: node scripts/smoke-browser-package.mjs ../registry-npm/*.tgz
+
+  verify-testpypi:
+    name: Verify published TestPyPI package
+    if: ${{ vars.TEST_PYPI_PUBLISH_ENABLED == 'true' }}
+    needs:
+      - release-ready
+      - publish-testpypi
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11.9"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: false
+          version: "0.11.16"
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
+          path: release-artifacts
+      - name: Verify TestPyPI inventory and download smoke artifacts
+        run: >-
+          python3 scripts/download_published_artifacts.py
+          release-artifacts registry-python
+          --version "${{ needs.release-ready.outputs.version }}"
+          --test-pypi
+      - name: Clean-install the registry Linux wheel
+        run: |
+          mkdir registry-wheel
+          cp registry-python/*.whl registry-wheel/
+          python3 bindings/python/scripts/smoke_artifact.py wheel --dist registry-wheel
+      - name: Rebuild and clean-install the registry source distribution
+        run: |
+          mkdir registry-sdist
+          cp registry-python/*.tar.gz registry-sdist/
+          python3 bindings/python/scripts/smoke_artifact.py sdist --dist registry-sdist
+
+  registry-publish-complete:
+    name: Registry publication and verification gate
+    if: ${{ always() }}
+    needs:
+      - release-ready
+      - publish-npm
+      - publish-testpypi
+      - verify-npm
+      - verify-testpypi
+    runs-on: ubuntu-24.04
+    env:
+      NPM_RESULT: ${{ needs.publish-npm.result }}
+      NPM_VERIFY_RESULT: ${{ needs.verify-npm.result }}
+      RELEASE_READY_RESULT: ${{ needs.release-ready.result }}
+      TEST_PYPI_RESULT: ${{ needs.publish-testpypi.result }}
+      TEST_PYPI_VERIFY_RESULT: ${{ needs.verify-testpypi.result }}
+    steps:
+      - name: Require every enabled registry and verification to succeed
+        run: |
+          test "${RELEASE_READY_RESULT}" = "success"
+
+          if [ "${NPM_PUBLISH_ENABLED}" = "true" ]; then
+            test "${NPM_RESULT}" = "success"
+            test "${NPM_VERIFY_RESULT}" = "success"
+          else
+            test "${NPM_RESULT}" = "skipped"
+            test "${NPM_VERIFY_RESULT}" = "skipped"
+          fi
+
+          if [ "${TEST_PYPI_PUBLISH_ENABLED}" = "true" ]; then
+            test "${TEST_PYPI_RESULT}" = "success"
+            test "${TEST_PYPI_VERIFY_RESULT}" = "success"
+          else
+            test "${TEST_PYPI_RESULT}" = "skipped"
+            test "${TEST_PYPI_VERIFY_RESULT}" = "skipped"
+          fi
+
+          test "${PYPI_PUBLISH_ENABLED}" = "false"
+
+  publish-github-release:
+    name: Publish final GitHub release
+    needs:
+      - release-ready
+      - registry-publish-complete
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download validated release bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
+          path: release-artifacts
+      - name: Verify the sealed bundle against its manifest, checksums, and SBOM
+        run: >-
+          python3 scripts/verify_release_bundle.py release-artifacts
+          --version "${{ needs.release-ready.outputs.version }}"
+          --tag "${{ needs.release-ready.outputs.tag }}"
+          --commit "${{ needs.release-ready.outputs.commit }}"
+      - name: Refuse to replace an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-ready.outputs.tag }}
+        run: |
+          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "A GitHub release already exists for ${RELEASE_TAG}; refusing to replace its assets." >&2
+            exit 1
+          fi
+      - name: Extract finalized changelog notes
+        run: >-
+          python3 scripts/release_notes.py
+          "${{ needs.release-ready.outputs.version }}" > release-notes.md
+      - name: Publish GitHub release from validated artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-ready.outputs.tag }}
+        run: |
+          gh release create "${RELEASE_TAG}" \
+            release-artifacts/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "KaleidoSwap SDK ${RELEASE_TAG}" \
+            --verify-tag \
+            --latest \
+            --notes-file release-notes.md

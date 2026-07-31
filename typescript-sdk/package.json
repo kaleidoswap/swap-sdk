@@ -5,14 +5,55 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist", "vendor", "src"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "vendor",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaleidoswap/kaleidoswap-sdk.git",
+    "directory": "typescript-sdk"
+  },
+  "homepage": "https://github.com/kaleidoswap/kaleidoswap-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/kaleidoswap/kaleidoswap-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "vendor:wasm": "rm -rf vendor && mkdir -p vendor && cp ../bindings-wasm/pkg/bindings_wasm.js ../bindings-wasm/pkg/bindings_wasm.d.ts ../bindings-wasm/pkg/bindings_wasm_bg.wasm ../bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts vendor/",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run build && node --test test/*.test.mjs",
     "prepack": "npm run vendor:wasm && npm run build",
-    "build": "tsc"
+    "build": "tsc",
+    "smoke:package": "node scripts/smoke-package.mjs"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.8.0",
+    "globals": "17.8.0",
+    "prettier": "3.9.6",
+    "typescript-eslint": "8.65.0",
     "typescript": "^5"
   }
 }

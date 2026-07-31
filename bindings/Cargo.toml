@@ -2,6 +2,10 @@
 name = "bindings"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "UniFFI bindings for the KaleidoSwap SDK"
+repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+include = ["/src/**", "/Cargo.toml", "/uniffi-bindgen.rs", "/uniffi.toml"]
 
 [dependencies]
 elements = { workspace = true }
