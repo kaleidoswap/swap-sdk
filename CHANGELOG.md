@@ -16,10 +16,33 @@ Phase 0 of the SDK architecture plan: the published SDK is the **swap
 protocol only**, pointed at **our** maker.
 
 - **De-Boltz defaults**: `BoltzApiClientV2::default()` / `forNetwork()` now
-  target the KaleidoSwap maker — testnet → `maker.signet.kaleidoswap.com/v2`,
-  regtest → the local harness, **mainnet → error** until the mainnet maker is
-  live (no silent routing to third-party endpoints). `boltz.exchange` remains
-  reachable via an explicit `base_url`; the `BOLTZ_*` constants are kept.
+  resolve to a KaleidoSwap maker and nothing else — **signet** →
+  `maker.signet.kaleidoswap.com/v2`, regtest → the local harness. Networks we
+  run no maker on **error**: **mainnet** until the mainnet maker is live, and
+  **testnet** because signet is our testing network and no testnet3 maker
+  exists. No default ever falls back to a third-party endpoint, so it cannot
+  hand you a counterparty you did not choose. `boltz.exchange` remains
+  reachable by name via an explicit `base_url`; the `BOLTZ_*` constants are
+  kept.
+- **New `Signet` network / `BitcoinSignet` chain**: the KaleidoSwap maker
+  settles on [Mutinynet](https://mutinynet.com), so it needs a chain identity
+  distinct from testnet3. Signet and testnet3 share an address encoding, so
+  without a separate variant a signet maker paired with testnet3 chain access
+  produced no error — just swaps funded and watched on the wrong chain.
+  `Network::Signet` now maps to `BitcoinChain::BitcoinSignet` (Esplora default
+  `https://esplora.signet.kaleidoswap.com`, KaleidoSwap's own index of the
+  maker's chain — note the API is at the root, not under `/api`) and, on the
+  Liquid side, to `LiquidTestnet`. Signet is therefore fully first-party: maker
+  *and* chain access. Mainnet/testnet3 chain defaults stay public explorers, and
+  Liquid has no KaleidoSwap explorer yet.
+  `ElectrumBitcoinClient::default` **errors** for signet: Mutinynet publishes
+  no public Electrum server, and a vanilla-signet server would silently serve a
+  different chain. `parse_network` accepts `"signet"` in the wasm bindings, and
+  the TypeScript `Network` union gains `"signet"`.
+  **Binding consumers must regenerate**, not just recompile: the new enum
+  variants extend the UniFFI wire surface. They are appended, so existing
+  variant indices keep their meaning, but a generated module older than the
+  library will not know `SIGNET`/`BITCOIN_SIGNET` exists.
 - **Identity**: crate/wheel version `0.4.1` → `0.1.0`, KaleidoSwap
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.

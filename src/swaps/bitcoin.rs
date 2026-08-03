@@ -378,11 +378,7 @@ impl BtcSwapScript {
         let spend_info = self.taproot_spendinfo()?;
         let output_key = spend_info.output_key();
 
-        let network = match network {
-            BitcoinChain::Bitcoin => Network::Bitcoin,
-            BitcoinChain::BitcoinRegtest => Network::Regtest,
-            BitcoinChain::BitcoinTestnet => Network::Testnet,
-        };
+        let network: Network = network.into();
 
         Ok(Address::p2tr_tweaked(output_key, network))
     }

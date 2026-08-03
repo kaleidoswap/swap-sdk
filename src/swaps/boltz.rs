@@ -38,8 +38,12 @@ use std::time::Duration;
 pub const BOLTZ_TESTNET_URL_V2: &str = "https://api.testnet.boltz.exchange/v2";
 pub const BOLTZ_MAINNET_URL_V2: &str = "https://api.boltz.exchange/v2";
 pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
-/// The KaleidoSwap maker on signet/Mutinynet — the SDK's testnet default.
-pub const KALEIDOSWAP_TESTNET_URL_V2: &str = "https://maker.signet.kaleidoswap.com/v2";
+/// The KaleidoSwap maker — the SDK's [`Network::Signet`] default. It settles on
+/// Mutinynet, so pair it with [`BitcoinChain::BitcoinSignet`] chain access
+/// rather than testnet3.
+///
+/// [`BitcoinChain::BitcoinSignet`]: crate::network::BitcoinChain::BitcoinSignet
+pub const KALEIDOSWAP_SIGNET_URL_V2: &str = "https://maker.signet.kaleidoswap.com/v2";
 
 #[cfg(feature = "ws")]
 pub use crate::swaps::status_stream::{BoltzWsApi, BoltzWsConfig};
@@ -487,12 +491,24 @@ impl BoltzApiClientV2 {
 
     /// Client pointed at the default **KaleidoSwap maker** for a network.
     ///
-    /// - `Testnet` → the signet/Mutinynet maker ([`KALEIDOSWAP_TESTNET_URL_V2`]).
+    /// Every value this returns is a KaleidoSwap endpoint. A network we run no
+    /// maker on is an error, never a third-party fallback: the caller asked for
+    /// *our* maker, and quietly handing them somebody else's would put their
+    /// swap in front of a counterparty they never chose.
+    ///
+    /// - `Signet` → the KaleidoSwap maker ([`KALEIDOSWAP_SIGNET_URL_V2`]), which
+    ///   settles on Mutinynet. Use [`BitcoinChain::BitcoinSignet`] chain access
+    ///   with it; testnet3 endpoints cannot see these transactions.
     /// - `Regtest` → the local regtest harness ([`BOLTZ_REGTEST`]).
-    /// - `Mainnet` → **errors**: no mainnet KaleidoSwap maker is live yet, and
-    ///   defaulting to a third-party endpoint would silently route swaps away
-    ///   from the maker this SDK targets. Pass an explicit `base_url` via
-    ///   [`BoltzApiClientV2::new`] (e.g. [`BOLTZ_MAINNET_URL_V2`] for Boltz).
+    /// - `Testnet` → **errors**: KaleidoSwap runs no testnet3 maker. Our testing
+    ///   network is signet — use [`Network::Signet`].
+    /// - `Mainnet` → **errors**: no mainnet KaleidoSwap maker is live yet.
+    ///
+    /// Third-party makers stay reachable, but only by name: pass an explicit
+    /// `base_url` to [`BoltzApiClientV2::new`] (e.g. [`BOLTZ_MAINNET_URL_V2`] or
+    /// [`BOLTZ_TESTNET_URL_V2`] for Boltz).
+    ///
+    /// [`BitcoinChain::BitcoinSignet`]: crate::network::BitcoinChain::BitcoinSignet
     pub fn default(network: Network) -> Result<Self, Error> {
         let base_url = match network {
             Network::Mainnet => {
@@ -502,7 +518,15 @@ impl BoltzApiClientV2 {
                         .to_string(),
                 ))
             }
-            Network::Testnet => KALEIDOSWAP_TESTNET_URL_V2.to_string(),
+            Network::Testnet => {
+                return Err(Error::Protocol(
+                    "no KaleidoSwap testnet3 maker — our maker runs on signet, so use \
+                     Network::Signet; for a third-party testnet3 maker pass an explicit \
+                     base_url via BoltzApiClientV2::new (e.g. BOLTZ_TESTNET_URL_V2)"
+                        .to_string(),
+                ))
+            }
+            Network::Signet => KALEIDOSWAP_SIGNET_URL_V2.to_string(),
             Network::Regtest => BOLTZ_REGTEST.to_string(),
         };
         Ok(Self::new(base_url, None))
@@ -2157,6 +2181,34 @@ mod tests {
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+    /// Every endpoint `default()` hands out must be a KaleidoSwap maker, and it
+    /// must be on the same chain as that network's default chain access — see
+    /// `signet_resolves_to_signet_not_testnet3`. Networks we run no maker on
+    /// error out; a third-party fallback would hand the caller a counterparty
+    /// they never chose.
+    #[test]
+    fn default_maker_endpoints_match_their_network() {
+        assert_eq!(
+            BoltzApiClientV2::default(Network::Signet).unwrap().base_url,
+            KALEIDOSWAP_SIGNET_URL_V2,
+        );
+        assert_eq!(
+            BoltzApiClientV2::default(Network::Regtest)
+                .unwrap()
+                .base_url,
+            BOLTZ_REGTEST,
+        );
+        // No mainnet maker is live, and we run no testnet3 maker at all —
+        // signet is our testing network. Neither may fall back to Boltz.
+        assert!(BoltzApiClientV2::default(Network::Mainnet).is_err());
+        assert!(BoltzApiClientV2::default(Network::Testnet).is_err());
+        // The Boltz endpoints stay reachable, but only when named explicitly.
+        assert_eq!(
+            BoltzApiClientV2::new(BOLTZ_TESTNET_URL_V2.to_string(), None).base_url,
+            BOLTZ_TESTNET_URL_V2,
+        );
+    }
 
     #[macros::async_test_all]
     async fn test_get_fee_estimation() {

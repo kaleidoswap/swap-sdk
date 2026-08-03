@@ -128,6 +128,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
     match s.to_lowercase().as_str() {
         "mainnet" => Ok(Network::Mainnet),
         "testnet" => Ok(Network::Testnet),
+        "signet" => Ok(Network::Signet),
         "regtest" => Ok(Network::Regtest),
         other => Err(JsValue::from_str(&format!("unknown network: {other}"))),
     }
@@ -185,7 +186,7 @@ fn asset_from_boltz(
 #[cfg(test)]
 mod boltz_asset_tests {
     use super::*;
-    use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
+    use kaleidoswap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
 
     #[test]
     fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
@@ -193,6 +194,21 @@ mod boltz_asset_tests {
 
         assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidRegtest));
         assert_eq!(currency, Currency::LUsdt);
+    }
+
+    /// `"signet"` must parse (it is the KaleidoSwap maker's network) and fan out
+    /// to signet chain access — never testnet3, which encodes addresses
+    /// identically and so mismatches without erroring.
+    #[test]
+    fn signet_resolves_to_signet_chain() {
+        let (chain, currency) = asset_from_boltz("BTC", "signet").unwrap();
+
+        assert_eq!(chain, Chain::Bitcoin(BitcoinChain::BitcoinSignet));
+        assert_eq!(currency, Currency::Btc);
+
+        // Liquid has no signet, so the L-BTC side pairs with Liquid testnet.
+        let (chain, _) = asset_from_boltz("L-BTC", "signet").unwrap();
+        assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidTestnet));
     }
 }
 
@@ -216,8 +232,13 @@ impl BoltzClient {
     }
 
     /// Client pointed at the default **KaleidoSwap maker** for a network
-    /// ("testnet" | "regtest"). Rejects "mainnet" — no mainnet maker is live
-    /// yet; pass an explicit base URL to the constructor instead.
+    /// ("signet" | "regtest").
+    ///
+    /// "signet" is the KaleidoSwap maker and settles on Mutinynet — pair it with
+    /// signet chain access, not testnet3. Rejects "testnet" (we run no testnet3
+    /// maker — signet is our testing network) and "mainnet" (no mainnet maker is
+    /// live yet) instead of falling back to a third party; to reach any other
+    /// maker, pass an explicit base URL to the constructor.
     #[wasm_bindgen(js_name = forNetwork)]
     pub fn for_network(network: String) -> Result<BoltzClient, JsValue> {
         Ok(BoltzClient {

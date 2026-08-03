@@ -38,8 +38,13 @@ pub fn network() -> Result<(Network, LiquidChain)> {
     {
         "mainnet" => Ok((Network::Mainnet, LiquidChain::Liquid)),
         "testnet" => Ok((Network::Testnet, LiquidChain::LiquidTestnet)),
+        // The KaleidoSwap maker's network. Liquid has no signet, so the L-BTC
+        // side is Liquid testnet — see `From<Network> for LiquidChain`.
+        "signet" => Ok((Network::Signet, LiquidChain::LiquidTestnet)),
         "regtest" => Ok((Network::Regtest, LiquidChain::LiquidRegtest)),
-        other => bail!("unsupported KALEIDO_NETWORK '{other}'; use mainnet, testnet, or regtest"),
+        other => {
+            bail!("unsupported KALEIDO_NETWORK '{other}'; use mainnet, testnet, signet, or regtest")
+        }
     }
 }
 

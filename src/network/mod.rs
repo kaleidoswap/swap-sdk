@@ -81,6 +81,15 @@ impl From<LiquidChain> for Chain {
 pub enum BitcoinChain {
     Bitcoin,
     BitcoinTestnet,
+    /// Signet — distinct from [`BitcoinChain::BitcoinTestnet`] even though the
+    /// two share an address encoding.
+    ///
+    /// A signet is defined by its challenge, so "signet" is a family rather
+    /// than one chain. This SDK's defaults target
+    /// [Mutinynet](https://mutinynet.com), the signet the KaleidoSwap maker is
+    /// deployed on; a vanilla-signet explorer serves a different chain and
+    /// cannot see these transactions.
+    BitcoinSignet,
     BitcoinRegtest,
 }
 
@@ -89,6 +98,7 @@ impl From<BitcoinChain> for bitcoin::Network {
         match value {
             BitcoinChain::Bitcoin => Self::Bitcoin,
             BitcoinChain::BitcoinTestnet => Self::Testnet,
+            BitcoinChain::BitcoinSignet => Self::Signet,
             BitcoinChain::BitcoinRegtest => Self::Regtest,
         }
     }
@@ -128,6 +138,9 @@ impl From<LiquidChain> for &'static AddressParams {
 pub enum Network {
     Mainnet,
     Testnet,
+    /// Signet — the network the KaleidoSwap maker is deployed on. Chain
+    /// defaults resolve to Mutinynet; see [`BitcoinChain::BitcoinSignet`].
+    Signet,
     Regtest,
 }
 
@@ -136,6 +149,7 @@ impl From<Network> for BitcoinChain {
         match value {
             Network::Mainnet => BitcoinChain::Bitcoin,
             Network::Testnet => BitcoinChain::BitcoinTestnet,
+            Network::Signet => BitcoinChain::BitcoinSignet,
             Network::Regtest => BitcoinChain::BitcoinRegtest,
         }
     }
@@ -146,6 +160,10 @@ impl From<Network> for LiquidChain {
         match value {
             Network::Mainnet => LiquidChain::Liquid,
             Network::Testnet => LiquidChain::LiquidTestnet,
+            // Liquid has no signet, so signet BTC pairs with Liquid testnet —
+            // the same asymmetry Boltz testnet has. The KaleidoSwap maker
+            // confirms it: its L-BTC side tracks the Liquid testnet tip.
+            Network::Signet => LiquidChain::LiquidTestnet,
             Network::Regtest => LiquidChain::LiquidRegtest,
         }
     }
@@ -156,6 +174,7 @@ impl From<Network> for bitcoin::Network {
         match value {
             Network::Mainnet => Self::Bitcoin,
             Network::Testnet => Self::Testnet,
+            Network::Signet => Self::Signet,
             Network::Regtest => Self::Regtest,
         }
     }
@@ -205,6 +224,39 @@ pub trait LiquidClient: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression guard for the signet/testnet3 conflation. Signet and testnet3
+    /// share an address encoding and BIP32 version bytes, so a wrong mapping
+    /// here produces no error at all — just swaps settled on the wrong chain.
+    #[test]
+    fn signet_resolves_to_signet_not_testnet3() {
+        assert_eq!(
+            BitcoinChain::from(Network::Signet),
+            BitcoinChain::BitcoinSignet
+        );
+        assert_eq!(
+            bitcoin::Network::from(BitcoinChain::from(Network::Signet)),
+            bitcoin::Network::Signet
+        );
+        assert_eq!(
+            bitcoin::Network::from(Network::Signet),
+            bitcoin::Network::Signet
+        );
+        // Liquid has no signet, so signet BTC pairs with Liquid testnet.
+        assert_eq!(
+            LiquidChain::from(Network::Signet),
+            LiquidChain::LiquidTestnet
+        );
+        // ...and testnet must not have been quietly repointed at signet.
+        assert_eq!(
+            BitcoinChain::from(Network::Testnet),
+            BitcoinChain::BitcoinTestnet
+        );
+        assert_eq!(
+            bitcoin::Network::from(Network::Testnet),
+            bitcoin::Network::Testnet
+        );
+    }
 
     #[test]
     fn currency_defaults_preserve_legacy_chain_strings() {

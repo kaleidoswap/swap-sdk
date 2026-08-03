@@ -10,6 +10,14 @@ use std::time::Duration;
 
 pub const DEFAULT_MAINNET_NODE: &str = "https://blockstream.info/api";
 pub const DEFAULT_TESTNET_NODE: &str = "https://blockstream.info/testnet/api";
+/// **KaleidoSwap's own** Esplora for the signet our maker settles on
+/// ([Mutinynet](https://mutinynet.com)). Signets are defined by their
+/// challenge, so this is not interchangeable with a vanilla-signet explorer —
+/// it indexes specifically the chain the maker settles on.
+///
+/// Note the API lives at the root here, not under `/api` as on
+/// blockstream.info.
+pub const DEFAULT_SIGNET_NODE: &str = "https://esplora.signet.kaleidoswap.com";
 pub const DEFAULT_REGTEST_NODE: &str = "http://localhost:4002/api";
 pub const DEFAULT_LIQUID_MAINNET_NODE: &str = "https://blockstream.info/liquid/api";
 pub const DEFAULT_LIQUID_TESTNET_NODE: &str = "https://blockstream.info/liquidtestnet/api";
@@ -50,6 +58,9 @@ impl EsploraBitcoinClient {
             }
             BitcoinChain::BitcoinTestnet => {
                 Self::new(network, DEFAULT_TESTNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
+            }
+            BitcoinChain::BitcoinSignet => {
+                Self::new(network, DEFAULT_SIGNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
             }
             BitcoinChain::BitcoinRegtest => Self::new(
                 network,
@@ -401,6 +412,18 @@ mod tests {
     use super::*;
     use elements::hex::ToHex;
     use std::str::FromStr;
+
+    /// The signet default must be our own Esplora for the maker's chain
+    /// (Mutinynet) — never a testnet3 or vanilla-signet explorer, and never a
+    /// third party for the network we operate.
+    #[test]
+    fn signet_default_points_at_kaleidoswap_esplora() {
+        let client = EsploraBitcoinClient::default(BitcoinChain::BitcoinSignet, None);
+        assert_eq!(client.base_url, DEFAULT_SIGNET_NODE);
+        assert_eq!(client.base_url, "https://esplora.signet.kaleidoswap.com");
+        assert_eq!(client.network, BitcoinChain::BitcoinSignet);
+        assert_ne!(client.base_url, DEFAULT_TESTNET_NODE);
+    }
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);

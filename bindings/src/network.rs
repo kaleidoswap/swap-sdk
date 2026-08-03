@@ -6,11 +6,16 @@ use kaleidoswap_sdk::swaps::ChainClient as CoreClient;
 use crate::boltz::Error;
 use crate::swap::BtcLikeTransaction;
 
+// NB: variant order here is the FFI wire order, independent of the core enum's
+// declaration order. New variants go at the END so existing indices keep their
+// meaning — inserting mid-enum would make a stale generated module decode
+// `Mainnet` as `Signet` against a freshly built library.
 #[uniffi::remote(Enum)]
 pub enum Network {
     Regtest,
     Testnet,
     Mainnet,
+    Signet,
 }
 
 #[uniffi::remote(Enum)]
@@ -20,11 +25,13 @@ pub enum LiquidChain {
     LiquidRegtest,
 }
 
+// Appended, not inserted — see the note on `Network` above.
 #[uniffi::remote(Enum)]
 pub enum BitcoinChain {
     Bitcoin,
     BitcoinTestnet,
     BitcoinRegtest,
+    BitcoinSignet,
 }
 
 #[uniffi::remote(Enum)]

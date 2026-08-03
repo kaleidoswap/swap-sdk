@@ -1,9 +1,13 @@
 //! Live smoke against the KaleidoSwap **signet** maker (run manually:
 //! `cargo run --example signet_smoke` — talks to the network, not run in CI):
-//! 1. `default(Testnet)` must reach the KaleidoSwap signet maker (de-Boltz).
+//! 1. `default(Signet)` must reach the KaleidoSwap maker (de-Boltz).
 //! 2. `default(Mainnet)` must error (no mainnet maker yet).
-//! 3. Query the live pair/height surface.
-//! 4. Create a reverse swap with SDK-derived keys + preimage and let the SDK
+//! 3. Query the live pair surface.
+//! 4. The maker's chain tip and the SDK's *default* signet chain access must
+//!    agree — the invariant that `Network::Signet` exists to protect. Under the
+//!    old testnet3 default this step is what would have caught the mismatch.
+//!    (Needs the `esplora` feature, which is on by default.)
+//! 5. Create a submarine swap with SDK-derived keys + preimage and let the SDK
 //!    cryptographically validate the returned lockup/tree (no funding).
 
 use kaleidoswap_sdk::boltz::BoltzApiClientV2;
@@ -19,24 +23,60 @@ async fn main() -> Result<(), String> {
     );
     println!("[ok] default(Mainnet) errors as designed");
 
-    // (1) testnet default -> maker.signet.kaleidoswap.com/v2
-    let api = BoltzApiClientV2::default(Network::Testnet).map_err(|e| format!("{e:?}"))?;
-    println!("[ok] default(Testnet) constructed (KaleidoSwap signet maker)");
+    // (1) signet default -> maker.signet.kaleidoswap.com/v2
+    let api = BoltzApiClientV2::default(Network::Signet).map_err(|e| format!("{e:?}"))?;
+    println!("[ok] default(Signet) constructed (KaleidoSwap maker)");
 
-    // (3) live read surface. NB: /v2/chain/heights hangs on the stale
-    // deployed maker (v0.1.0) — skipped, tracked as a deploy issue.
+    // (3) live read surface.
     let rev_pairs = api
         .get_reverse_pairs()
         .await
         .map_err(|e| format!("{e:?}"))?;
     println!(
-        "[ok] GET /v2/swap/reverse tolerated: {} reverse pairs (stale deploy advertises none)",
+        "[ok] GET /v2/swap/reverse: {} reverse pairs",
         rev_pairs.btc.len()
     );
 
-    // (4) create + validate a SUBMARINE swap (BTC -> LN), unfunded.
-    // The live signet maker (v0.1.0, stale) advertises no reverse pairs yet,
-    // so we exercise the submarine path: construct a validly-signed throwaway
+    // (4) maker chain tip vs the SDK's *default* signet chain access. These
+    // must track the same chain. This is the check that would have caught the
+    // testnet3 default: Mutinynet and testnet3 sat ~1.78M blocks apart when
+    // this was written, yet their addresses are encoded identically, so nothing
+    // downstream would have errored.
+    #[cfg(feature = "esplora")]
+    {
+        use kaleidoswap_sdk::network::esplora::DEFAULT_SIGNET_NODE;
+
+        let maker_height = api.get_height().await.map_err(|e| format!("{e:?}"))?.btc as i64;
+        // The BitcoinClient trait has no height method, so read the tip from
+        // the same constant EsploraBitcoinClient::default(BitcoinSignet) uses —
+        // this asserts the constant itself points at the maker's chain.
+        let chain_height: i64 = reqwest::get(format!("{DEFAULT_SIGNET_NODE}/blocks/tip/height"))
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .text()
+            .await
+            .map_err(|e| format!("{e:?}"))?
+            .trim()
+            .parse()
+            .map_err(|e| format!("unparseable tip height: {e:?}"))?;
+        let drift = (maker_height - chain_height).abs();
+        println!(
+            "    maker BTC tip = {maker_height}, default signet chain tip = {chain_height} (drift {drift})"
+        );
+        // Mutinynet mines every ~30s, so a healthy pair sits within a handful
+        // of blocks. A chain mismatch shows up as a drift of many thousands.
+        if drift > 100 {
+            return Err(format!(
+                "maker and default signet chain access disagree by {drift} blocks — \
+                 these are not the same chain"
+            ));
+        }
+        println!("[ok] maker and default signet chain access agree on the tip");
+    }
+
+    // (5) create + validate a SUBMARINE swap (BTC -> LN), unfunded.
+    // Submarine is the cheapest path to exercise end-to-end without funding:
+    // construct a validly-signed throwaway
     // BOLT11 signet invoice, create the swap, and let the SDK validate the
     // returned lockup script/tree against the invoice preimage-hash + our
     // refund key. Never funded -> expires server-side.
@@ -47,7 +87,7 @@ async fn main() -> Result<(), String> {
     let master = SwapMasterKey::new(
         "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
         None,
-        Network::Testnet,
+        Network::Signet,
     ).map_err(|e| format!("{e:?}"))?;
     let kp = master.derive_swapkey(0).map_err(|e| format!("{e:?}"))?;
     let refund_pk = kaleidoswap_sdk::bitcoin::PublicKey::new(kp.public_key());
@@ -112,7 +152,7 @@ async fn main() -> Result<(), String> {
         &invoice_str,
         &refund_pk,
         kaleidoswap_sdk::network::Chain::Bitcoin(
-            kaleidoswap_sdk::network::BitcoinChain::BitcoinTestnet,
+            kaleidoswap_sdk::network::BitcoinChain::BitcoinSignet,
         ),
     )
     .map_err(|e| format!("{e:?}"))?;
