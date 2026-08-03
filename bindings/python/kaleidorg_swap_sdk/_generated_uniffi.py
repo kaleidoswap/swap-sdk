@@ -680,7 +680,7 @@ def _uniffi_check_api_checksums(lib):
         )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_default()
-        != 313
+        != 9152
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -4525,6 +4525,8 @@ class BitcoinChain(enum.Enum):
 
     BITCOIN_REGTEST = 2
 
+    BITCOIN_SIGNET = 3
+
 
 class _UniffiConverterTypeBitcoinChain(_UniffiConverterRustBuffer):
     @staticmethod
@@ -4536,6 +4538,8 @@ class _UniffiConverterTypeBitcoinChain(_UniffiConverterRustBuffer):
             return BitcoinChain.BITCOIN_TESTNET
         if variant == 3:
             return BitcoinChain.BITCOIN_REGTEST
+        if variant == 4:
+            return BitcoinChain.BITCOIN_SIGNET
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -4545,6 +4549,8 @@ class _UniffiConverterTypeBitcoinChain(_UniffiConverterRustBuffer):
         if value == BitcoinChain.BITCOIN_TESTNET:
             return
         if value == BitcoinChain.BITCOIN_REGTEST:
+            return
+        if value == BitcoinChain.BITCOIN_SIGNET:
             return
         raise ValueError(value)
 
@@ -4556,6 +4562,8 @@ class _UniffiConverterTypeBitcoinChain(_UniffiConverterRustBuffer):
             buf.write_i32(2)
         if value == BitcoinChain.BITCOIN_REGTEST:
             buf.write_i32(3)
+        if value == BitcoinChain.BITCOIN_SIGNET:
+            buf.write_i32(4)
 
 
 class Chain:
@@ -5077,6 +5085,8 @@ class Network(enum.Enum):
 
     MAINNET = 2
 
+    SIGNET = 3
+
 
 class _UniffiConverterTypeNetwork(_UniffiConverterRustBuffer):
     @staticmethod
@@ -5088,6 +5098,8 @@ class _UniffiConverterTypeNetwork(_UniffiConverterRustBuffer):
             return Network.TESTNET
         if variant == 3:
             return Network.MAINNET
+        if variant == 4:
+            return Network.SIGNET
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -5097,6 +5109,8 @@ class _UniffiConverterTypeNetwork(_UniffiConverterRustBuffer):
         if value == Network.TESTNET:
             return
         if value == Network.MAINNET:
+            return
+        if value == Network.SIGNET:
             return
         raise ValueError(value)
 
@@ -5108,6 +5122,8 @@ class _UniffiConverterTypeNetwork(_UniffiConverterRustBuffer):
             buf.write_i32(2)
         if value == Network.MAINNET:
             buf.write_i32(3)
+        if value == Network.SIGNET:
+            buf.write_i32(4)
 
 
 class Side(enum.Enum):
@@ -5821,9 +5837,14 @@ class BoltzApiClientV2:
     @classmethod
     def default(cls, network: "Network"):
         """
-        Client pointed at the default KaleidoSwap maker for `network`.
-        Errors on `Mainnet` (no mainnet maker yet) — use `new` with an
-        explicit `base_url` instead.
+        Client pointed at the default **KaleidoSwap maker** for `network`.
+
+        `Signet` is the KaleidoSwap maker (settles on Mutinynet — use
+        `BitcoinSignet` chain access, not testnet3); `Regtest` is the local
+        harness. Errors on `Testnet` (we run no testnet3 maker — signet is our
+        testing network) and on `Mainnet` (no mainnet maker yet), rather than
+        falling back to a third party. To reach any other maker, use `new` with
+        an explicit `base_url`.
         """
 
         _UniffiConverterTypeNetwork.check_lower(network)

@@ -89,8 +89,21 @@ async fn main() -> Result<(), String> {
         None,
         Network::Signet,
     ).map_err(|e| format!("{e:?}"))?;
-    let kp = master.derive_swapkey(0).map_err(|e| format!("{e:?}"))?;
+    // Vary the swap index per run. The preimage is derived deterministically
+    // from the swap key, so a fixed index makes every run request the same
+    // preimageHash — and the maker rejects that with
+    // `swap_already_exists` (409) until the previous unfunded swap expires.
+    // A time-derived index keeps the run reproducible in shape but unique in
+    // identity.
+    let swap_index = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    let kp = master
+        .derive_swapkey(swap_index)
+        .map_err(|e| format!("{e:?}"))?;
     let refund_pk = kaleidorg_swap_sdk::bitcoin::PublicKey::new(kp.public_key());
+    println!("    swap index {swap_index} (varies per run; a fixed index 409s)");
 
     let sub_pairs = api
         .get_submarine_pairs()
