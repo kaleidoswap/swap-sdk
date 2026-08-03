@@ -138,14 +138,14 @@ def write_release_metadata(
         "spdxVersion": "SPDX-2.3",
         "dataLicense": "CC0-1.0",
         "SPDXID": "SPDXRef-DOCUMENT",
-        "name": f"kaleidoswap-sdk-{version}-release-artifacts",
+        "name": f"kaleidorg-swap-sdk-{version}-release-artifacts",
         "documentNamespace": (
             "https://github.com/kaleidoswap/kaleidoswap-sdk/"
             f"releases/tag/{tag}/spdx/{commit}"
         ),
         "creationInfo": {
             "created": created,
-            "creators": ["Tool: kaleidoswap-sdk/scripts/assemble_release.py"],
+            "creators": ["Tool: kaleidorg-swap-sdk/scripts/assemble_release.py"],
         },
         "files": files,
         "relationships": [

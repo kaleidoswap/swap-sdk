@@ -5,6 +5,6 @@ __pycache__
 .venv
 dist
 # Legacy top-level output from the pre-Maturin build.
-/kaleidoswap_sdk.py
-kaleidoswap_sdk/kaleidoswap_sdk/kaleidoswap_sdk.py
-kaleidoswap_sdk/kaleidoswap_sdk/__init__.py
+/kaleidorg_swap_sdk.py
+kaleidorg_swap_sdk/kaleidorg_swap_sdk/kaleidorg_swap_sdk.py
+kaleidorg_swap_sdk/kaleidorg_swap_sdk/__init__.py

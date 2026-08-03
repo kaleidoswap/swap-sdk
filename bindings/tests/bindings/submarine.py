@@ -3,14 +3,14 @@ import asyncio
 from common import *
 
 
-async def swap(from_chain: kaleidoswap_sdk.Chain, refund: bool):
+async def swap(from_chain: kaleidorg_swap_sdk.Chain, refund: bool):
     ws_client = boltz_api.ws()
 
-    key_pair = kaleidoswap_sdk.KeyPair()
+    key_pair = kaleidorg_swap_sdk.KeyPair()
 
     invoice = await new_invoice(50000)
 
-    request = kaleidoswap_sdk.CreateSubmarineRequest(
+    request = kaleidorg_swap_sdk.CreateSubmarineRequest(
         _from=from_chain,
         to=btc_chain,
         invoice=invoice,
@@ -18,7 +18,7 @@ async def swap(from_chain: kaleidoswap_sdk.Chain, refund: bool):
     )
 
     swap_response = await boltz_api.create_swap(request)
-    swap_script = kaleidoswap_sdk.SwapScript.from_submarine(
+    swap_script = kaleidorg_swap_sdk.SwapScript.from_submarine(
         from_chain, swap_response, key_pair.public()
     )
     swap_id = swap_response.id
@@ -46,9 +46,9 @@ async def swap(from_chain: kaleidoswap_sdk.Chain, refund: bool):
         refund_address = await getnewaddress(from_chain)
 
         tx = await swap_script.construct_refund(
-            kaleidoswap_sdk.SwapTransactionParams(
+            kaleidorg_swap_sdk.SwapTransactionParams(
                 output_address=refund_address,
-                fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+                fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                 swap_id=swap_id,
                 keys=key_pair,
                 chain_client=chain_client,

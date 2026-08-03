@@ -5,7 +5,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-sdk-npm-"));
+const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-npm-"));
 const suppliedTarball = process.argv[2];
 let tarballPath = suppliedTarball
   ? isAbsolute(suppliedTarball)

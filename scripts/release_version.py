@@ -52,11 +52,11 @@ def versions() -> dict[str, str]:
     return {
         "Rust package": cargo_toml["package"]["version"],
         "Rust lockfile": package_version(
-            cargo_lock, "kaleidoswap-sdk", ROOT / "Cargo.lock"
+            cargo_lock, "kaleidorg-swap-sdk", ROOT / "Cargo.lock"
         ),
         "Python package": python_toml["project"]["version"],
         "Python lockfile": package_version(
-            python_lock, "kaleidoswap-sdk", ROOT / "bindings/python/uv.lock"
+            python_lock, "kaleidorg-swap-sdk", ROOT / "bindings/python/uv.lock"
         ),
         "TypeScript package": typescript_package["version"],
         "TypeScript lockfile": typescript_lock["packages"][""]["version"],

@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-FALLBACK = Path("kaleidoswap_sdk/_generated_uniffi.py")
+FALLBACK = Path("kaleidorg_swap_sdk/_generated_uniffi.py")
 WINDOWS_LOADER = """\
         libname = os.path.join(
             os.path.dirname(__file__),
@@ -12,9 +12,7 @@ WINDOWS_LOADER = """\
 """
 NESTED_WINDOWS_LOADER = '        libname = "{}.dll"\n'
 LOCAL_LIBRARY = "    path = os.path.join(os.path.dirname(__file__), libname)\n"
-NESTED_LIBRARY = (
-    '    path = os.path.join(os.path.dirname(__file__), "kaleidoswap_sdk", libname)\n'
-)
+NESTED_LIBRARY = '    path = os.path.join(os.path.dirname(__file__), "kaleidorg_swap_sdk", libname)\n'
 
 
 def replace_once(source: str, old: str, new: str) -> str:

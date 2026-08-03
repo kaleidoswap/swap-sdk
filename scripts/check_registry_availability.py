@@ -69,8 +69,8 @@ def validate_configuration() -> tuple[bool, bool]:
     test_pypi_enabled = flag("TEST_PYPI_PUBLISH_ENABLED")
     if flag("PYPI_PUBLISH_ENABLED"):
         raise ValueError(
-            "public PyPI publishing must remain explicitly disabled until the "
-            "name/version collision is resolved"
+            "public PyPI publishing must remain explicitly disabled until a "
+            "trusted publisher is configured for kaleidorg-swap-sdk"
         )
     return npm_enabled, test_pypi_enabled
 
@@ -80,7 +80,7 @@ def main() -> int:
     parser.add_argument("version")
     parser.add_argument("--npm-package", default=npm_package())
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
-    parser.add_argument("--python-package", default="kaleidoswap_sdk")
+    parser.add_argument("--python-package", default="kaleidorg_swap_sdk")
     parser.add_argument("--test-pypi-registry", default="https://test.pypi.org/pypi")
     parser.add_argument(
         "--check-test-pypi",

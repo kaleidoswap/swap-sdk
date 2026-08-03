@@ -1,5 +1,5 @@
 [project]
-name = "kaleidoswap_sdk"
+name = "kaleidorg_swap_sdk"
 version = "0.1.0"
 description = "KaleidoSwap swap SDK — client-side atomic swaps (Boltz protocol)"
 readme = "README.md"
@@ -44,7 +44,7 @@ strip = true
 package = false
 
 [tool.ruff]
-extend-exclude = ["kaleidoswap_sdk/_generated_uniffi.py"]
+extend-exclude = ["kaleidorg_swap_sdk/_generated_uniffi.py"]
 
 [dependency-groups]
 dev = [

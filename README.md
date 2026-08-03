@@ -1,4 +1,4 @@
-# kaleidoswap-sdk
+# kaleidorg-swap-sdk
 
 **KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
 Bitcoin, Lightning, and Liquid, for Rust, Python, and the browser.
@@ -55,14 +55,16 @@ the KaleidoSwap layers are built on top of it.
 
 | Surface | Install | Supported v0.1.x runtime |
 |---|---|---|
-| Rust | `kaleidoswap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
 | Python | Install a release wheel from GitHub or the enabled TestPyPI/private registry | Python 3.10+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
 | TypeScript | `npm install @kaleidorg/swap-sdk@0.1.0` | Browser-first; Node 22+ with explicit packaged WASM bytes |
 
-Public PyPI cannot host this repository's Python `0.1.0` under the unchanged
-distribution name. Do not use an unqualified `pip install kaleidoswap_sdk` for
-this release; see [the release guide](docs/releasing.md#public-pypi-blocker) for
-the collision and supported artifact sources.
+The distribution rename to `kaleidorg_swap_sdk` cleared the public PyPI
+collision that blocked the previous name (`kaleidoswap-sdk`, whose normalized
+project already holds `0.1.0`-`0.5.6`). `kaleidorg-swap-sdk` is unclaimed, so
+PyPI publishing is now a decision rather than a technical blocker; it stays
+disabled until explicitly enabled. See [the release
+guide](docs/releasing.md#python-registry) for artifact sources.
 
 ## Generated sources
 
@@ -110,9 +112,8 @@ environment; no long-lived registry credential belongs in the workflow. A
 production tag requires npm publishing to be explicitly enabled, while
 TestPyPI remains optional. Every enabled registry package is downloaded again,
 hash-matched to the sealed manifest, and clean-consumer tested before CI
-publishes the final GitHub release. Public PyPI is always disabled because it
-cannot accept `kaleidoswap_sdk==0.1.0`: PyPI normalizes that name to
-`kaleidoswap-sdk`, where versions `0.1.0` through `0.5.6` already exist. See
+publishes the final GitHub release. Public PyPI publishing is currently
+disabled by configuration, not by a name collision - see the note above. See
 [`docs/releasing.md`](docs/releasing.md) for the activation checklist,
 publisher bootstrap, approval boundary, and partial-publication recovery
 procedure.

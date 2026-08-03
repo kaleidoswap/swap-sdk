@@ -50,11 +50,11 @@ class RegistryAvailabilityTests(unittest.TestCase):
         self.assertEqual(
             registry.version_url(
                 "https://test.pypi.org/pypi",
-                "kaleidoswap_sdk",
+                "kaleidorg_swap_sdk",
                 "0.1.0",
                 json_api=True,
             ),
-            "https://test.pypi.org/pypi/kaleidoswap_sdk/0.1.0/json",
+            "https://test.pypi.org/pypi/kaleidorg_swap_sdk/0.1.0/json",
         )
 
     def test_404_means_version_is_available(self) -> None:
@@ -257,12 +257,12 @@ class PublishedArtifactTests(unittest.TestCase):
     def test_testpypi_inventory_and_downloads_match_sealed_bundle(self) -> None:
         contents = b"exact Python artifact"
         names = (
-            "kaleidoswap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl",
-            "kaleidoswap_sdk-0.1.0-py3-none-manylinux_2_28_aarch64.whl",
-            "kaleidoswap_sdk-0.1.0-py3-none-macosx_10_12_x86_64.whl",
-            "kaleidoswap_sdk-0.1.0-py3-none-macosx_11_0_arm64.whl",
-            "kaleidoswap_sdk-0.1.0-py3-none-win_amd64.whl",
-            "kaleidoswap_sdk-0.1.0.tar.gz",
+            "kaleidorg_swap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl",
+            "kaleidorg_swap_sdk-0.1.0-py3-none-manylinux_2_28_aarch64.whl",
+            "kaleidorg_swap_sdk-0.1.0-py3-none-macosx_10_12_x86_64.whl",
+            "kaleidorg_swap_sdk-0.1.0-py3-none-macosx_11_0_arm64.whl",
+            "kaleidorg_swap_sdk-0.1.0-py3-none-win_amd64.whl",
+            "kaleidorg_swap_sdk-0.1.0.tar.gz",
         )
         entries = {name: self.entry(contents) for name in names}
         payload = {
@@ -300,8 +300,8 @@ class PublishedArtifactTests(unittest.TestCase):
 
     def test_testpypi_missing_artifact_is_rejected(self) -> None:
         contents = b"artifact"
-        wheel = "kaleidoswap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl"
-        sdist = "kaleidoswap_sdk-0.1.0.tar.gz"
+        wheel = "kaleidorg_swap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl"
+        sdist = "kaleidorg_swap_sdk-0.1.0.tar.gz"
         entries = {wheel: self.entry(contents), sdist: self.entry(contents)}
         payload = {
             "info": {"version": "0.1.0"},
@@ -353,8 +353,8 @@ class ReleaseArtifactTests(unittest.TestCase):
             "cp311-cp311-win_amd64.whl",
         )
         for tag in wheel_tags:
-            (directory / f"kaleidoswap_sdk-{version}-{tag}").write_bytes(b"wheel")
-        (directory / f"kaleidoswap_sdk-{version}.tar.gz").write_bytes(b"sdist")
+            (directory / f"kaleidorg_swap_sdk-{version}-{tag}").write_bytes(b"wheel")
+        (directory / f"kaleidorg_swap_sdk-{version}.tar.gz").write_bytes(b"sdist")
         self.make_npm_tarball(directory, version)
 
     def test_exact_cross_platform_inventory_is_accepted(self) -> None:
@@ -683,7 +683,7 @@ class WorkflowExpressionTests(unittest.TestCase):
 
 class RuntimeVersionTests(unittest.TestCase):
     def test_python_package_reports_a_version_without_a_second_source(self) -> None:
-        source = (ROOT / "bindings/python/kaleidoswap_sdk/__init__.py").read_text()
+        source = (ROOT / "bindings/python/kaleidorg_swap_sdk/__init__.py").read_text()
         self.assertIn("__version__", source)
         # Derived from installed metadata, so it can never drift from pyproject.
         self.assertIn("_distribution_version", source)

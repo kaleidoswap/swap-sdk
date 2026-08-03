@@ -35,8 +35,8 @@ fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
 // incrementally on top of these.
 // ============================================================================
 
-use kaleidoswap_sdk::network::Network;
-use kaleidoswap_sdk::util::secrets::{Preimage, SwapMasterKey};
+use kaleidorg_swap_sdk::network::Network;
+use kaleidorg_swap_sdk::util::secrets::{Preimage, SwapMasterKey};
 
 /// A derived swap key, returned to JS as `{ publicKey, secretKey }` (hex).
 #[derive(serde::Serialize)]
@@ -143,11 +143,11 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
 // hand-written interfaces.
 // ============================================================================
 
-use kaleidoswap_sdk::boltz::{
+use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
 
-fn core_err(e: kaleidoswap_sdk::error::Error) -> JsValue {
+fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
     error.set_name(&e.name());
     let _ = js_sys::Reflect::set(
@@ -165,12 +165,12 @@ fn asset_from_boltz(
     network: &str,
 ) -> Result<
     (
-        kaleidoswap_sdk::network::Chain,
-        kaleidoswap_sdk::network::Currency,
+        kaleidorg_swap_sdk::network::Chain,
+        kaleidorg_swap_sdk::network::Currency,
     ),
     JsValue,
 > {
-    use kaleidoswap_sdk::network::{Chain, Currency};
+    use kaleidorg_swap_sdk::network::{Chain, Currency};
 
     let net = parse_network(network)?;
     match s {
@@ -186,7 +186,7 @@ fn asset_from_boltz(
 #[cfg(test)]
 mod boltz_asset_tests {
     use super::*;
-    use kaleidoswap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
+    use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
 
     #[test]
     fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
@@ -285,8 +285,8 @@ impl BoltzClient {
         let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
-            (kaleidoswap_sdk::network::Currency::LUsdt, _)
-                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+            (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidorg_swap_sdk::network::Currency::LUsdt)
         ) {
             self.inner
                 .get_submarine_pairs()
@@ -323,8 +323,8 @@ impl BoltzClient {
         let (to_chain, to_currency) = asset_from_boltz(&to, &network)?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
-            (kaleidoswap_sdk::network::Currency::LUsdt, _)
-                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+            (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidorg_swap_sdk::network::Currency::LUsdt)
         ) {
             self.inner
                 .get_reverse_pairs()
@@ -340,10 +340,10 @@ impl BoltzClient {
         // the payment hash from `preimage_hash` or, in the invoice form, from the
         // invoice itself. Never hand back an unvalidated response to fund.
         let preimage = if let Some(hash) = preimage_hash {
-            kaleidoswap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
+            kaleidorg_swap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
                 .map_err(core_err)?
         } else if let Some(inv) = &invoice {
-            kaleidoswap_sdk::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
+            kaleidorg_swap_sdk::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
         } else {
             return Err(JsValue::from_str(
                 "reverse swap request needs preimageHash or invoice",
@@ -383,8 +383,8 @@ impl BoltzClient {
         let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
-            (kaleidoswap_sdk::network::Currency::LUsdt, _)
-                | (_, kaleidoswap_sdk::network::Currency::LUsdt)
+            (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
+                | (_, kaleidorg_swap_sdk::network::Currency::LUsdt)
         ) {
             self.inner
                 .get_chain_pairs()
@@ -396,8 +396,8 @@ impl BoltzClient {
             None
         };
         let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
-            (kaleidoswap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
-            (_, kaleidoswap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
+            (kaleidorg_swap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
+            (_, kaleidorg_swap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
             _ => (None, None),
         };
         let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
@@ -503,24 +503,24 @@ impl BoltzClient {
 // `WasmSwapMasterKey.deriveSwapKey` (returns { publicKey, secretKey } hex).
 // ============================================================================
 
-use kaleidoswap_sdk::bitcoin::hex::DisplayHex as _;
-use kaleidoswap_sdk::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
-use kaleidoswap_sdk::bitcoin::PublicKey;
-use kaleidoswap_sdk::boltz::{
+use kaleidorg_swap_sdk::bitcoin::hex::DisplayHex as _;
+use kaleidorg_swap_sdk::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
+use kaleidorg_swap_sdk::bitcoin::PublicKey;
+use kaleidorg_swap_sdk::boltz::{
     ChainSwapDetails, CreateReverseResponse, CreateSubmarineResponse, Side,
 };
-use kaleidoswap_sdk::fees::Fee;
-use kaleidoswap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidoswap_sdk::network::Chain;
-use kaleidoswap_sdk::swaps::liquid::{
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidorg_swap_sdk::network::Chain;
+use kaleidorg_swap_sdk::swaps::liquid::{
     FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
 };
-use kaleidoswap_sdk::swaps::{
+use kaleidorg_swap_sdk::swaps::{
     BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
     LiquidPsetParams as CoreLiquidPsetParams, SwapScript as CoreSwapScript, SwapTransactionParams,
     TransactionOptions,
 };
-use kaleidoswap_sdk::util::secrets::Preimage as CorePreimage;
+use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
 use std::str::FromStr as _;
 
 fn build_chain(kind: &str, network: &str) -> Result<Chain, JsValue> {
@@ -603,8 +603,8 @@ impl TxParams {
             self.esplora_timeout_secs,
         )
     }
-    fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
-        kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
+    fn boltz(&self) -> kaleidorg_swap_sdk::boltz::BoltzApiClientV2 {
+        kaleidorg_swap_sdk::boltz::BoltzApiClientV2::new(
             self.boltz_base_url.clone(),
             self.boltz_timeout_secs.map(std::time::Duration::from_secs),
         )
@@ -641,8 +641,8 @@ impl LiquidPsetParams {
         )
     }
 
-    fn boltz(&self) -> kaleidoswap_sdk::boltz::BoltzApiClientV2 {
-        kaleidoswap_sdk::boltz::BoltzApiClientV2::new(
+    fn boltz(&self) -> kaleidorg_swap_sdk::boltz::BoltzApiClientV2 {
+        kaleidorg_swap_sdk::boltz::BoltzApiClientV2::new(
             self.boltz_base_url.clone(),
             self.boltz_timeout_secs.map(std::time::Duration::from_secs),
         )
@@ -903,10 +903,10 @@ impl BtcLikeTransaction {
     pub fn hex(&self) -> String {
         match &self.inner {
             CoreBtcLikeTransaction::Bitcoin(tx) => {
-                kaleidoswap_sdk::bitcoin::consensus::serialize(tx).to_lower_hex_string()
+                kaleidorg_swap_sdk::bitcoin::consensus::serialize(tx).to_lower_hex_string()
             }
             CoreBtcLikeTransaction::Liquid(tx) => {
-                kaleidoswap_sdk::elements::encode::serialize(tx).to_lower_hex_string()
+                kaleidorg_swap_sdk::elements::encode::serialize(tx).to_lower_hex_string()
             }
         }
     }
@@ -953,7 +953,7 @@ impl BtcLikeTransaction {
 // the same object while the loop is pending.
 // ============================================================================
 
-use kaleidoswap_sdk::boltz::{BoltzWsApi as CoreBoltzWsApi, BoltzWsConfig, SwapStatus};
+use kaleidorg_swap_sdk::boltz::{BoltzWsApi as CoreBoltzWsApi, BoltzWsConfig, SwapStatus};
 use tokio::sync::{broadcast, Mutex as TokioMutex};
 
 /// Boltz WebSocket status stream.

@@ -8,8 +8,8 @@ MANYLINUX_IMAGE ?= ghcr.io/pyo3/maturin@$(MANYLINUX_DIGEST)
 DOCKER_PLATFORM_ARG := $(if $(MANYLINUX_PLATFORM),--platform $(MANYLINUX_PLATFORM),)
 UNAME := $(shell uname)
 DYLIB_EXT := $(if $(filter Darwin,$(UNAME)),dylib,so)
-DYLIB := libkaleidoswap_sdk.$(DYLIB_EXT)
-PYTHON_NATIVE_DIR := python/kaleidoswap_sdk/kaleidoswap_sdk
+DYLIB := libkaleidorg_swap_sdk.$(DYLIB_EXT)
+PYTHON_NATIVE_DIR := python/kaleidorg_swap_sdk/kaleidorg_swap_sdk
 
 build-debug:
 	cargo build
@@ -21,8 +21,8 @@ build-debug:
 	cp scripts/uniffi-package-init.py $(PYTHON_NATIVE_DIR)/__init__.py
 
 generate-python-glue: build-debug
-	cp $(PYTHON_NATIVE_DIR)/kaleidoswap_sdk.py python/kaleidoswap_sdk/_generated_uniffi.py
-	cd python && uv run ruff format kaleidoswap_sdk/_generated_uniffi.py
+	cp $(PYTHON_NATIVE_DIR)/kaleidorg_swap_sdk.py python/kaleidorg_swap_sdk/_generated_uniffi.py
+	cd python && uv run ruff format kaleidorg_swap_sdk/_generated_uniffi.py
 	cd python && python3 scripts/prepare_uniffi_fallback.py
 
 build-release:

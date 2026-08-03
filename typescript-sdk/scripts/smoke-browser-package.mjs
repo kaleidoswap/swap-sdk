@@ -19,7 +19,7 @@ if (!suppliedTarball) {
 const tarballPath = isAbsolute(suppliedTarball)
   ? suppliedTarball
   : resolve(process.cwd(), suppliedTarball);
-const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-sdk-browser-"));
+const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-browser-"));
 const profileRoot = join(consumerRoot, "firefox-profile");
 const browserBin = process.env.BROWSER_BIN ?? "firefox";
 mkdirSync(profileRoot);

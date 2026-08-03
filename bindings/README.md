@@ -11,7 +11,7 @@ Uniffi bindings for the KaleidoSwap SDK (the Boltz-protocol swap engine).
 #### From PyPI
 
 ```bash
-pip install kaleidoswap_sdk
+pip install kaleidorg_swap_sdk
 ```
 
 #### From Source
@@ -32,7 +32,7 @@ pip install kaleidoswap_sdk
 3. **Install the wheel**
    ```bash
    cd python/dist
-   pip install kaleidoswap_sdk-*.whl
+   pip install kaleidorg_swap_sdk-*.whl
    ```
 
 ## Development
@@ -80,13 +80,13 @@ install the selected archive, and execute a native SDK operation.
 
 The build process generates:
 
-- `python/dist/kaleidoswap_sdk-*-<platform>.whl` - native wheel
-- `python/dist/kaleidoswap_sdk-*.tar.gz` - source distribution
+- `python/dist/kaleidorg_swap_sdk-*-<platform>.whl` - native wheel
+- `python/dist/kaleidorg_swap_sdk-*.tar.gz` - source distribution
 
 Maturin generates the UniFFI Python module and packages it with the native
-library under the `kaleidoswap_sdk` package. A platform-independent fallback of
+library under the `kaleidorg_swap_sdk` package. A platform-independent fallback of
 that generated Python glue is committed as
-`python/kaleidoswap_sdk/_generated_uniffi.py` and checked for drift. The package
+`python/kaleidorg_swap_sdk/_generated_uniffi.py` and checked for drift. The package
 imports it only if Maturin omits its own generated module during a manylinux or
 sdist build. Native libraries remain uncommitted build artifacts.
 

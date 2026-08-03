@@ -16,7 +16,7 @@ from pathlib import Path
 from release_metadata import LINUX_X86_64_WHEEL, npm_package, npm_tarball_name
 
 NPM_REGISTRY = "https://registry.npmjs.org"
-PYTHON_PACKAGE = "kaleidoswap_sdk"
+PYTHON_PACKAGE = "kaleidorg_swap_sdk"
 TEST_PYPI_REGISTRY = "https://test.pypi.org/pypi"
 
 

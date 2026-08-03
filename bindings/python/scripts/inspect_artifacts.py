@@ -60,7 +60,7 @@ def inspect_wheel(path: Path) -> None:
             )
 
     require(
-        "kaleidoswap_sdk/_generated_uniffi.py" in names,
+        "kaleidorg_swap_sdk/_generated_uniffi.py" in names,
         f"{path.name} is missing the package-local UniFFI fallback",
     )
     require(
@@ -92,7 +92,7 @@ def inspect_sdist(path: Path) -> None:
         "/LICENSE",
         "/bindings/Cargo.toml",
         "/bindings/uniffi.toml",
-        "/kaleidoswap_sdk/_generated_uniffi.py",
+        "/kaleidorg_swap_sdk/_generated_uniffi.py",
         "/macros/Cargo.toml",
         "/pyproject.toml",
     )

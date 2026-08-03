@@ -1,3 +1,3 @@
 """Generated UniFFI module package."""
 
-from .kaleidoswap_sdk import *  # noqa: F403
+from .kaleidorg_swap_sdk import *  # noqa: F403

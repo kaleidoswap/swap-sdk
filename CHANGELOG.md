@@ -49,6 +49,28 @@ protocol only**, pointed at **our** maker.
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.
 
+### Changed — package identity migrated to `kaleidorg`
+
+Every published surface now shares one identity, at `0.1.0`:
+
+| Surface | Was | Now |
+| --- | --- | --- |
+| Rust crate | `kaleidoswap-sdk` | `kaleidorg-swap-sdk` |
+| Rust lib / Python import | `kaleidoswap_sdk` | `kaleidorg_swap_sdk` |
+| Proc-macro crate | `kaleidoswap-sdk-macros` | `kaleidorg-swap-sdk-macros` |
+| Python distribution | `kaleidoswap_sdk` | `kaleidorg_swap_sdk` |
+| npm package | `@kaleidoswap/sdk` | `@kaleidorg/swap-sdk` |
+
+The native library basename follows (`libkaleidoswap_sdk.*` →
+`libkaleidorg_swap_sdk.*`), as does `uniffi.toml`'s `cdylib_name`. The GitHub
+repository is **not** renamed, so `repository`/`homepage` URLs are unchanged.
+
+This also **clears the public PyPI blocker**. The old normalized project
+`kaleidoswap-sdk` already holds `0.1.0`–`0.5.6`, which is why production PyPI
+publishing was hardcoded off; `kaleidorg-swap-sdk` is unclaimed, so `0.1.0` is
+publishable under the new name. Publishing stays disabled by configuration
+pending a trusted publisher, but it is now a decision rather than a constraint.
+
 ### Breaking — TypeScript `init()` signature
 
 `init(input?)` narrowed from `Parameters<typeof initWasm>[0]` to

@@ -8,11 +8,11 @@ use bitcoin::{Amount, OutPoint, TxOut};
 use bitcoind::bitcoincore_rpc::json::{AddressType, ScanTxOutRequest};
 use bitcoind::bitcoincore_rpc::RpcApi;
 use elements::Address;
-use kaleidoswap_sdk::boltz::{SwapTxKind, SwapType};
-use kaleidoswap_sdk::fees::Fee;
-use kaleidoswap_sdk::network::{BitcoinChain, LiquidChain};
-use kaleidoswap_sdk::util::secrets::Preimage;
-use kaleidoswap_sdk::{BtcSwapScript, BtcSwapTx, LiquidSwapScript, LiquidSwapTx};
+use kaleidorg_swap_sdk::boltz::{SwapTxKind, SwapType};
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::{BitcoinChain, LiquidChain};
+use kaleidorg_swap_sdk::util::secrets::Preimage;
+use kaleidorg_swap_sdk::{BtcSwapScript, BtcSwapTx, LiquidSwapScript, LiquidSwapTx};
 
 mod test_framework;
 use test_framework::{BtcTestFramework, LbtcTestFramework};

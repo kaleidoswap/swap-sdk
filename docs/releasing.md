@@ -4,12 +4,12 @@ The Rust crate, Python distribution, and npm package use one public version.
 The first release line for this repository is `0.1.0`, and stable release tags
 use the form `vX.Y.Z`.
 
-The public package names remain unchanged:
+The public package names, migrated to the `kaleidorg` identity:
 
-- Rust crate: `kaleidoswap-sdk`
-- Python distribution: `kaleidoswap_sdk` (normalized by PyPI to
-  `kaleidoswap-sdk`)
-- Python import: `kaleidoswap_sdk`
+- Rust crate: `kaleidorg-swap-sdk`
+- Python distribution: `kaleidorg_swap_sdk` (normalized by PyPI to
+  `kaleidorg-swap-sdk`)
+- Python import: `kaleidorg_swap_sdk`
 - npm package: `@kaleidorg/swap-sdk`
 
 ## Version commands
@@ -133,7 +133,7 @@ binding, or TypeScript packaging inputs change. After this workflow exists on
 
 ```sh
 gh workflow run release-rehearsal.yaml \
-  --repo kaleidoswap/kaleidoswap-sdk \
+  --repo kaleidoswap/kaleidorg-swap-sdk \
   --ref trunk \
   -f failure_case=none
 ```
@@ -151,7 +151,7 @@ For example:
 
 ```sh
 gh workflow run release-rehearsal.yaml \
-  --repo kaleidoswap/kaleidoswap-sdk \
+  --repo kaleidoswap/kaleidorg-swap-sdk \
   --ref trunk \
   -f failure_case=missing-wheel
 ```
@@ -184,7 +184,7 @@ must open **Settings → Environments → release**, clear **Allow administrator
 to bypass configured protection rules**, save, and verify:
 
 ```sh
-gh api repos/kaleidoswap/kaleidoswap-sdk/environments/release \
+gh api repos/kaleidoswap/kaleidorg-swap-sdk/environments/release \
   --jq '.can_admins_bypass'
 ```
 
@@ -210,14 +210,14 @@ exactly.
 
 ### TestPyPI
 
-`kaleidoswap-sdk` is currently absent from TestPyPI, so a project owner can add
+`kaleidorg-swap-sdk` is currently absent from TestPyPI, so a project owner can add
 a pending GitHub Actions publisher without uploading a bootstrap package:
 
 | Field | Value |
 |---|---|
-| PyPI project name | `kaleidoswap-sdk` |
+| PyPI project name | `kaleidorg-swap-sdk` |
 | GitHub owner | `kaleidoswap` |
-| Repository | `kaleidoswap-sdk` |
+| Repository | `kaleidorg-swap-sdk` |
 | Workflow filename | `release.yaml` |
 | Environment | `release` |
 
@@ -226,7 +226,7 @@ variable:
 
 ```sh
 gh variable set TEST_PYPI_PUBLISH_ENABLED \
-  --repo kaleidoswap/kaleidoswap-sdk \
+  --repo kaleidoswap/kaleidorg-swap-sdk \
   --body true
 ```
 
@@ -252,7 +252,7 @@ The package owner must:
    | Field | Value |
    |---|---|
    | Organization or user | `kaleidoswap` |
-   | Repository | `kaleidoswap-sdk` |
+   | Repository | `kaleidorg-swap-sdk` |
    | Workflow filename | `release.yaml` |
    | Environment | `release` |
    | Allowed action | `npm publish` |
@@ -279,7 +279,7 @@ release pull request has merged to `trunk`.
    ```
 
 2. Confirm `@kaleidorg/swap-sdk@0.1.0` and
-   `kaleidoswap_sdk==0.1.0` are still absent from npm and TestPyPI:
+   `kaleidorg_swap_sdk==0.1.0` are still absent from npm and TestPyPI:
 
    ```sh
    NPM_PUBLISH_ENABLED=false \
@@ -314,7 +314,7 @@ release pull request has merged to `trunk`.
    ```sh
    mkdir release-v0.1.0
    gh release download v0.1.0 \
-     --repo kaleidoswap/kaleidoswap-sdk \
+     --repo kaleidoswap/kaleidorg-swap-sdk \
      --dir release-v0.1.0
    python3 scripts/verify_release_bundle.py release-v0.1.0 \
      --version 0.1.0 \
@@ -359,33 +359,36 @@ publisher succeeds and another fails:
 
    ```sh
    gh run download <run-id> \
-     --repo kaleidoswap/kaleidoswap-sdk \
+     --repo kaleidoswap/kaleidorg-swap-sdk \
      --name "release-bundle-v0.1.0" \
      --dir release-v0.1.0
    python3 scripts/verify_release_bundle.py release-v0.1.0 \
      --version 0.1.0 --tag v0.1.0 \
      --commit "$(git rev-list -n 1 v0.1.0)"
    gh release create v0.1.0 release-v0.1.0/* \
-     --repo kaleidoswap/kaleidoswap-sdk \
+     --repo kaleidoswap/kaleidorg-swap-sdk \
      --title "KaleidoSwap SDK v0.1.0" \
      --verify-tag --latest \
      --notes-file <(python3 scripts/release_notes.py 0.1.0)
    ```
 
-## Public PyPI blocker
+## Python registry
 
-The normalized PyPI project name `kaleidoswap-sdk` already contains releases
-from `0.1.0` through `0.5.6`. PyPI package versions and uploaded filenames
-cannot be safely reused. In particular, uploading platform wheels to the old
-`0.1.0` release would mix the new native package with the old universal wheel.
+The previous distribution name `kaleidoswap_sdk` collided with an existing
+public PyPI project: normalized to `kaleidoswap-sdk`, it already holds releases
+`0.1.0` through `0.5.6`, whose versions and uploaded filenames cannot be safely
+reused. Uploading platform wheels to that old `0.1.0` would have mixed the new
+native package with the old universal wheel.
 
-Therefore public PyPI publishing must remain disabled while both of these
-requirements are in force:
+Renaming the distribution to `kaleidorg_swap_sdk` removes that constraint.
+`kaleidorg-swap-sdk` is unclaimed on PyPI, so `0.1.0` is publishable under the
+new name.
 
-1. Keep the Python distribution name `kaleidoswap_sdk`.
-2. Start the new release line at `0.1.0`.
-
-The Python `0.1.0` artifact can be tested locally, on TestPyPI, or in a private
-registry. Enabling production PyPI requires either selecting a new distribution
-name or continuing the existing name above `0.5.6`. This restriction does not
-affect the Rust version, GitHub release, or `@kaleidorg/swap-sdk@0.1.0` on npm.
+Public PyPI publishing nevertheless remains **disabled by configuration**:
+`PYPI_PUBLISH_ENABLED` is `"false"` in the release workflows and asserted in the
+registry-completion gate. That is now a deliberate choice pending a trusted
+publisher and an explicit decision to publish, not a technical blocker. Until
+it is enabled, the Python artifact is validated locally, on TestPyPI, or in a
+private registry. Enabling it requires the same bootstrap as npm: create the
+PyPI project, configure its trusted publisher for this repository, and flip the
+flag.

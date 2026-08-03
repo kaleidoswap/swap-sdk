@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-PYTHON_DISTRIBUTION = "kaleidoswap_sdk"
+PYTHON_DISTRIBUTION = "kaleidorg_swap_sdk"
 
 # Label -> filename matcher. This is the single definition of the release's
 # platform inventory; both the wheel-count check and the Linux-wheel selection

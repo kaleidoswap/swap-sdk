@@ -18,7 +18,7 @@ pub use lightning_invoice;
 pub use lnurl;
 pub use reqwest;
 
-// Re-export relevant structs under kaleidoswap_sdk::StructName for simplicity
+// Re-export relevant structs under kaleidorg_swap_sdk::StructName for simplicity
 pub use bitcoin::{
     blockdata::locktime::absolute::LockTime,
     hashes::hash160::Hash,
