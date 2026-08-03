@@ -42,6 +42,10 @@ env:
   MATURIN_VERSION: "1.14.1"
   NODE_VERSION: "22.23.1"
   NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}
+  # Read from the environment by scripts/check_registry_availability.py,
+  # which requires it to be explicitly true or false. It has no textual
+  # reference in this file, so do not mistake it for a dead declaration.
+  PYPI_PUBLISH_ENABLED: "false"
   PYTHON_VERSION: "3.11.9"
   REHEARSAL: ${{ inputs.rehearsal && 'true' || 'false' }}
   RELEASE_ID: ${{ inputs.rehearsal && format('rehearsal-{0}', github.run_id) || github.ref_name }}

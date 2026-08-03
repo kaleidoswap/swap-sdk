@@ -52,6 +52,14 @@ BUILD_REQUIRED = (
     "release.spdx.json",
 )
 
+# Read from the environment by scripts/check_registry_availability.py. Every
+# workflow that invokes it must declare all three.
+REGISTRY_FLAGS = (
+    "NPM_PUBLISH_ENABLED",
+    "PYPI_PUBLISH_ENABLED",
+    "TEST_PYPI_PUBLISH_ENABLED",
+)
+
 REHEARSAL_FAILURE_CASES = {
     "malformed-tag",
     "missing-wheel",
@@ -87,6 +95,30 @@ def validate(
 
     require_snippets(contents, PRODUCTION_REQUIRED, "production release")
     require_snippets(build_contents, BUILD_REQUIRED, "release build")
+
+    # check_registry_availability.py reads these three from the process
+    # environment and refuses to run unless each is explicitly true or false.
+    # They have no textual reference in the workflows that invoke it, so a
+    # "clean up the unused env var" edit removes them without any local gate
+    # noticing — the failure only appears once preflight runs in CI.
+    for label, workflow in (
+        ("production release", contents),
+        ("release build", build_contents),
+    ):
+        if "check_registry_availability.py" not in workflow:
+            continue
+        # Anchor to the start of the YAML key: a bare substring test would let
+        # TEST_PYPI_PUBLISH_ENABLED satisfy PYPI_PUBLISH_ENABLED.
+        undeclared = [
+            flag_name
+            for flag_name in REGISTRY_FLAGS
+            if not re.search(rf"^\s*{flag_name}:", workflow, re.MULTILINE)
+        ]
+        if undeclared:
+            raise ValueError(
+                f"{label} workflow runs check_registry_availability.py but does "
+                f"not declare the flags it reads from the environment: {undeclared}"
+            )
     combined = contents + build_contents + rehearsal_contents
     if "--skip-existing" in combined:
         raise ValueError("release workflows must never skip an existing version")
