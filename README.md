@@ -329,6 +329,14 @@ This repository is a fork of [boltz-rust](https://github.com/SatoshiPortal/boltz
 developed and maintained by Bull Bitcoin (www.bullbitcoin.com) — the swap engine
 at the core of this SDK is their work (MIT licensed).
 
+Upstream declares MIT in its `Cargo.toml` but ships no `LICENSE` file and no
+copyright notice, so there is no upstream notice to reproduce verbatim. Our
+[`LICENSE`](LICENSE) therefore records the attribution on their behalf, as a
+stacked copyright line covering the boltz-rust contributors alongside
+KaleidoSwap. The year span is derived from the upstream commits carried in this
+repository's history; the authoritative contributor list is the upstream
+repository itself.
+
 Special thanks (from the upstream project) to:
 
 - [michael1011](https://github.com/michael1011) for guidance on implementation and swaps

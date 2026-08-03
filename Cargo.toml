@@ -2,8 +2,15 @@
 name = "kaleidoswap-sdk"
 description = "KaleidoSwap swap SDK — client-side Boltz-protocol atomic swaps across Bitcoin, Lightning, and Liquid"
 # Fork of boltz-rust (SatoshiPortal) — the swap engine is their work (MIT);
-# see README for provenance and acknowledgments.
-authors = ["KaleidoSwap <info@kaleidoswap.com>"]
+# see README for provenance and acknowledgments. Upstream ships no LICENSE
+# file, so its MIT grant and authorship live only in its Cargo.toml; the
+# original authors are kept here and in LICENSE so the notice travels with
+# every published artifact.
+authors = [
+    "KaleidoSwap <info@kaleidoswap.com>",
+    "i5hi <ishi@satoshiportal.com>",
+    "Rajarshi Maitra <raj@bitshala.org>",
+]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
