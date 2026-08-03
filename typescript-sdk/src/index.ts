@@ -240,7 +240,15 @@ export interface DerivedPreimage {
   hash160: string;
 }
 
-export type Network = "mainnet" | "testnet" | "regtest";
+/**
+ * `"signet"` is the KaleidoSwap maker's network. It settles on Mutinynet, so
+ * pair it with Mutinynet chain access (`https://mutinynet.com/api`), never a
+ * testnet3 endpoint: signet and testnet3 encode addresses identically, so the
+ * mismatch raises no error — swaps are simply created on one chain and funded
+ * or watched on another. `"testnet"` is testnet3 (KaleidoSwap runs no testnet3
+ * maker).
+ */
+export type Network = "mainnet" | "testnet" | "signet" | "regtest";
 
 /** Client-side swap key derivation (BIP85 index 26589 over a wallet mnemonic). */
 export class SwapMasterKey {

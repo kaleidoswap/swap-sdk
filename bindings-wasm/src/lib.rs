@@ -186,7 +186,7 @@ fn asset_from_boltz(
 #[cfg(test)]
 mod boltz_asset_tests {
     use super::*;
-    use kaleidoswap_sdk::network::{Chain, Currency, LiquidChain};
+    use kaleidoswap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
 
     #[test]
     fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
@@ -194,6 +194,21 @@ mod boltz_asset_tests {
 
         assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidRegtest));
         assert_eq!(currency, Currency::LUsdt);
+    }
+
+    /// `"signet"` must parse (it is the KaleidoSwap maker's network) and fan out
+    /// to signet chain access — never testnet3, which encodes addresses
+    /// identically and so mismatches without erroring.
+    #[test]
+    fn signet_resolves_to_signet_chain() {
+        let (chain, currency) = asset_from_boltz("BTC", "signet").unwrap();
+
+        assert_eq!(chain, Chain::Bitcoin(BitcoinChain::BitcoinSignet));
+        assert_eq!(currency, Currency::Btc);
+
+        // Liquid has no signet, so the L-BTC side pairs with Liquid testnet.
+        let (chain, _) = asset_from_boltz("L-BTC", "signet").unwrap();
+        assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidTestnet));
     }
 }
 

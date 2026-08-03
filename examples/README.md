@@ -101,7 +101,7 @@ prevouts, or confidentiality downgrades.
 | Variable | Default | Meaning |
 |---|---:|---|
 | `KALEIDO_MAKER_URL` | `http://localhost:9001/v2` | Maker v2 REST base URL |
-| `KALEIDO_NETWORK` | `regtest` | `mainnet`, `testnet`, or `regtest` |
+| `KALEIDO_NETWORK` | `regtest` | `mainnet`, `testnet`, `signet` (the KaleidoSwap maker), or `regtest` |
 | `KALEIDO_SWAP_INDEX` | `0` | Unique child index for this swap |
 | `KALEIDO_WAIT_TIMEOUT_SECS` | `3600` | Status/file wait timeout |
 

@@ -31,7 +31,12 @@ protocol only**, pointed at **our** maker.
   `https://mutinynet.com/api`) and, on the Liquid side, to `LiquidTestnet`.
   `ElectrumBitcoinClient::default` **errors** for signet: Mutinynet publishes
   no public Electrum server, and a vanilla-signet server would silently serve a
-  different chain. `parse_network` accepts `"signet"` in the wasm bindings.
+  different chain. `parse_network` accepts `"signet"` in the wasm bindings, and
+  the TypeScript `Network` union gains `"signet"`.
+  **Binding consumers must regenerate**, not just recompile: the new enum
+  variants extend the UniFFI wire surface. They are appended, so existing
+  variant indices keep their meaning, but a generated module older than the
+  library will not know `SIGNET`/`BITCOIN_SIGNET` exists.
 - **Identity**: crate/wheel version `0.4.1` → `0.1.0`, KaleidoSwap
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.
