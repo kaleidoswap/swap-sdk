@@ -30,7 +30,11 @@ protocol only**, pointed at **our** maker.
   without a separate variant a signet maker paired with testnet3 chain access
   produced no error — just swaps funded and watched on the wrong chain.
   `Network::Signet` now maps to `BitcoinChain::BitcoinSignet` (Esplora default
-  `https://mutinynet.com/api`) and, on the Liquid side, to `LiquidTestnet`.
+  `https://esplora.signet.kaleidoswap.com`, KaleidoSwap's own index of the
+  maker's chain — note the API is at the root, not under `/api`) and, on the
+  Liquid side, to `LiquidTestnet`. Signet is therefore fully first-party: maker
+  *and* chain access. Mainnet/testnet3 chain defaults stay public explorers, and
+  Liquid has no KaleidoSwap explorer yet.
   `ElectrumBitcoinClient::default` **errors** for signet: Mutinynet publishes
   no public Electrum server, and a vanilla-signet server would silently serve a
   different chain. `parse_network` accepts `"signet"` in the wasm bindings, and

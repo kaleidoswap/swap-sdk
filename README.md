@@ -12,17 +12,22 @@ an explicit base URL.
 
 | `Network` | Default maker | Bitcoin chain access |
 | --- | --- | --- |
-| `Signet` | KaleidoSwap — `maker.signet.kaleidoswap.com/v2` | `BitcoinSignet` → Mutinynet (`mutinynet.com/api`) |
+| `Signet` | KaleidoSwap — `maker.signet.kaleidoswap.com/v2` | KaleidoSwap — `esplora.signet.kaleidoswap.com` (Mutinynet) |
 | `Regtest` | local harness — `localhost:9001/v2` | `BitcoinRegtest` → local |
-| `Testnet` | **errors** — no KaleidoSwap testnet3 maker; use `Signet` | `BitcoinTestnet` → testnet3 |
-| `Mainnet` | **errors** — no mainnet maker yet | `Bitcoin` |
+| `Testnet` | **errors** — no KaleidoSwap testnet3 maker; use `Signet` | Blockstream — `blockstream.info/testnet/api` |
+| `Mainnet` | **errors** — no mainnet maker yet | Blockstream — `blockstream.info/api` |
 
 `BoltzApiClientV2::default` only ever returns a KaleidoSwap maker. On a network
 we run no maker on it errors instead of falling back to a third party, so a
 default can never put your swap in front of a counterparty you did not choose.
 Other makers stay reachable by name — pass an explicit base URL to
 `BoltzApiClientV2::new` (`BOLTZ_TESTNET_URL_V2` / `BOLTZ_MAINNET_URL_V2` for
-Boltz). **Signet is our testing network.**
+Boltz). **Signet is our testing network**, and on it both defaults — maker and
+chain access — are KaleidoSwap infrastructure. Mainnet and testnet3 chain
+defaults remain public explorers, which is only reachable once you have named a
+third-party maker explicitly anyway; pass your own URL to
+`EsploraBitcoinClient::new` to avoid them. Liquid chain access has no KaleidoSwap
+explorer yet and defaults to Blockstream.
 
 The KaleidoSwap maker settles on **Mutinynet**, a custom signet. Signet and
 testnet3 share an address encoding, so mixing a signet maker with testnet3

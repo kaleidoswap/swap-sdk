@@ -242,7 +242,8 @@ export interface DerivedPreimage {
 
 /**
  * `"signet"` is the KaleidoSwap maker's network. It settles on Mutinynet, so
- * pair it with Mutinynet chain access (`https://mutinynet.com/api`), never a
+ * pair it with Mutinynet chain access
+ * (`https://esplora.signet.kaleidoswap.com`, our own Esplora), never a
  * testnet3 endpoint: signet and testnet3 encode addresses identically, so the
  * mismatch raises no error — swaps are simply created on one chain and funded
  * or watched on another. `"testnet"` is testnet3, usable as a chain identity but
