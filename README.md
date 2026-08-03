@@ -56,7 +56,7 @@ the KaleidoSwap layers are built on top of it.
 | Surface | Install | Supported v0.1.x runtime |
 |---|---|---|
 | Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
-| Python | Install a release wheel from GitHub or the enabled TestPyPI/private registry | Python 3.10+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
+| Python | `pip install kaleidorg_swap_sdk==0.1.0` once PyPI publishing is enabled, otherwise a release wheel from GitHub | Python 3.10+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
 | TypeScript | `npm install @kaleidorg/swap-sdk@0.1.0` | Browser-first; Node 22+ with explicit packaged WASM bytes |
 
 The distribution rename to `kaleidorg_swap_sdk` cleared the public PyPI
@@ -113,8 +113,8 @@ that environment's required review; a token is unreachable from any other job,
 and the read-only build and rehearsal graph may not reference one at all.
 Job-scoped `id-token: write` is retained so npm provenance and PyPI attestations
 are still signed with the workflow's OIDC identity. A
-production tag requires npm publishing to be explicitly enabled, while
-TestPyPI remains optional. Every enabled registry package is downloaded again,
+production tag requires npm publishing to be explicitly enabled; PyPI is
+independently gated. Every enabled registry package is downloaded again,
 hash-matched to the sealed manifest, and clean-consumer tested before CI
 publishes the final GitHub release. Public PyPI publishing is currently
 disabled by configuration, not by a name collision - see the note above. See

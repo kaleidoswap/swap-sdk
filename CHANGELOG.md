@@ -138,7 +138,7 @@ flag still defaults off, so a tag fails closed until it is set deliberately.
 - Coordinate tag releases through one immutable bundle containing five native
   Python wheels, one source distribution, and one npm tarball, plus checksums,
   a release manifest, and an SPDX artifact SBOM.
-- Publish npm, PyPI, and optional TestPyPI artifacts behind the protected
+- Publish npm and PyPI artifacts behind the protected
   `release` environment; see the token note above for how they authenticate.
 - Exercise the exact production artifact graph in a read-only rehearsal,
   including clean Node and Firefox consumers and deliberate preflight, npm, and

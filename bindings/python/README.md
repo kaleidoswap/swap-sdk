@@ -11,15 +11,10 @@ platform wheel attached to the GitHub `v0.1.0` release:
 python -m pip install ./kaleidorg_swap_sdk-0.1.0-<platform>.whl
 ```
 
-If the optional TestPyPI release is enabled, download this package from
-TestPyPI without dependency resolution, then install that exact file so runtime
-dependencies resolve from the normal index:
+Once PyPI publishing is enabled for a release, the ordinary index works:
 
 ```bash
-python -m pip download --no-deps \
-  --index-url https://test.pypi.org/simple/ \
-  kaleidorg_swap_sdk==0.1.0
-python -m pip install ./kaleidorg_swap_sdk-0.1.0-<platform>.whl
+python -m pip install kaleidorg_swap_sdk==0.1.0
 ```
 
 Python 3.10+ is supported on Linux x86_64/aarch64, macOS x86_64/arm64, and

@@ -60,15 +60,15 @@ complete inventory, repeats clean-install smoke tests, and generates checksums
 and release metadata. Registry jobs can only download the resulting validated
 bundle; they never check out source or rebuild a package.
 
-The two repository variables below control the available OIDC publishers:
+The two repository variables below control the available publishers:
 
 | Variable | Registry | Default |
 |---|---|---|
 | `NPM_PUBLISH_ENABLED` | npm | `false` |
-| `TEST_PYPI_PUBLISH_ENABLED` | TestPyPI | `false` |
+| `PYPI_PUBLISH_ENABLED` | PyPI | `false` |
 
 An absent variable behaves as `false`. Set a variable to `true` only after its
-registry-side trusted publisher has been configured and independently reviewed.
+API token is present on the `release` environment and independently reviewed.
 The workflow rejects any value other than the literal `true` or `false`.
 Production `PYPI_PUBLISH_ENABLED` is hardcoded to `false` and is not a
 repository variable.
@@ -93,13 +93,13 @@ Before publishing, the npm job runs `npm whoami` to prove the credential
 authenticates. An npm publish cannot be cleanly undone, so a bad token must fail
 on a read-only call rather than half-way through the release.
 
-The npm job pins an OIDC-capable npm CLI and publishes the validated `.tgz`.
-npm automatically emits provenance for a public package from this public
-repository. The TestPyPI job uses the immutable-pinned PyPA publisher action and
-uploads attestations with the exact wheels and sdist.
+The npm job pins the npm CLI, proves its credential with `npm whoami`, then
+publishes the validated `.tgz`. npm emits provenance for a public package from
+this public repository. The PyPI job uses the immutable-pinned PyPA publisher
+action and uploads attestations with the exact wheels and sdist.
 
 Production activation requires npm publishing to be enabled; a production tag
-cannot create a GitHub-only release. TestPyPI remains optional. After each
+cannot create a GitHub-only release. PyPI is independently gated. After each
 enabled publisher succeeds, a separate read-only job downloads the registry
 package, matches its bytes and complete inventory against
 `release-manifest.json`, and repeats clean-consumer smoke tests. The final
@@ -143,7 +143,7 @@ binding, or TypeScript packaging inputs change. After this workflow exists on
 
 ```sh
 gh workflow run release-rehearsal.yaml \
-  --repo kaleidoswap/kaleidorg-swap-sdk \
+  --repo kaleidoswap/kaleidoswap-sdk \
   --ref trunk \
   -f failure_case=none
 ```
@@ -161,7 +161,7 @@ For example:
 
 ```sh
 gh workflow run release-rehearsal.yaml \
-  --repo kaleidoswap/kaleidorg-swap-sdk \
+  --repo kaleidoswap/kaleidoswap-sdk \
   --ref trunk \
   -f failure_case=missing-wheel
 ```
@@ -173,10 +173,9 @@ Do not rerun a deliberate failure as though it were an infrastructure failure.
 
 For a successful run, download the `release-bundle-rehearsal-*` artifact and
 retain it with the workflow URL. Its manifest binds every filename and SHA-256
-to the rehearsed source commit and intended tag. Publication rehearsal on
-TestPyPI remains optional because the exact wheels and sdist are already
-clean-installed from the workflow bundle; actual TestPyPI publication requires
-the pending trusted publisher described below.
+to the rehearsed source commit and intended tag. The rehearsal never publishes:
+the exact wheels and sdist are already clean-installed from the workflow bundle,
+and no registry credential is reachable from the rehearsal graph.
 
 ## Protected GitHub release boundary
 
@@ -194,7 +193,7 @@ must open **Settings → Environments → release**, clear **Allow administrator
 to bypass configured protection rules**, save, and verify:
 
 ```sh
-gh api repos/kaleidoswap/kaleidorg-swap-sdk/environments/release \
+gh api repos/kaleidoswap/kaleidoswap-sdk/environments/release \
   --jq '.can_admins_bypass'
 ```
 
@@ -218,31 +217,6 @@ Trusted-publisher configuration is registry-side state and cannot be committed
 to this repository. The identity fields are case-sensitive and must match
 exactly.
 
-### TestPyPI
-
-`kaleidorg-swap-sdk` is currently absent from TestPyPI, so a project owner can add
-a pending GitHub Actions publisher without uploading a bootstrap package:
-
-| Field | Value |
-|---|---|
-| PyPI project name | `kaleidorg-swap-sdk` |
-| GitHub owner | `kaleidoswap` |
-| Repository | `kaleidorg-swap-sdk` |
-| Workflow filename | `release.yaml` |
-| Environment | `release` |
-
-After a second maintainer verifies the pending publisher, set the repository
-variable:
-
-```sh
-gh variable set TEST_PYPI_PUBLISH_ENABLED \
-  --repo kaleidoswap/kaleidorg-swap-sdk \
-  --body true
-```
-
-The first successful OIDC upload creates the TestPyPI project and converts the
-pending publisher into a normal publisher.
-
 ### npm
 
 `@kaleidorg/swap-sdk` is currently absent from npm. npm exposes trusted-publisher
@@ -262,7 +236,7 @@ The package owner must:
    | Field | Value |
    |---|---|
    | Organization or user | `kaleidoswap` |
-   | Repository | `kaleidorg-swap-sdk` |
+   | Repository | `kaleidoswap-sdk` |
    | Workflow filename | `release.yaml` |
    | Environment | `release` |
    | Allowed action | `npm publish` |
@@ -289,24 +263,24 @@ release pull request has merged to `trunk`.
    ```
 
 2. Confirm `@kaleidorg/swap-sdk@0.1.0` and
-   `kaleidorg_swap_sdk==0.1.0` are still absent from npm and TestPyPI:
+   `kaleidorg_swap_sdk==0.1.0` are still absent from npm and PyPI:
 
    ```sh
    NPM_PUBLISH_ENABLED=false \
    PYPI_PUBLISH_ENABLED=false \
-   TEST_PYPI_PUBLISH_ENABLED=false \
-   python3 scripts/check_registry_availability.py 0.1.0 --check-test-pypi
+   python3 scripts/check_registry_availability.py 0.1.0 --check-pypi
    ```
 
 3. Confirm `trunk` branch protection, the active `Protect release tags`
    ruleset, the `v*` release-environment policy, required reviewers, and
    `can_admins_bypass: false`.
-4. Have a second maintainer verify the npm trusted-publisher fields. Set
+4. Have a second maintainer confirm `NPM_TOKEN` is present on the `release`
+   environment and scoped to publish `@kaleidorg/swap-sdk`. Set
    `NPM_PUBLISH_ENABLED=true`; production activation deliberately fails while
    this variable is false.
-5. If the TestPyPI pending publisher is configured and reviewed, set
-   `TEST_PYPI_PUBLISH_ENABLED=true`. Otherwise leave it `false`; public PyPI
-   remains hardcoded off.
+5. To publish Python, confirm `PYPI_TOKEN` is present on the `release`
+   environment and set `PYPI_PUBLISH_ENABLED=true`. Otherwise leave it `false`
+   and the Python artifacts ship only as GitHub release assets.
 6. Have an administrator create and push the annotated tag:
 
    ```sh
@@ -324,7 +298,7 @@ release pull request has merged to `trunk`.
    ```sh
    mkdir release-v0.1.0
    gh release download v0.1.0 \
-     --repo kaleidoswap/kaleidorg-swap-sdk \
+     --repo kaleidoswap/kaleidoswap-sdk \
      --dir release-v0.1.0
    python3 scripts/verify_release_bundle.py release-v0.1.0 \
      --version 0.1.0 \
@@ -353,9 +327,10 @@ publisher succeeds and another fails:
    rerun *all* jobs: the build jobs would try to re-upload artifact names that
    already exist and fail, which is the intended protection against silently
    rebuilding a published version.
-5. If TestPyPI accepted only part of the Python file set, remove that incomplete
-   TestPyPI release through its project controls before rerunning failed jobs.
-   Never mix files from separate workflow attempts.
+5. If PyPI accepted only part of the Python file set, that version is spent:
+   PyPI does not allow re-uploading a filename, and yanking does not free it.
+   Prepare a coordinated patch version rather than attempting to complete the
+   partial upload, and never mix files from separate workflow attempts.
 6. If npm accepted the tarball, treat that version as immutable. Complete only
    the missing registry from the same validated bundle or prepare a coordinated
    patch release; never rebuild or overwrite the npm version.
@@ -369,14 +344,14 @@ publisher succeeds and another fails:
 
    ```sh
    gh run download <run-id> \
-     --repo kaleidoswap/kaleidorg-swap-sdk \
+     --repo kaleidoswap/kaleidoswap-sdk \
      --name "release-bundle-v0.1.0" \
      --dir release-v0.1.0
    python3 scripts/verify_release_bundle.py release-v0.1.0 \
      --version 0.1.0 --tag v0.1.0 \
      --commit "$(git rev-list -n 1 v0.1.0)"
    gh release create v0.1.0 release-v0.1.0/* \
-     --repo kaleidoswap/kaleidorg-swap-sdk \
+     --repo kaleidoswap/kaleidoswap-sdk \
      --title "KaleidoSwap SDK v0.1.0" \
      --verify-tag --latest \
      --notes-file <(python3 scripts/release_notes.py 0.1.0)
@@ -418,11 +393,12 @@ Renaming the distribution to `kaleidorg_swap_sdk` removes that constraint.
 `kaleidorg-swap-sdk` is unclaimed on PyPI, so `0.1.0` is publishable under the
 new name.
 
-Public PyPI publishing nevertheless remains **disabled by configuration**:
-`PYPI_PUBLISH_ENABLED` is `"false"` in the release workflows and asserted in the
-registry-completion gate. That is now a deliberate choice pending a trusted
-publisher and an explicit decision to publish, not a technical blocker. Until
-it is enabled, the Python artifact is validated locally, on TestPyPI, or in a
-private registry. Enabling it requires the same bootstrap as npm: create the
-PyPI project, configure its trusted publisher for this repository, and flip the
-flag.
+Public PyPI publishing defaults to **off**: `PYPI_PUBLISH_ENABLED` is absent or
+`false`, and the registry-completion gate requires the publish and verify jobs to
+be `skipped` in that case. Enabling it needs only the `PYPI_TOKEN` secret on the
+`release` environment and the variable set to `true`. Until then the Python
+artifacts are validated in CI and shipped as GitHub release assets.
+
+A PyPI upload is effectively permanent: a filename cannot be re-uploaded and a
+yank does not free the version. Treat enabling this flag as a one-way door for
+the version being released.

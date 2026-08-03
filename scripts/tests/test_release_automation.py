@@ -49,12 +49,12 @@ class RegistryAvailabilityTests(unittest.TestCase):
     def test_python_json_api_url_has_json_suffix(self) -> None:
         self.assertEqual(
             registry.version_url(
-                "https://test.pypi.org/pypi",
+                "https://pypi.org/pypi",
                 "kaleidorg_swap_sdk",
                 "0.1.0",
                 json_api=True,
             ),
-            "https://test.pypi.org/pypi/kaleidorg_swap_sdk/0.1.0/json",
+            "https://pypi.org/pypi/kaleidorg_swap_sdk/0.1.0/json",
         )
 
     def test_404_means_version_is_available(self) -> None:
@@ -90,23 +90,21 @@ class RegistryAvailabilityTests(unittest.TestCase):
             {
                 "NPM_PUBLISH_ENABLED": "false",
                 "PYPI_PUBLISH_ENABLED": "true",
-                "TEST_PYPI_PUBLISH_ENABLED": "false",
             },
             clear=True,
         ):
-            self.assertEqual(registry.validate_configuration(), (False, True, False))
+            self.assertEqual(registry.validate_configuration(), (False, True))
 
-    def test_oidc_registry_flags_accept_enabled_publishers(self) -> None:
+    def test_registry_flags_accept_enabled_publishers(self) -> None:
         with mock.patch.dict(
             os.environ,
             {
                 "NPM_PUBLISH_ENABLED": "true",
-                "PYPI_PUBLISH_ENABLED": "false",
-                "TEST_PYPI_PUBLISH_ENABLED": "true",
+                "PYPI_PUBLISH_ENABLED": "true",
             },
             clear=True,
         ):
-            self.assertEqual(registry.validate_configuration(), (True, False, True))
+            self.assertEqual(registry.validate_configuration(), (True, True))
 
     def test_registry_flags_reject_implicit_values(self) -> None:
         with mock.patch.dict(
@@ -114,21 +112,19 @@ class RegistryAvailabilityTests(unittest.TestCase):
             {
                 "NPM_PUBLISH_ENABLED": "1",
                 "PYPI_PUBLISH_ENABLED": "false",
-                "TEST_PYPI_PUBLISH_ENABLED": "false",
             },
             clear=True,
         ):
             with self.assertRaisesRegex(ValueError, "true or false"):
                 registry.validate_configuration()
 
-    def test_rehearsal_checks_testpypi_while_publisher_is_disabled(self) -> None:
+    def test_rehearsal_checks_pypi_while_publisher_is_disabled(self) -> None:
         with (
             mock.patch.dict(
                 os.environ,
                 {
                     "NPM_PUBLISH_ENABLED": "false",
                     "PYPI_PUBLISH_ENABLED": "false",
-                    "TEST_PYPI_PUBLISH_ENABLED": "false",
                 },
                 clear=True,
             ),
@@ -140,7 +136,7 @@ class RegistryAvailabilityTests(unittest.TestCase):
                 [
                     "check_registry_availability.py",
                     "0.1.0",
-                    "--check-test-pypi",
+                    "--check-pypi",
                 ],
             ),
         ):
@@ -522,7 +518,7 @@ class WorkflowInvariantTests(unittest.TestCase):
 
     def test_extra_oidc_permission_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
-        with self.assertRaisesRegex(ValueError, "exactly the three"):
+        with self.assertRaisesRegex(ValueError, "exactly the two"):
             workflow.validate(contents + "\n# id-token: write\n")
 
     def test_production_release_requires_npm_activation(self) -> None:

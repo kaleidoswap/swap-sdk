@@ -17,7 +17,6 @@ from release_metadata import LINUX_X86_64_WHEEL, npm_package, npm_tarball_name
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYTHON_PACKAGE = "kaleidorg_swap_sdk"
-TEST_PYPI_REGISTRY = "https://test.pypi.org/pypi"
 PYPI_REGISTRY = "https://pypi.org/pypi"
 
 
@@ -115,7 +114,7 @@ def download_npm(
     return destination
 
 
-def test_pypi_metadata_url(registry: str, package: str, version: str) -> str:
+def pypi_metadata_url(registry: str, package: str, version: str) -> str:
     encoded = urllib.parse.quote(package, safe="")
     return f"{registry.rstrip('/')}/{encoded}/{version}/json"
 
@@ -135,21 +134,21 @@ def download_python_index(
         if name.endswith(".whl") or name.endswith(".tar.gz")
     }
     metadata = request_json(
-        test_pypi_metadata_url(registry, PYTHON_PACKAGE, version), attempts, delay
+        pypi_metadata_url(registry, PYTHON_PACKAGE, version), attempts, delay
     )
     info = metadata.get("info", {})
     if info.get("version") != version:
-        raise ValueError("TestPyPI package version mismatch")
+        raise ValueError("PyPI package version mismatch")
     urls = metadata.get("urls")
     if not isinstance(urls, list):
-        raise ValueError("TestPyPI registry metadata has no artifact list")
+        raise ValueError("PyPI registry metadata has no artifact list")
     published = {entry.get("filename"): entry for entry in urls}
     if set(published) != set(expected):
-        raise ValueError("TestPyPI artifact inventory does not match release manifest")
+        raise ValueError("PyPI artifact inventory does not match release manifest")
     for name, expected_entry in expected.items():
         digest = published[name].get("digests", {}).get("sha256")
         if digest != expected_entry.get("sha256"):
-            raise ValueError(f"TestPyPI checksum mismatch: {name}")
+            raise ValueError(f"PyPI checksum mismatch: {name}")
 
     selected_names = [
         name
@@ -163,12 +162,12 @@ def download_python_index(
     for name in sorted(selected_names):
         url = published[name].get("url")
         if not isinstance(url, str):
-            raise ValueError(f"TestPyPI artifact has no download URL: {name}")
+            raise ValueError(f"PyPI artifact has no download URL: {name}")
         destination = output / name
         download(url, destination)
         verify_download(destination, expected[name])
         destinations.append(destination)
-        print(f"Verified published TestPyPI artifact: {destination.name}")
+        print(f"Verified published PyPI artifact: {destination.name}")
     wheel = next(path for path in destinations if path.suffix == ".whl")
     sdist = next(path for path in destinations if path.name.endswith(".tar.gz"))
     return wheel, sdist
@@ -180,17 +179,15 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--version", required=True)
     parser.add_argument("--npm", action="store_true")
-    parser.add_argument("--test-pypi", action="store_true")
     parser.add_argument("--pypi", action="store_true")
     parser.add_argument("--attempts", type=int, default=12)
     parser.add_argument("--delay", type=float, default=10)
     parser.add_argument("--npm-registry", default=NPM_REGISTRY)
-    parser.add_argument("--test-pypi-registry", default=TEST_PYPI_REGISTRY)
     parser.add_argument("--pypi-registry", default=PYPI_REGISTRY)
     args = parser.parse_args()
     try:
-        if sum((args.npm, args.test_pypi, args.pypi)) != 1:
-            raise ValueError("select exactly one of --npm, --pypi, or --test-pypi")
+        if args.npm == args.pypi:
+            raise ValueError("select exactly one of --npm or --pypi")
         if args.attempts < 1 or args.delay < 0:
             raise ValueError("attempts must be positive and delay cannot be negative")
         args.output.mkdir(parents=True, exist_ok=False)
@@ -209,7 +206,7 @@ def main() -> int:
                 entries,
                 args.output,
                 args.version,
-                registry=(args.pypi_registry if args.pypi else args.test_pypi_registry),
+                registry=args.pypi_registry,
                 attempts=args.attempts,
                 delay=args.delay,
             )

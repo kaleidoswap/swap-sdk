@@ -17,7 +17,6 @@ env:
   NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}
   NPM_PUBLISH_VERSION: "11.5.1"
   PYPI_PUBLISH_ENABLED: ${{ vars.PYPI_PUBLISH_ENABLED || 'false' }}
-  TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}
 
 jobs:
   release-activation:
@@ -29,12 +28,10 @@ jobs:
       - name: Require npm publication and finalized release notes
         run: |
           test "${NPM_PUBLISH_ENABLED}" = "true"
-          for flag in "${PYPI_PUBLISH_ENABLED}" "${TEST_PYPI_PUBLISH_ENABLED}"; do
-            case "${flag}" in
-              true|false) ;;
-              *) exit 1 ;;
-            esac
-          done
+          case "${PYPI_PUBLISH_ENABLED}" in
+            true|false) ;;
+            *) exit 1 ;;
+          esac
           python3 scripts/release_notes.py "${GITHUB_REF_NAME#v}" >/dev/null
 
   release-ready:
@@ -129,37 +126,6 @@ jobs:
           packages-dir: python-release-artifacts
           password: ${{ secrets.PYPI_TOKEN }}
 
-  publish-testpypi:
-    name: Publish exact Python artifacts to TestPyPI with OIDC
-    if: ${{ vars.TEST_PYPI_PUBLISH_ENABLED == 'true' }}
-    needs: release-ready
-    runs-on: ubuntu-24.04
-    environment: release
-    permissions:
-      contents: read
-      id-token: write
-    timeout-minutes: 10
-    steps:
-      - name: Download validated release bundle
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
-          path: release-artifacts
-      - name: Re-verify the sealed bundle bytes before publishing
-        working-directory: release-artifacts
-        run: sha256sum --check --strict SHA256SUMS
-      - name: Select the exact validated Python artifacts
-        run: |
-          mkdir python-release-artifacts
-          cp release-artifacts/*.whl python-release-artifacts/
-          cp release-artifacts/*.tar.gz python-release-artifacts/
-      - name: Publish to TestPyPI with attestations
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
-        with:
-          attestations: true
-          packages-dir: python-release-artifacts
-          repository-url: https://test.pypi.org/legacy/
-
   verify-npm:
     name: Verify published npm package
     if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
@@ -241,50 +207,6 @@ jobs:
           cp registry-python/*.tar.gz registry-sdist/
           python3 bindings/python/scripts/smoke_artifact.py sdist --dist registry-sdist
 
-  verify-testpypi:
-    name: Verify published TestPyPI package
-    if: ${{ vars.TEST_PYPI_PUBLISH_ENABLED == 'true' }}
-    needs:
-      - release-ready
-      - publish-testpypi
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    timeout-minutes: 20
-    steps:
-      - name: Checkout tagged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.11.9"
-      - name: Set up uv
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          enable-cache: false
-          version: "0.11.16"
-      - name: Download validated release bundle
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: release-bundle-${{ needs.release-ready.outputs.release_id }}
-          path: release-artifacts
-      - name: Verify TestPyPI inventory and download smoke artifacts
-        run: >-
-          python3 scripts/download_published_artifacts.py
-          release-artifacts registry-python
-          --version "${{ needs.release-ready.outputs.version }}"
-          --test-pypi
-      - name: Clean-install the registry Linux wheel
-        run: |
-          mkdir registry-wheel
-          cp registry-python/*.whl registry-wheel/
-          python3 bindings/python/scripts/smoke_artifact.py wheel --dist registry-wheel
-      - name: Rebuild and clean-install the registry source distribution
-        run: |
-          mkdir registry-sdist
-          cp registry-python/*.tar.gz registry-sdist/
-          python3 bindings/python/scripts/smoke_artifact.py sdist --dist registry-sdist
-
   registry-publish-complete:
     name: Registry publication and verification gate
     if: ${{ always() }}
@@ -292,10 +214,8 @@ jobs:
       - release-ready
       - publish-npm
       - publish-pypi
-      - publish-testpypi
       - verify-npm
       - verify-pypi
-      - verify-testpypi
     runs-on: ubuntu-24.04
     env:
       NPM_RESULT: ${{ needs.publish-npm.result }}
@@ -303,8 +223,6 @@ jobs:
       PYPI_RESULT: ${{ needs.publish-pypi.result }}
       PYPI_VERIFY_RESULT: ${{ needs.verify-pypi.result }}
       RELEASE_READY_RESULT: ${{ needs.release-ready.result }}
-      TEST_PYPI_RESULT: ${{ needs.publish-testpypi.result }}
-      TEST_PYPI_VERIFY_RESULT: ${{ needs.verify-testpypi.result }}
     steps:
       - name: Require every enabled registry and verification to succeed
         run: |
@@ -316,14 +234,6 @@ jobs:
           else
             test "${NPM_RESULT}" = "skipped"
             test "${NPM_VERIFY_RESULT}" = "skipped"
-          fi
-
-          if [ "${TEST_PYPI_PUBLISH_ENABLED}" = "true" ]; then
-            test "${TEST_PYPI_RESULT}" = "success"
-            test "${TEST_PYPI_VERIFY_RESULT}" = "success"
-          else
-            test "${TEST_PYPI_RESULT}" = "skipped"
-            test "${TEST_PYPI_VERIFY_RESULT}" = "skipped"
           fi
 
           if [ "${PYPI_PUBLISH_ENABLED}" = "true" ]; then

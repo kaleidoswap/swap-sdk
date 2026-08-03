@@ -64,17 +64,16 @@ def flag(name: str) -> bool:
     return value == "true"
 
 
-def validate_configuration() -> tuple[bool, bool, bool]:
-    """Read the three publisher flags. Each must be explicitly true or false.
+def validate_configuration() -> tuple[bool, bool]:
+    """Read the publisher flags. Each must be explicitly true or false.
 
-    Public PyPI is no longer forced off: the distribution rename to
-    kaleidorg_swap_sdk cleared the name collision that made it impossible, so it
-    is now a configured choice like the other two.
+    Public PyPI is not forced off: the distribution rename to kaleidorg_swap_sdk
+    cleared the name collision that made it impossible, so it is a configured
+    choice like npm.
     """
     return (
         flag("NPM_PUBLISH_ENABLED"),
         flag("PYPI_PUBLISH_ENABLED"),
-        flag("TEST_PYPI_PUBLISH_ENABLED"),
     )
 
 
@@ -84,13 +83,7 @@ def main() -> int:
     parser.add_argument("--npm-package", default=npm_package())
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
     parser.add_argument("--python-package", default="kaleidorg_swap_sdk")
-    parser.add_argument("--test-pypi-registry", default="https://test.pypi.org/pypi")
     parser.add_argument("--pypi-registry", default="https://pypi.org/pypi")
-    parser.add_argument(
-        "--check-test-pypi",
-        action="store_true",
-        help="check TestPyPI availability even while its publisher is disabled",
-    )
     parser.add_argument(
         "--check-pypi",
         action="store_true",
@@ -106,7 +99,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        _, pypi_enabled, test_pypi_enabled = validate_configuration()
+        _, pypi_enabled = validate_configuration()
         if args.flags_only:
             print("Validated publisher configuration without a registry check")
             return 0
@@ -122,14 +115,6 @@ def main() -> int:
                 args.python_package,
                 args.version,
                 "PyPI",
-                json_api=True,
-            )
-        if test_pypi_enabled or args.check_test_pypi:
-            require_version_available(
-                args.test_pypi_registry,
-                args.python_package,
-                args.version,
-                "TestPyPI",
                 json_api=True,
             )
     except ValueError as error:

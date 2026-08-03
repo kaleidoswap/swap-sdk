@@ -13,7 +13,7 @@ BUILD_WORKFLOW = ROOT / ".github/workflows/release-build.yaml"
 REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
 
 # Structural invariants only. Anything that encodes *today's* policy — which
-# registries are enabled, which publisher action is used, whether TestPyPI has a
+# registries are enabled, which publisher action is used, whether a registry has a
 # job at all — is deliberately absent: those are asserted at runtime by the
 # workflow's own `test` steps and by check_registry_availability.py, so
 # restating them here only made cosmetic edits fail the lint gate.
@@ -57,7 +57,6 @@ BUILD_REQUIRED = (
 REGISTRY_FLAGS = (
     "NPM_PUBLISH_ENABLED",
     "PYPI_PUBLISH_ENABLED",
-    "TEST_PYPI_PUBLISH_ENABLED",
 )
 
 REHEARSAL_FAILURE_CASES = {
@@ -120,19 +119,23 @@ def validate(
         ("production release", contents),
         ("release build", build_contents),
     ):
-        if "check_registry_availability.py" not in workflow:
-            continue
-        # Anchor to the start of the YAML key: a bare substring test would let
-        # TEST_PYPI_PUBLISH_ENABLED satisfy PYPI_PUBLISH_ENABLED.
+        reads_via_script = "check_registry_availability.py" in workflow
+        # Anchor to the start of the YAML key so a longer flag name cannot
+        # satisfy a shorter one by substring match.
         undeclared = [
             flag_name
             for flag_name in REGISTRY_FLAGS
-            if not re.search(rf"^\s*{flag_name}:", workflow, re.MULTILINE)
+            # A flag must be declared if this workflow either hands it to
+            # check_registry_availability.py through the environment, or reads it
+            # directly in shell. Missing either way, the value is empty at run
+            # time and only surfaces in CI.
+            if (reads_via_script or f"${{{flag_name}}}" in workflow)
+            and not re.search(rf"^\s*{flag_name}:", workflow, re.MULTILINE)
         ]
         if undeclared:
             raise ValueError(
-                f"{label} workflow runs check_registry_availability.py but does "
-                f"not declare the flags it reads from the environment: {undeclared}"
+                f"{label} workflow reads publisher flags from the environment "
+                f"but does not declare them: {undeclared}"
             )
     combined = contents + build_contents + rehearsal_contents
     if "--skip-existing" in combined:
@@ -143,9 +146,9 @@ def validate(
     if invalid:
         raise ValueError(f"release workflows have mutable action refs: {invalid}")
 
-    if contents.count("id-token: write") != 3:
+    if contents.count("id-token: write") != 2:
         raise ValueError(
-            "OIDC permission must be scoped to exactly the three publish jobs"
+            "OIDC permission must be scoped to exactly the two publish jobs"
         )
     read_only_authority = (
         "id-token: write",
@@ -210,7 +213,6 @@ def validate(
     for name, job in (
         ("npm", jobs["publish-npm"]),
         ("PyPI", jobs["publish-pypi"]),
-        ("TestPyPI", jobs["publish-testpypi"]),
     ):
         if "needs: release-ready" not in job:
             raise ValueError(f"{name} publisher must depend on release-ready")
@@ -224,7 +226,7 @@ def validate(
     activation_job = jobs["release-activation"]
     for snippet in (
         'test "${NPM_PUBLISH_ENABLED}" = "true"',
-        '"${PYPI_PUBLISH_ENABLED}" "${TEST_PYPI_PUBLISH_ENABLED}"',
+        'case "${PYPI_PUBLISH_ENABLED}" in',
         "scripts/release_notes.py",
     ):
         if snippet not in activation_job:
@@ -233,12 +235,6 @@ def validate(
     for name, job, publisher, smoke in (
         ("npm", jobs["verify-npm"], "publish-npm", "smoke-browser-package.mjs"),
         ("PyPI", jobs["verify-pypi"], "publish-pypi", "smoke_artifact.py"),
-        (
-            "TestPyPI",
-            jobs["verify-testpypi"],
-            "publish-testpypi",
-            "smoke_artifact.py",
-        ),
     ):
         if "- release-ready" not in job or f"- {publisher}" not in job:
             raise ValueError(
@@ -265,10 +261,8 @@ def validate(
         "release-ready",
         "publish-npm",
         "publish-pypi",
-        "publish-testpypi",
         "verify-npm",
         "verify-pypi",
-        "verify-testpypi",
     ):
         if f"- {dependency}" not in registry_job:
             raise ValueError(f"registry completion gate must depend on {dependency}")
