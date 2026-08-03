@@ -96,7 +96,9 @@ on a read-only call rather than half-way through the release.
 The npm job pins the npm CLI, proves its credential with `npm whoami`, then
 publishes the validated `.tgz`. npm emits provenance for a public package from
 this public repository. The PyPI job uses the immutable-pinned PyPA publisher
-action and uploads attestations with the exact wheels and sdist.
+action to upload the exact wheels and sdist. It does **not** attach PEP 740
+attestations: those require Trusted Publishing, and the action silently ignores
+the `attestations` input when a password is set, so it is pinned to `false`.
 
 Production activation requires npm publishing to be enabled; a production tag
 cannot create a GitHub-only release. PyPI is independently gated. After each

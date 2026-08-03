@@ -96,10 +96,11 @@ jobs:
     runs-on: ubuntu-24.04
     environment: release
     permissions:
+      # No id-token: write. PEP 740 attestations only work via Trusted
+      # Publishing, so under token auth the OIDC scope would be unused
+      # privilege. npm is different: its provenance is generated from the OIDC
+      # token independently of how we authenticate, so publish-npm keeps it.
       contents: read
-      # Retained under token auth: attestations are Sigstore-signed with the
-      # workflow's OIDC identity, independently of how we authenticate to PyPI.
-      id-token: write
     timeout-minutes: 10
     steps:
       - name: Download validated release bundle
@@ -119,10 +120,14 @@ jobs:
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: test -n "${PYPI_API_TOKEN}"
-      - name: Publish to PyPI with attestations
+      # attestations is explicitly false, not omitted: the action defaults it to
+      # true and then silently ignores it when a password is set, because PEP 740
+      # requires Trusted Publishing. Requesting them here would be a claim we do
+      # not deliver.
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
         with:
-          attestations: true
+          attestations: false
           packages-dir: python-release-artifacts
           password: ${{ secrets.PYPI_TOKEN }}
 

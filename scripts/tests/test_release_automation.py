@@ -517,9 +517,28 @@ class WorkflowInvariantTests(unittest.TestCase):
             workflow.validate(contents + "\n# username: someone\n")
 
     def test_extra_oidc_permission_is_rejected(self) -> None:
+        # A real permission key, not a comment: the count is anchored to YAML
+        # keys so that a comment mentioning the scope cannot inflate it.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
-        with self.assertRaisesRegex(ValueError, "exactly the two"):
-            workflow.validate(contents + "\n# id-token: write\n")
+        with self.assertRaisesRegex(ValueError, "exactly the npm publish job"):
+            workflow.validate(contents + "\n      id-token: write\n")
+
+    def test_commented_oidc_scope_does_not_count(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        workflow.validate(contents + "\n# id-token: write\n")
+
+    def test_pypi_publisher_must_not_request_oidc(self) -> None:
+        # PEP 740 attestations need Trusted Publishing, so under token auth an
+        # id-token scope on the PyPI job is unused privilege.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "  publish-pypi:\n    name: Publish exact Python artifacts to PyPI\n",
+            "  publish-pypi:\n    name: Publish exact Python artifacts to PyPI\n"
+            "    permissions:\n      id-token: write\n",
+            1,
+        )
+        with self.assertRaises(ValueError):
+            workflow.validate(changed)
 
     def test_production_release_requires_npm_activation(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()

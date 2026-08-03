@@ -100,9 +100,14 @@ The invariant that replaces it is narrower but still enforced by
 - the read-only build and rehearsal workflows may not reference a token at all;
 - `username:` is rejected, so authentication cannot silently become basic auth.
 
-`id-token: write` is retained on the publish jobs: npm provenance and PyPI
-attestations are Sigstore-signed with the workflow's OIDC identity regardless of
-how we authenticate to the registry.
+`id-token: write` is retained on the **npm** job only. npm generates provenance
+from the OIDC token independently of how we authenticate, so it survives the move
+to token auth. PyPI's PEP 740 attestations do not: the PyPA action ignores
+`attestations: true` whenever a password is set, because attestations require
+Trusted Publishing. That input is therefore set explicitly to `false` rather than
+left at its `true` default, and the PyPI job requests no OIDC scope — asking for
+one would be unused privilege, and claiming attestations we do not produce would
+be worse.
 
 The npm job now runs `npm whoami` before publishing. A bad credential fails on a
 read-only call rather than part-way through an irreversible publish.

@@ -146,9 +146,13 @@ def validate(
     if invalid:
         raise ValueError(f"release workflows have mutable action refs: {invalid}")
 
-    if contents.count("id-token: write") != 2:
+    # Count real permission keys, not substrings: a comment mentioning
+    # "id-token: write" must not inflate the total.
+    oidc_grants = re.findall(r"^\s*id-token: write\s*$", contents, re.MULTILINE)
+    if len(oidc_grants) != 1:
         raise ValueError(
-            "OIDC permission must be scoped to exactly the two publish jobs"
+            "OIDC permission must be scoped to exactly the npm publish job "
+            f"(found {len(oidc_grants)})"
         )
     read_only_authority = (
         "id-token: write",
@@ -218,8 +222,10 @@ def validate(
             raise ValueError(f"{name} publisher must depend on release-ready")
         if "environment: release" not in job:
             raise ValueError(f"{name} publisher must use the release environment")
-        if "id-token: write" not in job:
-            raise ValueError(f"{name} publisher must have job-scoped OIDC")
+        if name == "npm" and "id-token: write" not in job:
+            raise ValueError("npm publisher must have job-scoped OIDC for provenance")
+        if name != "npm" and re.search(r"^\s*id-token: write\s*$", job, re.MULTILINE):
+            raise ValueError(f"{name} publisher must not request unused OIDC scope")
         if "sha256sum --check --strict SHA256SUMS" not in job:
             raise ValueError(f"{name} publisher must re-verify the sealed bundle bytes")
 

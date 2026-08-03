@@ -111,8 +111,11 @@ Registry publishing authenticates with API tokens stored as `release`
 environment secrets (`NPM_TOKEN`, `PYPI_TOKEN`), so every publisher runs behind
 that environment's required review; a token is unreachable from any other job,
 and the read-only build and rehearsal graph may not reference one at all.
-Job-scoped `id-token: write` is retained so npm provenance and PyPI attestations
-are still signed with the workflow's OIDC identity. A
+The npm job keeps job-scoped `id-token: write` so it can still emit provenance,
+which npm generates from the OIDC token independently of how we authenticate.
+PyPI gets no OIDC scope: PEP 740 attestations only work via Trusted Publishing,
+so under token auth they are unavailable and requesting the scope would be unused
+privilege. A
 production tag requires npm publishing to be explicitly enabled; PyPI is
 independently gated. Every enabled registry package is downloaded again,
 hash-matched to the sealed manifest, and clean-consumer tested before CI
