@@ -87,8 +87,9 @@ Maturin generates the UniFFI Python module and packages it with the native
 library under the `kaleidorg_swap_sdk` package. A platform-independent fallback of
 that generated Python glue is committed as
 `python/kaleidorg_swap_sdk/_generated_uniffi.py` and checked for drift. The package
-imports it only if Maturin omits its own generated module during a manylinux or
-sdist build. Native libraries remain uncommitted build artifacts.
+imports it only when Maturin omits its own generated module, which it does for
+manylinux wheels; host and sdist builds ship Maturin's glue and never use the
+fallback. Native libraries remain uncommitted build artifacts.
 
 ### Testing
 
