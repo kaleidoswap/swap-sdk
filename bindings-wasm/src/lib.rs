@@ -231,13 +231,14 @@ impl BoltzClient {
         }
     }
 
-    /// Client pointed at the default maker for a network
-    /// ("signet" | "testnet" | "regtest").
+    /// Client pointed at the default **KaleidoSwap maker** for a network
+    /// ("signet" | "regtest").
     ///
-    /// "signet" is the **KaleidoSwap maker** and settles on Mutinynet — pair it
-    /// with signet chain access, not testnet3. "testnet" is Boltz's testnet3
-    /// instance. Rejects "mainnet" — no mainnet maker is live yet; pass an
-    /// explicit base URL to the constructor instead.
+    /// "signet" is the KaleidoSwap maker and settles on Mutinynet — pair it with
+    /// signet chain access, not testnet3. Rejects "testnet" (we run no testnet3
+    /// maker — signet is our testing network) and "mainnet" (no mainnet maker is
+    /// live yet) instead of falling back to a third party; to reach any other
+    /// maker, pass an explicit base URL to the constructor.
     #[wasm_bindgen(js_name = forNetwork)]
     pub fn for_network(network: String) -> Result<BoltzClient, JsValue> {
         Ok(BoltzClient {

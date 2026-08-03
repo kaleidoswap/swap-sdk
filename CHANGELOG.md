@@ -16,12 +16,14 @@ Phase 0 of the SDK architecture plan: the published SDK is the **swap
 protocol only**, pointed at **our** maker.
 
 - **De-Boltz defaults**: `BoltzApiClientV2::default()` / `forNetwork()` now
-  target the KaleidoSwap maker — **signet** → `maker.signet.kaleidoswap.com/v2`,
-  regtest → the local harness, **mainnet → error** until the mainnet maker is
-  live (no silent routing to third-party endpoints). `testnet` continues to
-  resolve to Boltz's testnet3 instance, since KaleidoSwap runs no testnet3
-  maker. `boltz.exchange` remains reachable via an explicit `base_url`; the
-  `BOLTZ_*` constants are kept.
+  resolve to a KaleidoSwap maker and nothing else — **signet** →
+  `maker.signet.kaleidoswap.com/v2`, regtest → the local harness. Networks we
+  run no maker on **error**: **mainnet** until the mainnet maker is live, and
+  **testnet** because signet is our testing network and no testnet3 maker
+  exists. No default ever falls back to a third-party endpoint, so it cannot
+  hand you a counterparty you did not choose. `boltz.exchange` remains
+  reachable by name via an explicit `base_url`; the `BOLTZ_*` constants are
+  kept.
 - **New `Signet` network / `BitcoinSignet` chain**: the KaleidoSwap maker
   settles on [Mutinynet](https://mutinynet.com), so it needs a chain identity
   distinct from testnet3. Signet and testnet3 share an address encoding, so

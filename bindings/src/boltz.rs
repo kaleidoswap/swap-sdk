@@ -66,12 +66,14 @@ impl BoltzApiClientV2 {
         }
     }
 
-    /// Client pointed at the default maker for `network`.
+    /// Client pointed at the default **KaleidoSwap maker** for `network`.
     ///
     /// `Signet` is the KaleidoSwap maker (settles on Mutinynet — use
-    /// `BitcoinSignet` chain access, not testnet3); `Testnet` is Boltz's
-    /// testnet3 instance. Errors on `Mainnet` (no mainnet maker yet) — use
-    /// `new` with an explicit `base_url` instead.
+    /// `BitcoinSignet` chain access, not testnet3); `Regtest` is the local
+    /// harness. Errors on `Testnet` (we run no testnet3 maker — signet is our
+    /// testing network) and on `Mainnet` (no mainnet maker yet), rather than
+    /// falling back to a third party. To reach any other maker, use `new` with
+    /// an explicit `base_url`.
     #[uniffi::constructor]
     pub fn default(network: Network) -> Result<Self, Error> {
         Ok(Self {

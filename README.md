@@ -10,12 +10,19 @@ an explicit base URL.
 
 ### Networks
 
-| `Network` | Maker | Bitcoin chain access |
+| `Network` | Default maker | Bitcoin chain access |
 | --- | --- | --- |
 | `Signet` | KaleidoSwap — `maker.signet.kaleidoswap.com/v2` | `BitcoinSignet` → Mutinynet (`mutinynet.com/api`) |
-| `Testnet` | Boltz testnet3 — `api.testnet.boltz.exchange/v2` | `BitcoinTestnet` → testnet3 |
 | `Regtest` | local harness — `localhost:9001/v2` | `BitcoinRegtest` → local |
+| `Testnet` | **errors** — no KaleidoSwap testnet3 maker; use `Signet` | `BitcoinTestnet` → testnet3 |
 | `Mainnet` | **errors** — no mainnet maker yet | `Bitcoin` |
+
+`BoltzApiClientV2::default` only ever returns a KaleidoSwap maker. On a network
+we run no maker on it errors instead of falling back to a third party, so a
+default can never put your swap in front of a counterparty you did not choose.
+Other makers stay reachable by name — pass an explicit base URL to
+`BoltzApiClientV2::new` (`BOLTZ_TESTNET_URL_V2` / `BOLTZ_MAINNET_URL_V2` for
+Boltz). **Signet is our testing network.**
 
 The KaleidoSwap maker settles on **Mutinynet**, a custom signet. Signet and
 testnet3 share an address encoding, so mixing a signet maker with testnet3
