@@ -19,7 +19,7 @@ pip install kaleidoswap_sdk
 1. **Prerequisites**
 
    - Rust toolchain (1.70+)
-   - Python 3.11+
+   - Python 3.10+ (matches `requires-python` in `python/pyproject.toml`)
    - `uv` package manager
 
 2. **Build the bindings**

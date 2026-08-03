@@ -49,6 +49,18 @@ protocol only**, pointed at **our** maker.
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.
 
+### Breaking — TypeScript `init()` signature
+
+`init(input?)` narrowed from `Parameters<typeof initWasm>[0]` to
+`InitInput | Promise<InitInput>`, and now forwards it as
+`initWasm({ module_or_path: input })`. This avoids wasm-bindgen's deprecated
+positional form, but a caller who already passed the object form
+(`init({ module_or_path: url })`) no longer typechecks — pass the URL, `Request`,
+`Response`, or bytes directly instead. Callers who pass nothing are unaffected.
+
+Node consumers must now read the new `wasmUrl` export and pass its bytes,
+because Node's `fetch` will not load a `file:` URL.
+
 ### Release engineering
 
 - Reset the synchronized Rust, Python, and TypeScript public release line to

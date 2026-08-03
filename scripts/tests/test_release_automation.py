@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -14,6 +15,10 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
+# Scripts import their shared release_metadata module the way they do when run
+# directly (sys.path[0] == scripts/); spec_from_file_location does not set that.
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
 
 
 def load_script(name: str):
@@ -34,6 +39,11 @@ release_version = load_script("release_version")
 verify_bundle = load_script("verify_release_bundle")
 workflow = load_script("check_release_workflow")
 
+import release_metadata  # noqa: E402  (needs the sys.path set up above)
+
+NPM_PACKAGE = release_metadata.npm_package()
+NPM_TARBALL_0_1_0 = release_metadata.npm_tarball_name("0.1.0")
+
 
 class RegistryAvailabilityTests(unittest.TestCase):
     def test_python_json_api_url_has_json_suffix(self) -> None:
@@ -53,7 +63,7 @@ class RegistryAvailabilityTests(unittest.TestCase):
         with mock.patch.object(registry.urllib.request, "urlopen", side_effect=error):
             registry.require_version_available(
                 "https://registry.example",
-                "@kaleidorg/swap-sdk",
+                NPM_PACKAGE,
                 "0.1.0",
                 "npm",
             )
@@ -67,7 +77,7 @@ class RegistryAvailabilityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "already exists"):
                 registry.require_version_available(
                     "https://registry.example",
-                    "@kaleidorg/swap-sdk",
+                    NPM_PACKAGE,
                     "0.1.0",
                     "npm",
                 )
@@ -182,7 +192,7 @@ class PublishedArtifactTests(unittest.TestCase):
 
     def test_npm_download_must_match_sealed_bundle(self) -> None:
         contents = b"exact npm tarball"
-        entries = {"kaleidorg-swap-sdk-0.1.0.tgz": self.entry(contents)}
+        entries = {NPM_TARBALL_0_1_0: self.entry(contents)}
         with tempfile.TemporaryDirectory() as temp:
             output = Path(temp)
             with (
@@ -190,7 +200,7 @@ class PublishedArtifactTests(unittest.TestCase):
                     published,
                     "request_json",
                     return_value={
-                        "name": "@kaleidorg/swap-sdk",
+                        "name": NPM_PACKAGE,
                         "version": "0.1.0",
                         "dist": {"tarball": "https://registry.example/sdk.tgz"},
                     },
@@ -211,17 +221,17 @@ class PublishedArtifactTests(unittest.TestCase):
                     attempts=1,
                     delay=0,
                 )
-        self.assertEqual(path.name, "kaleidorg-swap-sdk-0.1.0.tgz")
+        self.assertEqual(path.name, NPM_TARBALL_0_1_0)
 
     def test_npm_download_rejects_changed_bytes(self) -> None:
-        entries = {"kaleidorg-swap-sdk-0.1.0.tgz": self.entry(b"expected")}
+        entries = {NPM_TARBALL_0_1_0: self.entry(b"expected")}
         with tempfile.TemporaryDirectory() as temp:
             with (
                 mock.patch.object(
                     published,
                     "request_json",
                     return_value={
-                        "name": "@kaleidorg/swap-sdk",
+                        "name": NPM_PACKAGE,
                         "version": "0.1.0",
                         "dist": {"tarball": "https://registry.example/sdk.tgz"},
                     },
@@ -319,8 +329,8 @@ class PublishedArtifactTests(unittest.TestCase):
 
 class ReleaseArtifactTests(unittest.TestCase):
     def make_npm_tarball(self, directory: Path, version: str) -> Path:
-        path = directory / f"kaleidorg-swap-sdk-{version}.tgz"
-        package = {"name": "@kaleidorg/swap-sdk", "version": version}
+        path = directory / release_metadata.npm_tarball_name(version)
+        package = {"name": NPM_PACKAGE, "version": version}
         members = {
             name: b"placeholder"
             for name in assemble_release.NPM_REQUIRED
@@ -368,7 +378,7 @@ class ReleaseArtifactTests(unittest.TestCase):
             self.make_inventory(directory, "0.1.0")
             npm = next(directory.glob("*.tgz"))
             with tarfile.open(npm, "w:gz") as archive:
-                package = b'{"name":"@kaleidorg/swap-sdk","version":"0.1.0"}'
+                package = json.dumps({"name": NPM_PACKAGE, "version": "0.1.0"}).encode()
                 info = tarfile.TarInfo("package/package.json")
                 info.size = len(package)
                 archive.addfile(info, io.BytesIO(package))

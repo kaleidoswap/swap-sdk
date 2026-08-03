@@ -6,15 +6,18 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import subprocess
 import sys
 import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-PYTHON_DISTRIBUTION = "kaleidoswap_sdk"
-NPM_PACKAGE = "@kaleidorg/swap-sdk"
+from release_metadata import (
+    PLATFORM_MARKERS,
+    PYTHON_DISTRIBUTION,
+    npm_package,
+)
+
 NPM_REQUIRED = {
     "package/LICENSE",
     "package/README.md",
@@ -27,13 +30,6 @@ NPM_REQUIRED = {
     "package/vendor/bindings_wasm_bg.wasm.d.ts",
 }
 NPM_ALLOWED_PREFIXES = ("package/dist/", "package/vendor/")
-PLATFORM_MARKERS = (
-    ("linux x86_64", re.compile(r"manylinux[^-]*_x86_64\.whl$")),
-    ("linux aarch64", re.compile(r"manylinux[^-]*_aarch64\.whl$")),
-    ("macOS x86_64", re.compile(r"macosx[^-]*_x86_64\.whl$")),
-    ("macOS arm64", re.compile(r"macosx[^-]*_arm64\.whl$")),
-    ("Windows x86_64", re.compile(r"win_amd64\.whl$")),
-)
 
 
 def require(condition: bool, message: str) -> None:
@@ -97,7 +93,7 @@ def inspect_npm(path: Path, version: str) -> None:
         and not any(name.startswith(prefix) for prefix in NPM_ALLOWED_PREFIXES)
     )
     require(not unexpected, f"{path.name} contains unexpected files: {unexpected}")
-    require(metadata.get("name") == NPM_PACKAGE, "npm package name mismatch")
+    require(metadata.get("name") == npm_package(), "npm package name mismatch")
     require(metadata.get("version") == version, "npm package version mismatch")
 
 

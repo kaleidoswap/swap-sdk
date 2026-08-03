@@ -13,7 +13,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-NPM_PACKAGE = "@kaleidorg/swap-sdk"
+from release_metadata import LINUX_X86_64_WHEEL, npm_package, npm_tarball_name
+
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYTHON_PACKAGE = "kaleidoswap_sdk"
 TEST_PYPI_REGISTRY = "https://test.pypi.org/pypi"
@@ -94,14 +95,14 @@ def download_npm(
     attempts: int,
     delay: float,
 ) -> Path:
-    expected_name = f"kaleidorg-swap-sdk-{version}.tgz"
+    expected_name = npm_tarball_name(version)
     expected = entries.get(expected_name)
     if expected is None:
         raise ValueError(f"release manifest has no npm artifact: {expected_name}")
     metadata = request_json(
-        npm_metadata_url(registry, NPM_PACKAGE, version), attempts, delay
+        npm_metadata_url(registry, npm_package(), version), attempts, delay
     )
-    if metadata.get("name") != NPM_PACKAGE or metadata.get("version") != version:
+    if metadata.get("name") != npm_package() or metadata.get("version") != version:
         raise ValueError("npm registry package identity mismatch")
     tarball_url = metadata.get("dist", {}).get("tarball")
     if not isinstance(tarball_url, str):
@@ -152,7 +153,7 @@ def download_test_pypi(
     selected_names = [
         name
         for name in expected
-        if name.endswith("manylinux_2_28_x86_64.whl") or name.endswith(".tar.gz")
+        if LINUX_X86_64_WHEEL.search(name) or name.endswith(".tar.gz")
     ]
     if len(selected_names) != 2:
         raise ValueError("could not select Linux wheel and sdist from release manifest")

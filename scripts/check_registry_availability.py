@@ -11,6 +11,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from release_metadata import npm_package
+
 
 def version_url(
     registry: str,
@@ -76,7 +78,7 @@ def validate_configuration() -> tuple[bool, bool]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("version")
-    parser.add_argument("--npm-package", default="@kaleidorg/swap-sdk")
+    parser.add_argument("--npm-package", default=npm_package())
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
     parser.add_argument("--python-package", default="kaleidoswap_sdk")
     parser.add_argument("--test-pypi-registry", default="https://test.pypi.org/pypi")
