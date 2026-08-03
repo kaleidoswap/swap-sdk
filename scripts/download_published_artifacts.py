@@ -18,6 +18,7 @@ from release_metadata import LINUX_X86_64_WHEEL, npm_package, npm_tarball_name
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYTHON_PACKAGE = "kaleidorg_swap_sdk"
 TEST_PYPI_REGISTRY = "https://test.pypi.org/pypi"
+PYPI_REGISTRY = "https://pypi.org/pypi"
 
 
 def sha256(path: Path) -> str:
@@ -119,7 +120,7 @@ def test_pypi_metadata_url(registry: str, package: str, version: str) -> str:
     return f"{registry.rstrip('/')}/{encoded}/{version}/json"
 
 
-def download_test_pypi(
+def download_python_index(
     entries: dict[str, dict],
     output: Path,
     version: str,
@@ -180,14 +181,16 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--npm", action="store_true")
     parser.add_argument("--test-pypi", action="store_true")
+    parser.add_argument("--pypi", action="store_true")
     parser.add_argument("--attempts", type=int, default=12)
     parser.add_argument("--delay", type=float, default=10)
     parser.add_argument("--npm-registry", default=NPM_REGISTRY)
     parser.add_argument("--test-pypi-registry", default=TEST_PYPI_REGISTRY)
+    parser.add_argument("--pypi-registry", default=PYPI_REGISTRY)
     args = parser.parse_args()
     try:
-        if args.npm == args.test_pypi:
-            raise ValueError("select exactly one of --npm or --test-pypi")
+        if sum((args.npm, args.test_pypi, args.pypi)) != 1:
+            raise ValueError("select exactly one of --npm, --pypi, or --test-pypi")
         if args.attempts < 1 or args.delay < 0:
             raise ValueError("attempts must be positive and delay cannot be negative")
         args.output.mkdir(parents=True, exist_ok=False)
@@ -202,11 +205,11 @@ def main() -> int:
                 delay=args.delay,
             )
         else:
-            download_test_pypi(
+            download_python_index(
                 entries,
                 args.output,
                 args.version,
-                registry=args.test_pypi_registry,
+                registry=(args.pypi_registry if args.pypi else args.test_pypi_registry),
                 attempts=args.attempts,
                 delay=args.delay,
             )

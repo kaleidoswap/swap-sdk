@@ -64,15 +64,18 @@ def flag(name: str) -> bool:
     return value == "true"
 
 
-def validate_configuration() -> tuple[bool, bool]:
-    npm_enabled = flag("NPM_PUBLISH_ENABLED")
-    test_pypi_enabled = flag("TEST_PYPI_PUBLISH_ENABLED")
-    if flag("PYPI_PUBLISH_ENABLED"):
-        raise ValueError(
-            "public PyPI publishing must remain explicitly disabled until a "
-            "trusted publisher is configured for kaleidorg-swap-sdk"
-        )
-    return npm_enabled, test_pypi_enabled
+def validate_configuration() -> tuple[bool, bool, bool]:
+    """Read the three publisher flags. Each must be explicitly true or false.
+
+    Public PyPI is no longer forced off: the distribution rename to
+    kaleidorg_swap_sdk cleared the name collision that made it impossible, so it
+    is now a configured choice like the other two.
+    """
+    return (
+        flag("NPM_PUBLISH_ENABLED"),
+        flag("PYPI_PUBLISH_ENABLED"),
+        flag("TEST_PYPI_PUBLISH_ENABLED"),
+    )
 
 
 def main() -> int:
@@ -82,10 +85,16 @@ def main() -> int:
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
     parser.add_argument("--python-package", default="kaleidorg_swap_sdk")
     parser.add_argument("--test-pypi-registry", default="https://test.pypi.org/pypi")
+    parser.add_argument("--pypi-registry", default="https://pypi.org/pypi")
     parser.add_argument(
         "--check-test-pypi",
         action="store_true",
         help="check TestPyPI availability even while its publisher is disabled",
+    )
+    parser.add_argument(
+        "--check-pypi",
+        action="store_true",
+        help="check PyPI availability even while its publisher is disabled",
     )
     parser.add_argument(
         "--flags-only",
@@ -97,7 +106,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        _, test_pypi_enabled = validate_configuration()
+        _, pypi_enabled, test_pypi_enabled = validate_configuration()
         if args.flags_only:
             print("Validated publisher configuration without a registry check")
             return 0
@@ -107,6 +116,14 @@ def main() -> int:
             args.version,
             "npm",
         )
+        if pypi_enabled or args.check_pypi:
+            require_version_available(
+                args.pypi_registry,
+                args.python_package,
+                args.version,
+                "PyPI",
+                json_api=True,
+            )
         if test_pypi_enabled or args.check_test_pypi:
             require_version_available(
                 args.test_pypi_registry,

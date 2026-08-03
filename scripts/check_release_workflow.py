@@ -69,6 +69,21 @@ REHEARSAL_FAILURE_CASES = {
 }
 
 
+def production_jobs(contents: str) -> dict[str, str]:
+    """Split the production workflow into its top-level job bodies."""
+    names = re.findall(r"^  ([a-z][a-z0-9-]*):$", contents, re.MULTILINE)
+    jobs: dict[str, str] = {}
+    for index, name in enumerate(names):
+        start = contents.index(f"\n  {name}:\n")
+        end = (
+            contents.index(f"\n  {names[index + 1]}:\n")
+            if index + 1 < len(names)
+            else len(contents)
+        )
+        jobs[name] = contents[start:end]
+    return jobs
+
+
 def job_section(contents: str, name: str, next_name: str) -> str:
     start = f"  {name}:"
     end = f"  {next_name}:"
@@ -128,8 +143,10 @@ def validate(
     if invalid:
         raise ValueError(f"release workflows have mutable action refs: {invalid}")
 
-    if contents.count("id-token: write") != 2:
-        raise ValueError("OIDC permission must be scoped to exactly two publish jobs")
+    if contents.count("id-token: write") != 3:
+        raise ValueError(
+            "OIDC permission must be scoped to exactly the three publish jobs"
+        )
     read_only_authority = (
         "id-token: write",
         "environment: release",
@@ -137,6 +154,8 @@ def validate(
         "npm publish ",
         "pypa/gh-action-pypi-publish@",
         "gh release create",
+        "secrets.NPM_TOKEN",
+        "secrets.PYPI_TOKEN",
     )
     found_read_only_authority = [
         authority
@@ -149,22 +168,34 @@ def validate(
             f"{found_read_only_authority}"
         )
 
-    forbidden_credentials = (
-        "secrets.NPM",
-        "secrets.PYPI",
-        "password:",
-        "username:",
-    )
-    found_credentials = [
-        credential for credential in forbidden_credentials if credential in combined
-    ]
-    if found_credentials:
+    if "username:" in combined:
         raise ValueError(
-            "release workflows contain stored registry credentials: "
-            f"{found_credentials}"
+            "release workflows must authenticate with a token, not basic auth"
         )
 
-    build_call = job_section(contents, "release-ready", "publish-npm")
+    allowed_secrets = {"NPM_TOKEN", "PYPI_TOKEN"}
+    referenced_secrets = set(re.findall(r"secrets\.([A-Z0-9_]+)", combined))
+    unexpected = sorted(referenced_secrets - allowed_secrets)
+    if unexpected:
+        raise ValueError(
+            f"release workflows reference unexpected secrets: {unexpected}"
+        )
+
+    # A stored credential must only be reachable from a job gated by the
+    # protected `release` environment, so publishing still cannot happen without
+    # the required review.
+    for job_name, job in production_jobs(contents).items():
+        used = sorted(
+            f"secrets.{name}" for name in allowed_secrets if f"secrets.{name}" in job
+        )
+        if used and "environment: release" not in job:
+            raise ValueError(
+                f"job {job_name!r} uses {used} without the protected release "
+                "environment, so it could publish without review"
+            )
+
+    jobs = production_jobs(contents)
+    build_call = jobs["release-ready"]
     for snippet in (
         "needs: release-activation",
         "permissions:\n      contents: read",
@@ -176,9 +207,11 @@ def validate(
         if snippet not in build_call:
             raise ValueError(f"production build call is missing {snippet!r}")
 
-    npm_job = job_section(contents, "publish-npm", "publish-testpypi")
-    test_pypi_job = job_section(contents, "publish-testpypi", "verify-npm")
-    for name, job in (("npm", npm_job), ("TestPyPI", test_pypi_job)):
+    for name, job in (
+        ("npm", jobs["publish-npm"]),
+        ("PyPI", jobs["publish-pypi"]),
+        ("TestPyPI", jobs["publish-testpypi"]),
+    ):
         if "needs: release-ready" not in job:
             raise ValueError(f"{name} publisher must depend on release-ready")
         if "environment: release" not in job:
@@ -188,24 +221,21 @@ def validate(
         if "sha256sum --check --strict SHA256SUMS" not in job:
             raise ValueError(f"{name} publisher must re-verify the sealed bundle bytes")
 
-    activation_job = job_section(contents, "release-activation", "release-ready")
+    activation_job = jobs["release-activation"]
     for snippet in (
         'test "${NPM_PUBLISH_ENABLED}" = "true"',
-        'test "${PYPI_PUBLISH_ENABLED}" = "false"',
+        '"${PYPI_PUBLISH_ENABLED}" "${TEST_PYPI_PUBLISH_ENABLED}"',
         "scripts/release_notes.py",
     ):
         if snippet not in activation_job:
             raise ValueError(f"release activation is missing {snippet!r}")
 
-    npm_verify_job = job_section(contents, "verify-npm", "verify-testpypi")
-    test_pypi_verify_job = job_section(
-        contents, "verify-testpypi", "registry-publish-complete"
-    )
     for name, job, publisher, smoke in (
-        ("npm", npm_verify_job, "publish-npm", "smoke-browser-package.mjs"),
+        ("npm", jobs["verify-npm"], "publish-npm", "smoke-browser-package.mjs"),
+        ("PyPI", jobs["verify-pypi"], "publish-pypi", "smoke_artifact.py"),
         (
             "TestPyPI",
-            test_pypi_verify_job,
+            jobs["verify-testpypi"],
             "publish-testpypi",
             "smoke_artifact.py",
         ),
@@ -219,7 +249,7 @@ def validate(
         if smoke not in job:
             raise ValueError(f"{name} verifier must run a clean-consumer smoke test")
 
-    release_job = contents.split("  publish-github-release:", 1)[1]
+    release_job = jobs["publish-github-release"]
     if "- registry-publish-complete" not in release_job:
         raise ValueError("GitHub release must depend on registry completion")
     if "- release-ready" not in release_job:
@@ -230,14 +260,14 @@ def validate(
         raise ValueError("GitHub release must use the finalized changelog")
     if "scripts/verify_release_bundle.py" not in release_job:
         raise ValueError("GitHub release must verify the sealed bundle")
-    registry_job = job_section(
-        contents, "registry-publish-complete", "publish-github-release"
-    )
+    registry_job = jobs["registry-publish-complete"]
     for dependency in (
         "release-ready",
         "publish-npm",
+        "publish-pypi",
         "publish-testpypi",
         "verify-npm",
+        "verify-pypi",
         "verify-testpypi",
     ):
         if f"- {dependency}" not in registry_job:

@@ -68,8 +68,8 @@ repository is **not** renamed, so `repository`/`homepage` URLs are unchanged.
 This also **clears the public PyPI blocker**. The old normalized project
 `kaleidoswap-sdk` already holds `0.1.0`–`0.5.6`, which is why production PyPI
 publishing was hardcoded off; `kaleidorg-swap-sdk` is unclaimed, so `0.1.0` is
-publishable under the new name. Publishing stays disabled by configuration
-pending a trusted publisher, but it is now a decision rather than a constraint.
+publishable under the new name. Publishing stays off by default, but it is now a
+configuration decision rather than a technical constraint.
 
 ### Breaking — TypeScript `init()` signature
 
@@ -83,6 +83,37 @@ positional form, but a caller who already passed the object form
 Node consumers must now read the new `wasmUrl` export and pass its bytes,
 because Node's `fetch` will not load a `file:` URL.
 
+### Changed — registry publishing uses stored API tokens
+
+Publishing authenticates with `NPM_TOKEN` and `PYPI_TOKEN`, held as **`release`
+environment secrets**, instead of OIDC trusted publishing. This is a deliberate
+reduction in the previous "no long-lived registry credential" property, taken so
+a release does not depend on registry-side trusted-publisher bootstrap.
+
+The invariant that replaces it is narrower but still enforced by
+`scripts/check_release_workflow.py`:
+
+- only `NPM_TOKEN` and `PYPI_TOKEN` may be referenced — any other secret name is
+  rejected;
+- a token is only reachable from a job that declares `environment: release`, so
+  publishing still requires that environment's review;
+- the read-only build and rehearsal workflows may not reference a token at all;
+- `username:` is rejected, so authentication cannot silently become basic auth.
+
+`id-token: write` is retained on the publish jobs: npm provenance and PyPI
+attestations are Sigstore-signed with the workflow's OIDC identity regardless of
+how we authenticate to the registry.
+
+The npm job now runs `npm whoami` before publishing. A bad credential fails on a
+read-only call rather than part-way through an irreversible publish.
+
+### Added — public PyPI publishing
+
+`PYPI_PUBLISH_ENABLED` becomes a repository variable (default `false`) with real
+`publish-pypi` and `verify-pypi` jobs, rather than a hardcoded `"false"`. The
+distribution rename cleared the name collision that made this impossible; the
+flag still defaults off, so a tag fails closed until it is set deliberately.
+
 ### Release engineering
 
 - Reset the synchronized Rust, Python, and TypeScript public release line to
@@ -91,8 +122,8 @@ because Node's `fetch` will not load a `file:` URL.
   version and lockfile.
 - Validate version consistency in pull-request CI before release automation is
   enabled.
-- Document the existing public PyPI name/version collision; production PyPI
-  publishing remains intentionally disabled until it is resolved.
+- Document the public PyPI name/version collision that the `kaleidorg` rename
+  resolved, and keep production PyPI off by default until deliberately enabled.
 - Package Python bindings with Maturin/UniFFI as platform-tagged native wheels
   instead of embedding native libraries in a universal Hatch wheel.
 - Include complete Python distribution metadata, license, and classifiers.
@@ -107,8 +138,8 @@ because Node's `fetch` will not load a `file:` URL.
 - Coordinate tag releases through one immutable bundle containing five native
   Python wheels, one source distribution, and one npm tarball, plus checksums,
   a release manifest, and an SPDX artifact SBOM.
-- Publish npm and optional TestPyPI artifacts through job-scoped OIDC behind the
-  protected `release` environment, without long-lived registry credentials.
+- Publish npm, PyPI, and optional TestPyPI artifacts behind the protected
+  `release` environment; see the token note above for how they authenticate.
 - Exercise the exact production artifact graph in a read-only rehearsal,
   including clean Node and Firefox consumers and deliberate preflight, npm, and
   wheel-inventory failures.

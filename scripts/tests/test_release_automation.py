@@ -82,7 +82,9 @@ class RegistryAvailabilityTests(unittest.TestCase):
                     "npm",
                 )
 
-    def test_public_pypi_must_be_explicitly_disabled(self) -> None:
+    def test_public_pypi_may_now_be_enabled(self) -> None:
+        # The distribution rename cleared the name collision that made public
+        # PyPI impossible, so an enabled flag is accepted rather than rejected.
         with mock.patch.dict(
             os.environ,
             {
@@ -92,8 +94,7 @@ class RegistryAvailabilityTests(unittest.TestCase):
             },
             clear=True,
         ):
-            with self.assertRaisesRegex(ValueError, "public PyPI"):
-                registry.validate_configuration()
+            self.assertEqual(registry.validate_configuration(), (False, True, False))
 
     def test_oidc_registry_flags_accept_enabled_publishers(self) -> None:
         with mock.patch.dict(
@@ -105,7 +106,7 @@ class RegistryAvailabilityTests(unittest.TestCase):
             },
             clear=True,
         ):
-            self.assertEqual(registry.validate_configuration(), (True, True))
+            self.assertEqual(registry.validate_configuration(), (True, False, True))
 
     def test_registry_flags_reject_implicit_values(self) -> None:
         with mock.patch.dict(
@@ -287,7 +288,7 @@ class PublishedArtifactTests(unittest.TestCase):
                     ),
                 ),
             ):
-                wheel, sdist = published.download_test_pypi(
+                wheel, sdist = published.download_python_index(
                     entries,
                     Path(temp),
                     "0.1.0",
@@ -317,7 +318,7 @@ class PublishedArtifactTests(unittest.TestCase):
             mock.patch.object(published, "request_json", return_value=payload),
             self.assertRaisesRegex(ValueError, "inventory"),
         ):
-            published.download_test_pypi(
+            published.download_python_index(
                 entries,
                 Path("/unused"),
                 "0.1.0",
@@ -499,14 +500,29 @@ class WorkflowInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "mutable"):
             workflow.validate(changed)
 
-    def test_registry_secret_is_rejected(self) -> None:
+    def test_unexpected_secret_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
-        with self.assertRaisesRegex(ValueError, "stored registry credentials"):
-            workflow.validate(contents + "\n# secrets.NPM_TOKEN\n")
+        with self.assertRaisesRegex(ValueError, "unexpected secrets"):
+            workflow.validate(contents + "\n# secrets.SOME_OTHER_TOKEN\n")
+
+    def test_registry_secret_outside_release_environment_is_rejected(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "  verify-npm:\n",
+            "  verify-npm:\n    env:\n      LEAK: ${{ secrets.NPM_TOKEN }}\n",
+            1,
+        )
+        with self.assertRaisesRegex(ValueError, "without the protected release"):
+            workflow.validate(changed)
+
+    def test_basic_auth_is_rejected(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "not basic auth"):
+            workflow.validate(contents + "\n# username: someone\n")
 
     def test_extra_oidc_permission_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
-        with self.assertRaisesRegex(ValueError, "exactly two"):
+        with self.assertRaisesRegex(ValueError, "exactly the three"):
             workflow.validate(contents + "\n# id-token: write\n")
 
     def test_production_release_requires_npm_activation(self) -> None:

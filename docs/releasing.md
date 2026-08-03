@@ -81,7 +81,17 @@ Both publisher jobs:
   request an OIDC token;
 - re-verify the sealed bundle's SHA-256 checksums before publishing;
 - publish the exact validated archive without `--skip-existing`;
-- contain no npm, PyPI, or TestPyPI password or long-lived token.
+- authenticate with an API token drawn from the protected `release`
+  environment, never from repository-level secrets, and never with basic auth.
+
+`scripts/check_release_workflow.py` enforces that: only `NPM_TOKEN` and
+`PYPI_TOKEN` may be referenced, only from a job declaring
+`environment: release`, and never from the read-only build or rehearsal
+workflows. A `username:` key is rejected outright.
+
+Before publishing, the npm job runs `npm whoami` to prove the credential
+authenticates. An npm publish cannot be cleanly undone, so a bad token must fail
+on a read-only call rather than half-way through the release.
 
 The npm job pins an OIDC-capable npm CLI and publishes the validated `.tgz`.
 npm automatically emits provenance for a public package from this public
