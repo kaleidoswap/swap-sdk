@@ -9,13 +9,7 @@ import json
 import sys
 from pathlib import Path
 
-METADATA_FILES = {
-    "SHA256SUMS",
-    "release-manifest.json",
-    "release.spdx.json",
-}
-PACKAGE_COUNT = 7
-RELEASE_ASSET_COUNT = PACKAGE_COUNT + len(METADATA_FILES)
+from release_metadata import METADATA_FILES, PACKAGE_COUNT, RELEASE_ASSET_COUNT
 
 
 def require(condition: bool, message: str) -> None:

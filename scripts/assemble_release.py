@@ -15,6 +15,7 @@ from pathlib import Path
 from release_metadata import (
     PLATFORM_MARKERS,
     PYTHON_DISTRIBUTION,
+    WHEEL_COUNT,
     npm_package,
 )
 
@@ -61,7 +62,10 @@ def collect_artifacts(directory: Path, version: str) -> list[Path]:
     wheels = [path for path in artifacts if path.suffix == ".whl"]
     sdists = [path for path in artifacts if path.name.endswith(".tar.gz")]
     npm = [path for path in artifacts if path.suffix == ".tgz"]
-    require(len(wheels) == 5, f"expected five wheels, found {len(wheels)}")
+    require(
+        len(wheels) == WHEEL_COUNT,
+        f"expected {WHEEL_COUNT} wheels, found {len(wheels)}",
+    )
     require(len(sdists) == 1, f"expected one sdist, found {len(sdists)}")
     require(len(npm) == 1, f"expected one npm tarball, found {len(npm)}")
     expected_prefix = f"{PYTHON_DISTRIBUTION}-{version}"

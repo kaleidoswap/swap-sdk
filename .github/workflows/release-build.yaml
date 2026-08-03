@@ -42,7 +42,6 @@ env:
   MATURIN_VERSION: "1.14.1"
   NODE_VERSION: "22.23.1"
   NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}
-  PYPI_PUBLISH_ENABLED: "false"
   PYTHON_VERSION: "3.11.9"
   REHEARSAL: ${{ inputs.rehearsal && 'true' || 'false' }}
   RELEASE_ID: ${{ inputs.rehearsal && format('rehearsal-{0}', github.run_id) || github.ref_name }}
@@ -386,12 +385,17 @@ jobs:
           --commit "${{ needs.preflight.outputs.commit }}"
       - name: Record rehearsal result
         run: |
+          # Counts come from the module that enforces them, so adding a wheel
+          # target cannot leave this summary quietly wrong. Kept on one line:
+          # an indented block scalar cannot contain column-0 Python.
+          packages="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); import release_metadata as m; print(m.PACKAGE_COUNT)')"
+          assets="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); import release_metadata as m; print(m.RELEASE_ASSET_COUNT)')"
           {
             echo "## Release rehearsal passed"
             echo
             echo "- Source: \`${{ needs.preflight.outputs.commit }}\`"
             echo "- Intended tag: \`${{ needs.preflight.outputs.tag }}\`"
-            echo "- Exact packages: 7"
-            echo "- Intended GitHub release assets: 10"
+            echo "- Exact packages: ${packages}"
+            echo "- Intended GitHub release assets: ${assets}"
             echo "- Registry publication: disabled"
           } >> "${GITHUB_STEP_SUMMARY}"

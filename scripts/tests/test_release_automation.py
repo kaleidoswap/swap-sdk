@@ -369,7 +369,7 @@ class ReleaseArtifactTests(unittest.TestCase):
             directory = Path(temp)
             self.make_inventory(directory, "0.1.0")
             next(directory.glob("*win_amd64.whl")).unlink()
-            with self.assertRaisesRegex(ValueError, "five wheels"):
+            with self.assertRaisesRegex(ValueError, r"expected \d+ wheels"):
                 assemble_release.collect_artifacts(directory, "0.1.0")
 
     def test_invalid_npm_archive_is_rejected_before_release_ready(self) -> None:
@@ -525,7 +525,7 @@ class WorkflowInvariantTests(unittest.TestCase):
             "scripts/download_published_artifacts.py",
             "scripts/omitted_registry_verifier.py",
         )
-        with self.assertRaisesRegex(ValueError, "missing invariants"):
+        with self.assertRaisesRegex(ValueError, "must download registry artifacts"):
             workflow.validate(changed)
 
     def test_production_github_release_cannot_remain_draft(self) -> None:

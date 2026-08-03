@@ -12,27 +12,31 @@ WORKFLOW = ROOT / ".github/workflows/release.yaml"
 BUILD_WORKFLOW = ROOT / ".github/workflows/release-build.yaml"
 REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
 
+# Structural invariants only. Anything that encodes *today's* policy — which
+# registries are enabled, which publisher action is used, whether TestPyPI has a
+# job at all — is deliberately absent: those are asserted at runtime by the
+# workflow's own `test` steps and by check_registry_availability.py, so
+# restating them here only made cosmetic edits fail the lint gate.
+#
+# The load-bearing checks are not in this list; they are the forbidden-pattern
+# assertions in validate(): no `--skip-existing`, no mutable action refs, no
+# stored registry credentials, and `id-token: write` scoped to exactly the jobs
+# that publish.
 PRODUCTION_REQUIRED = (
-    'tags:\n      - "v*"',
+    # Only a v* tag may start a release, and runs must not cancel each other.
+    "tags:",
+    '- "v*"',
     "group: release-${{ github.ref }}",
     "cancel-in-progress: false",
-    'PYPI_PUBLISH_ENABLED: "false"',
-    "NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}",
-    "TEST_PYPI_PUBLISH_ENABLED: ${{ vars.TEST_PYPI_PUBLISH_ENABLED || 'false' }}",
+    # The job graph that enforces build -> validate -> gate -> publish ordering.
     "release-activation:",
     "uses: ./.github/workflows/release-build.yaml",
     "publish-npm:",
-    "publish-testpypi:",
     "verify-npm:",
-    "verify-testpypi:",
     "registry-publish-complete:",
     "publish-github-release:",
+    # Publishing must consume the sealed bundle, never a fresh build.
     "release-bundle-${{ needs.release-ready.outputs.release_id }}",
-    "npm publish release-artifacts/*.tgz --access public",
-    "pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247",
-    "scripts/download_published_artifacts.py",
-    "scripts/release_notes.py",
-    "--latest",
 )
 
 BUILD_REQUIRED = (

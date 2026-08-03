@@ -372,6 +372,30 @@ publisher succeeds and another fails:
      --notes-file <(python3 scripts/release_notes.py 0.1.0)
    ```
 
+## Rust distribution
+
+The Rust surface is **git-only**. Nothing in this pipeline runs `cargo package`
+or `cargo publish`, and `kaleidorg-swap-sdk` is unclaimed on crates.io.
+Consumers take it by tag:
+
+```toml
+kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }
+```
+
+The `repository`, `homepage`, and `include` metadata on the manifests exists so
+the crates are publishable *later* without another metadata pass, not because
+publishing happens today.
+
+Two things must be resolved before crates.io is possible, so treat this as a
+deliberate deferral rather than an oversight:
+
+1. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
+   published first.
+2. The "one synchronized version" contract covers three of the five crates. The
+   root crate, Python distribution, and npm package share `0.1.0`;
+   `bindings`/`bindings-wasm` are independently `0.1.0` and `macros` is `1.0.0`.
+   `validate-versions` deliberately checks only the three public surfaces.
+
 ## Python registry
 
 The previous distribution name `kaleidoswap_sdk` collided with an existing

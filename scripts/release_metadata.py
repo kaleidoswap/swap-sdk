@@ -34,6 +34,21 @@ PLATFORM_MARKERS = (
 
 PLATFORM_MARKERS_BY_LABEL = dict(PLATFORM_MARKERS)
 
+# One wheel per platform, plus the sdist and the npm tarball. Adding a wheel
+# target to PLATFORM_MARKERS updates the assembler's wheel count, the sealed
+# bundle's expected inventory, and the rehearsal summary together.
+WHEEL_COUNT = len(PLATFORM_MARKERS)
+PACKAGE_COUNT = WHEEL_COUNT + 2
+
+METADATA_FILES = frozenset(
+    {
+        "SHA256SUMS",
+        "release-manifest.json",
+        "release.spdx.json",
+    }
+)
+RELEASE_ASSET_COUNT = PACKAGE_COUNT + len(METADATA_FILES)
+
 # The wheel the post-publication verifier installs. Taken from the table above
 # rather than restated, so it cannot drift from the assembler's notion of it.
 LINUX_X86_64_WHEEL = PLATFORM_MARKERS_BY_LABEL["linux x86_64"]
