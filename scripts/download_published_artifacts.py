@@ -13,7 +13,12 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from release_metadata import LINUX_X86_64_WHEEL, npm_package, npm_tarball_name
+from release_metadata import (
+    LINUX_X86_64_WHEEL,
+    PACKAGE_COUNT,
+    npm_package,
+    npm_tarball_name,
+)
 
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYTHON_PACKAGE = "kaleidorg_swap_sdk"
@@ -150,16 +155,12 @@ def download_python_index(
         if digest != expected_entry.get("sha256"):
             raise ValueError(f"PyPI checksum mismatch: {name}")
 
-    selected_names = [
-        name
-        for name in expected
-        if LINUX_X86_64_WHEEL.search(name) or name.endswith(".tar.gz")
-    ]
-    if len(selected_names) != 2:
-        raise ValueError("could not select Linux wheel and sdist from release manifest")
-
+    # Download and hash *every* artifact. The digest comparison above trusts
+    # PyPI's self-reported metadata, so a registry or intermediary serving
+    # correct metadata with tampered bytes would pass it. Only re-hashing the
+    # downloaded file proves the published bytes are the sealed bytes.
     destinations: list[Path] = []
-    for name in sorted(selected_names):
+    for name in sorted(expected):
         url = published[name].get("url")
         if not isinstance(url, str):
             raise ValueError(f"PyPI artifact has no download URL: {name}")
@@ -168,9 +169,21 @@ def download_python_index(
         verify_download(destination, expected[name])
         destinations.append(destination)
         print(f"Verified published PyPI artifact: {destination.name}")
-    wheel = next(path for path in destinations if path.suffix == ".whl")
-    sdist = next(path for path in destinations if path.name.endswith(".tar.gz"))
-    return wheel, sdist
+    if len(destinations) != PACKAGE_COUNT - 1:
+        raise ValueError(
+            f"expected {PACKAGE_COUNT - 1} Python artifacts, "
+            f"byte-verified {len(destinations)}"
+        )
+
+    # The smoke tests need one installable wheel for this runner plus the sdist.
+    wheels = [path for path in destinations if LINUX_X86_64_WHEEL.search(path.name)]
+    sdists = [path for path in destinations if path.name.endswith(".tar.gz")]
+    if len(wheels) != 1 or len(sdists) != 1:
+        raise ValueError(
+            "could not select exactly one Linux wheel and one sdist for the "
+            f"smoke tests (wheels={len(wheels)}, sdists={len(sdists)})"
+        )
+    return wheels[0], sdists[0]
 
 
 def main() -> int:

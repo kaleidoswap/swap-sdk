@@ -77,8 +77,10 @@ Both publisher jobs:
 
 - depend on the common `release-ready` gate;
 - use the protected GitHub `release` environment;
-- receive job-scoped `id-token: write`, while every other job remains unable to
-  request an OIDC token;
+- for npm only, receive job-scoped `id-token: write` — required for provenance,
+  and asserted against `publishConfig.provenance`. The PyPI job requests no OIDC
+  scope, because PEP 740 attestations need Trusted Publishing and would be
+  unused privilege here. Every other job remains unable to request a token;
 - re-verify the sealed bundle's SHA-256 checksums before publishing;
 - publish the exact validated archive without `--skip-existing`;
 - authenticate with an API token drawn from the protected `release`
@@ -213,43 +215,62 @@ against force pushes and deletion. Administrators are subject to the same
 rules. Do not push a release tag until the protection API confirms those
 settings.
 
-## Registry trusted-publisher setup
+## Registry credential setup
 
-Trusted-publisher configuration is registry-side state and cannot be committed
-to this repository. The identity fields are case-sensitive and must match
-exactly.
+Publishing authenticates with API tokens held as **`release` environment
+secrets**. This is a deliberate tradeoff over OIDC trusted publishing: it avoids
+depending on registry-side publisher bootstrap, at the cost of storing long-lived
+credentials. See the changelog entry "registry publishing uses stored API tokens"
+for the invariants that replace the no-credential property.
 
-### npm
+Both secrets live on the `release` environment, never at repository level, so
+they are unreachable except from a job that environment gates.
+`scripts/check_release_workflow.py` enforces that.
 
-`@kaleidorg/swap-sdk` is currently absent from npm. npm exposes trusted-publisher
-configuration from an existing package's settings and does not document a
-pending-publisher flow for creating a package. Therefore the npm variable must
-remain false until package ownership has been bootstrapped outside normal
-release CI.
+### npm — `NPM_TOKEN`
 
-The package owner must:
+`@kaleidorg/swap-sdk` does not exist on npm yet. npm configures trusted
+publishing from an existing package's settings, so a brand-new package cannot be
+created by OIDC alone — which is the practical reason this pipeline uses a token.
 
-1. Agree on an npm-approved one-time package bootstrap that does not consume the
-   intended `0.1.0` release.
-2. Keep any interactive bootstrap credential local; never add it to GitHub
-   Actions, repository secrets, files, or logs.
-3. In the package settings, configure the GitHub Actions trusted publisher:
+1. An owner of the `@kaleidorg` scope creates an **automation** token with
+   publish rights (granular access tokens scoped to this package are preferable
+   to a legacy classic token).
+2. Store it as `NPM_TOKEN` on the `release` environment. Never at repository
+   level, never in a file, never in logs.
+3. Verify it before relying on it — read-only, no publish:
 
-   | Field | Value |
-   |---|---|
-   | Organization or user | `kaleidoswap` |
-   | Repository | `kaleidoswap-sdk` |
-   | Workflow filename | `release.yaml` |
-   | Environment | `release` |
-   | Allowed action | `npm publish` |
+   ```sh
+   NPM_TOKEN=<token> npm whoami --registry https://registry.npmjs.org
+   ```
 
-4. Change publishing access to require two-factor authentication and disallow
-   traditional tokens.
-5. Have a second maintainer verify every field, then set
-   `NPM_PUBLISH_ENABLED=true` as a repository variable.
+   The `publish-npm` job runs the same check before publishing, so a bad token
+   fails there rather than part-way through an irreversible release.
+4. Set `NPM_PUBLISH_ENABLED=true`.
 
-This bootstrap is a release blocker, not a reason to add an npm token to the
-workflow.
+npm provenance still applies: `publishConfig.provenance` is `true` in
+`typescript-sdk/package.json`, and npm derives provenance from the workflow's
+OIDC token independently of how it authenticates. That is the only reason
+`publish-npm` holds `id-token: write`, and the workflow checker asserts the
+linkage — dropping the manifest field fails the gate rather than silently leaving
+an unused privilege.
+
+### PyPI — `PYPI_TOKEN`
+
+1. A PyPI account with upload rights for `kaleidorg-swap-sdk` creates an API
+   token. The project does not exist yet, so an account-scoped token is needed
+   for the first upload; narrow it to the project afterwards.
+2. Store it as `PYPI_TOKEN` on the `release` environment.
+3. Set `PYPI_PUBLISH_ENABLED=true`.
+
+PyPI has **no read-only way to validate an upload token**, so unlike npm there is
+no pre-flight. A bad `PYPI_TOKEN` fails at upload — after npm has already
+published. See "Partial-publication recovery" below; note that PyPI never frees a
+version number, so a spent `0.1.0` cannot be reused.
+
+PEP 740 attestations are **not** produced. They require Trusted Publishing, and
+the PyPA action silently ignores `attestations: true` when a password is set, so
+that input is pinned to `false` and the PyPI job requests no OIDC scope.
 
 ## v0.1.0 activation checklist
 

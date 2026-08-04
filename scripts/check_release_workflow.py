@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -138,8 +139,15 @@ def validate(
                 f"but does not declare them: {undeclared}"
             )
     combined = contents + build_contents + rehearsal_contents
-    if "--skip-existing" in combined:
-        raise ValueError("release workflows must never skip an existing version")
+    # Both spellings. The CLI flag is what twine/npm take, but the PyPA action
+    # is configured through a YAML input — and `skip-existing: true` is exactly
+    # the edit someone reaches for after a half-failed release, which would
+    # otherwise sail past this gate.
+    for spelling in ("--skip-existing", "skip-existing:"):
+        if spelling in combined:
+            raise ValueError(
+                f"release workflows must never skip an existing version ({spelling})"
+            )
 
     mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
     invalid = [ref for ref in mutable_actions if not re.fullmatch(r"[0-9a-f]{40}", ref)]
@@ -224,6 +232,20 @@ def validate(
             raise ValueError(f"{name} publisher must use the release environment")
         if name == "npm" and "id-token: write" not in job:
             raise ValueError("npm publisher must have job-scoped OIDC for provenance")
+        if name == "npm":
+            # The npm job's OIDC scope is justified *only* by provenance. If that
+            # field is dropped from package.json the scope becomes exactly the
+            # unused privilege the PyPI job's comment condemns, and nothing else
+            # would notice.
+            manifest = json.loads(
+                (ROOT / "typescript-sdk/package.json").read_text(encoding="utf-8")
+            )
+            if manifest.get("publishConfig", {}).get("provenance") is not True:
+                raise ValueError(
+                    "npm publisher holds id-token: write, but package.json does "
+                    "not set publishConfig.provenance — either restore it or drop "
+                    "the unused OIDC scope"
+                )
         if name != "npm" and re.search(r"^\s*id-token: write\s*$", job, re.MULTILINE):
             raise ValueError(f"{name} publisher must not request unused OIDC scope")
         if "sha256sum --check --strict SHA256SUMS" not in job:

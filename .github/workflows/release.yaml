@@ -201,10 +201,13 @@ jobs:
           release-artifacts registry-python
           --version "${{ needs.release-ready.outputs.version }}"
           --pypi
+      # All five wheels are downloaded and byte-verified above, so select the
+      # one this runner can actually install rather than globbing *.whl.
       - name: Clean-install the registry Linux wheel
         run: |
           mkdir registry-wheel
-          cp registry-python/*.whl registry-wheel/
+          cp registry-python/*manylinux*_x86_64.whl registry-wheel/
+          test "$(ls registry-wheel | wc -l)" -eq 1
           python3 bindings/python/scripts/smoke_artifact.py wheel --dist registry-wheel
       - name: Rebuild and clean-install the registry source distribution
         run: |

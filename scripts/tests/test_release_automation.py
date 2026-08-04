@@ -454,6 +454,43 @@ class ReleaseRefTests(unittest.TestCase):
         ):
             release_version.validate_tag("v0.1.1")
 
+    def test_release_tag_must_be_reachable_from_trunk(self) -> None:
+        # The twin of the rehearsal test below, and the reason both exist: the
+        # two directions are opposite and both correct, so a swapped argument
+        # pair would check "trunk is reachable from the tag" — letting an
+        # unreachable tag publish. This pins the release direction.
+        with (
+            mock.patch.object(release_ref, "validate_tag"),
+            mock.patch.object(
+                release_ref,
+                "git",
+                side_effect=["source-commit", "source-commit", "trunk-commit"],
+            ),
+            mock.patch.object(release_ref, "require_ancestor") as require_ancestor,
+        ):
+            release_ref.validate_release_ref(
+                "v0.1.0",
+                "source-sha",
+                "origin/trunk",
+            )
+        require_ancestor.assert_called_once_with(
+            "source-commit",
+            "trunk-commit",
+            "source-commit is not reachable from origin/trunk",
+        )
+
+    def test_release_ref_rejects_tag_pointing_elsewhere(self) -> None:
+        with (
+            mock.patch.object(release_ref, "validate_tag"),
+            mock.patch.object(
+                release_ref,
+                "git",
+                side_effect=["other-commit", "source-commit", "trunk-commit"],
+            ),
+            self.assertRaisesRegex(ValueError, "but the workflow is building"),
+        ):
+            release_ref.validate_release_ref("v0.1.0", "source-sha", "origin/trunk")
+
     def test_rehearsal_source_must_be_based_on_trunk(self) -> None:
         with (
             mock.patch.object(release_ref, "validate_tag"),
@@ -510,6 +547,27 @@ class WorkflowInvariantTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "without the protected release"):
             workflow.validate(changed)
+
+    def test_skip_existing_yaml_input_is_rejected(self) -> None:
+        # The PyPA action takes skip-existing as a YAML input, not a CLI flag.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "never skip an existing version"):
+            workflow.validate(contents + "\n          skip-existing: true\n")
+
+    def test_npm_oidc_scope_requires_provenance_in_manifest(self) -> None:
+        # The npm job's id-token scope is justified only by provenance; if the
+        # manifest field goes, the scope must go with it.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        manifest = ROOT / "typescript-sdk/package.json"
+        original = manifest.read_text(encoding="utf-8")
+        payload = json.loads(original)
+        payload["publishConfig"].pop("provenance", None)
+        try:
+            manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "publishConfig.provenance"):
+                workflow.validate(contents)
+        finally:
+            manifest.write_text(original, encoding="utf-8")
 
     def test_basic_auth_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
