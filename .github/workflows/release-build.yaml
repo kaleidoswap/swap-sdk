@@ -1,0 +1,406 @@
+name: release build
+
+on:
+  workflow_call:
+    inputs:
+      failure_case:
+        description: Deliberate rehearsal failure to exercise
+        required: false
+        type: string
+        default: none
+      rehearsal:
+        description: Build and verify artifacts without publishing
+        required: false
+        type: boolean
+        default: false
+      release_tag:
+        description: >-
+          Intended vX.Y.Z tag for rehearsal metadata and validation. Leave empty
+          to derive it from the committed manifests, so no workflow file has to
+          carry a version literal.
+        required: false
+        type: string
+        default: ""
+    outputs:
+      commit:
+        description: Peeled source commit represented by the tag or rehearsal ref
+        value: ${{ jobs.preflight.outputs.commit }}
+      release_id:
+        description: Immutable workflow artifact identifier
+        value: ${{ jobs.preflight.outputs.release_id }}
+      tag:
+        description: Validated release tag
+        value: ${{ jobs.preflight.outputs.tag }}
+      version:
+        description: Validated package version
+        value: ${{ jobs.preflight.outputs.version }}
+
+permissions:
+  contents: read
+
+env:
+  MATURIN_VERSION: "1.14.1"
+  NODE_VERSION: "22.23.1"
+  NPM_PUBLISH_ENABLED: ${{ vars.NPM_PUBLISH_ENABLED || 'false' }}
+  # Read from the environment by scripts/check_registry_availability.py, which
+  # requires it to be explicitly true or false. It has no textual reference in
+  # this file, so do not mistake it for a dead declaration. Mirrors the
+  # production flag so a rehearsal validates the same configuration a real
+  # release will use.
+  PYPI_PUBLISH_ENABLED: ${{ vars.PYPI_PUBLISH_ENABLED || 'false' }}
+  PYTHON_VERSION: "3.11.9"
+  REHEARSAL: ${{ inputs.rehearsal && 'true' || 'false' }}
+  RELEASE_ID: ${{ inputs.rehearsal && format('rehearsal-{0}', github.run_id) || github.ref_name }}
+  # Passed through verbatim. An empty value is meaningful — it tells preflight to
+  # derive the tag — so this must not route through a `||` fallback: Actions
+  # treats "" as falsy and would silently substitute github.ref_name, which is
+  # "<pr>/merge" on a pull request.
+  RELEASE_TAG: ${{ inputs.release_tag }}
+  REHEARSAL_FAILURE_CASE: ${{ inputs.rehearsal && inputs.failure_case || 'none' }}
+  RUST_VERSION: "1.88.0"
+  UV_VERSION: "0.11.16"
+  WASM_PACK_VERSION: "0.14.0"
+
+jobs:
+  preflight:
+    name: Release preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      commit: ${{ steps.release.outputs.commit }}
+      release_id: ${{ steps.release.outputs.release_id }}
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Fetch protected release base
+        run: git fetch --no-tags origin trunk:refs/remotes/origin/trunk
+      - name: Validate mode, tag, version, and source reachability
+        id: release
+        run: |
+          case "${REHEARSAL_FAILURE_CASE}" in
+            none|malformed-tag|version-mismatch|missing-wheel|npm-smoke) ;;
+            *)
+              echo "Unsupported rehearsal failure case: ${REHEARSAL_FAILURE_CASE}" >&2
+              exit 1
+              ;;
+          esac
+
+          intended_tag="${RELEASE_TAG}"
+          if [ -z "${intended_tag}" ]; then
+            # Only a rehearsal may derive its tag; a real release must be told
+            # the tag it was triggered by.
+            test "${REHEARSAL}" = "true"
+            intended_tag="v$(python3 scripts/release_version.py current)"
+          fi
+
+          effective_tag="${intended_tag}"
+          if [ "${REHEARSAL_FAILURE_CASE}" = "malformed-tag" ]; then
+            effective_tag="release-${intended_tag#v}"
+          elif [ "${REHEARSAL_FAILURE_CASE}" = "version-mismatch" ]; then
+            version="${intended_tag#v}"
+            major="${version%%.*}"
+            remainder="${version#*.}"
+            minor="${remainder%%.*}"
+            patch="${remainder##*.}"
+            effective_tag="v${major}.${minor}.$((patch + 1))"
+          fi
+
+          if [ "${REHEARSAL}" = "true" ]; then
+            python3 scripts/validate_release_ref.py --rehearsal \
+              "${effective_tag}" "${GITHUB_SHA}" origin/trunk
+          else
+            test "${REHEARSAL_FAILURE_CASE}" = "none"
+            python3 scripts/validate_release_ref.py \
+              "${effective_tag}" "${GITHUB_SHA}" origin/trunk
+          fi
+          commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+          echo "release_id=${RELEASE_ID}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${effective_tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${effective_tag#v}" >> "${GITHUB_OUTPUT}"
+      - name: Verify registry availability and publisher configuration
+        run: |
+          # A rehearsal must not assert that the current version is unclaimed:
+          # after v0.1.0 ships, that would fail on every later pull request.
+          # Only the tag path — which is about to occupy the version — checks it.
+          if [ "${REHEARSAL}" = "true" ]; then
+            python3 scripts/check_registry_availability.py \
+              "${{ steps.release.outputs.version }}" --flags-only
+          else
+            python3 scripts/check_registry_availability.py \
+              "${{ steps.release.outputs.version }}"
+          fi
+
+  python-wheel:
+    name: Release Python wheel (${{ matrix.name }})
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+            builder: manylinux
+            target: x86_64-unknown-linux-gnu
+          - name: linux-aarch64
+            runner: ubuntu-24.04-arm
+            builder: manylinux
+            target: aarch64-unknown-linux-gnu
+          - name: macos-x86_64
+            runner: macos-15-intel
+            builder: host
+            target: x86_64-apple-darwin
+          - name: macos-aarch64
+            runner: macos-15
+            builder: host
+            target: aarch64-apple-darwin
+          - name: windows-x86_64
+            runner: windows-2025
+            builder: host
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-dependency-glob: bindings/python/uv.lock
+          enable-cache: true
+          version: ${{ env.UV_VERSION }}
+      - name: Build manylinux wheel
+        if: matrix.builder == 'manylinux'
+        working-directory: bindings
+        run: make build-python-manylinux
+      - name: Build host wheel
+        if: matrix.builder == 'host'
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          args: --release --locked --compatibility pypi --out dist
+          maturin-version: v${{ env.MATURIN_VERSION }}
+          rust-toolchain: ${{ env.RUST_VERSION }}
+          target: ${{ matrix.target }}
+          working-directory: bindings/python
+      - name: Inspect wheel contents and platform tag
+        run: >-
+          python bindings/python/scripts/inspect_artifacts.py
+          --wheel-only bindings/python/dist
+      - name: Install exact wheel in a clean environment
+        run: >-
+          python bindings/python/scripts/smoke_artifact.py
+          wheel --dist bindings/python/dist
+      - name: Upload exact wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: release-build-python-wheel-${{ matrix.name }}
+          path: bindings/python/dist/*.whl
+          retention-days: 7
+
+  python-sdist:
+    name: Release Python sdist
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-dependency-glob: bindings/python/uv.lock
+          enable-cache: true
+          version: ${{ env.UV_VERSION }}
+      - name: Build source distribution
+        working-directory: bindings
+        run: make build-python-sdist
+      - name: Inspect source distribution
+        working-directory: bindings
+        run: make inspect-python-sdist
+      - name: Rebuild and install exact source distribution
+        working-directory: bindings
+        run: make smoke-python-sdist
+      - name: Upload exact source distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: release-build-python-sdist
+          path: bindings/python/dist/*.tar.gz
+          retention-days: 7
+
+  typescript-package:
+    name: Release npm package
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: typescript-sdk/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Set up pinned Rust
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup default "${RUST_VERSION}"
+      - name: Install pinned wasm-pack
+        run: cargo install wasm-pack --version "${WASM_PACK_VERSION}" --locked
+      - name: Install locked TypeScript dependencies
+        working-directory: typescript-sdk
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build fresh WASM bindings
+        run: make wasm-pack-build
+      - name: Validate TypeScript package
+        working-directory: typescript-sdk
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run format:check
+          npm test
+          npm audit --omit=dev
+      - name: Build exact npm tarball
+        working-directory: typescript-sdk
+        run: |
+          mkdir release-dist
+          npm pack --json --pack-destination release-dist
+      - name: Install exact npm tarball in a clean consumer
+        if: ${{ !(inputs.rehearsal && inputs.failure_case == 'npm-smoke') }}
+        working-directory: typescript-sdk
+        run: node scripts/smoke-package.mjs release-dist/*.tgz
+      - name: Install exact npm tarball in a clean browser consumer
+        if: ${{ !(inputs.rehearsal && inputs.failure_case == 'npm-smoke') }}
+        working-directory: typescript-sdk
+        run: node scripts/smoke-browser-package.mjs release-dist/*.tgz
+      - name: Exercise a deliberate npm smoke failure
+        if: ${{ inputs.rehearsal && inputs.failure_case == 'npm-smoke' }}
+        working-directory: typescript-sdk
+        run: |
+          truncate --size 0 release-dist/*.tgz
+          node scripts/smoke-package.mjs release-dist/*.tgz
+      - name: Upload exact npm tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: release-build-npm-package
+          path: typescript-sdk/release-dist/*.tgz
+          retention-days: 7
+
+  release-ready:
+    name: Release-ready artifact gate
+    needs:
+      - preflight
+      - python-wheel
+      - python-sdist
+      - typescript-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          cache-dependency-glob: bindings/python/uv.lock
+          enable-cache: true
+          version: ${{ env.UV_VERSION }}
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Download every exact build artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          merge-multiple: true
+          path: release-artifacts
+          pattern: release-build-*
+      - name: Exercise a deliberate missing-wheel failure
+        if: ${{ inputs.rehearsal && inputs.failure_case == 'missing-wheel' }}
+        run: rm release-artifacts/*win_amd64.whl
+      - name: Inspect Python archives
+        run: python3 bindings/python/scripts/inspect_artifacts.py release-artifacts
+      - name: Validate inventory and create SHA256SUMS and release.spdx.json
+        run: >-
+          python3 scripts/assemble_release.py release-artifacts
+          --version "${{ needs.preflight.outputs.version }}"
+          --tag "${{ needs.preflight.outputs.tag }}"
+          --commit "${{ needs.preflight.outputs.commit }}"
+      - name: Clean-install exact Linux wheel
+        run: |
+          mkdir wheel-smoke
+          cp release-artifacts/*manylinux*_x86_64.whl wheel-smoke/
+          python3 bindings/python/scripts/smoke_artifact.py wheel --dist wheel-smoke
+      - name: Rebuild and clean-install exact source distribution
+        run: |
+          mkdir sdist-smoke
+          cp release-artifacts/*.tar.gz sdist-smoke/
+          python3 bindings/python/scripts/smoke_artifact.py sdist --dist sdist-smoke
+      - name: Clean-install exact npm tarball
+        working-directory: typescript-sdk
+        run: node scripts/smoke-package.mjs ../release-artifacts/*.tgz
+      - name: Upload validated release bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: release-bundle-${{ env.RELEASE_ID }}
+          path: release-artifacts/
+          retention-days: 30
+
+  rehearsal-complete:
+    name: Verify non-publishing release rehearsal
+    if: ${{ inputs.rehearsal }}
+    needs:
+      - preflight
+      - release-ready
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout rehearsed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download exact validated rehearsal bundle
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: release-bundle-${{ env.RELEASE_ID }}
+          path: release-artifacts
+      - name: Verify checksums, manifest, SBOM, and intended release assets
+        run: >-
+          python3 scripts/verify_release_bundle.py release-artifacts
+          --version "${{ needs.preflight.outputs.version }}"
+          --tag "${{ needs.preflight.outputs.tag }}"
+          --commit "${{ needs.preflight.outputs.commit }}"
+      - name: Record rehearsal result
+        run: |
+          # Counts come from the module that enforces them, so adding a wheel
+          # target cannot leave this summary quietly wrong. Kept on one line:
+          # an indented block scalar cannot contain column-0 Python.
+          packages="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); import release_metadata as m; print(m.PACKAGE_COUNT)')"
+          assets="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); import release_metadata as m; print(m.RELEASE_ASSET_COUNT)')"
+          {
+            echo "## Release rehearsal passed"
+            echo
+            echo "- Source: \`${{ needs.preflight.outputs.commit }}\`"
+            echo "- Intended tag: \`${{ needs.preflight.outputs.tag }}\`"
+            echo "- Exact packages: ${packages}"
+            echo "- Intended GitHub release assets: ${assets}"
+            echo "- Registry publication: disabled"
+          } >> "${GITHUB_STEP_SUMMARY}"

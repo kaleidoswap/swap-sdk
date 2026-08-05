@@ -6,10 +6,10 @@
 mod lusdt_common;
 
 use anyhow::{Context, Result};
-use kaleidoswap_sdk::network::{Chain, Currency};
-use kaleidoswap_sdk::swaps::boltz::CreateSubmarineRequest;
-use kaleidoswap_sdk::swaps::SwapScript;
-use kaleidoswap_sdk::PublicKey;
+use kaleidorg_swap_sdk::network::{Chain, Currency};
+use kaleidorg_swap_sdk::swaps::boltz::CreateSubmarineRequest;
+use kaleidorg_swap_sdk::swaps::SwapScript;
+use kaleidorg_swap_sdk::PublicKey;
 
 use lusdt_common::{api_client, network, required_env, sdk, swap_key, wait_for_status};
 

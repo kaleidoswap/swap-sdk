@@ -1,16 +1,16 @@
-import kaleidoswap_sdk
+import kaleidorg_swap_sdk
 import asyncio
 from datetime import datetime
 
-electrum_btc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
-    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
+    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
-    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
+    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-network = kaleidoswap_sdk.Network.REGTEST
-chain_client = kaleidoswap_sdk.ChainClient(
-    kaleidoswap_sdk.ClientConfig(
+network = kaleidorg_swap_sdk.Network.REGTEST
+chain_client = kaleidorg_swap_sdk.ChainClient(
+    kaleidorg_swap_sdk.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -18,10 +18,10 @@ chain_client = kaleidoswap_sdk.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
 
-    btc_chain = kaleidoswap_sdk.btc_chain_from_network(network)
-    lbtc_chain = kaleidoswap_sdk.lbtc_chain_from_network(network)
+    btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
+    lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)
 
     from_chain = btc_chain
     to_chain = lbtc_chain
@@ -30,8 +30,8 @@ async def main():
     ws_client = boltz_api.ws()
 
     # Generate a new key pair for the swap
-    claim_keys = kaleidoswap_sdk.KeyPair()
-    refund_keys = kaleidoswap_sdk.KeyPair()
+    claim_keys = kaleidorg_swap_sdk.KeyPair()
+    refund_keys = kaleidorg_swap_sdk.KeyPair()
 
     # Get the amount to swap from user
     amount = int(input("Enter amount in sats to swap: "))
@@ -40,10 +40,10 @@ async def main():
     )
 
     # Generate a preimage for the swap
-    preimage = kaleidoswap_sdk.Preimage()
+    preimage = kaleidorg_swap_sdk.Preimage()
 
     # Create a chain swap request
-    request = kaleidoswap_sdk.CreateChainRequest(
+    request = kaleidorg_swap_sdk.CreateChainRequest(
         _from=from_chain,
         to=to_chain,
         preimage_hash=preimage.sha256(),
@@ -69,16 +69,16 @@ async def main():
 
     asyncio.create_task(ws_client.run_ws_loop())
 
-    lockup_script = kaleidoswap_sdk.SwapScript.from_chain(
+    lockup_script = kaleidorg_swap_sdk.SwapScript.from_chain(
         chain=from_chain,
-        side=kaleidoswap_sdk.Side.LOCKUP,
+        side=kaleidorg_swap_sdk.Side.LOCKUP,
         chain_swap_details=response.lockup_details,
         our_pubkey=refund_keys.public(),
     )
 
-    claim_script = kaleidoswap_sdk.SwapScript.from_chain(
+    claim_script = kaleidorg_swap_sdk.SwapScript.from_chain(
         chain=to_chain,
-        side=kaleidoswap_sdk.Side.CLAIM,
+        side=kaleidorg_swap_sdk.Side.CLAIM,
         chain_swap_details=response.claim_details,
         our_pubkey=claim_keys.public(),
     )
@@ -114,15 +114,15 @@ async def main():
             # Construct and broadcast claim transaction
             print("\n=== Constructing Claim Transaction ===")
 
-            claim_params = kaleidoswap_sdk.SwapTransactionParams(
+            claim_params = kaleidorg_swap_sdk.SwapTransactionParams(
                 output_address=claim_address,
-                fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+                fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                 swap_id=swap_id,
                 keys=claim_keys,
                 chain_client=chain_client,
                 boltz_api=boltz_api,
-                options=kaleidoswap_sdk.TransactionOptions(
-                    chain_claim=kaleidoswap_sdk.ChainClaim(
+                options=kaleidorg_swap_sdk.TransactionOptions(
+                    chain_claim=kaleidorg_swap_sdk.ChainClaim(
                         keys=refund_keys, lockup_script=lockup_script
                     )
                 ),
@@ -148,9 +148,9 @@ async def main():
 
             refund_address = input("Enter refund address: ")
 
-            refund_params = kaleidoswap_sdk.SwapTransactionParams(
+            refund_params = kaleidorg_swap_sdk.SwapTransactionParams(
                 output_address=refund_address,
-                fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+                fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                 swap_id=swap_id,
                 keys=refund_keys,
                 chain_client=chain_client,

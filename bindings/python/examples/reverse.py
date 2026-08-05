@@ -1,16 +1,16 @@
-import kaleidoswap_sdk
+import kaleidorg_swap_sdk
 import asyncio
 from datetime import datetime
 
-electrum_btc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
-    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
+    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = kaleidoswap_sdk.ClientConnection.ELECTRUM(
-    kaleidoswap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
+    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-network = kaleidoswap_sdk.Network.REGTEST
-chain_client = kaleidoswap_sdk.ChainClient(
-    kaleidoswap_sdk.ClientConfig(
+network = kaleidorg_swap_sdk.Network.REGTEST
+chain_client = kaleidorg_swap_sdk.ChainClient(
+    kaleidorg_swap_sdk.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -18,16 +18,16 @@ chain_client = kaleidoswap_sdk.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    network = kaleidoswap_sdk.Network.REGTEST
-    boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
+    network = kaleidorg_swap_sdk.Network.REGTEST
+    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
 
-    to_chain = kaleidoswap_sdk.btc_chain_from_network(network)
+    to_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
 
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
 
     # Generate a new key pair for the swap
-    key_pair = kaleidoswap_sdk.KeyPair()
+    key_pair = kaleidorg_swap_sdk.KeyPair()
 
     # Get the amount to swap from user
     amount = int(input("Enter amount in sats to swap: "))
@@ -36,10 +36,10 @@ async def main():
         f"Enter claim address for {'liquid' if to_chain.is_liquid() else 'bitcoin'}: "
     )
 
-    preimage = kaleidoswap_sdk.Preimage()
+    preimage = kaleidorg_swap_sdk.Preimage()
 
     # Create a reverse swap request
-    request = kaleidoswap_sdk.CreateReverseRequest(
+    request = kaleidorg_swap_sdk.CreateReverseRequest(
         invoice_amount=amount,
         _from=to_chain,
         to=to_chain,
@@ -83,16 +83,16 @@ async def main():
         elif status == "transaction.confirmed":
             print("Lockup transaction confirmed!")
 
-            swap_script = kaleidoswap_sdk.SwapScript.from_reverse(
+            swap_script = kaleidorg_swap_sdk.SwapScript.from_reverse(
                 chain=to_chain, reverse_response=response, our_pubkey=key_pair.public()
             )
 
             tx = await swap_script.construct_claim(
                 preimage,
-                kaleidoswap_sdk.SwapTransactionParams(
+                kaleidorg_swap_sdk.SwapTransactionParams(
                     swap_id=swap_id,
                     keys=key_pair,
-                    fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+                    fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                     output_address=claim_address,
                     chain_client=chain_client,
                     boltz_api=boltz_api,

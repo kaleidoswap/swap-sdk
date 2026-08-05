@@ -1,4 +1,4 @@
-# kaleidoswap-sdk
+# kaleidorg-swap-sdk
 
 **KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
 Bitcoin, Lightning, and Liquid, for Rust, Python, and the browser.
@@ -51,6 +51,31 @@ the KaleidoSwap layers are built on top of it.
 | `typescript-sdk/` | TypeScript SDK (`@kaleidorg/swap-sdk`) wrapping the wasm package with hand-written types |
 | `macros/` | Proc-macros (wasm-compatible `async_trait`, cross-target `test_all`) |
 
+## Installation and supported runtimes
+
+| Surface | Install | Supported v0.1.x runtime |
+|---|---|---|
+| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Python | `pip install kaleidorg_swap_sdk==0.1.0` once PyPI publishing is enabled, otherwise a release wheel from GitHub | Python 3.10+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
+| TypeScript | `npm install @kaleidorg/swap-sdk@0.1.0` | Browser-first; Node 22+ with explicit packaged WASM bytes |
+
+The distribution rename to `kaleidorg_swap_sdk` cleared the public PyPI
+collision that blocked the previous name (`kaleidoswap-sdk`, whose normalized
+project already holds `0.1.0`-`0.5.6`). `kaleidorg-swap-sdk` is unclaimed, so
+PyPI publishing is now a decision rather than a technical blocker; it stays
+disabled until explicitly enabled. See [the release
+guide](docs/releasing.md#python-registry) for artifact sources.
+
+## Generated sources
+
+```bash
+make generate-python-bindings  # platform-independent UniFFI Python glue fallback
+make check-generated           # regenerate from pinned inputs and reject drift
+```
+
+The generated fallback is committed. Pull-request CI regenerates it solely from
+repository-pinned tool inputs and rejects any drift.
+
 ## Bindings
 
 - **Python (UniFFI):** see [`bindings/`](bindings/README.md). Build with
@@ -59,6 +84,52 @@ the KaleidoSwap layers are built on top of it.
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
   the typed surface (`BoltzClient`, `SwapScript`, `SwapMasterKey`,
   `BoltzWsApi`).
+
+Pull-request packaging CI builds and clean-installs Python wheels for Linux
+x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64. It also reconstructs
+the native package from the Python sdist and installs the packed npm tarball in
+an isolated Node consumer.
+
+## Releases
+
+All public SDK surfaces share one stable `X.Y.Z` version. A release candidate
+starts only when a strict `vX.Y.Z` tag points to a commit reachable from
+`trunk`, and the tag must match the Rust, Python, and TypeScript manifests and
+lockfiles. `make validate-release-version TAG=vX.Y.Z` validates that contract.
+
+The tag workflow builds five native Python wheels, one source distribution,
+and one npm tarball. Those files are uploaded once, then a common
+`release-ready` gate downloads and inspects the exact bytes, verifies the
+cross-platform inventory and package metadata, performs clean-install smoke
+tests, and generates `SHA256SUMS`, `release-manifest.json`, and an SPDX 2.3
+artifact manifest. Only that validated bundle may cross a publication boundary.
+Per-tag concurrency and immutable, attempt-specific workflow artifacts prevent
+parallel or resumed runs from silently mixing outputs. An existing GitHub
+release is never overwritten.
+
+Registry publishing authenticates with API tokens stored as `release`
+environment secrets (`NPM_TOKEN`, `PYPI_TOKEN`), so every publisher runs behind
+that environment's required review; a token is unreachable from any other job,
+and the read-only build and rehearsal graph may not reference one at all.
+The npm job keeps job-scoped `id-token: write` so it can still emit provenance,
+which npm generates from the OIDC token independently of how we authenticate.
+PyPI gets no OIDC scope: PEP 740 attestations only work via Trusted Publishing,
+so under token auth they are unavailable and requesting the scope would be unused
+privilege. A
+production tag requires npm publishing to be explicitly enabled; PyPI is
+independently gated. Every enabled registry package is downloaded again,
+hash-matched to the sealed manifest, and clean-consumer tested before CI
+publishes the final GitHub release. Public PyPI publishing is currently
+disabled by configuration, not by a name collision - see the note above. See
+[`docs/releasing.md`](docs/releasing.md) for the activation checklist,
+publisher bootstrap, approval boundary, and partial-publication recovery
+procedure.
+
+Release and packaging changes also run the same job graph in non-publishing
+rehearsal mode. The rehearsal builds and clean-installs every exact artifact,
+exercises the npm tarball in Node and Firefox, and verifies the checksums,
+manifest, SBOM, and intended GitHub release inventory without requesting
+registry or deployment authority.
 
 ## L-USDT examples
 
@@ -265,6 +336,14 @@ This library makes the following assumptions:
 This repository is a fork of [boltz-rust](https://github.com/SatoshiPortal/boltz-rust),
 developed and maintained by Bull Bitcoin (www.bullbitcoin.com) — the swap engine
 at the core of this SDK is their work (MIT licensed).
+
+Upstream declares MIT in its `Cargo.toml` but ships no `LICENSE` file and no
+copyright notice, so there is no upstream notice to reproduce verbatim. Our
+[`LICENSE`](LICENSE) therefore records the attribution on their behalf, as a
+stacked copyright line covering the boltz-rust contributors alongside
+KaleidoSwap. The year span is derived from the upstream commits carried in this
+repository's history; the authoritative contributor list is the upstream
+repository itself.
 
 Special thanks (from the upstream project) to:
 

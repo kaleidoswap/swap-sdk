@@ -1,10 +1,10 @@
 use bitcoin::secp256k1::SecretKey;
 use bitcoin::{key::rand::thread_rng, secp256k1::Keypair, PublicKey};
-use kaleidoswap_sdk::boltz::BoltzWsConfig;
-use kaleidoswap_sdk::fees::Fee;
-use kaleidoswap_sdk::network::Network;
-use kaleidoswap_sdk::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
-use kaleidoswap_sdk::{
+use kaleidorg_swap_sdk::boltz::BoltzWsConfig;
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::Network;
+use kaleidorg_swap_sdk::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
+use kaleidorg_swap_sdk::{
     network::Chain,
     swaps::{
         boltz::CreateReverseRequest,

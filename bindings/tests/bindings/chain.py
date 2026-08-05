@@ -1,21 +1,21 @@
 import asyncio
-import kaleidoswap_sdk
+import kaleidorg_swap_sdk
 from common import *
 
 
 async def swap(
-    from_chain: kaleidoswap_sdk.Chain,
-    to_chain: kaleidoswap_sdk.Chain,
+    from_chain: kaleidorg_swap_sdk.Chain,
+    to_chain: kaleidorg_swap_sdk.Chain,
     refund: bool = False,
 ):
     claim_address = await getnewaddress(to_chain)
 
     ws_client = boltz_api.ws()
-    claim_keys = kaleidoswap_sdk.KeyPair()
-    refund_keys = kaleidoswap_sdk.KeyPair()
+    claim_keys = kaleidorg_swap_sdk.KeyPair()
+    refund_keys = kaleidorg_swap_sdk.KeyPair()
     amount = 1000000
-    preimage = kaleidoswap_sdk.Preimage()
-    request = kaleidoswap_sdk.CreateChainRequest(
+    preimage = kaleidorg_swap_sdk.Preimage()
+    request = kaleidorg_swap_sdk.CreateChainRequest(
         _from=from_chain,
         to=to_chain,
         preimage_hash=preimage.sha256(),
@@ -29,16 +29,16 @@ async def swap(
 
     asyncio.create_task(ws_client.run_ws_loop())
 
-    lockup_script = kaleidoswap_sdk.SwapScript.from_chain(
+    lockup_script = kaleidorg_swap_sdk.SwapScript.from_chain(
         chain=from_chain,
-        side=kaleidoswap_sdk.Side.LOCKUP,
+        side=kaleidorg_swap_sdk.Side.LOCKUP,
         chain_swap_details=response.lockup_details,
         our_pubkey=refund_keys.public(),
     )
 
-    claim_script = kaleidoswap_sdk.SwapScript.from_chain(
+    claim_script = kaleidorg_swap_sdk.SwapScript.from_chain(
         chain=to_chain,
-        side=kaleidoswap_sdk.Side.CLAIM,
+        side=kaleidorg_swap_sdk.Side.CLAIM,
         chain_swap_details=response.claim_details,
         our_pubkey=claim_keys.public(),
     )
@@ -60,9 +60,9 @@ async def swap(
 
         refund_address = await getnewaddress(from_chain)
 
-        refund_params = kaleidoswap_sdk.SwapTransactionParams(
+        refund_params = kaleidorg_swap_sdk.SwapTransactionParams(
             output_address=refund_address,
-            fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+            fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
             swap_id=swap_id,
             keys=refund_keys,
             chain_client=chain_client,
@@ -85,15 +85,15 @@ async def swap(
         await next_status(updates, "transaction.server.confirmed")
         await delay()
 
-        claim_params = kaleidoswap_sdk.SwapTransactionParams(
+        claim_params = kaleidorg_swap_sdk.SwapTransactionParams(
             output_address=claim_address,
-            fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+            fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
             swap_id=swap_id,
             keys=claim_keys,
             chain_client=chain_client,
             boltz_api=boltz_api,
-            options=kaleidoswap_sdk.TransactionOptions(
-                chain_claim=kaleidoswap_sdk.ChainClaim(
+            options=kaleidorg_swap_sdk.TransactionOptions(
+                chain_claim=kaleidorg_swap_sdk.ChainClaim(
                     keys=refund_keys, lockup_script=lockup_script
                 )
             ),

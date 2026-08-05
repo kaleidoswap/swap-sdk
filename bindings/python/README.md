@@ -4,30 +4,42 @@ Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between B
 
 ## Installation
 
+Public PyPI publishing is not enabled for this release yet, so install a
+platform wheel attached to the GitHub `v0.1.0` release:
+
 ```bash
-pip install kaleidoswap_sdk
+python -m pip install ./kaleidorg_swap_sdk-0.1.0-<platform>.whl
 ```
+
+Once PyPI publishing is enabled for a release, the ordinary index works:
+
+```bash
+python -m pip install kaleidorg_swap_sdk==0.1.0
+```
+
+Python 3.10+ is supported on Linux x86_64/aarch64, macOS x86_64/arm64, and
+Windows x86_64.
 
 ## Quick Start
 
 > **⚠️ WARNING: All examples are only to be used in REGTEST.**
 
 ```python
-import kaleidoswap_sdk
+import kaleidorg_swap_sdk
 import asyncio
 
 async def main():
     # Initialize for regtest (do NOT use this example in production)
-    network = kaleidoswap_sdk.Network.REGTEST
-    boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
+    network = kaleidorg_swap_sdk.Network.REGTEST
+    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
 
     # Example: Create a submarine swap (Lightning → Bitcoin)
-    key_pair = kaleidoswap_sdk.KeyPair()
-    btc_chain = kaleidoswap_sdk.btc_chain_from_network(network)
+    key_pair = kaleidorg_swap_sdk.KeyPair()
+    btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
 
     invoice = "lightning-invoice-to-pay"
 
-    request = kaleidoswap_sdk.CreateSubmarineRequest(
+    request = kaleidorg_swap_sdk.CreateSubmarineRequest(
         _from=btc_chain,
         to=btc_chain,
         invoice=invoice,

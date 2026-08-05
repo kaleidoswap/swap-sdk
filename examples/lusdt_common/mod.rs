@@ -3,11 +3,11 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use kaleidoswap_sdk::boltz::BoltzApiClientV2;
-use kaleidoswap_sdk::error::Error as SdkError;
-use kaleidoswap_sdk::network::{LiquidChain, Network};
-use kaleidoswap_sdk::util::secrets::SwapMasterKey;
-use kaleidoswap_sdk::Keypair;
+use kaleidorg_swap_sdk::boltz::BoltzApiClientV2;
+use kaleidorg_swap_sdk::error::Error as SdkError;
+use kaleidorg_swap_sdk::network::{LiquidChain, Network};
+use kaleidorg_swap_sdk::util::secrets::SwapMasterKey;
+use kaleidorg_swap_sdk::Keypair;
 
 pub fn sdk<T>(result: std::result::Result<T, SdkError>, operation: &str) -> Result<T> {
     result.map_err(|error| anyhow!("{operation}: {error}"))

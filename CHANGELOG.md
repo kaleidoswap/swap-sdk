@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-28
+
 This release turns the `boltz-rust` fork into the foundation of the **KaleidoSwap
 SDK**: it exposes the swap engine through UniFFI and WebAssembly bindings and
 renames the crate family accordingly. The Boltz swap engine (scripts, MuSig2,
@@ -46,6 +48,109 @@ protocol only**, pointed at **our** maker.
 - **Identity**: crate/wheel version `0.4.1` → `0.1.0`, KaleidoSwap
   description/authors; npm package renamed `@kaleidoswap/sdk` →
   **`@kaleidorg/swap-sdk`**. Fork provenance stays acknowledged in the README.
+
+### Changed — package identity migrated to `kaleidorg`
+
+Every published surface now shares one identity, at `0.1.0`:
+
+| Surface | Was | Now |
+| --- | --- | --- |
+| Rust crate | `kaleidoswap-sdk` | `kaleidorg-swap-sdk` |
+| Rust lib / Python import | `kaleidoswap_sdk` | `kaleidorg_swap_sdk` |
+| Proc-macro crate | `kaleidoswap-sdk-macros` | `kaleidorg-swap-sdk-macros` |
+| Python distribution | `kaleidoswap_sdk` | `kaleidorg_swap_sdk` |
+| npm package | `@kaleidoswap/sdk` | `@kaleidorg/swap-sdk` |
+
+The native library basename follows (`libkaleidoswap_sdk.*` →
+`libkaleidorg_swap_sdk.*`), as does `uniffi.toml`'s `cdylib_name`. The GitHub
+repository is **not** renamed, so `repository`/`homepage` URLs are unchanged.
+
+This also **clears the public PyPI blocker**. The old normalized project
+`kaleidoswap-sdk` already holds `0.1.0`–`0.5.6`, which is why production PyPI
+publishing was hardcoded off; `kaleidorg-swap-sdk` is unclaimed, so `0.1.0` is
+publishable under the new name. Publishing stays off by default, but it is now a
+configuration decision rather than a technical constraint.
+
+### Breaking — TypeScript `init()` signature
+
+`init(input?)` narrowed from `Parameters<typeof initWasm>[0]` to
+`InitInput | Promise<InitInput>`, and now forwards it as
+`initWasm({ module_or_path: input })`. This avoids wasm-bindgen's deprecated
+positional form, but a caller who already passed the object form
+(`init({ module_or_path: url })`) no longer typechecks — pass the URL, `Request`,
+`Response`, or bytes directly instead. Callers who pass nothing are unaffected.
+
+Node consumers must now read the new `wasmUrl` export and pass its bytes,
+because Node's `fetch` will not load a `file:` URL.
+
+### Changed — registry publishing uses stored API tokens
+
+Publishing authenticates with `NPM_TOKEN` and `PYPI_TOKEN`, held as **`release`
+environment secrets**, instead of OIDC trusted publishing. This is a deliberate
+reduction in the previous "no long-lived registry credential" property, taken so
+a release does not depend on registry-side trusted-publisher bootstrap.
+
+The invariant that replaces it is narrower but still enforced by
+`scripts/check_release_workflow.py`:
+
+- only `NPM_TOKEN` and `PYPI_TOKEN` may be referenced — any other secret name is
+  rejected;
+- a token is only reachable from a job that declares `environment: release`, so
+  publishing still requires that environment's review;
+- the read-only build and rehearsal workflows may not reference a token at all;
+- `username:` is rejected, so authentication cannot silently become basic auth.
+
+`id-token: write` is retained on the **npm** job only. npm generates provenance
+from the OIDC token independently of how we authenticate, so it survives the move
+to token auth. PyPI's PEP 740 attestations do not: the PyPA action ignores
+`attestations: true` whenever a password is set, because attestations require
+Trusted Publishing. That input is therefore set explicitly to `false` rather than
+left at its `true` default, and the PyPI job requests no OIDC scope — asking for
+one would be unused privilege, and claiming attestations we do not produce would
+be worse.
+
+The npm job now runs `npm whoami` before publishing. A bad credential fails on a
+read-only call rather than part-way through an irreversible publish.
+
+### Added — public PyPI publishing
+
+`PYPI_PUBLISH_ENABLED` becomes a repository variable (default `false`) with real
+`publish-pypi` and `verify-pypi` jobs, rather than a hardcoded `"false"`. The
+distribution rename cleared the name collision that made this impossible; the
+flag still defaults off, so a tag fails closed until it is set deliberately.
+
+### Release engineering
+
+- Reset the synchronized Rust, Python, and TypeScript public release line to
+  `0.1.0`.
+- Add commands to display, synchronize, and validate every public package
+  version and lockfile.
+- Validate version consistency in pull-request CI before release automation is
+  enabled.
+- Document the public PyPI name/version collision that the `kaleidorg` rename
+  resolved, and keep production PyPI off by default until deliberately enabled.
+- Package Python bindings with Maturin/UniFFI as platform-tagged native wheels
+  instead of embedding native libraries in a universal Hatch wheel.
+- Include complete Python distribution metadata, license, and classifiers.
+- Harden the npm package manifest and contents, document the browser-first
+  runtime contract, and add a clean-consumer WASM initialization smoke test.
+- Add pull-request packaging CI for five native Python wheel targets, source
+  reconstruction from the sdist, and clean artifact installation.
+- Add locked TypeScript lint, formatting, unit-test, build, audit, tarball
+  inspection, and consumer-install checks.
+- Commit the platform-independent UniFFI Python glue fallback and reject
+  generated drift in CI.
+- Coordinate tag releases through one immutable bundle containing five native
+  Python wheels, one source distribution, and one npm tarball, plus checksums,
+  a release manifest, and an SPDX artifact SBOM.
+- Publish npm and PyPI artifacts behind the protected
+  `release` environment; see the token note above for how they authenticate.
+- Exercise the exact production artifact graph in a read-only rehearsal,
+  including clean Node and Firefox consumers and deliberate preflight, npm, and
+  wheel-inventory failures.
+- Download enabled registry packages after publication, require their bytes and
+  inventories to match the sealed release manifest, and repeat clean-consumer
+  smoke tests before publishing the final GitHub release.
 
 ### Added — WebAssembly / TypeScript bindings (`bindings-wasm` + `typescript-sdk`)
 

@@ -1,23 +1,23 @@
-import kaleidoswap_sdk
+import kaleidorg_swap_sdk
 import asyncio
 from common import *
 
 
-async def swap(to_chain: kaleidoswap_sdk.Chain):
-    boltz_api = kaleidoswap_sdk.BoltzApiClientV2.default(network)
+async def swap(to_chain: kaleidorg_swap_sdk.Chain):
+    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
 
     # Generate a new key pair for the swap
-    key_pair = kaleidoswap_sdk.KeyPair()
+    key_pair = kaleidorg_swap_sdk.KeyPair()
 
     # Get the amount to swap from user
     amount = 1000000
 
-    preimage = kaleidoswap_sdk.Preimage()
+    preimage = kaleidorg_swap_sdk.Preimage()
 
     # Create a reverse swap request
-    request = kaleidoswap_sdk.CreateReverseRequest(
+    request = kaleidorg_swap_sdk.CreateReverseRequest(
         invoice_amount=amount,
         _from=btc_chain,
         to=to_chain,
@@ -45,17 +45,17 @@ async def swap(to_chain: kaleidoswap_sdk.Chain):
 
     await delay()
 
-    swap_script = kaleidoswap_sdk.SwapScript.from_reverse(
+    swap_script = kaleidorg_swap_sdk.SwapScript.from_reverse(
         chain=to_chain, reverse_response=response, our_pubkey=key_pair.public()
     )
 
     claim_address = await getnewaddress(to_chain)
     tx = await swap_script.construct_claim(
         preimage,
-        kaleidoswap_sdk.SwapTransactionParams(
+        kaleidorg_swap_sdk.SwapTransactionParams(
             swap_id=swap_id,
             keys=key_pair,
-            fee=kaleidoswap_sdk.Fee.ABSOLUTE(200),
+            fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
             output_address=claim_address,
             chain_client=chain_client,
             boltz_api=boltz_api,

@@ -738,7 +738,7 @@ impl LiquidSwapScript {
         &self,
         lockup_tx: Option<&Transaction>,
         liquid_client: &LC,
-        kaleidoswap_sdk: &BoltzApiClientV2,
+        kaleidorg_swap_sdk: &BoltzApiClientV2,
         swap_id: &str,
         tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
@@ -752,7 +752,7 @@ impl LiquidSwapScript {
                 Ok(None) | Err(_) => {
                     self.fetch_lockup_utxo_boltz(
                         liquid_client.network(),
-                        kaleidoswap_sdk,
+                        kaleidorg_swap_sdk,
                         swap_id,
                         tx_kind,
                     )
@@ -785,14 +785,14 @@ impl LiquidSwapScript {
     pub async fn fetch_lockup_utxo_boltz(
         &self,
         network: LiquidChain,
-        kaleidoswap_sdk: &BoltzApiClientV2,
+        kaleidorg_swap_sdk: &BoltzApiClientV2,
         swap_id: &str,
         tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
         let hex = match self.swap_type {
             SwapType::Chain => match tx_kind {
                 SwapTxKind::Claim => {
-                    kaleidoswap_sdk
+                    kaleidorg_swap_sdk
                         .get_chain_txs(swap_id)
                         .await?
                         .server_lock
@@ -803,7 +803,7 @@ impl LiquidSwapScript {
                         .hex
                 }
                 SwapTxKind::Refund => {
-                    kaleidoswap_sdk
+                    kaleidorg_swap_sdk
                         .get_chain_txs(swap_id)
                         .await?
                         .user_lock
@@ -814,8 +814,8 @@ impl LiquidSwapScript {
                         .hex
                 }
             },
-            SwapType::ReverseSubmarine => kaleidoswap_sdk.get_reverse_tx(swap_id).await?.hex,
-            SwapType::Submarine => kaleidoswap_sdk.get_submarine_tx(swap_id).await?.hex,
+            SwapType::ReverseSubmarine => kaleidorg_swap_sdk.get_reverse_tx(swap_id).await?.hex,
+            SwapType::Submarine => kaleidorg_swap_sdk.get_submarine_tx(swap_id).await?.hex,
         };
         if hex.is_none() {
             return Err(Error::Hex(
@@ -1533,7 +1533,7 @@ impl LiquidSwapTx {
         swap_script: LiquidSwapScript,
         output_address: String,
         liquid_client: &LC,
-        kaleidoswap_sdk: &BoltzApiClientV2,
+        kaleidorg_swap_sdk: &BoltzApiClientV2,
         swap_id: String,
     ) -> Result<LiquidSwapTx, Error> {
         if swap_script.requires_caller_funded_pset() {
@@ -1545,7 +1545,7 @@ impl LiquidSwapTx {
             .fetch_swap_utxo(
                 None,
                 liquid_client,
-                kaleidoswap_sdk,
+                kaleidorg_swap_sdk,
                 &swap_id,
                 SwapTxKind::Claim,
             )
@@ -1559,7 +1559,7 @@ impl LiquidSwapTx {
         swap_script: LiquidSwapScript,
         output_address: &str,
         liquid_client: &LC,
-        kaleidoswap_sdk: &BoltzApiClientV2,
+        kaleidorg_swap_sdk: &BoltzApiClientV2,
         swap_id: String,
     ) -> Result<LiquidSwapTx, Error> {
         if swap_script.requires_caller_funded_pset() {
@@ -1578,7 +1578,7 @@ impl LiquidSwapTx {
             .fetch_swap_utxo(
                 None,
                 liquid_client,
-                kaleidoswap_sdk,
+                kaleidorg_swap_sdk,
                 &swap_id,
                 SwapTxKind::Refund,
             )

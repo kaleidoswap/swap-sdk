@@ -1,18 +1,43 @@
 [package]
-name = "kaleidoswap-sdk"
+name = "kaleidorg-swap-sdk"
 description = "KaleidoSwap swap SDK — client-side Boltz-protocol atomic swaps across Bitcoin, Lightning, and Liquid"
 # Fork of boltz-rust (SatoshiPortal) — the swap engine is their work (MIT);
-# see README for provenance and acknowledgments.
-authors = ["KaleidoSwap <info@kaleidoswap.com>"]
+# see README for provenance and acknowledgments. Upstream ships no LICENSE
+# file, so its MIT grant and authorship live only in its Cargo.toml; the
+# original authors are kept here and in LICENSE so the notice travels with
+# every published artifact.
+authors = [
+    "KaleidoSwap <info@kaleidoswap.com>",
+    "i5hi <ishi@satoshiportal.com>",
+    "Rajarshi Maitra <raj@bitshala.org>",
+]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+homepage = "https://kaleidoswap.com"
+readme = "README.md"
+include = [
+    "/src/**",
+    "/bindings/uniffi-workspace-shim.rs",
+    "/Cargo.toml",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE",
+]
 
 [lib]
-name = "kaleidoswap_sdk"
+name = "kaleidorg_swap_sdk"
 path = "src/lib.rs"
 doctest = false
 crate-type = ["lib"]
+
+[[bin]]
+# Maturin 1.14 discovers UniFFI generators through workspace metadata, but
+# invokes the selected name with bindings/Cargo.toml. This matching root target
+# makes discovery deterministic; Cargo then runs the real bindings-owned bin.
+name = "uniffi-bindgen"
+path = "bindings/uniffi-workspace-shim.rs"
 
 [workspace]
 members = [
@@ -57,7 +82,7 @@ env_logger = "0.11.8"
 hex = "0.4"
 lnurl-rs = { version = "0.9.0", default-features = false, features = ["async", "async-https"], optional = true }
 reqwest = { version = "0.12.12" , default-features = false, features = ["json", "rustls-tls"] }
-macros = { version = "1.0.0", path = "macros", package = "kaleidoswap-sdk-macros" }
+macros = { version = "1.0.0", path = "macros", package = "kaleidorg-swap-sdk-macros" }
 futures-util = "0.3.31"
 tokio-tungstenite-wasm = { version = "0.6.0", features = ["rustls-tls-webpki-roots"], optional = true }
 bip85_extended = "1.1.0"

@@ -55,7 +55,7 @@ flowchart LR
 ## Repository split
 
 - **Maker** (`kaleidoswap-maker-rs`): §2, §4, §5, §8, §9, §10, §11.
-- **SDK** (`kaleidoswap-sdk`, this repo): §3, §6, §7, plus binding regeneration.
+- **SDK** (`kaleidorg-swap-sdk`, this repo): §3, §6, §7, plus binding regeneration.
 - Both: §2 golden vectors, wire JSON contract (§4).
 
 SDK and maker work can proceed in parallel once the wire JSON and golden vectors

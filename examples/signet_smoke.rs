@@ -10,9 +10,9 @@
 //! 5. Create a submarine swap with SDK-derived keys + preimage and let the SDK
 //!    cryptographically validate the returned lockup/tree (no funding).
 
-use kaleidoswap_sdk::boltz::BoltzApiClientV2;
-use kaleidoswap_sdk::network::Network;
-use kaleidoswap_sdk::util::secrets::{Preimage, SwapMasterKey};
+use kaleidorg_swap_sdk::boltz::BoltzApiClientV2;
+use kaleidorg_swap_sdk::network::Network;
+use kaleidorg_swap_sdk::util::secrets::{Preimage, SwapMasterKey};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), String> {
@@ -44,7 +44,7 @@ async fn main() -> Result<(), String> {
     // downstream would have errored.
     #[cfg(feature = "esplora")]
     {
-        use kaleidoswap_sdk::network::esplora::DEFAULT_SIGNET_NODE;
+        use kaleidorg_swap_sdk::network::esplora::DEFAULT_SIGNET_NODE;
 
         let maker_height = api.get_height().await.map_err(|e| format!("{e:?}"))?.btc as i64;
         // The BitcoinClient trait has no height method, so read the tip from
@@ -80,8 +80,8 @@ async fn main() -> Result<(), String> {
     // BOLT11 signet invoice, create the swap, and let the SDK validate the
     // returned lockup script/tree against the invoice preimage-hash + our
     // refund key. Never funded -> expires server-side.
-    use kaleidoswap_sdk::bitcoin::secp256k1::{Secp256k1, SecretKey};
-    use kaleidoswap_sdk::lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
+    use kaleidorg_swap_sdk::bitcoin::secp256k1::{Secp256k1, SecretKey};
+    use kaleidorg_swap_sdk::lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let master = SwapMasterKey::new(
@@ -89,8 +89,21 @@ async fn main() -> Result<(), String> {
         None,
         Network::Signet,
     ).map_err(|e| format!("{e:?}"))?;
-    let kp = master.derive_swapkey(0).map_err(|e| format!("{e:?}"))?;
-    let refund_pk = kaleidoswap_sdk::bitcoin::PublicKey::new(kp.public_key());
+    // Vary the swap index per run. The preimage is derived deterministically
+    // from the swap key, so a fixed index makes every run request the same
+    // preimageHash — and the maker rejects that with
+    // `swap_already_exists` (409) until the previous unfunded swap expires.
+    // A time-derived index keeps the run reproducible in shape but unique in
+    // identity.
+    let swap_index = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    let kp = master
+        .derive_swapkey(swap_index)
+        .map_err(|e| format!("{e:?}"))?;
+    let refund_pk = kaleidorg_swap_sdk::bitcoin::PublicKey::new(kp.public_key());
+    println!("    swap index {swap_index} (varies per run; a fixed index 409s)");
 
     let sub_pairs = api
         .get_submarine_pairs()
@@ -114,7 +127,7 @@ async fn main() -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?;
     let invoice = InvoiceBuilder::new(Currency::Signet)
-        .description("kaleidoswap-sdk signet smoke (unfunded)".into())
+        .description("kaleidorg-swap-sdk signet smoke (unfunded)".into())
         .payment_hash(preimage.sha256)
         .payment_secret(PaymentSecret([7u8; 32]))
         .amount_milli_satoshis(amount_msat)
@@ -128,7 +141,7 @@ async fn main() -> Result<(), String> {
         amount_msat / 1000
     );
 
-    let req = kaleidoswap_sdk::boltz::CreateSubmarineRequest {
+    let req = kaleidorg_swap_sdk::boltz::CreateSubmarineRequest {
         from: "BTC".to_string(),
         to: "BTC".to_string(),
         invoice: invoice_str.clone(),
@@ -151,8 +164,8 @@ async fn main() -> Result<(), String> {
     resp.validate(
         &invoice_str,
         &refund_pk,
-        kaleidoswap_sdk::network::Chain::Bitcoin(
-            kaleidoswap_sdk::network::BitcoinChain::BitcoinSignet,
+        kaleidorg_swap_sdk::network::Chain::Bitcoin(
+            kaleidorg_swap_sdk::network::BitcoinChain::BitcoinSignet,
         ),
     )
     .map_err(|e| format!("{e:?}"))?;

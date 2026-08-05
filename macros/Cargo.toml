@@ -1,10 +1,11 @@
 [package]
-name = "kaleidoswap-sdk-macros"
+name = "kaleidorg-swap-sdk-macros"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
-description = "Proc macros for kaleidoswap-sdk"
-repository = "https://github.com/SatoshiPortal/boltz-rust"
+description = "Proc macros for kaleidorg-swap-sdk"
+repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+include = ["/src/**", "/Cargo.toml"]
 
 [lib]
 proc-macro = true
