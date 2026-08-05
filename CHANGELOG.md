@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-07-28
+## [0.1.0] - 2026-08-05
 
 This release turns the `boltz-rust` fork into the foundation of the **KaleidoSwap
 SDK**: it exposes the swap engine through UniFFI and WebAssembly bindings and
