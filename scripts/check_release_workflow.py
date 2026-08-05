@@ -149,6 +149,19 @@ def validate(
                 f"release workflows must never skip an existing version ({spelling})"
             )
 
+    # npm-package-arg only reads an argument as a file when it starts with
+    # `./`, `../`, `~/`, `/` or a drive letter. A bare `release-artifacts/x.tgz`
+    # matches the GitHub `owner/repo` shorthand, so npm resolves it as a git
+    # dependency and exits 128 having uploaded nothing. Nothing else here
+    # catches that: the rehearsal never publishes, so only a real tag can
+    # discover it — and by then PyPI has already gone out.
+    for argument in re.findall(r"npm publish\s+(\S+)", contents):
+        if not re.match(r"\./|\.\./|~/|/|[a-zA-Z]:", argument):
+            raise ValueError(
+                "npm publish must be given an explicit file path, or npm reads "
+                f"it as a git shorthand (found {argument!r}; prefix it with ./)"
+            )
+
     mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
     invalid = [ref for ref in mutable_actions if not re.fullmatch(r"[0-9a-f]{40}", ref)]
     if invalid:
