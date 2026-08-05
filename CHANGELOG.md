@@ -4,6 +4,42 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-05
+
+**The first release available on both registries.** There are no library
+changes: every published artifact is functionally identical to 0.1.0.
+
+0.1.0 reached PyPI but never reached npm. The release workflow invoked
+`npm publish release-artifacts/*.tgz`, and npm reads a bare `a/b` argument as
+a GitHub `owner/repo` shorthand rather than a file — so instead of uploading
+it tried to clone a repository named after the tarball and exited 128. PyPI
+had already published, because `publish-npm` and `publish-pypi` both depend
+only on `release-ready` and therefore run concurrently. `0.1.0` is
+permanently claimed on PyPI and absent from npm; install `0.1.1` instead.
+
+### Fixed — release engineering
+
+- **`npm publish` is given an explicit file path.** The argument is now
+  `./release-artifacts/*.tgz`. npm's package-arg parser only treats an
+  argument as a file when it begins with `./`, `../`, `~/`, `/` or a drive
+  letter; anything else that looks like `owner/repo` is resolved as a git
+  dependency.
+- **The release workflow linter rejects a publish argument npm would misread.**
+  `release-rehearsal.yaml` deliberately has no publish step, so no rehearsal
+  can ever exercise that line — only a real tag reaches it, and by then PyPI
+  has shipped. The check therefore lives in `check_release_workflow.py`,
+  which runs on every pull request, with a test that reintroduces the exact
+  regression.
+
+### Changed — release documentation
+
+- `NPM_PUBLISH_ENABLED` and `PYPI_PUBLISH_ENABLED` are documented as ordinary
+  repository variables read at dispatch time, not values fixed in the
+  workflow. Reviewers on the `release` environment are the actual gate, admins
+  can bypass it, and npm publication cannot be undone.
+- The 0.1.0 changelog entry is dated to the day it was released rather than
+  the day its notes were written.
+
 ## [0.1.0] - 2026-08-05
 
 This release turns the `boltz-rust` fork into the foundation of the **KaleidoSwap
