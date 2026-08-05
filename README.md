@@ -62,9 +62,12 @@ the KaleidoSwap layers are built on top of it.
 The distribution rename to `kaleidorg_swap_sdk` cleared the public PyPI
 collision that blocked the previous name (`kaleidoswap-sdk`, whose normalized
 project already holds `0.1.0`-`0.5.6`). `kaleidorg-swap-sdk` is unclaimed, so
-PyPI publishing is now a decision rather than a technical blocker; it stays
-disabled until explicitly enabled. See [the release
-guide](docs/releasing.md#python-registry) for artifact sources.
+PyPI publishing is a decision rather than a technical blocker. Whether it is
+currently enabled is repository configuration, not something this file can
+state accurately — read `PYPI_PUBLISH_ENABLED` and `NPM_PUBLISH_ENABLED` before
+you tag. See [the release
+guide](docs/releasing.md#release-architecture) for how the publisher flags work
+and [artifact sources](docs/releasing.md#python-registry).
 
 ## Generated sources
 
@@ -119,8 +122,9 @@ privilege. A
 production tag requires npm publishing to be explicitly enabled; PyPI is
 independently gated. Every enabled registry package is downloaded again,
 hash-matched to the sealed manifest, and clean-consumer tested before CI
-publishes the final GitHub release. Public PyPI publishing is currently
-disabled by configuration, not by a name collision - see the note above. See
+publishes the final GitHub release. Each registry is gated only by its
+`*_PUBLISH_ENABLED` repository variable, so a tag publishes wherever those are
+`true` when it runs — check them first. See
 [`docs/releasing.md`](docs/releasing.md) for the activation checklist,
 publisher bootstrap, approval boundary, and partial-publication recovery
 procedure.

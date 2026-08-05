@@ -70,8 +70,22 @@ The two repository variables below control the available publishers:
 An absent variable behaves as `false`. Set a variable to `true` only after its
 API token is present on the `release` environment and independently reviewed.
 The workflow rejects any value other than the literal `true` or `false`.
-Production `PYPI_PUBLISH_ENABLED` is hardcoded to `false` and is not a
-repository variable.
+
+Both are ordinary repository variables that the production workflow reads
+directly (`release.yaml`, `vars.NPM_PUBLISH_ENABLED` / `vars.PYPI_PUBLISH_ENABLED`).
+Neither is hardcoded, and neither distinguishes production from any other
+context — so a `v*` tag publishes to whichever registries are `true` at the
+moment it runs. Read the current values before tagging:
+
+```sh
+gh api repos/kaleidoswap/kaleidoswap-sdk/actions/variables \
+  --jq '.variables[] | "\(.name) = \(.value)"'
+```
+
+The only thing standing between a pushed tag and a permanent publish is the
+`release` environment's required reviewers, and an org admin can bypass those.
+An npm publish cannot be undone. Never use a tag to test the pipeline — use the
+non-publishing rehearsal below.
 
 Both publisher jobs:
 
