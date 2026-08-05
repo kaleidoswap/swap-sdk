@@ -574,6 +574,24 @@ class WorkflowInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not basic auth"):
             workflow.validate(contents + "\n# username: someone\n")
 
+    def test_npm_publish_without_a_path_prefix_is_rejected(self) -> None:
+        # This shipped: v0.1.0 published to PyPI and then died here with code
+        # 128, because npm read `release-artifacts/...tgz` as a GitHub
+        # `owner/repo` shorthand and went looking for a git remote. The
+        # rehearsal cannot catch it — it has no publish step at all.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        regressed = contents.replace(
+            "npm publish ./release-artifacts/*.tgz",
+            "npm publish release-artifacts/*.tgz",
+            1,
+        )
+        self.assertNotEqual(regressed, contents)
+        with self.assertRaisesRegex(ValueError, "explicit file path"):
+            workflow.validate(regressed)
+
+    def test_npm_publish_path_is_accepted(self) -> None:
+        workflow.validate((ROOT / ".github/workflows/release.yaml").read_text())
+
     def test_extra_oidc_permission_is_rejected(self) -> None:
         # A real permission key, not a comment: the count is anchored to YAML
         # keys so that a comment mentioning the scope cannot inflate it.

@@ -84,10 +84,16 @@ jobs:
       - name: Re-verify the sealed bundle bytes before publishing
         working-directory: release-artifacts
         run: sha256sum --check --strict SHA256SUMS
+      # The `./` is load-bearing. npm-package-arg only reads an argument as a
+      # file when it starts with `./`, `../`, `~/`, `/` or a drive letter;
+      # a bare `a/b` matches the GitHub `owner/repo` shorthand instead. Without
+      # it npm never uploads anything — it shells out to
+      # `git ls-remote ssh://git@github.com/release-artifacts/<tarball>.git`
+      # and dies with code 128, after PyPI has already published.
       - name: Publish the exact validated npm tarball
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish release-artifacts/*.tgz --access public
+        run: npm publish ./release-artifacts/*.tgz --access public
 
   publish-pypi:
     name: Publish exact Python artifacts to PyPI
