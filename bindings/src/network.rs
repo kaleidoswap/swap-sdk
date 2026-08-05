@@ -137,7 +137,12 @@ impl ChainClient {
     }
 }
 
-#[uniffi::export]
+// `async_runtime = "tokio"` is load-bearing: the Esplora/Electrum clients this
+// drives are reqwest/tokio-based, so without it UniFFI polls the future on a
+// bare executor and the first I/O aborts the process with "there is no reactor
+// running". Every other async export in these bindings carries the same
+// attribute — this one is the only place a caller reaches the chain directly.
+#[uniffi::export(async_runtime = "tokio")]
 impl ChainClient {
     #[uniffi::method]
     pub async fn broadcast_tx(&self, tx: &BtcLikeTransaction) -> Result<String, Error> {
