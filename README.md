@@ -55,19 +55,21 @@ the KaleidoSwap layers are built on top of it.
 
 | Surface | Install | Supported v0.1.x runtime |
 |---|---|---|
-| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
-| Python | `pip install kaleidorg_swap_sdk==0.1.0` once PyPI publishing is enabled, otherwise a release wheel from GitHub | Python 3.10+ on Linux x86_64/aarch64, macOS x86_64/arm64, or Windows x86_64 |
-| TypeScript | `npm install @kaleidorg/swap-sdk@0.1.0` | Browser-first; Node 22+ with explicit packaged WASM bytes |
+| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.1" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Python | `pip install kaleidorg_swap_sdk` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
+| TypeScript | `npm install @kaleidorg/swap-sdk` | Browser-first; Node 22+ with explicit packaged WASM bytes |
 
-The distribution rename to `kaleidorg_swap_sdk` cleared the public PyPI
+Both registries are live as of `0.1.1`: `kaleidorg_swap_sdk` on PyPI (five
+platform wheels plus an sdist) and `@kaleidorg/swap-sdk` on npm. The Rust crate
+is not published to crates.io — depend on it by tag.
+
+The distribution rename to `kaleidorg_swap_sdk` is what cleared the public PyPI
 collision that blocked the previous name (`kaleidoswap-sdk`, whose normalized
-project already holds `0.1.0`-`0.5.6`). `kaleidorg-swap-sdk` is unclaimed, so
-PyPI publishing is a decision rather than a technical blocker. Whether it is
-currently enabled is repository configuration, not something this file can
-state accurately — read `PYPI_PUBLISH_ENABLED` and `NPM_PUBLISH_ENABLED` before
-you tag. See [the release
-guide](docs/releasing.md#release-architecture) for how the publisher flags work
-and [artifact sources](docs/releasing.md#python-registry).
+project already holds `0.1.0`-`0.5.6`). Publishing per tag is still gated on
+`PYPI_PUBLISH_ENABLED` and `NPM_PUBLISH_ENABLED`, so read both before you tag.
+See [the release guide](docs/releasing.md#release-architecture) for how the
+publisher flags work and [artifact
+sources](docs/releasing.md#python-registry).
 
 ## Generated sources
 

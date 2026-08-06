@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — package documentation
+
+- **The npm and PyPI landing pages no longer describe an unpublished SDK.** Both
+  registries carry `0.1.1`, so the Python description drops the "public PyPI
+  publishing is not enabled for this release yet" preamble and the
+  `pip install ./kaleidorg_swap_sdk-0.1.0-<platform>.whl` instruction in favor of
+  `pip install kaleidorg_swap_sdk`. Install commands are no longer
+  version-pinned, since a pin baked into a published description is stale the
+  moment the next version ships.
+- **The npm README documents the package that actually exists.** It predated the
+  distribution rename and the RLN removal: it titled itself `@kaleidoswap/sdk`,
+  installed `@kaleidoswap/sdk@0.1.0`, and its only usage example imported an
+  `RlnClient` the package does not export. It now covers the real
+  `@kaleidorg/swap-sdk` surface — `BoltzClient`, `BoltzWsApi`, `SwapScript`,
+  `SwapMasterKey`, `isKaleidoSwapError` — and states the maker contract
+  `BoltzClient.forNetwork` enforces: `"signet"` and `"regtest"` resolve, while
+  `"mainnet"` and `"testnet"` are rejected rather than falling back to a
+  third-party maker. Every snippet was executed against the published `0.1.1`
+  tarball.
+- A registry description cannot be revised in place, so both pages keep serving
+  the `0.1.1` text until the next release publishes.
+
 ## [0.1.1] - 2026-08-05
 
 **The first release available on both registries.** There are no library
