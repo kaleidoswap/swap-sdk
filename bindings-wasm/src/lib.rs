@@ -747,6 +747,52 @@ impl SwapScript {
         Ok(BtcLikeTransaction { inner: tx })
     }
 
+    /// Build a **cooperative** chain-swap claim (MuSig2 keyspend).
+    ///
+    /// `lockupScript` is our own lockup side, i.e.
+    /// `SwapScript.fromChain(chainKind, network, "lockup", lockupDetails, ourPubkey)`
+    /// — the cooperative path signs a temporary refund against it to obtain the
+    /// server's signature for the claim, which is why `constructClaim` alone
+    /// cannot do this and documents `cooperative = false` for chain swaps.
+    ///
+    /// Produces a much smaller witness than the script path, so pair it with an
+    /// absolute fee (`feeAbsoluteSat`) sized to the keyspend rather than a rate
+    /// applied to a script spend.
+    ///
+    /// Falls back to a non-cooperative claim if the server has already claimed
+    /// and no longer offers the details to sign against — the same behavior as
+    /// the native path.
+    #[wasm_bindgen(js_name = constructCooperativeClaim)]
+    pub async fn construct_cooperative_claim(
+        &self,
+        preimage_hex: String,
+        params: JsValue,
+        lockup_script: &SwapScript,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let p: TxParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let keys = p.keypair()?;
+        let tx_params = SwapTransactionParams {
+            keys,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            options: Some(
+                TransactionOptions::default().with_chain_claim(keys, lockup_script.inner.clone()),
+            ),
+        };
+        let tx = self
+            .inner
+            .construct_claim(&preimage, tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+
     /// Build the refund transaction (after the timelock, or cooperatively).
     #[wasm_bindgen(js_name = constructRefund)]
     pub async fn construct_refund(&self, params: JsValue) -> Result<BtcLikeTransaction, JsValue> {

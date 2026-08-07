@@ -52,9 +52,13 @@ export interface TxParams {
   feeAbsoluteSat?: number;
   /**
    * Cooperative (MuSig2 keyspend) claim/refund. Defaults to true.
-   * Set `false` for **chain-swap claims** — the cooperative chain path needs the
-   * counterparty lockup script + refund keys, which this object does not carry
-   * (submarine/reverse cooperative claims work with the default).
+   *
+   * Set `false` for **chain-swap claims** passed to `constructClaim` — that path
+   * cannot carry the lockup script the cooperative chain claim signs against.
+   * Use `constructCooperativeClaim` instead to get the cheaper keyspend.
+   *
+   * Refunds need nothing extra: a cooperative refund is co-signed by the server
+   * and spends with no locktime, so it does not wait for the timeout.
    */
   cooperative?: boolean;
 }
@@ -193,6 +197,34 @@ export class SwapScript {
     params: TxParams,
   ): Promise<BtcLikeTransaction> {
     return this.inner.constructClaim(preimageHex, params);
+  }
+
+  /**
+   * Build a **cooperative** chain-swap claim (MuSig2 keyspend).
+   *
+   * `lockupScript` is our own lockup side —
+   * `SwapScript.fromChain(chainKind, network, "lockup", lockupDetails, ourPubkey)`.
+   * The cooperative path signs a temporary refund against it to obtain the
+   * server's signature for the claim, which is why `constructClaim` cannot do
+   * this on its own and needs `cooperative: false` for chain swaps.
+   *
+   * The witness is far smaller than the script path's, so pass an absolute fee
+   * (`feeAbsoluteSat`) sized for a keyspend rather than a rate meant for a
+   * script spend.
+   *
+   * Falls back to a non-cooperative claim when the server has already claimed
+   * and no longer offers details to sign against.
+   */
+  constructCooperativeClaim(
+    preimageHex: string,
+    params: TxParams,
+    lockupScript: SwapScript,
+  ): Promise<BtcLikeTransaction> {
+    return this.inner.constructCooperativeClaim(
+      preimageHex,
+      params,
+      lockupScript.inner,
+    );
   }
 
   constructRefund(params: TxParams): Promise<BtcLikeTransaction> {
