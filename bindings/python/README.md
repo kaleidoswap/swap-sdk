@@ -4,21 +4,13 @@ Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between B
 
 ## Installation
 
-Public PyPI publishing is not enabled for this release yet, so install a
-platform wheel attached to the GitHub `v0.1.0` release:
-
 ```bash
-python -m pip install ./kaleidorg_swap_sdk-0.1.0-<platform>.whl
+python -m pip install kaleidorg_swap_sdk
 ```
 
-Once PyPI publishing is enabled for a release, the ordinary index works:
-
-```bash
-python -m pip install kaleidorg_swap_sdk==0.1.0
-```
-
-Python 3.10+ is supported on Linux x86_64/aarch64, macOS x86_64/arm64, and
-Windows x86_64.
+Python 3.10+ is supported. Prebuilt wheels cover Linux x86_64/aarch64, macOS
+x86_64/arm64, and Windows x86_64; other platforms build the published source
+distribution and need a Rust 1.88+ toolchain.
 
 ## Quick Start
 
