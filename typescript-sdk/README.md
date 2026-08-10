@@ -74,12 +74,17 @@ const { publicKey, secretKey } = master.deriveSwapKey(0n);
 - `SwapScript` — reconstruct a swap from its creation response, then build
   claim/refund transactions (`constructClaim`, `constructRefund`) or
   caller-funded Liquid PSETs (`prepareLiquidClaim`, `prepareLiquidRefund`).
+  Chain swaps claim through `constructCooperativeClaim` instead — the cheaper
+  MuSig2 keyspend, partial-signed with the swap's **refund** key rather than its
+  claim key. `constructClaim` cannot carry the lockup script that path signs
+  against, so a chain swap taking the script path must pass
+  `cooperative: false`.
 - `SwapMasterKey` — BIP85 swap key and preimage derivation.
 - `isKaleidoSwapError` — narrow a rejection to its stable `code`.
 
 Boltz request and response payloads are Rust-defined and cross the boundary as
-plain objects typed `any`; the rest of the surface is hand-typed. See
-`src/index.ts` for the full signatures.
+plain objects typed `any`; the rest of the surface is hand-typed. The packaged
+`dist/index.d.ts` carries the full signatures and their documentation.
 
 ## Lossless integer values
 
