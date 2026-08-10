@@ -4,6 +4,82 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+The breaking change below makes the next release `0.2.0`, not `0.1.2`. The Rust
+crate, Python distribution, and npm package share one public version, so the bump
+belongs to a release commit running `scripts/release_version.py sync 0.2.0` — the
+Rust and Python surfaces are unchanged, but they move with it.
+
+### Breaking — TypeScript `init()` accepts a narrower source type
+
+`init` no longer takes wasm-bindgen's `InitInput`. It takes a hand-written
+`WasmSource` (`BufferSource | URL | Request | Response | string`) — the same
+union minus `WebAssembly.Module`, which TypeScript declares as an *empty*
+interface. An empty interface is structurally assignable from any non-nullish
+value, so its presence collapsed the union and `init(42)` typechecked. A caller
+holding a pre-compiled module now uses the new `initWithModule` export. A
+zero-emit type assertion in `src/index.ts` fails the build if the union is ever
+widened back, since such a union still *looks* precise.
+
+Callers who passed the object form (`init({ module_or_path: bytes })`) must pass
+the bytes, or nothing at all — `init` wraps the argument itself, so the object
+form double-wrapped and threw `WebAssembly.instantiate(): Argument 0 must be a
+buffer source` at runtime. It typechecked for the same reason `init(42)` did.
+
+### Fixed — TypeScript `await init()` works in Node
+
+`0.1.1` could not load its own WebAssembly from Node at all, and neither defect
+was visible at compile time:
+
+- **The packaged binary was unreachable.** Adding an `exports` map in `0.1.1`
+  ended Node's legacy resolution, under which any subpath was fetchable, so
+  `require.resolve("@kaleidorg/swap-sdk/vendor/bindings_wasm_bg.wasm")` failed
+  with `ERR_PACKAGE_PATH_NOT_EXPORTED` — the path the `0.1.1` README told Node
+  consumers to take.
+- **The caller was made responsible for loading the SDK's own binary.** Rather
+  than re-export `./vendor/*` — promoting a build directory to public API while
+  still leaving the caller to resolve, read, and wrap — a `"node"` export
+  condition selects a thin `dist/index.node.js` that reads the packaged binary
+  itself. `await init()` is now correct in both runtimes, and a `file:` source
+  passed explicitly (including the exported `wasmUrl`) is read from disk too
+  rather than handed to a `fetch` that rejects it.
+
+The browser entry is unchanged and still references no `node:` builtins, so
+bundlers need no configuration — that is why this is a separate entry rather
+than a guarded `await import("node:fs")` inside `init`. `"browser"` precedes
+`"node"` in the `exports` map: Node never matches `"browser"`, so ordering it
+first costs nothing there and keeps an isomorphic bundler that sets both
+conditions from pulling `node:fs/promises` into a browser bundle.
+
+### Fixed — the npm package smoke test asserts what a consumer writes
+
+The pack smoke test installed the tarball and imported by package name, which
+was right, but it asserted `init(await readFile(wasmUrl))` — the workaround
+rather than the call a consumer writes. It tested the ceremony instead of
+catching it, which is why CI stayed green through both defects above. It now
+asserts the zero-argument call, exercises each explicit source form
+(`BufferSource`, `file:` URL, pre-compiled module) in its own process because
+wasm-bindgen memoizes the instantiated module, and fails if the browser entry
+ever grows a `node:` specifier. Verified in both directions: the published
+`0.1.1` tarball fails the new assertion; this build passes it.
+
+It also resolves the package through Node's own resolver twice — once with
+default conditions, once with `--conditions=browser` added, standing in for an
+isomorphic bundler that sets both — and asserts which entry each lands on, so
+neither the `exports` map nor its condition order can regress unnoticed.
+
+### Added — the browser entry is now gated on every pull request
+
+`scripts/smoke-browser-package.mjs` required a tarball path, so it could only run
+from a release workflow and no pull request ever loaded the browser entry in a
+browser. It now packs a throwaway tarball when given no argument, matching
+`smoke-package.mjs`, which makes the new `smoke:browser-package` script
+self-contained; `package.yaml` runs it on the same runner image the release build
+already uses for it.
+
+`@types/node` is a new dev dependency, for the Node entry point. It is also why
+the pack smoke test now greps the browser entry for `node:` specifiers: with Node
+types ambient, a stray `node:fs` import in the shared source typechecks cleanly.
+
 ### Changed — package documentation
 
 - **The npm and PyPI landing pages no longer describe an unpublished SDK.** Both
@@ -25,6 +101,9 @@ All notable changes to this project will be documented in this file.
   tarball.
 - A registry description cannot be revised in place, so both pages keep serving
   the `0.1.1` text until the next release publishes.
+- The npm README now documents `await init()` as the zero-argument call it has
+  become, replacing the "Node usage" section that told Node consumers to read
+  `wasmUrl` and pass its bytes. The root README's runtime column said the same.
 
 ## [0.1.1] - 2026-08-05
 

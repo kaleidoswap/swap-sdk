@@ -57,7 +57,7 @@ the KaleidoSwap layers are built on top of it.
 |---|---|---|
 | Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.1" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
 | Python | `pip install kaleidorg_swap_sdk` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
-| TypeScript | `npm install @kaleidorg/swap-sdk` | Browser-first; Node 22+ with explicit packaged WASM bytes |
+| TypeScript | `npm install @kaleidorg/swap-sdk` | Browsers and Node 22+; `await init()` takes no argument in either |
 
 Both registries are live as of `0.1.1`: `kaleidorg_swap_sdk` on PyPI (five
 platform wheels plus an sdist) and `@kaleidorg/swap-sdk` on npm. The Rust crate
