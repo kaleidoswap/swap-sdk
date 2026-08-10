@@ -61,6 +61,16 @@ export interface TxParams {
    * and spends with no locktime, so it does not wait for the timeout.
    */
   cooperative?: boolean;
+  /**
+   * Refund-side key secret (hex), for `constructCooperativeClaim` only.
+   *
+   * That path partial-signs a temporary refund against the lockup script, so it
+   * needs the swap's **refund** key — not necessarily `keysSecretHex`, which is
+   * the claim key. Defaults to `keysSecretHex`, which is correct when the swap
+   * was created with one key for both sides (as `SwapMasterKey`-derived swaps
+   * are). Ignored by every other method.
+   */
+  refundKeysSecretHex?: string;
 }
 
 /** Parameters for the caller-funded L-USDT PSET prepare methods. */
@@ -214,6 +224,9 @@ export class SwapScript {
    *
    * Falls back to a non-cooperative claim when the server has already claimed
    * and no longer offers details to sign against.
+   *
+   * Set `params.refundKeysSecretHex` if the swap was created with distinct claim
+   * and refund keys — the partial signature is made with the refund key.
    */
   constructCooperativeClaim(
     preimageHex: string,

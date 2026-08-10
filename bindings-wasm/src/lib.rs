@@ -588,11 +588,32 @@ struct TxParams {
     fee_absolute_sat: Option<u64>,
     #[serde(default = "default_true")]
     cooperative: bool,
+    /// Refund-side key secret (hex) for `constructCooperativeClaim` only.
+    ///
+    /// That path partial-signs a temporary refund against the lockup script, so
+    /// it needs the swap's REFUND key — which is not necessarily `keysSecretHex`
+    /// (the claim key). Defaults to `keysSecretHex`, which is correct when the
+    /// swap was created with one key for both sides, as `SwapMasterKey`-derived
+    /// swaps are. Ignored by every other method.
+    #[serde(default)]
+    refund_keys_secret_hex: Option<String>,
 }
 
 impl TxParams {
     fn keypair(&self) -> Result<Keypair, JsValue> {
-        let sk = SecretKey::from_str(&self.keys_secret_hex).map_err(js_err)?;
+        Self::keypair_from(&self.keys_secret_hex)
+    }
+    /// The refund-side keypair, falling back to the claim key when the swap was
+    /// created with a single key for both sides.
+    fn refund_keypair(&self) -> Result<Keypair, JsValue> {
+        Self::keypair_from(
+            self.refund_keys_secret_hex
+                .as_deref()
+                .unwrap_or(&self.keys_secret_hex),
+        )
+    }
+    fn keypair_from(secret_hex: &str) -> Result<Keypair, JsValue> {
+        let sk = SecretKey::from_str(secret_hex).map_err(js_err)?;
         Ok(Keypair::from_secret_key(&Secp256k1::new(), &sk))
     }
     fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
@@ -782,7 +803,8 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some(
-                TransactionOptions::default().with_chain_claim(keys, lockup_script.inner.clone()),
+                TransactionOptions::default()
+                    .with_chain_claim(p.refund_keypair()?, lockup_script.inner.clone()),
             ),
         };
         let tx = self
