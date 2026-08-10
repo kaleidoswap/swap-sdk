@@ -9,10 +9,12 @@ TypeScript and WebAssembly bindings for KaleidoSwap: Boltz-protocol atomic swaps
 npm install @kaleidorg/swap-sdk
 ```
 
-## Browser usage
+## Usage
 
-The `0.1.x` package is browser-first and expects WebAssembly, `fetch`, and
-WebSocket support. Await `init()` once before constructing any client.
+`await init()` takes no argument and behaves the same in both runtimes: browsers
+resolve the packaged WebAssembly binary relative to the module, and Node reads it
+from disk via the `"node"` export condition. Await it once before constructing
+any client.
 
 ```ts
 import { BoltzClient, init } from "@kaleidorg/swap-sdk";
@@ -38,21 +40,31 @@ settles on Mutinynet, so pair it with Mutinynet chain access
 encode addresses identically, so a mismatch raises no error and simply creates
 swaps on one chain while funding or watching another.
 
-## Node usage
+## Supplying the binary yourself
 
-Node 22 and newer can import and initialize the package, but must supply the
-packaged WASM bytes because Node does not fetch `file:` URLs:
+To serve the WebAssembly binary from your own CDN, or as a bundler asset URL,
+pass any `WasmSource` (a `BufferSource`, `URL`, `Request`, `Response`, or URL
+string):
 
 ```ts
-import { readFile } from "node:fs/promises";
-import { init, wasmUrl } from "@kaleidorg/swap-sdk";
-
-await init(await readFile(wasmUrl));
+await init(new URL("/assets/bindings_wasm_bg.wasm", location.origin));
 ```
 
+`wasmUrl` points at the packaged binary if you need to copy or re-host it. Under
+Node you can also pass it straight to `init` — a `file:` source is read from
+disk, since Node's `fetch` rejects that scheme. For a pre-compiled
+`WebAssembly.Module`, use `initWithModule` — it is separate from `init` so that
+`WasmSource` stays type-safe (`WebAssembly.Module` is an empty interface in
+TypeScript's lib, so a union containing it accepts any value).
+
+One case needs an explicit source: bundling the Node entry into a single file, as
+a CLI or a serverless artifact does, moves `import.meta.url` away from the
+packaged `vendor/`, so the default lookup has nothing to find. Copy
+`bindings_wasm_bg.wasm` next to your output and pass it — that failure surfaces
+at runtime rather than at build time, so reach for this before you ship a bundle.
+
 SDK operations also require the web APIs used by the selected client, including
-`fetch` and WebSocket. Browser behavior is the primary supported runtime for
-`0.1.x`.
+`fetch` and WebSocket. Node 22 and newer provide both.
 
 ## Swap keys
 
@@ -111,4 +123,5 @@ npm run lint
 npm run format:check
 npm test
 npm run smoke:package
+npm run smoke:browser-package
 ```

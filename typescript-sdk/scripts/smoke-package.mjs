@@ -19,6 +19,8 @@ const requiredPaths = [
   "README.md",
   "dist/index.d.ts",
   "dist/index.js",
+  "dist/index.node.d.ts",
+  "dist/index.node.js",
   "package.json",
   "vendor/bindings_wasm.d.ts",
   "vendor/bindings_wasm.js",
@@ -95,7 +97,18 @@ try {
         wasmUrl,
       } from "@kaleidorg/swap-sdk";
 
-      await init(await readFile(wasmUrl));
+      // Zero-argument init is the call a consumer actually writes, and the only
+      // one that behaves identically in Node and the browser. Asserting the
+      // hand-wired \`init(await readFile(wasmUrl))\` form instead is what let the
+      // missing "./vendor/*" subpath export ship green.
+      await init();
+
+      // The explicit-source override must keep working for callers serving the
+      // binary themselves.
+      if (!(await readFile(wasmUrl)).byteLength) {
+        throw new Error("packaged wasm binary is empty");
+      }
+
       const key = SwapMasterKey.fromWalletMnemonic(
         "slogan prevent affair connect autumn crop together earn track ribbon horn copy",
         "regtest",
