@@ -588,29 +588,11 @@ struct TxParams {
     fee_absolute_sat: Option<u64>,
     #[serde(default = "default_true")]
     cooperative: bool,
-    /// Refund-side key secret (hex) for `constructCooperativeClaim` only.
-    ///
-    /// That path partial-signs a temporary refund against the lockup script, so
-    /// it needs the swap's REFUND key — which is not necessarily `keysSecretHex`
-    /// (the claim key). Defaults to `keysSecretHex`, which is correct when the
-    /// swap was created with one key for both sides, as `SwapMasterKey`-derived
-    /// swaps are. Ignored by every other method.
-    #[serde(default)]
-    refund_keys_secret_hex: Option<String>,
 }
 
 impl TxParams {
     fn keypair(&self) -> Result<Keypair, JsValue> {
         Self::keypair_from(&self.keys_secret_hex)
-    }
-    /// The refund-side keypair, falling back to the claim key when the swap was
-    /// created with a single key for both sides.
-    fn refund_keypair(&self) -> Result<Keypair, JsValue> {
-        Self::keypair_from(
-            self.refund_keys_secret_hex
-                .as_deref()
-                .unwrap_or(&self.keys_secret_hex),
-        )
     }
     fn keypair_from(secret_hex: &str) -> Result<Keypair, JsValue> {
         let sk = SecretKey::from_str(secret_hex).map_err(js_err)?;
@@ -776,25 +758,40 @@ impl SwapScript {
     /// server's signature for the claim, which is why `constructClaim` alone
     /// cannot do this and documents `cooperative = false` for chain swaps.
     ///
-    /// Produces a much smaller witness than the script path, so pair it with an
-    /// absolute fee (`feeAbsoluteSat`) sized to the keyspend rather than a rate
-    /// applied to a script spend.
+    /// `refundKeysSecretHex` is the swap's **refund** key, the counterpart of the
+    /// `refundPublicKey` the swap was created with. It is a separate argument from
+    /// `params.keysSecretHex` (the claim key) because a chain swap carries two
+    /// independent keys, and the temporary refund is partial-signed with this one.
+    /// Passing the claim key here when the two differ yields a partial signature
+    /// the server rejects.
     ///
-    /// Falls back to a non-cooperative claim if the server has already claimed
-    /// and no longer offers the details to sign against — the same behavior as
-    /// the native path.
+    /// The keyspend witness is much smaller than the script path's, and
+    /// `feeSatPerVb` is applied to it correctly — the fee is computed against a
+    /// stubbed cooperative witness, so a rate needs no adjustment for this path.
+    ///
+    /// `params.cooperative` is rejected if set to `false`: this method is the
+    /// cooperative path by construction, and honoring the flag is what
+    /// `constructClaim` is for.
     #[wasm_bindgen(js_name = constructCooperativeClaim)]
     pub async fn construct_cooperative_claim(
         &self,
         preimage_hex: String,
         params: JsValue,
         lockup_script: &SwapScript,
+        refund_keys_secret_hex: String,
     ) -> Result<BtcLikeTransaction, JsValue> {
         let p: TxParams = from_js(params)?;
+        if !p.cooperative {
+            return Err(JsValue::from_str(
+                "constructCooperativeClaim cannot honor cooperative = false; \
+                 use constructClaim for a script-path chain claim",
+            ));
+        }
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
         let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
         let keys = p.keypair()?;
+        let refund_keys = TxParams::keypair_from(&refund_keys_secret_hex)?;
         let tx_params = SwapTransactionParams {
             keys,
             output_address: p.output_address.clone(),
@@ -804,7 +801,7 @@ impl SwapScript {
             boltz_api: &boltz,
             options: Some(
                 TransactionOptions::default()
-                    .with_chain_claim(p.refund_keypair()?, lockup_script.inner.clone()),
+                    .with_chain_claim(refund_keys, lockup_script.inner.clone()),
             ),
         };
         let tx = self

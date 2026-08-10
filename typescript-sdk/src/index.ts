@@ -61,16 +61,6 @@ export interface TxParams {
    * and spends with no locktime, so it does not wait for the timeout.
    */
   cooperative?: boolean;
-  /**
-   * Refund-side key secret (hex), for `constructCooperativeClaim` only.
-   *
-   * That path partial-signs a temporary refund against the lockup script, so it
-   * needs the swap's **refund** key — not necessarily `keysSecretHex`, which is
-   * the claim key. Defaults to `keysSecretHex`, which is correct when the swap
-   * was created with one key for both sides (as `SwapMasterKey`-derived swaps
-   * are). Ignored by every other method.
-   */
-  refundKeysSecretHex?: string;
 }
 
 /** Parameters for the caller-funded L-USDT PSET prepare methods. */
@@ -218,25 +208,32 @@ export class SwapScript {
    * server's signature for the claim, which is why `constructClaim` cannot do
    * this on its own and needs `cooperative: false` for chain swaps.
    *
-   * The witness is far smaller than the script path's, so pass an absolute fee
-   * (`feeAbsoluteSat`) sized for a keyspend rather than a rate meant for a
-   * script spend.
+   * `refundKeysSecretHex` is the swap's **refund** key — the counterpart of the
+   * `refundPublicKey` the swap was created with, not `params.keysSecretHex`. A
+   * chain swap carries two independent keys, and the temporary refund is
+   * partial-signed with this one. It is a required argument rather than an
+   * optional field defaulting to the claim key, because that default is a silent
+   * wrong answer for any swap whose two keys differ: the partial signature is
+   * made under the wrong key and the server rejects it.
    *
-   * Falls back to a non-cooperative claim when the server has already claimed
-   * and no longer offers details to sign against.
+   * The keyspend witness is far smaller than the script path's, and
+   * `feeSatPerVb` accounts for that on its own — the fee is computed against a
+   * stubbed cooperative witness, so a rate needs no keyspend adjustment.
    *
-   * Set `params.refundKeysSecretHex` if the swap was created with distinct claim
-   * and refund keys — the partial signature is made with the refund key.
+   * Rejects `params.cooperative === false`; use `constructClaim` for the script
+   * path.
    */
   constructCooperativeClaim(
     preimageHex: string,
     params: TxParams,
     lockupScript: SwapScript,
+    refundKeysSecretHex: string,
   ): Promise<BtcLikeTransaction> {
     return this.inner.constructCooperativeClaim(
       preimageHex,
       params,
       lockupScript.inner,
+      refundKeysSecretHex,
     );
   }
 
