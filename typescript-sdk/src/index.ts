@@ -52,9 +52,13 @@ export interface TxParams {
   feeAbsoluteSat?: number;
   /**
    * Cooperative (MuSig2 keyspend) claim/refund. Defaults to true.
-   * Set `false` for **chain-swap claims** — the cooperative chain path needs the
-   * counterparty lockup script + refund keys, which this object does not carry
-   * (submarine/reverse cooperative claims work with the default).
+   *
+   * Set `false` for **chain-swap claims** passed to `constructClaim` — that path
+   * cannot carry the lockup script the cooperative chain claim signs against.
+   * Use `constructCooperativeClaim` instead to get the cheaper keyspend.
+   *
+   * Refunds need nothing extra: a cooperative refund is co-signed by the server
+   * and spends with no locktime, so it does not wait for the timeout.
    */
   cooperative?: boolean;
 }
@@ -193,6 +197,44 @@ export class SwapScript {
     params: TxParams,
   ): Promise<BtcLikeTransaction> {
     return this.inner.constructClaim(preimageHex, params);
+  }
+
+  /**
+   * Build a **cooperative** chain-swap claim (MuSig2 keyspend).
+   *
+   * `lockupScript` is our own lockup side —
+   * `SwapScript.fromChain(chainKind, network, "lockup", lockupDetails, ourPubkey)`.
+   * The cooperative path signs a temporary refund against it to obtain the
+   * server's signature for the claim, which is why `constructClaim` cannot do
+   * this on its own and needs `cooperative: false` for chain swaps.
+   *
+   * `refundKeysSecretHex` is the swap's **refund** key — the counterpart of the
+   * `refundPublicKey` the swap was created with, not `params.keysSecretHex`. A
+   * chain swap carries two independent keys, and the temporary refund is
+   * partial-signed with this one. It is a required argument rather than an
+   * optional field defaulting to the claim key, because that default is a silent
+   * wrong answer for any swap whose two keys differ: the partial signature is
+   * made under the wrong key and the server rejects it.
+   *
+   * The keyspend witness is far smaller than the script path's, and
+   * `feeSatPerVb` accounts for that on its own — the fee is computed against a
+   * stubbed cooperative witness, so a rate needs no keyspend adjustment.
+   *
+   * Rejects `params.cooperative === false`; use `constructClaim` for the script
+   * path.
+   */
+  constructCooperativeClaim(
+    preimageHex: string,
+    params: TxParams,
+    lockupScript: SwapScript,
+    refundKeysSecretHex: string,
+  ): Promise<BtcLikeTransaction> {
+    return this.inner.constructCooperativeClaim(
+      preimageHex,
+      params,
+      lockupScript.inner,
+      refundKeysSecretHex,
+    );
   }
 
   constructRefund(params: TxParams): Promise<BtcLikeTransaction> {

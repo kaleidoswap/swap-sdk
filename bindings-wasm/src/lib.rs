@@ -592,7 +592,10 @@ struct TxParams {
 
 impl TxParams {
     fn keypair(&self) -> Result<Keypair, JsValue> {
-        let sk = SecretKey::from_str(&self.keys_secret_hex).map_err(js_err)?;
+        Self::keypair_from(&self.keys_secret_hex)
+    }
+    fn keypair_from(secret_hex: &str) -> Result<Keypair, JsValue> {
+        let sk = SecretKey::from_str(secret_hex).map_err(js_err)?;
         Ok(Keypair::from_secret_key(&Secp256k1::new(), &sk))
     }
     fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
@@ -738,6 +741,68 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
+        };
+        let tx = self
+            .inner
+            .construct_claim(&preimage, tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+
+    /// Build a **cooperative** chain-swap claim (MuSig2 keyspend).
+    ///
+    /// `lockupScript` is our own lockup side, i.e.
+    /// `SwapScript.fromChain(chainKind, network, "lockup", lockupDetails, ourPubkey)`
+    /// — the cooperative path signs a temporary refund against it to obtain the
+    /// server's signature for the claim, which is why `constructClaim` alone
+    /// cannot do this and documents `cooperative = false` for chain swaps.
+    ///
+    /// `refundKeysSecretHex` is the swap's **refund** key, the counterpart of the
+    /// `refundPublicKey` the swap was created with. It is a separate argument from
+    /// `params.keysSecretHex` (the claim key) because a chain swap carries two
+    /// independent keys, and the temporary refund is partial-signed with this one.
+    /// Passing the claim key here when the two differ yields a partial signature
+    /// the server rejects.
+    ///
+    /// The keyspend witness is much smaller than the script path's, and
+    /// `feeSatPerVb` is applied to it correctly — the fee is computed against a
+    /// stubbed cooperative witness, so a rate needs no adjustment for this path.
+    ///
+    /// `params.cooperative` is rejected if set to `false`: this method is the
+    /// cooperative path by construction, and honoring the flag is what
+    /// `constructClaim` is for.
+    #[wasm_bindgen(js_name = constructCooperativeClaim)]
+    pub async fn construct_cooperative_claim(
+        &self,
+        preimage_hex: String,
+        params: JsValue,
+        lockup_script: &SwapScript,
+        refund_keys_secret_hex: String,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let p: TxParams = from_js(params)?;
+        if !p.cooperative {
+            return Err(JsValue::from_str(
+                "constructCooperativeClaim cannot honor cooperative = false; \
+                 use constructClaim for a script-path chain claim",
+            ));
+        }
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let keys = p.keypair()?;
+        let refund_keys = TxParams::keypair_from(&refund_keys_secret_hex)?;
+        let tx_params = SwapTransactionParams {
+            keys,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            options: Some(
+                TransactionOptions::default()
+                    .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+            ),
         };
         let tx = self
             .inner
