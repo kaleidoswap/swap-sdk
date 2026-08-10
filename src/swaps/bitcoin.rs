@@ -13,7 +13,7 @@ use bitcoin::{
     Address, OutPoint, PublicKey,
 };
 use bitcoin::{sighash::SighashCache, Network, Sequence, Transaction, TxIn, TxOut, Witness};
-use bitcoin::{Amount, Script, TapLeafHash, TapSighashType, Txid, XOnlyPublicKey};
+use bitcoin::{Amount, TapLeafHash, TapSighashType, Txid, XOnlyPublicKey};
 use elements::pset::serialize::Serialize;
 use secp256k1_musig::{
     musig::{self},
@@ -36,16 +36,6 @@ use super::wrappers::SwapScriptCommon;
 use crate::network::{BitcoinChain, BitcoinClient};
 use crate::util::fees::{create_tx_with_fee, Fee};
 
-pub(crate) fn find_utxo(tx: &Transaction, script_pubkey: &Script) -> Option<(OutPoint, TxOut)> {
-    for (vout, output) in tx.clone().output.into_iter().enumerate() {
-        if output.script_pubkey == *script_pubkey {
-            let outpoint = OutPoint::new(tx.compute_txid(), vout as u32);
-            return Some((outpoint, output));
-        }
-    }
-    None
-}
-
 /// Bitcoin v2 swap script helper.
 // TODO: This should encode the network at global level.
 #[derive(Debug, PartialEq, Clone)]
@@ -59,6 +49,8 @@ pub struct BtcSwapScript {
     pub receiver_pubkey: PublicKey,
     pub locktime: LockTime,
     pub sender_pubkey: PublicKey,
+    /// Exact amount expected at the swap HTLC output.
+    pub expected_amount: u64,
 }
 
 impl BtcSwapScript {
@@ -124,6 +116,7 @@ impl BtcSwapScript {
             receiver_pubkey: create_swap_response.claim_public_key,
             locktime: timelock,
             sender_pubkey: our_pubkey,
+            expected_amount: create_swap_response.expected_amount,
         })
     }
 
@@ -204,6 +197,7 @@ impl BtcSwapScript {
             receiver_pubkey: our_pubkey,
             locktime: timelock,
             sender_pubkey: reverse_response.refund_public_key,
+            expected_amount: reverse_response.onchain_amount,
         })
     }
 
@@ -274,6 +268,7 @@ impl BtcSwapScript {
             receiver_pubkey,
             locktime: timelock,
             sender_pubkey,
+            expected_amount: chain_swap_details.amount,
         })
     }
 
@@ -421,9 +416,9 @@ impl BtcSwapScript {
         tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
         let outpoint = match lockup_tx {
-            Some(tx) => self.find_utxo(tx, bitcoin_client.network()),
+            Some(tx) => self.find_utxo(tx, bitcoin_client.network(), tx_kind),
             None => match self.fetch_utxos(bitcoin_client).await {
-                Ok(v) => Ok(v.first().cloned()),
+                Ok(v) => self.select_utxo(v, bitcoin_client.network(), None, tx_kind),
                 Err(_) => {
                     self.fetch_lockup_utxo_boltz(
                         bitcoin_client.network(),
@@ -441,13 +436,70 @@ impl BtcSwapScript {
         ))
     }
 
+    /// Pick the swap HTLC output from `candidates`.
+    ///
+    /// Exact amounts are part of the security contract for claims: a claim
+    /// publishes the preimage, which is the only thing keeping the counterparty
+    /// from taking our side of the swap, so we must never spend that secret
+    /// against a lockup that is short of what the swap was created for. Refunds
+    /// keep the historical behavior and recover whatever positive amount actually
+    /// reached the correctly identified HTLC, including underpayments — there is
+    /// no secret at stake and refusing would strand the funds.
+    ///
+    /// Mirrors `LiquidSwapScript::select_utxo`, which enforces the same contract
+    /// on the Liquid side.
+    pub(crate) fn select_utxo(
+        &self,
+        candidates: impl IntoIterator<Item = (OutPoint, TxOut)>,
+        network: BitcoinChain,
+        expected_txid: Option<Txid>,
+        tx_kind: SwapTxKind,
+    ) -> Result<Option<(OutPoint, TxOut)>, Error> {
+        let address = self.to_address(network)?;
+        let script_pubkey = address.script_pubkey();
+        let require_exact_amount = tx_kind == SwapTxKind::Claim;
+        let mut first_validation_error = None;
+
+        for (outpoint, output) in candidates {
+            if output.script_pubkey != script_pubkey
+                || expected_txid.is_some_and(|txid| outpoint.txid != txid)
+            {
+                continue;
+            }
+
+            let value = output.value.to_sat();
+            if value == self.expected_amount || (!require_exact_amount && value > 0) {
+                return Ok(Some((outpoint, output)));
+            }
+
+            first_validation_error.get_or_insert_with(|| {
+                Error::Protocol(format!(
+                    "Bitcoin swap amount mismatch: expected {}, got {}",
+                    self.expected_amount, value
+                ))
+            });
+        }
+
+        match first_validation_error {
+            Some(error) => Err(error),
+            None => Ok(None),
+        }
+    }
+
     pub(crate) fn find_utxo(
         &self,
         tx: &Transaction,
         network: BitcoinChain,
+        tx_kind: SwapTxKind,
     ) -> Result<Option<(OutPoint, TxOut)>, Error> {
-        let address = self.to_address(network)?;
-        Ok(find_utxo(tx, &address.script_pubkey()))
+        let txid = tx.compute_txid();
+        let candidates = tx
+            .output
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(vout, output)| (OutPoint::new(txid, vout as u32), output));
+        self.select_utxo(candidates, network, Some(txid), tx_kind)
     }
 
     /// Fetch utxo for script from BoltzApi
@@ -490,7 +542,7 @@ impl BtcSwapScript {
             ));
         }
         let tx: Transaction = deserialize(&hex::decode(hex.unwrap())?)?;
-        self.find_utxo(&tx, network)
+        self.find_utxo(&tx, network, tx_kind)
     }
 }
 
@@ -1277,4 +1329,146 @@ fn convert_schnorr_signature(
 ) -> bitcoin::secp256k1::schnorr::Signature {
     bitcoin::secp256k1::schnorr::Signature::from_slice(schnorr_sig.as_byte_array())
         .expect("signature size matches")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::hashes::Hash;
+    use bitcoin::key::rand::rngs::OsRng;
+
+    fn test_script(expected_amount: u64) -> BtcSwapScript {
+        let secp = Secp256k1::new();
+        let receiver = Keypair::new(&secp, &mut OsRng);
+        let sender = Keypair::new(&secp, &mut OsRng);
+        BtcSwapScript {
+            swap_type: SwapType::Chain,
+            side: Some(Side::Claim),
+            funding_addrs: None,
+            hashlock: hash160::Hash::all_zeros(),
+            receiver_pubkey: PublicKey {
+                compressed: true,
+                inner: receiver.public_key(),
+            },
+            locktime: LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey {
+                compressed: true,
+                inner: sender.public_key(),
+            },
+            expected_amount,
+        }
+    }
+
+    fn output_to(script: &BtcSwapScript, network: BitcoinChain, sats: u64) -> TxOut {
+        TxOut {
+            value: Amount::from_sat(sats),
+            script_pubkey: script.to_address(network).unwrap().script_pubkey(),
+        }
+    }
+
+    #[macros::test_all]
+    fn claims_require_the_exact_expected_amount() {
+        let network = BitcoinChain::BitcoinRegtest;
+        let script = test_script(10_000);
+        let outpoint = OutPoint::new(Txid::all_zeros(), 0);
+
+        assert!(script
+            .select_utxo(
+                vec![(outpoint, output_to(&script, network, 10_000))],
+                network,
+                None,
+                SwapTxKind::Claim,
+            )
+            .unwrap()
+            .is_some());
+
+        // A short lockup must not produce a claim: broadcasting one publishes the
+        // preimage, which is what lets the counterparty take our side of the swap.
+        let error = script
+            .select_utxo(
+                vec![(outpoint, output_to(&script, network, 9_999))],
+                network,
+                None,
+                SwapTxKind::Claim,
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("Bitcoin swap amount mismatch"));
+    }
+
+    #[macros::test_all]
+    fn refunds_accept_an_underpaid_htlc() {
+        let network = BitcoinChain::BitcoinRegtest;
+        let script = test_script(10_000);
+        let outpoint = OutPoint::new(Txid::all_zeros(), 0);
+
+        // No secret is at stake in a refund, and refusing would strand the funds.
+        assert!(script
+            .select_utxo(
+                vec![(outpoint, output_to(&script, network, 9_999))],
+                network,
+                None,
+                SwapTxKind::Refund,
+            )
+            .unwrap()
+            .is_some());
+    }
+
+    #[macros::test_all]
+    fn selection_skips_decoys_and_honours_the_expected_txid() {
+        let network = BitcoinChain::BitcoinRegtest;
+        let script = test_script(10_000);
+        let txid = Txid::all_zeros();
+        let other_txid = Txid::from_byte_array([1u8; 32]);
+
+        // An output of the right value at the wrong script is not our HTLC.
+        let decoy = TxOut {
+            value: Amount::from_sat(10_000),
+            script_pubkey: ScriptBuf::from_hex("0014000000000000000000000000000000000000dead")
+                .unwrap(),
+        };
+        assert!(script
+            .select_utxo(
+                vec![(OutPoint::new(txid, 0), decoy)],
+                network,
+                None,
+                SwapTxKind::Claim,
+            )
+            .unwrap()
+            .is_none());
+
+        // Right script and value, but from a transaction we did not ask for.
+        assert!(script
+            .select_utxo(
+                vec![(
+                    OutPoint::new(other_txid, 0),
+                    output_to(&script, network, 10_000)
+                )],
+                network,
+                Some(txid),
+                SwapTxKind::Claim,
+            )
+            .unwrap()
+            .is_none());
+    }
+
+    #[macros::test_all]
+    fn a_matching_output_wins_over_an_earlier_mismatched_one() {
+        let network = BitcoinChain::BitcoinRegtest;
+        let script = test_script(10_000);
+        let txid = Txid::all_zeros();
+
+        let selected = script
+            .select_utxo(
+                vec![
+                    (OutPoint::new(txid, 0), output_to(&script, network, 9_000)),
+                    (OutPoint::new(txid, 1), output_to(&script, network, 10_000)),
+                ],
+                network,
+                None,
+                SwapTxKind::Claim,
+            )
+            .unwrap()
+            .expect("the exact-amount output should be selected");
+        assert_eq!(selected.0.vout, 1);
+    }
 }

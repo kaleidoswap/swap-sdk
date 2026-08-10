@@ -53,6 +53,7 @@ fn prepare_btc_claim() -> (
             compressed: true,
             inner: sender_keypair.public_key(),
         },
+        expected_amount: FUNDING_AMOUNT,
     };
 
     // Send coin the swapscript address and confirm tx
@@ -230,6 +231,7 @@ fn prepare_btc_refund() -> (
             compressed: true,
             inner: sender_keypair.public_key(),
         },
+        expected_amount: 10000,
     };
 
     // Send coin the swapscript address and confirm tx
