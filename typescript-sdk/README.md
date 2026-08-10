@@ -18,9 +18,13 @@ WebSocket support. Await `init()` once before constructing any client.
 import { BoltzClient, init } from "@kaleidorg/swap-sdk";
 
 await init();
-const boltz = BoltzClient.forNetwork("regtest");
+const boltz = BoltzClient.forNetwork("signet");
 const pairs = await boltz.submarinePairs();
 ```
+
+`"signet"` reaches the live KaleidoSwap maker, so the snippet above runs as
+written. `"regtest"` resolves to `http://localhost:9001/v2` and needs this
+repository's local harness.
 
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.
