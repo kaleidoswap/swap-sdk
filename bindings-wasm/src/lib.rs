@@ -719,10 +719,12 @@ impl SwapScript {
     /// Build the claim transaction. `preimageHex` is the swap preimage
     /// (e.g. `derivePreimage(index).preimage`); `params` is a `TxParams` object.
     ///
-    /// Note: for **chain-swap** claims set `params.cooperative = false`. The
-    /// cooperative path needs the counterparty lockup script + refund keys, which
-    /// this params object does not yet carry (submarine/reverse cooperative
-    /// claims work with the default `cooperative = true`).
+    /// Note: for **chain-swap** claims set `params.cooperative = false`. This is
+    /// the script-spend path. `TxParams` cannot carry the lockup script and
+    /// refund key that a cooperative chain claim signs against, so reach the
+    /// cheaper MuSig2 keyspend through `constructCooperativeClaim` rather than
+    /// through this method. Submarine and reverse cooperative claims need
+    /// nothing extra and work with the default `cooperative = true`.
     #[wasm_bindgen(js_name = constructClaim)]
     pub async fn construct_claim(
         &self,
