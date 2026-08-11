@@ -3,8 +3,9 @@
   "version": "0.1.1",
   "description": "KaleidoSwap swap SDK — Boltz-protocol atomic swaps (submarine/reverse/chain) for the browser over WebAssembly",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/index.node.js",
+  "types": "dist/index.node.d.ts",
+  "browser": "./dist/index.js",
   "exports": {
     ".": {
       "browser": {

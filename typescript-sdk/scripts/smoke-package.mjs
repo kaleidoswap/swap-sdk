@@ -101,6 +101,29 @@ try {
     );
   }
 
+  // `main`/`types` are read only by resolvers that skip `exports` — legacy
+  // bundlers, `moduleResolution: node10`, some test runners — and those are all
+  // Node-ish, so they must land on the node entry. Browsers never consult `main`;
+  // the pre-`exports` bundlers that do read the `browser` field instead. Nothing
+  // else in CI resolves through either field.
+  const manifest = JSON.parse(
+    readFileSync(
+      join(consumerRoot, "node_modules/@kaleidorg/swap-sdk/package.json"),
+      "utf8",
+    ),
+  );
+  for (const [field, expected] of [
+    ["main", "dist/index.node.js"],
+    ["types", "dist/index.node.d.ts"],
+    ["browser", "./dist/index.js"],
+  ]) {
+    if (manifest[field] !== expected) {
+      throw new Error(
+        `package.json "${field}" is ${JSON.stringify(manifest[field])}, expected ${JSON.stringify(expected)}`,
+      );
+    }
+  }
+
   // The `exports` map is the only reason `await init()` works in Node, and its
   // condition order is load-bearing. `--conditions=browser` *adds* to Node's own
   // conditions, so it stands in for an isomorphic bundler that sets both: with

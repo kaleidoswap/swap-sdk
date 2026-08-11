@@ -50,6 +50,14 @@ than a guarded `await import("node:fs")` inside `init`. `"browser"` precedes
 first costs nothing there and keeps an isomorphic bundler that sets both
 conditions from pulling `node:fs/promises` into a browser bundle.
 
+`main` and `types` point at the node entry, and a new top-level `"browser"` field
+points at the browser one. Both fields are read only by resolvers that skip
+`exports` — legacy bundlers, `moduleResolution: node10`, some test runners — and
+those are all Node-ish, so leaving `main` on the browser entry aimed the fallback
+at the one build that cannot work in the runtime reading it. Browsers never
+consult `main`; the pre-`exports` bundlers that do read `"browser"` instead, which
+is why this needs both fields rather than a flip.
+
 ### Fixed — the npm package smoke test asserts what a consumer writes
 
 The pack smoke test installed the tarball and imported by package name, which

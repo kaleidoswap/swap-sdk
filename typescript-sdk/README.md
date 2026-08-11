@@ -125,3 +125,10 @@ npm test
 npm run smoke:package
 npm run smoke:browser-package
 ```
+
+`smoke:browser-package` loads the packaged browser entry in headless Firefox, so
+it needs `firefox` on `PATH` — point `BROWSER_BIN` at the binary if it lives
+elsewhere (on macOS,
+`/Applications/Firefox.app/Contents/MacOS/firefox`). Both smoke scripts pack a
+throwaway tarball when given no argument, or check a supplied one:
+`npm run smoke:package -- path/to/package.tgz`.
