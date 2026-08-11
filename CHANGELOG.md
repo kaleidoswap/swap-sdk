@@ -143,6 +143,15 @@ had no cooperative path at all, when refunds always had one — a cooperative
 refund is co-signed by the server and spends with no locktime, so it never waited
 for the timeout. Only claims were missing.
 
+`constructClaim`'s own note is corrected with it. It told chain-swap callers that
+the lockup script and refund key were something the params object "does not yet
+carry", which read as the capability being unavailable rather than as living on a
+different method. That note is what wasm-bindgen copies into the generated
+`.d.ts`, so left alone this release would have shipped types telling consumers the
+cooperative chain claim does not exist, from the same package that exposes it. It
+now names `constructCooperativeClaim` and describes `constructClaim` as the
+script-spend path, matching what the hand-written TypeScript wrapper already said.
+
 ### Added — the browser entry is now gated on every pull request
 
 `scripts/smoke-browser-package.mjs` required a tarball path, so it could only run
