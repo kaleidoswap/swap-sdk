@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 The breaking change and the new binding below each make the next release `0.2.0`
-rather than `0.1.2`. The Rust crate, Python distribution, and npm package share
-one public version, so the bump belongs to a release commit running
-`scripts/release_version.py sync 0.2.0`. Every surface carries a change this time:
-the claim-amount fix is in the swap engine, so it reaches the Rust crate and the
-Python bindings as much as the WebAssembly build.
+rather than `0.1.2`, and the claim-amount fix adds a field to a public Rust
+struct, so the crate has a compile-level break of its own. The Rust crate, Python
+distribution, and npm package share one public version, so the bump belongs to a
+release commit running `scripts/release_version.py sync 0.2.0`. Every surface
+carries a change this time: the claim-amount fix is in the swap engine, so it
+reaches the Rust crate and the Python bindings as much as the WebAssembly build.
 
 ### Breaking — TypeScript `init()` accepts a narrower source type
 
@@ -43,10 +44,16 @@ swaps claiming on Bitcoin and reverse swaps paying out to Bitcoin.
 
 - `BtcSwapScript` gains an expected amount, populated from the same response
   fields the Liquid constructors already use: submarine `expectedAmount`, reverse
-  `onchainAmount`, and the chain swap's `details` amount.
-- `BtcSwapScript::select_utxo` now mirrors the Liquid one — match on script
-  pubkey, and on txid when one is supplied; require an exact amount for a claim;
-  report a mismatch rather than falling through to the first script match.
+  `onchainAmount`, and the chain swap's `details` amount. It is a public field on
+  a public struct that is not `#[non_exhaustive]`, so Rust callers that build one
+  from a struct literal rather than from a swap response must supply it to
+  compile.
+- `BtcSwapScript::select_utxo` now applies the rule the Liquid one applies to
+  claims — match on script pubkey, and on txid when one is supplied; require an
+  exact amount; report a `Bitcoin swap amount mismatch` error rather than falling
+  through to the first script match. Exact is exact in both directions, so an
+  over-funded HTLC is refused as well: a lockup that does not match the swap it
+  was created for is not one to spend a preimage against.
 - Refunds keep the historical tolerance and recover whatever positive amount
   reached the correctly identified HTLC. No secret is at stake on that path, and
   refusing would strand the funds.
@@ -103,12 +110,13 @@ neither the `exports` map nor its condition order can regress unnoticed.
 
 ### Added — cooperative chain-swap claims reach the WebAssembly bindings
 
-The core already supported cooperative chain claims, but the bindings could not
-reach them: `TxParams` carries `cooperative` as a bare bool, and the cooperative
-chain path additionally needs the lockup script it signs against. So
-`constructClaim` documented `cooperative: false` as the only option for chain
-swaps, and JavaScript consumers were stuck on the script spend — the more
-expensive witness.
+The core already supported cooperative chain claims, and the uniffi bindings
+already exposed them through `TransactionOptions.chain_claim`, but the
+WebAssembly bindings could not reach them: `TxParams` carries `cooperative` as a
+bare bool, and the cooperative chain path additionally needs the lockup script it
+signs against. So `constructClaim` documented `cooperative: false` as the only
+option for chain swaps, and JavaScript consumers were stuck on the script spend —
+the more expensive witness.
 
 `SwapScript.constructCooperativeClaim(preimageHex, params, lockupScript,
 refundKeysSecretHex)` exposes the MuSig2 keyspend. Both extra arguments are
