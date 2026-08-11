@@ -33,12 +33,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kaleidoswap/kaleidoswap-sdk.git",
+    "url": "git+https://github.com/kaleidoswap/swap-sdk.git",
     "directory": "typescript-sdk"
   },
-  "homepage": "https://github.com/kaleidoswap/kaleidoswap-sdk#readme",
+  "homepage": "https://github.com/kaleidoswap/swap-sdk#readme",
   "bugs": {
-    "url": "https://github.com/kaleidoswap/kaleidoswap-sdk/issues"
+    "url": "https://github.com/kaleidoswap/swap-sdk/issues"
   },
   "publishConfig": {
     "access": "public",

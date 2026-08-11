@@ -112,6 +112,16 @@ types ambient, a stray `node:fs` import in the shared source typechecks cleanly.
 - The npm README now documents `await init()` as the zero-argument call it has
   become, replacing the "Node usage" section that told Node consumers to read
   `wasmUrl` and pass its bytes. The root README's runtime column said the same.
+- **The npm package points at the repository it is built from.** `repository`,
+  `homepage`, and `bugs` still named `kaleidoswap/kaleidoswap-sdk`, which the
+  repository rename to `kaleidoswap/swap-sdk` left serving only a redirect.
+  `publishConfig.provenance` is on, and npm checks `repository` against the
+  repository the build ran in, so a stale value there is a publish-time risk
+  rather than a cosmetic one. (The npm scope is `@kaleidorg`; the GitHub
+  organization is `kaleidoswap` — different namespaces, as the 0.1.0 entry on the
+  `kaleidorg` rename notes.) Equivalent references in the Rust manifests, the
+  Python project metadata, `docs/releasing.md`, and the release SBOM identity are
+  left for a repo-wide sweep.
 
 ## [0.1.1] - 2026-08-05
 
