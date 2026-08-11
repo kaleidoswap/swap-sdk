@@ -4,13 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-The breaking change and the new binding below each make the next release `0.2.0`
-rather than `0.1.2`, and the claim-amount fix adds a field to a public Rust
-struct, so the crate has a compile-level break of its own. The Rust crate, Python
-distribution, and npm package share one public version, so the bump belongs to a
-release commit running `scripts/release_version.py sync 0.2.0`. Every surface
-carries a change this time: the claim-amount fix is in the swap engine, so it
-reaches the Rust crate and the Python bindings as much as the WebAssembly build.
+## [0.2.0] - 2026-08-11
+
+The breaking change and the new binding below each make this `0.2.0` rather than
+`0.1.2`, and the claim-amount fix adds a field to a public Rust struct, so the
+crate has a compile-level break of its own. Every surface carries a change this
+time: the claim-amount fix is in the swap engine, so it reaches the Rust crate
+and the Python bindings as much as the WebAssembly build. The Rust crate, Python
+distribution, and npm package share one public version, so all three move
+together.
 
 ### Breaking — TypeScript `init()` accepts a narrower source type
 
