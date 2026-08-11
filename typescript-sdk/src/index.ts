@@ -10,7 +10,6 @@ import initWasm, {
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
-import type { InitInput } from "../vendor/bindings_wasm.js";
 
 /** URL of the packaged WebAssembly binary. */
 export const wasmUrl = new URL(
@@ -277,14 +276,51 @@ export function toJson(value: unknown, space?: string | number): string {
 }
 
 /**
+ * Sources accepted for the compiled WebAssembly binary.
+ *
+ * Deliberately narrower than wasm-bindgen's own `InitInput`, which also admits
+ * `WebAssembly.Module`. TypeScript declares that as an *empty* interface, and an
+ * empty interface is structurally assignable from any non-nullish value — so a
+ * union containing it silently accepts `42` or `"nonsense"` and voids
+ * type-checking for every other member. Callers holding a pre-compiled module
+ * can still pass it through {@link initWithModule}.
+ */
+export type WasmSource = BufferSource | URL | Request | Response | string;
+
+// Compile-time guard for the note above. Emits nothing. If `WasmSource` is ever
+// widened back to a union containing an empty interface (`WebAssembly.Module`,
+// or `{}`), a primitive becomes assignable to it and this fails to compile —
+// which is the only signal, since such a union still *looks* precise.
+type Assert<T extends true> = T;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- the assertion IS the test
+type _WasmSourceRejectsPrimitives = Assert<
+  42 extends WasmSource ? false : true
+>;
+
+/**
  * Load and instantiate the wasm module. Call once (await it) before creating any
- * client. Browsers can omit `input`. Node consumers must read {@link wasmUrl}
- * and pass its bytes because Node's `fetch` does not load `file:` URLs.
+ * client.
+ *
+ * Takes no argument in normal use: browsers resolve the packaged binary relative
+ * to this module, and the Node entry point (selected automatically via the
+ * `"node"` export condition) reads it from disk. Pass a {@link WasmSource} only
+ * to override that — for example to serve the binary from your own CDN.
  */
 export async function init(
-  input?: InitInput | Promise<InitInput>,
+  source?: WasmSource | Promise<WasmSource>,
 ): Promise<void> {
-  await initWasm(input === undefined ? undefined : { module_or_path: input });
+  await initWasm(source === undefined ? undefined : { module_or_path: source });
+}
+
+/**
+ * Initialize from a pre-compiled `WebAssembly.Module`. Separate from
+ * {@link init} so that {@link WasmSource} can stay type-safe — see the note on
+ * that type.
+ */
+export async function initWithModule(
+  module: WebAssembly.Module,
+): Promise<void> {
+  await initWasm({ module_or_path: module });
 }
 
 /** A derived swap keypair (hex). */

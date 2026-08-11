@@ -188,6 +188,12 @@ jobs:
       - name: Pack and install in a clean consumer
         working-directory: typescript-sdk
         run: npm run smoke:package
+      # The browser entry is the one every bundler resolves, and nothing else on a
+      # pull request loads it in a browser. Firefox ships with this runner image,
+      # which is the same one the release build runs this script on.
+      - name: Pack and install in a clean browser consumer
+        working-directory: typescript-sdk
+        run: npm run smoke:browser-package
       - name: Audit production dependencies
         working-directory: typescript-sdk
         run: npm audit --omit=dev

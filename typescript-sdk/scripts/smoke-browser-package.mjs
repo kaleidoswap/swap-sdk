@@ -10,15 +10,19 @@ import {
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, normalize, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
+// The tarball argument is optional, as in smoke-package.mjs: a release passes the
+// exact archive it is about to publish, and a pull request packs a throwaway one
+// so `npm run smoke:browser-package` needs no setup.
+const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const suppliedTarball = process.argv[2];
-if (!suppliedTarball) {
-  throw new Error("usage: smoke-browser-package.mjs path/to/package.tgz");
-}
-
-const tarballPath = isAbsolute(suppliedTarball)
-  ? suppliedTarball
-  : resolve(process.cwd(), suppliedTarball);
+let tarballPath = suppliedTarball
+  ? isAbsolute(suppliedTarball)
+    ? suppliedTarball
+    : resolve(process.cwd(), suppliedTarball)
+  : undefined;
+let removeTarball = false;
 const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-browser-"));
 const profileRoot = join(consumerRoot, "firefox-profile");
 const browserBin = process.env.BROWSER_BIN ?? "firefox";
@@ -31,6 +35,17 @@ const contentTypes = new Map([
 ]);
 
 try {
+  if (!tarballPath) {
+    const [{ filename }] = JSON.parse(
+      execFileSync("npm", ["pack", "--json"], {
+        cwd: packageRoot,
+        encoding: "utf8",
+      }),
+    );
+    tarballPath = join(packageRoot, filename);
+    removeTarball = true;
+  }
+
   writeFileSync(
     join(consumerRoot, "package.json"),
     JSON.stringify({ private: true, type: "module" }),
@@ -164,5 +179,8 @@ try {
   }
   console.log(`browser package smoke test passed: ${tarballPath}`);
 } finally {
+  if (removeTarball && tarballPath) {
+    rmSync(tarballPath, { force: true });
+  }
   rmSync(consumerRoot, { recursive: true, force: true });
 }
