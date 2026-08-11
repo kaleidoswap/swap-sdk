@@ -187,9 +187,40 @@ types ambient, a stray `node:fs` import in the shared source typechecks cleanly.
   repository the build ran in, so a stale value there is a publish-time risk
   rather than a cosmetic one. (The npm scope is `@kaleidorg`; the GitHub
   organization is `kaleidoswap` — different namespaces, as the 0.1.0 entry on the
-  `kaleidorg` rename notes.) Equivalent references in the Rust manifests, the
-  Python project metadata, `docs/releasing.md`, and the release SBOM identity are
-  left for a repo-wide sweep.
+  `kaleidorg` rename notes.) Equivalent references elsewhere are corrected in the
+  entry below.
+
+### Changed — repository identity and the release checklist
+
+The npm manifest was corrected above; every remaining reference to
+`kaleidoswap/kaleidoswap-sdk` is corrected here, so nothing this release ships
+points at a name the rename left serving only a redirect.
+
+- **The release SBOM's `documentNamespace` is the one that mattered.** It is a
+  paired constant: `assemble_release.py` writes it and `verify_release_bundle.py`
+  asserts it byte-for-byte, so the two had to move together or every release
+  bundle would fail its own verification. `0.2.0` is the first release whose SBOM
+  identifies the repository it was built from.
+- The four Rust manifests (`Cargo.toml`, `macros`, `bindings`, `bindings-wasm`),
+  the Python project metadata's `Repository` and `Issues` URLs, the git-dependency
+  snippets in both READMEs, the Python README's example links, and the `gh`
+  invocations throughout `docs/releasing.md` all move to `kaleidoswap/swap-sdk`.
+  Historical changelog entries keep the old name: they are a record of what was
+  true when written.
+
+The release checklist is no longer written for one version. It was titled
+"v0.1.0 activation checklist" with `0.1.0` substituted into every command, which
+is the kind of document that is silently wrong by its second use. It now derives
+`VERSION` from `release_version.py current` — the same value the release
+preflight reads, and one that fails loudly if the six version sources disagree —
+and takes `TAG` from it, so the commands are correct for whatever is committed
+rather than for whatever was current when the doc was written.
+
+Three statements in that file had also gone stale and are corrected: the
+synchronized-version contract no longer claims the internal crates sit at a
+specific version, the Rust git-dependency example pins the latest published tag,
+and the PyPI section reflects that `kaleidorg-swap-sdk` now holds `0.1.0` and
+`0.1.1` rather than being unclaimed.
 
 ## [0.1.1] - 2026-08-05
 

@@ -23,9 +23,9 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://kaleidoswap.com"
-Repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+Repository = "https://github.com/kaleidoswap/swap-sdk"
 Documentation = "https://docs.kaleidoswap.com"
-Issues = "https://github.com/kaleidoswap/kaleidoswap-sdk/issues"
+Issues = "https://github.com/kaleidoswap/swap-sdk/issues"
 
 [build-system]
 requires = ["maturin==1.14.1"]

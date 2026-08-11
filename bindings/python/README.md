@@ -54,6 +54,6 @@ asyncio.run(main())
 
 Complete working examples are available in the `examples/` directory:
 
-- [`reverse.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
-- [`submarine.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
-- [`chain.py`](https://github.com/kaleidoswap/kaleidoswap-sdk/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)
+- [`reverse.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
+- [`submarine.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
+- [`chain.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)

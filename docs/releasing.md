@@ -23,7 +23,7 @@ make versions
 Update every public package and lockfile:
 
 ```sh
-make sync-version VERSION=0.1.0
+make sync-version VERSION=X.Y.Z
 ```
 
 `Cargo.lock`, the Python `uv.lock`, and the npm `package-lock.json` are committed
@@ -38,7 +38,7 @@ make validate-versions
 Validate a proposed release tag:
 
 ```sh
-make validate-release-version TAG=v0.1.0
+make validate-release-version TAG=vX.Y.Z
 ```
 
 Normal pull-request CI runs the version consistency check. The tag release
@@ -78,7 +78,7 @@ context — so a `v*` tag publishes to whichever registries are `true` at the
 moment it runs. Read the current values before tagging:
 
 ```sh
-gh api repos/kaleidoswap/kaleidoswap-sdk/actions/variables \
+gh api repos/kaleidoswap/swap-sdk/actions/variables \
   --jq '.variables[] | "\(.name) = \(.value)"'
 ```
 
@@ -161,7 +161,7 @@ binding, or TypeScript packaging inputs change. After this workflow exists on
 
 ```sh
 gh workflow run release-rehearsal.yaml \
-  --repo kaleidoswap/kaleidoswap-sdk \
+  --repo kaleidoswap/swap-sdk \
   --ref trunk \
   -f failure_case=none
 ```
@@ -179,7 +179,7 @@ For example:
 
 ```sh
 gh workflow run release-rehearsal.yaml \
-  --repo kaleidoswap/kaleidoswap-sdk \
+  --repo kaleidoswap/swap-sdk \
   --ref trunk \
   -f failure_case=missing-wheel
 ```
@@ -211,7 +211,7 @@ must open **Settings → Environments → release**, clear **Allow administrator
 to bypass configured protection rules**, save, and verify:
 
 ```sh
-gh api repos/kaleidoswap/kaleidoswap-sdk/environments/release \
+gh api repos/kaleidoswap/swap-sdk/environments/release \
   --jq '.can_admins_bypass'
 ```
 
@@ -286,26 +286,36 @@ PEP 740 attestations are **not** produced. They require Trusted Publishing, and
 the PyPA action silently ignores `attestations: true` when a password is set, so
 that input is pinned to `false` and the PyPI job requests no OIDC scope.
 
-## v0.1.0 activation checklist
+## Release activation checklist
 
 The tag is the irreversible release trigger. Run this checklist only after the
 release pull request has merged to `trunk`.
 
-1. Confirm the final `0.1.0` changelog, manifests, and lockfiles:
+Every command below reads `VERSION` and `TAG`, so set them once and the rest of
+the checklist is copy-pasteable. Take the version from the committed manifests
+rather than retyping it — `release_version.py current` is the same value the
+release preflight derives, and it fails if the six sources disagree:
+
+```sh
+VERSION="$(python3 scripts/release_version.py current)"
+TAG="v$VERSION"
+```
+
+1. Confirm the final changelog, manifests, and lockfiles:
 
    ```sh
    git switch trunk
    git pull --ff-only origin trunk
-   make validate-release-readiness TAG=v0.1.0
+   make validate-release-readiness TAG="$TAG"
    ```
 
-2. Confirm `@kaleidorg/swap-sdk@0.1.0` and
-   `kaleidorg_swap_sdk==0.1.0` are still absent from npm and PyPI:
+2. Confirm `@kaleidorg/swap-sdk@$VERSION` and
+   `kaleidorg_swap_sdk==$VERSION` are still absent from npm and PyPI:
 
    ```sh
    NPM_PUBLISH_ENABLED=false \
    PYPI_PUBLISH_ENABLED=false \
-   python3 scripts/check_registry_availability.py 0.1.0 --check-pypi
+   python3 scripts/check_registry_availability.py "$VERSION" --check-pypi
    ```
 
 3. Confirm `trunk` branch protection, the active `Protect release tags`
@@ -321,8 +331,8 @@ release pull request has merged to `trunk`.
 6. Have an administrator create and push the annotated tag:
 
    ```sh
-   git tag -a v0.1.0 -m "KaleidoSwap SDK v0.1.0"
-   git push origin v0.1.0
+   git tag -a "$TAG" -m "KaleidoSwap SDK $TAG"
+   git push origin "$TAG"
    ```
 
 7. A required reviewer other than the tag pusher approves the `release`
@@ -333,14 +343,14 @@ release pull request has merged to `trunk`.
 9. Download and independently verify the ten GitHub release assets:
 
    ```sh
-   mkdir release-v0.1.0
-   gh release download v0.1.0 \
-     --repo kaleidoswap/kaleidoswap-sdk \
-     --dir release-v0.1.0
-   python3 scripts/verify_release_bundle.py release-v0.1.0 \
-     --version 0.1.0 \
-     --tag v0.1.0 \
-     --commit "$(git rev-list -n 1 v0.1.0)"
+   mkdir "release-$TAG"
+   gh release download "$TAG" \
+     --repo kaleidoswap/swap-sdk \
+     --dir "release-$TAG"
+   python3 scripts/verify_release_bundle.py "release-$TAG" \
+     --version "$VERSION" \
+     --tag "$TAG" \
+     --commit "$(git rev-list -n 1 "$TAG")"
    ```
 
 10. Retain the workflow URL, registry URLs, `SHA256SUMS`,
@@ -381,17 +391,17 @@ publisher succeeds and another fails:
 
    ```sh
    gh run download <run-id> \
-     --repo kaleidoswap/kaleidoswap-sdk \
-     --name "release-bundle-v0.1.0" \
-     --dir release-v0.1.0
-   python3 scripts/verify_release_bundle.py release-v0.1.0 \
-     --version 0.1.0 --tag v0.1.0 \
-     --commit "$(git rev-list -n 1 v0.1.0)"
-   gh release create v0.1.0 release-v0.1.0/* \
-     --repo kaleidoswap/kaleidoswap-sdk \
-     --title "KaleidoSwap SDK v0.1.0" \
+     --repo kaleidoswap/swap-sdk \
+     --name "release-bundle-$TAG" \
+     --dir "release-$TAG"
+   python3 scripts/verify_release_bundle.py "release-$TAG" \
+     --version "$VERSION" --tag "$TAG" \
+     --commit "$(git rev-list -n 1 "$TAG")"
+   gh release create "$TAG" "release-$TAG"/* \
+     --repo kaleidoswap/swap-sdk \
+     --title "KaleidoSwap SDK $TAG" \
      --verify-tag --latest \
-     --notes-file <(python3 scripts/release_notes.py 0.1.0)
+     --notes-file <(python3 scripts/release_notes.py "$VERSION")
    ```
 
 ## Rust distribution
@@ -401,8 +411,11 @@ or `cargo publish`, and `kaleidorg-swap-sdk` is unclaimed on crates.io.
 Consumers take it by tag:
 
 ```toml
-kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.0" }
+kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.1.1" }
 ```
+
+Pin the tag you actually want; `v0.1.1` is the latest published release at the
+time of writing.
 
 The `repository`, `homepage`, and `include` metadata on the manifests exists so
 the crates are publishable *later* without another metadata pass, not because
@@ -414,9 +427,11 @@ deliberate deferral rather than an oversight:
 1. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
    published first.
 2. The "one synchronized version" contract covers three of the five crates. The
-   root crate, Python distribution, and npm package share `0.1.0`;
-   `bindings`/`bindings-wasm` are independently `0.1.0` and `macros` is `1.0.0`.
-   `validate-versions` deliberately checks only the three public surfaces.
+   root crate, Python distribution, and npm package share one public version;
+   `bindings`, `bindings-wasm`, and `macros` are versioned independently of it
+   and of each other. `validate-versions` deliberately checks only the three
+   public surfaces, so run `make versions` rather than assuming the internal
+   crates track the release.
 
 ## Python registry
 
@@ -426,9 +441,10 @@ public PyPI project: normalized to `kaleidoswap-sdk`, it already holds releases
 reused. Uploading platform wheels to that old `0.1.0` would have mixed the new
 native package with the old universal wheel.
 
-Renaming the distribution to `kaleidorg_swap_sdk` removes that constraint.
-`kaleidorg-swap-sdk` is unclaimed on PyPI, so `0.1.0` is publishable under the
-new name.
+Renaming the distribution to `kaleidorg_swap_sdk` removes that constraint. The
+new name was unclaimed, and `kaleidorg-swap-sdk` now holds `0.1.0` and `0.1.1`
+on PyPI. `0.1.0` reached PyPI but never reached npm, so it is permanently
+claimed there and absent from npm; see the `0.1.1` changelog entry.
 
 Public PyPI publishing defaults to **off**: `PYPI_PUBLISH_ENABLED` is absent or
 `false`, and the registry-completion gate requires the publish and verify jobs to

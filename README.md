@@ -55,7 +55,7 @@ the KaleidoSwap layers are built on top of it.
 
 | Surface | Install | Supported v0.1.x runtime |
 |---|---|---|
-| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/kaleidoswap-sdk", tag = "v0.1.1" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.1.1" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
 | Python | `pip install kaleidorg_swap_sdk` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
 | TypeScript | `npm install @kaleidorg/swap-sdk` | Browsers and Node 22+; `await init()` takes no argument in either |
 
