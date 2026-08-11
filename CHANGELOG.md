@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-The breaking change below makes the next release `0.2.0`, not `0.1.2`. The Rust
-crate, Python distribution, and npm package share one public version, so the bump
-belongs to a release commit running `scripts/release_version.py sync 0.2.0` — the
-Rust and Python surfaces are unchanged, but they move with it.
+The breaking change and the new binding below each make the next release `0.2.0`
+rather than `0.1.2`, and the claim-amount fix adds a field to a public Rust
+struct, so the crate has a compile-level break of its own. The Rust crate, Python
+distribution, and npm package share one public version, so the bump belongs to a
+release commit running `scripts/release_version.py sync 0.2.0`. Every surface
+carries a change this time: the claim-amount fix is in the swap engine, so it
+reaches the Rust crate and the Python bindings as much as the WebAssembly build.
 
 ### Breaking — TypeScript `init()` accepts a narrower source type
 
@@ -24,6 +27,36 @@ Callers who passed the object form (`init({ module_or_path: bytes })`) must pass
 the bytes, or nothing at all — `init` wraps the argument itself, so the object
 form double-wrapped and threw `WebAssembly.instantiate(): Argument 0 must be a
 buffer source` at runtime. It typechecked for the same reason `init(42)` did.
+
+### Fixed — Bitcoin claims enforce the amount the swap was created for
+
+Liquid claims already required the swap HTLC output to hold exactly the agreed
+amount. Bitcoin claims had no equivalent check: `BtcSwapScript` carried no
+expected amount, UTXO selection returned the first output matching the script
+pubkey, and the only value test on the claim path was that the output covered the
+miner fee.
+
+A counterparty that locked less than agreed therefore still received our
+preimage, and we claimed whatever happened to be there. **That is not recoverable
+after the fact** — publishing the preimage is what lets the counterparty take our
+side of the swap, so a short lockup was paid for at full price. It affected chain
+swaps claiming on Bitcoin and reverse swaps paying out to Bitcoin.
+
+- `BtcSwapScript` gains an expected amount, populated from the same response
+  fields the Liquid constructors already use: submarine `expectedAmount`, reverse
+  `onchainAmount`, and the chain swap's `details` amount. It is a public field on
+  a public struct that is not `#[non_exhaustive]`, so Rust callers that build one
+  from a struct literal rather than from a swap response must supply it to
+  compile.
+- `BtcSwapScript::select_utxo` now applies the rule the Liquid one applies to
+  claims — match on script pubkey, and on txid when one is supplied; require an
+  exact amount; report a `Bitcoin swap amount mismatch` error rather than falling
+  through to the first script match. Exact is exact in both directions, so an
+  over-funded HTLC is refused as well: a lockup that does not match the swap it
+  was created for is not one to spend a preimage against.
+- Refunds keep the historical tolerance and recover whatever positive amount
+  reached the correctly identified HTLC. No secret is at stake on that path, and
+  refusing would strand the funds.
 
 ### Fixed — TypeScript `await init()` works in Node
 
@@ -74,6 +107,39 @@ It also resolves the package through Node's own resolver twice — once with
 default conditions, once with `--conditions=browser` added, standing in for an
 isomorphic bundler that sets both — and asserts which entry each lands on, so
 neither the `exports` map nor its condition order can regress unnoticed.
+
+### Added — cooperative chain-swap claims reach the WebAssembly bindings
+
+The core already supported cooperative chain claims, and the uniffi bindings
+already exposed them through `TransactionOptions.chain_claim`, but the
+WebAssembly bindings could not reach them: `TxParams` carries `cooperative` as a
+bare bool, and the cooperative chain path additionally needs the lockup script it
+signs against. So `constructClaim` documented `cooperative: false` as the only
+option for chain swaps, and JavaScript consumers were stuck on the script spend —
+the more expensive witness.
+
+`SwapScript.constructCooperativeClaim(preimageHex, params, lockupScript,
+refundKeysSecretHex)` exposes the MuSig2 keyspend. Both extra arguments are
+positional and required rather than squeezed through the serde `params` object:
+
+- **`lockupScript`** — the cooperative path partial-signs a temporary refund
+  against the lockup-side script, which `TxParams` cannot carry.
+- **`refundKeysSecretHex`** — that temporary refund is signed with the swap's
+  **refund** key, not its claim key. A chain swap carries two independent keys
+  (`CreateChainRequest` has both `claim_public_key` and `refund_public_key`), so
+  defaulting one to the other would be the quiet kind of wrong: the partial
+  signature is made under the claim key, the server rejects it, and the caller
+  gets a MuSig error rather than "you passed the wrong key." Swaps derived from
+  `SwapMasterKey` use one key for both sides and are unaffected either way.
+
+`params.cooperative === false` is rejected rather than silently dropped, since
+the previous documentation told chain-claim callers to set exactly that and
+`with_chain_claim` forces it true.
+
+`TxParams.cooperative`'s documentation is corrected too: it implied chain swaps
+had no cooperative path at all, when refunds always had one — a cooperative
+refund is co-signed by the server and spends with no locktime, so it never waited
+for the timeout. Only claims were missing.
 
 ### Added — the browser entry is now gated on every pull request
 
