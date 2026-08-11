@@ -144,7 +144,7 @@ def write_release_metadata(
         "SPDXID": "SPDXRef-DOCUMENT",
         "name": f"kaleidorg-swap-sdk-{version}-release-artifacts",
         "documentNamespace": (
-            "https://github.com/kaleidoswap/kaleidoswap-sdk/"
+            "https://github.com/kaleidoswap/swap-sdk/"
             f"releases/tag/{tag}/spdx/{commit}"
         ),
         "creationInfo": {

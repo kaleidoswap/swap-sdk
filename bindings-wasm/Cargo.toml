@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 description = "WebAssembly (wasm-bindgen) bindings for the KaleidoSwap SDK"
-repository = "https://github.com/kaleidoswap/kaleidoswap-sdk"
+repository = "https://github.com/kaleidoswap/swap-sdk"
 homepage = "https://kaleidoswap.com"
 
 # Browser/TS binding surface. Separate from the UniFFI `bindings` crate because

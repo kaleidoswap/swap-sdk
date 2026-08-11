@@ -116,7 +116,7 @@ def verify(
     require(
         sbom.get("documentNamespace")
         == (
-            "https://github.com/kaleidoswap/kaleidoswap-sdk/"
+            "https://github.com/kaleidoswap/swap-sdk/"
             f"releases/tag/{tag}/spdx/{commit}"
         ),
         "release SBOM source identity mismatch",
