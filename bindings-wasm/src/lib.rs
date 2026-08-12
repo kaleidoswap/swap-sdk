@@ -21,7 +21,19 @@ fn to_js<T: serde::Serialize>(v: &T) -> Result<JsValue, JsValue> {
     // wasm-bindgen's own u64 <-> bigint mapping in direct signatures;
     // deserialization (from_js) accepts both Number and BigInt, so request
     // objects may use either.
-    let ser = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);
+    //
+    // Serialize Rust maps as plain JS objects rather than `Map`. Without this,
+    // the JS shape of a response follows the Rust type that produced it —
+    // structs become objects, `HashMap`s become `Map`s — so one response changes
+    // access style partway down. The pairs and nodes responses are a struct
+    // wrapping a `HashMap<String, _>`, which made `pairs.BTC` a property read
+    // while `pairs.BTC["L-BTC"]` was silently `undefined` and needed `.get()`.
+    // Every map crossing this boundary is keyed by `String`, so no key is lost in
+    // the conversion, and one uniform object shape is what this crate's docs and
+    // the hand-written TS types on top of it already declare.
+    let ser = serde_wasm_bindgen::Serializer::new()
+        .serialize_large_number_types_as_bigints(true)
+        .serialize_maps_as_objects(true);
     v.serialize(&ser).map_err(js_err)
 }
 
@@ -45,6 +57,19 @@ struct DerivedKey {
     public_key: String,
     #[serde(rename = "secretKey")]
     secret_key: String,
+}
+
+/// A derived preimage and its hashes, returned to JS as
+/// `{ preimage, sha256, hash160 }` (hex). A named struct rather than an ad-hoc
+/// `serde_json::json!` value: `json!`'s object variant is a map, so it reached JS
+/// as a `Map` while its neighbour [`DerivedKey`] arrived as a plain object, and
+/// `preimage.sha256` read `undefined` against the `DerivedPreimage` interface the
+/// TS SDK declares. Nothing about a preimage has dynamic keys.
+#[derive(serde::Serialize)]
+struct DerivedPreimage {
+    preimage: String,
+    sha256: String,
+    hash160: String,
 }
 
 /// Wraps [`SwapMasterKey`] for JS: BIP85-derived swap keys from a wallet mnemonic.
@@ -116,11 +141,19 @@ impl WasmSwapMasterKey {
     pub fn derive_preimage(&self, index: u64) -> Result<JsValue, JsValue> {
         let kp = self.inner.derive_swapkey(index).map_err(js_err)?;
         let p = Preimage::from_swap_key(&kp);
-        to_js(&serde_json::json!({
-            "preimage": p.to_string(),
-            "sha256": p.sha256.to_string(),
-            "hash160": p.hash160.to_string(),
-        }))
+        // `Preimage::bytes` is optional in general — a preimage rebuilt from its
+        // hash alone has none — but `from_swap_key` always fills it, so this
+        // cannot be hit from here. Report it rather than unwrapping: the `json!`
+        // value this replaced would have quietly emitted `preimage: null` against
+        // a declared `string`, and an error is the honest form of "no preimage".
+        let preimage = p
+            .to_string()
+            .ok_or_else(|| JsValue::from_str("derived preimage has no bytes"))?;
+        to_js(&DerivedPreimage {
+            preimage,
+            sha256: p.sha256.to_string(),
+            hash160: p.hash160.to_string(),
+        })
     }
 }
 

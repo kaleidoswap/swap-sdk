@@ -109,6 +109,24 @@ import { toJson } from "@kaleidorg/swap-sdk";
 console.log(toJson({ amount: 1000n }));
 ```
 
+This applies to arguments as well as responses, and the declared type is the rule
+to follow — it differs by where the value crosses the boundary.
+
+A parameter declared `bigint` is passed on the wasm-bindgen ABI, which accepts a
+`BigInt` and nothing else, so it needs the `n` suffix:
+
+```ts
+master.deriveSwapKey(0n); // ok
+master.deriveSwapKey(0); // TypeError: Cannot convert 0 to a BigInt
+```
+
+`tsc` rejects the plain-number form ahead of that throw. The same applies to any
+other `bigint` argument, such as the `BoltzClient` constructor's `timeoutSecs`.
+
+Fields inside request objects are declared `number` even where the Rust type
+behind them is 64-bit, because those objects are deserialized rather than passed
+on the ABI. Pass what the field declares and both cases are correct.
+
 ## Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
 
 An optional subpath serving the Arkade Intents RFQ routes
