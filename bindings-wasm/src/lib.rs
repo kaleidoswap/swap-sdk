@@ -11,8 +11,47 @@
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
-fn js_err<E: std::fmt::Display>(e: E) -> JsValue {
-    JsValue::from_str(&e.to_string())
+// ---- Errors -----------------------------------------------------------------
+//
+// Everything thrown across this boundary is a JS `Error` carrying a stable
+// `code`, never a bare string: a caller that catches a string gets no `.message`
+// and no `.stack`, and `instanceof Error` is false for it, so the generic
+// `isKaleidoSwapError` narrowing in the TS SDK cannot see it.
+
+/// Code for input these bindings reject before, or instead of, reaching the core
+/// SDK: a mistyped argument, an unparseable hex/enum value, or a request object
+/// serde could not deserialize. Core failures keep their own code ([`core_err`]).
+const INVALID_ARGUMENT: &str = "InvalidArgument";
+
+/// Code for a failure on our side of the boundary rather than the caller's.
+const INTERNAL: &str = "Internal";
+
+/// Tag an `Error` with the `code` callers branch on, mirroring it into `name` so
+/// the code is visible in a stringified error too.
+fn set_code(error: &js_sys::Error, code: &str) {
+    error.set_name(code);
+    let _ = js_sys::Reflect::set(
+        error.as_ref(),
+        &JsValue::from_str("code"),
+        &JsValue::from_str(code),
+    );
+}
+
+fn coded_err(code: &str, message: &str) -> JsValue {
+    let error = js_sys::Error::new(message);
+    set_code(&error, code);
+    error.into()
+}
+
+/// The caller's input is unusable. The message names the offending argument or
+/// field, so the rejection is actionable without reading SDK source.
+fn arg_err<E: std::fmt::Display>(e: E) -> JsValue {
+    coded_err(INVALID_ARGUMENT, &e.to_string())
+}
+
+/// Something failed on our side of the boundary — not the caller's input.
+fn internal_err<E: std::fmt::Display>(e: E) -> JsValue {
+    coded_err(INTERNAL, &e.to_string())
 }
 
 fn to_js<T: serde::Serialize>(v: &T) -> Result<JsValue, JsValue> {
@@ -34,11 +73,55 @@ fn to_js<T: serde::Serialize>(v: &T) -> Result<JsValue, JsValue> {
     let ser = serde_wasm_bindgen::Serializer::new()
         .serialize_large_number_types_as_bigints(true)
         .serialize_maps_as_objects(true);
-    v.serialize(&ser).map_err(js_err)
+    v.serialize(&ser).map_err(internal_err)
 }
 
 fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
-    serde_wasm_bindgen::from_value(v).map_err(js_err)
+    serde_wasm_bindgen::from_value(v).map_err(|e| {
+        // serde-wasm-bindgen's error already *is* a JS `Error` naming the missing
+        // or mistyped field. Tag that object in place; converting it through
+        // `Display` instead would fold its own "Error: " prefix into the message.
+        let value: JsValue = e.into();
+        if let Some(error) = value.dyn_ref::<js_sys::Error>() {
+            set_code(error, INVALID_ARGUMENT);
+            return value;
+        }
+        arg_err(format!("{value:?}"))
+    })
+}
+
+// ---- String arguments -------------------------------------------------------
+
+#[wasm_bindgen]
+extern "C" {
+    /// A `string` argument taken as an unconverted JS value.
+    ///
+    /// wasm-bindgen marshals a `String` parameter in its generated JS glue,
+    /// *before* any Rust code runs: `passStringToWasm0` reads `arg.length` and
+    /// `arg.charCodeAt` and hands the result to the wasm allocator. Given a
+    /// non-string — the usual cause being arguments passed in the wrong order —
+    /// that computes a bogus length and traps inside the allocator with
+    /// `RuntimeError: memory access out of bounds`, which tells the caller
+    /// nothing and cannot be caught as an `Error`.
+    ///
+    /// Taking the value as an extern type instead passes it through untouched
+    /// (`addHeapObject`), so [`str_arg`] can reject it by name. `typescript_type`
+    /// keeps the generated `.d.ts` signature `string`, and the type itself is not
+    /// emitted into the TS surface.
+    #[wasm_bindgen(typescript_type = "string")]
+    pub type StringArg;
+}
+
+/// Convert a required string argument, naming it if it is not a string.
+fn str_arg(v: StringArg, param: &str) -> Result<String, JsValue> {
+    JsValue::from(v)
+        .as_string()
+        .ok_or_else(|| arg_err(format!("argument `{param}` must be a string")))
+}
+
+/// Convert an optional string argument. `null`/`undefined` stay `None`.
+fn opt_str_arg(v: Option<StringArg>, param: &str) -> Result<Option<String>, JsValue> {
+    v.map(|v| str_arg(v, param)).transpose()
 }
 
 // ============================================================================
@@ -84,32 +167,38 @@ impl WasmSwapMasterKey {
     /// `network` is one of "mainnet" | "testnet" | "regtest".
     #[wasm_bindgen(js_name = fromWalletMnemonic)]
     pub fn from_wallet_mnemonic(
-        wallet_mnemonic: String,
-        passphrase: Option<String>,
-        network: String,
+        wallet_mnemonic: StringArg,
+        passphrase: Option<StringArg>,
+        network: StringArg,
     ) -> Result<WasmSwapMasterKey, JsValue> {
+        let wallet_mnemonic = str_arg(wallet_mnemonic, "walletMnemonic")?;
+        let passphrase = opt_str_arg(passphrase, "passphrase")?;
+        let network = str_arg(network, "network")?;
         let inner = SwapMasterKey::new(
             &wallet_mnemonic,
             passphrase.as_deref(),
             parse_network(&network)?,
         )
-        .map_err(js_err)?;
+        .map_err(core_err)?;
         Ok(WasmSwapMasterKey { inner })
     }
 
     /// Reconstruct from the swap (rescue) mnemonic directly.
     #[wasm_bindgen(js_name = fromSwapMnemonic)]
     pub fn from_swap_mnemonic(
-        mnemonic: String,
-        passphrase: Option<String>,
-        network: String,
+        mnemonic: StringArg,
+        passphrase: Option<StringArg>,
+        network: StringArg,
     ) -> Result<WasmSwapMasterKey, JsValue> {
+        let mnemonic = str_arg(mnemonic, "mnemonic")?;
+        let passphrase = opt_str_arg(passphrase, "passphrase")?;
+        let network = str_arg(network, "network")?;
         let inner = SwapMasterKey::from_mnemonic(
             &mnemonic,
             passphrase.as_deref(),
             parse_network(&network)?,
         )
-        .map_err(js_err)?;
+        .map_err(core_err)?;
         Ok(WasmSwapMasterKey { inner })
     }
 
@@ -128,7 +217,7 @@ impl WasmSwapMasterKey {
     /// Derive the swap keypair at `index`, returned as `{ publicKey, secretKey }`.
     #[wasm_bindgen(js_name = deriveSwapKey)]
     pub fn derive_swap_key(&self, index: u64) -> Result<JsValue, JsValue> {
-        let kp = self.inner.derive_swapkey(index).map_err(js_err)?;
+        let kp = self.inner.derive_swapkey(index).map_err(core_err)?;
         to_js(&DerivedKey {
             public_key: kp.public_key().to_string(),
             secret_key: kp.secret_key().display_secret().to_string(),
@@ -139,7 +228,7 @@ impl WasmSwapMasterKey {
     /// (`sha256(privateKey)`), returned as `{ preimage, sha256, hash160 }` hex.
     #[wasm_bindgen(js_name = derivePreimage)]
     pub fn derive_preimage(&self, index: u64) -> Result<JsValue, JsValue> {
-        let kp = self.inner.derive_swapkey(index).map_err(js_err)?;
+        let kp = self.inner.derive_swapkey(index).map_err(core_err)?;
         let p = Preimage::from_swap_key(&kp);
         // `Preimage::bytes` is optional in general — a preimage rebuilt from its
         // hash alone has none — but `from_swap_key` always fills it, so this
@@ -148,7 +237,7 @@ impl WasmSwapMasterKey {
         // a declared `string`, and an error is the honest form of "no preimage".
         let preimage = p
             .to_string()
-            .ok_or_else(|| JsValue::from_str("derived preimage has no bytes"))?;
+            .ok_or_else(|| internal_err("derived preimage has no bytes"))?;
         to_js(&DerivedPreimage {
             preimage,
             sha256: p.sha256.to_string(),
@@ -163,7 +252,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
         "testnet" => Ok(Network::Testnet),
         "signet" => Ok(Network::Signet),
         "regtest" => Ok(Network::Regtest),
-        other => Err(JsValue::from_str(&format!("unknown network: {other}"))),
+        other => Err(arg_err(format!("unknown network: {other}"))),
     }
 }
 
@@ -210,9 +299,7 @@ fn asset_from_boltz(
         "BTC" => Ok((Chain::Bitcoin(net.into()), Currency::Btc)),
         "L-BTC" => Ok((Chain::Liquid(net.into()), Currency::LBtc)),
         "L-USDT" => Ok((Chain::Liquid(net.into()), Currency::LUsdt)),
-        other => Err(JsValue::from_str(&format!(
-            "unsupported Boltz asset '{other}'"
-        ))),
+        other => Err(arg_err(format!("unsupported Boltz asset '{other}'"))),
     }
 }
 
@@ -255,13 +342,13 @@ pub struct BoltzClient {
 impl BoltzClient {
     /// `new BoltzClient(baseUrl, timeoutSecs?)`
     #[wasm_bindgen(constructor)]
-    pub fn new(base_url: String, timeout_secs: Option<u64>) -> BoltzClient {
-        BoltzClient {
+    pub fn new(base_url: StringArg, timeout_secs: Option<u64>) -> Result<BoltzClient, JsValue> {
+        Ok(BoltzClient {
             inner: BoltzApiClientV2::new(
-                base_url,
+                str_arg(base_url, "baseUrl")?,
                 timeout_secs.map(std::time::Duration::from_secs),
             ),
-        }
+        })
     }
 
     /// Client pointed at the default **KaleidoSwap maker** for a network
@@ -273,7 +360,8 @@ impl BoltzClient {
     /// live yet) instead of falling back to a third party; to reach any other
     /// maker, pass an explicit base URL to the constructor.
     #[wasm_bindgen(js_name = forNetwork)]
-    pub fn for_network(network: String) -> Result<BoltzClient, JsValue> {
+    pub fn for_network(network: StringArg) -> Result<BoltzClient, JsValue> {
+        let network = str_arg(network, "network")?;
         Ok(BoltzClient {
             inner: BoltzApiClientV2::default(parse_network(&network)?).map_err(core_err)?,
         })
@@ -310,9 +398,10 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = createSubmarineSwap)]
     pub async fn create_submarine_swap(
         &self,
-        network: String,
+        network: StringArg,
         req: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let network = str_arg(network, "network")?;
         let req: CreateSubmarineRequest = from_js(req)?;
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
@@ -344,9 +433,10 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = createReverseSwap)]
     pub async fn create_reverse_swap(
         &self,
-        network: String,
+        network: StringArg,
         req: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let network = str_arg(network, "network")?;
         let req: CreateReverseRequest = from_js(req)?;
         let claim_pk = req.claim_public_key;
         let to = req.to.clone();
@@ -378,7 +468,7 @@ impl BoltzClient {
         } else if let Some(inv) = &invoice {
             kaleidorg_swap_sdk::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
         } else {
-            return Err(JsValue::from_str(
+            return Err(arg_err(
                 "reverse swap request needs preimageHash or invoice",
             ));
         };
@@ -395,9 +485,10 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = createChainSwap)]
     pub async fn create_chain_swap(
         &self,
-        network: String,
+        network: StringArg,
         req: JsValue,
     ) -> Result<JsValue, JsValue> {
+        let network = str_arg(network, "network")?;
         let req: CreateChainRequest = from_js(req)?;
         // Both keys are required so the returned lockup script/tree can be
         // checked against the request — never hand back an unvalidated
@@ -407,7 +498,7 @@ impl BoltzClient {
         let (claim_pk, refund_pk) = match (req.claim_public_key, req.refund_public_key) {
             (Some(claim_pk), Some(refund_pk)) => (claim_pk, refund_pk),
             _ => {
-                return Err(JsValue::from_str(
+                return Err(arg_err(
                     "chain swap request needs claimPublicKey and refundPublicKey",
                 ))
             }
@@ -451,19 +542,23 @@ impl BoltzClient {
     // ---- Status / lookups --------------------------------------------------
 
     #[wasm_bindgen(js_name = submarineTx)]
-    pub async fn submarine_tx(&self, id: String) -> Result<JsValue, JsValue> {
+    pub async fn submarine_tx(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
         to_js(&self.inner.get_submarine_tx(&id).await.map_err(core_err)?)
     }
     #[wasm_bindgen(js_name = reverseTx)]
-    pub async fn reverse_tx(&self, id: String) -> Result<JsValue, JsValue> {
+    pub async fn reverse_tx(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
         to_js(&self.inner.get_reverse_tx(&id).await.map_err(core_err)?)
     }
     #[wasm_bindgen(js_name = chainTxs)]
-    pub async fn chain_txs(&self, id: String) -> Result<JsValue, JsValue> {
+    pub async fn chain_txs(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
         to_js(&self.inner.get_chain_txs(&id).await.map_err(core_err)?)
     }
     #[wasm_bindgen(js_name = submarinePreimage)]
-    pub async fn submarine_preimage(&self, id: String) -> Result<JsValue, JsValue> {
+    pub async fn submarine_preimage(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
         to_js(
             &self
                 .inner
@@ -473,17 +568,21 @@ impl BoltzClient {
         )
     }
     #[wasm_bindgen(js_name = mrhBip21)]
-    pub async fn mrh_bip21(&self, invoice: String) -> Result<JsValue, JsValue> {
+    pub async fn mrh_bip21(&self, invoice: StringArg) -> Result<JsValue, JsValue> {
+        let invoice = str_arg(invoice, "invoice")?;
         to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
     }
-    pub async fn swap(&self, swap_id: String) -> Result<JsValue, JsValue> {
+    pub async fn swap(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
         to_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
     }
-    pub async fn quote(&self, swap_id: String) -> Result<JsValue, JsValue> {
+    pub async fn quote(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
         to_js(&self.inner.get_quote(&swap_id).await.map_err(core_err)?)
     }
     #[wasm_bindgen(js_name = acceptQuote)]
-    pub async fn accept_quote(&self, swap_id: String, amount_sat: u64) -> Result<(), JsValue> {
+    pub async fn accept_quote(&self, swap_id: StringArg, amount_sat: u64) -> Result<(), JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
         self.inner
             .accept_quote(&swap_id, amount_sat)
             .await
@@ -498,10 +597,12 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = swapRestore)]
     pub async fn swap_restore(
         &self,
-        xpub: String,
-        derivation_path: Option<String>,
+        xpub: StringArg,
+        derivation_path: Option<StringArg>,
         gap_limit: Option<u32>,
     ) -> Result<JsValue, JsValue> {
+        let xpub = str_arg(xpub, "xpub")?;
+        let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
         to_js(
             &self
                 .inner
@@ -513,10 +614,12 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = swapRestoreIndex)]
     pub async fn swap_restore_index(
         &self,
-        xpub: String,
-        derivation_path: Option<String>,
+        xpub: StringArg,
+        derivation_path: Option<StringArg>,
         gap_limit: Option<u32>,
     ) -> Result<JsValue, JsValue> {
+        let xpub = str_arg(xpub, "xpub")?;
+        let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
         to_js(
             &self
                 .inner
@@ -556,12 +659,27 @@ use kaleidorg_swap_sdk::swaps::{
 use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
 use std::str::FromStr as _;
 
+// Name the argument these parse. The upstream messages say nothing about which
+// input they came from, and some say nothing at all: a public key that is
+// well-formed hex of the right length but not a point on the curve renders as the
+// bare string "string error".
+
+fn parse_pubkey_arg(hex: &str, param: &str) -> Result<PublicKey, JsValue> {
+    PublicKey::from_str(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex public key: {e}")))
+}
+
+fn parse_secret_key_arg(hex: &str, param: &str) -> Result<SecretKey, JsValue> {
+    SecretKey::from_str(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex secret key: {e}")))
+}
+
 fn build_chain(kind: &str, network: &str) -> Result<Chain, JsValue> {
     let net = parse_network(network)?;
     match kind.to_lowercase().as_str() {
         "bitcoin" | "btc" => Ok(Chain::Bitcoin(net.into())),
         "liquid" | "lbtc" | "l-btc" => Ok(Chain::Liquid(net.into())),
-        other => Err(JsValue::from_str(&format!("unknown chain kind: {other}"))),
+        other => Err(arg_err(format!("unknown chain kind: {other}"))),
     }
 }
 
@@ -569,7 +687,7 @@ fn build_fee(sat_per_vb: Option<f64>, absolute_sat: Option<u64>) -> Result<Fee, 
     match (sat_per_vb, absolute_sat) {
         (Some(r), None) => Ok(Fee::Relative(r)),
         (None, Some(a)) => Ok(Fee::Absolute(a)),
-        _ => Err(JsValue::from_str(
+        _ => Err(arg_err(
             "provide exactly one of feeSatPerVb or feeAbsoluteSat",
         )),
     }
@@ -625,10 +743,10 @@ struct TxParams {
 
 impl TxParams {
     fn keypair(&self) -> Result<Keypair, JsValue> {
-        Self::keypair_from(&self.keys_secret_hex)
+        Self::keypair_from(&self.keys_secret_hex, "keysSecretHex")
     }
-    fn keypair_from(secret_hex: &str) -> Result<Keypair, JsValue> {
-        let sk = SecretKey::from_str(secret_hex).map_err(js_err)?;
+    fn keypair_from(secret_hex: &str, param: &str) -> Result<Keypair, JsValue> {
+        let sk = parse_secret_key_arg(secret_hex, param)?;
         Ok(Keypair::from_secret_key(&Secp256k1::new(), &sk))
     }
     fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
@@ -697,14 +815,17 @@ impl SwapScript {
     /// `chainKind` is "bitcoin" | "liquid"; `ourPubkeyHex` is the refund pubkey.
     #[wasm_bindgen(js_name = fromSubmarine)]
     pub fn from_submarine(
-        chain_kind: String,
-        network: String,
+        chain_kind: StringArg,
+        network: StringArg,
         response: JsValue,
-        our_pubkey_hex: String,
+        our_pubkey_hex: StringArg,
     ) -> Result<SwapScript, JsValue> {
+        let chain_kind = str_arg(chain_kind, "chainKind")?;
+        let network = str_arg(network, "network")?;
+        let our_pubkey_hex = str_arg(our_pubkey_hex, "ourPubkeyHex")?;
         let chain = build_chain(&chain_kind, &network)?;
         let resp: CreateSubmarineResponse = from_js(response)?;
-        let pk = PublicKey::from_str(&our_pubkey_hex).map_err(js_err)?;
+        let pk = parse_pubkey_arg(&our_pubkey_hex, "ourPubkeyHex")?;
         Ok(SwapScript {
             inner: CoreSwapScript::submarine_from_swap_resp(chain, &resp, pk).map_err(core_err)?,
         })
@@ -713,14 +834,17 @@ impl SwapScript {
     /// Reconstruct from a reverse-swap create response (`ourPubkeyHex` = claim pubkey).
     #[wasm_bindgen(js_name = fromReverse)]
     pub fn from_reverse(
-        chain_kind: String,
-        network: String,
+        chain_kind: StringArg,
+        network: StringArg,
         response: JsValue,
-        our_pubkey_hex: String,
+        our_pubkey_hex: StringArg,
     ) -> Result<SwapScript, JsValue> {
+        let chain_kind = str_arg(chain_kind, "chainKind")?;
+        let network = str_arg(network, "network")?;
+        let our_pubkey_hex = str_arg(our_pubkey_hex, "ourPubkeyHex")?;
         let chain = build_chain(&chain_kind, &network)?;
         let resp: CreateReverseResponse = from_js(response)?;
-        let pk = PublicKey::from_str(&our_pubkey_hex).map_err(js_err)?;
+        let pk = parse_pubkey_arg(&our_pubkey_hex, "ourPubkeyHex")?;
         Ok(SwapScript {
             inner: CoreSwapScript::reverse_from_swap_resp(chain, &resp, pk).map_err(core_err)?,
         })
@@ -729,20 +853,24 @@ impl SwapScript {
     /// Reconstruct from chain-swap details. `side` is "lockup" | "claim".
     #[wasm_bindgen(js_name = fromChain)]
     pub fn from_chain(
-        chain_kind: String,
-        network: String,
-        side: String,
+        chain_kind: StringArg,
+        network: StringArg,
+        side: StringArg,
         chain_swap_details: JsValue,
-        our_pubkey_hex: String,
+        our_pubkey_hex: StringArg,
     ) -> Result<SwapScript, JsValue> {
+        let chain_kind = str_arg(chain_kind, "chainKind")?;
+        let network = str_arg(network, "network")?;
+        let side = str_arg(side, "side")?;
+        let our_pubkey_hex = str_arg(our_pubkey_hex, "ourPubkeyHex")?;
         let chain = build_chain(&chain_kind, &network)?;
         let side = match side.to_lowercase().as_str() {
             "lockup" => Side::Lockup,
             "claim" => Side::Claim,
-            other => return Err(JsValue::from_str(&format!("unknown side: {other}"))),
+            other => return Err(arg_err(format!("unknown side: {other}"))),
         };
         let details: ChainSwapDetails = from_js(chain_swap_details)?;
-        let pk = PublicKey::from_str(&our_pubkey_hex).map_err(js_err)?;
+        let pk = parse_pubkey_arg(&our_pubkey_hex, "ourPubkeyHex")?;
         Ok(SwapScript {
             inner: CoreSwapScript::chain_from_swap_resp(chain, side, details, pk)
                 .map_err(core_err)?,
@@ -761,13 +889,14 @@ impl SwapScript {
     #[wasm_bindgen(js_name = constructClaim)]
     pub async fn construct_claim(
         &self,
-        preimage_hex: String,
+        preimage_hex: StringArg,
         params: JsValue,
     ) -> Result<BtcLikeTransaction, JsValue> {
+        let preimage_hex = str_arg(preimage_hex, "preimageHex")?;
         let p: TxParams = from_js(params)?;
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
-        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(core_err)?;
         let tx_params = SwapTransactionParams {
             keys: p.keypair()?,
             output_address: p.output_address.clone(),
@@ -810,23 +939,25 @@ impl SwapScript {
     #[wasm_bindgen(js_name = constructCooperativeClaim)]
     pub async fn construct_cooperative_claim(
         &self,
-        preimage_hex: String,
+        preimage_hex: StringArg,
         params: JsValue,
         lockup_script: &SwapScript,
-        refund_keys_secret_hex: String,
+        refund_keys_secret_hex: StringArg,
     ) -> Result<BtcLikeTransaction, JsValue> {
+        let preimage_hex = str_arg(preimage_hex, "preimageHex")?;
+        let refund_keys_secret_hex = str_arg(refund_keys_secret_hex, "refundKeysSecretHex")?;
         let p: TxParams = from_js(params)?;
         if !p.cooperative {
-            return Err(JsValue::from_str(
+            return Err(arg_err(
                 "constructCooperativeClaim cannot honor cooperative = false; \
                  use constructClaim for a script-path chain claim",
             ));
         }
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
-        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(core_err)?;
         let keys = p.keypair()?;
-        let refund_keys = TxParams::keypair_from(&refund_keys_secret_hex)?;
+        let refund_keys = TxParams::keypair_from(&refund_keys_secret_hex, "refundKeysSecretHex")?;
         let tx_params = SwapTransactionParams {
             keys,
             output_address: p.output_address.clone(),
@@ -955,13 +1086,15 @@ impl PreparedLiquidSpend {
     pub fn finalize_claim(
         &self,
         funded_pset: JsValue,
-        keys_secret_hex: String,
-        preimage_hex: String,
+        keys_secret_hex: StringArg,
+        preimage_hex: StringArg,
     ) -> Result<BtcLikeTransaction, JsValue> {
+        let keys_secret_hex = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let preimage_hex = str_arg(preimage_hex, "preimageHex")?;
         let funded: FundedLiquidPset = from_js(funded_pset)?;
-        let secret = SecretKey::from_str(&keys_secret_hex).map_err(js_err)?;
+        let secret = parse_secret_key_arg(&keys_secret_hex, "keysSecretHex")?;
         let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
-        let preimage = CorePreimage::from_str(&preimage_hex).map_err(js_err)?;
+        let preimage = CorePreimage::from_str(&preimage_hex).map_err(core_err)?;
         let tx = self
             .inner
             .finalize_claim(funded, &keys, &preimage)
@@ -976,10 +1109,11 @@ impl PreparedLiquidSpend {
     pub fn finalize_refund(
         &self,
         funded_pset: JsValue,
-        keys_secret_hex: String,
+        keys_secret_hex: StringArg,
     ) -> Result<BtcLikeTransaction, JsValue> {
+        let keys_secret_hex = str_arg(keys_secret_hex, "keysSecretHex")?;
         let funded: FundedLiquidPset = from_js(funded_pset)?;
-        let secret = SecretKey::from_str(&keys_secret_hex).map_err(js_err)?;
+        let secret = parse_secret_key_arg(&keys_secret_hex, "keysSecretHex")?;
         let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
         let tx = self
             .inner
@@ -1022,11 +1156,14 @@ impl BtcLikeTransaction {
     /// Broadcast via an Esplora backend, returning the txid.
     pub async fn broadcast(
         &self,
-        network: String,
-        bitcoin_esplora_url: Option<String>,
-        liquid_esplora_url: Option<String>,
+        network: StringArg,
+        bitcoin_esplora_url: Option<StringArg>,
+        liquid_esplora_url: Option<StringArg>,
         esplora_timeout_secs: Option<u64>,
     ) -> Result<String, JsValue> {
+        let network = str_arg(network, "network")?;
+        let bitcoin_esplora_url = opt_str_arg(bitcoin_esplora_url, "bitcoinEsploraUrl")?;
+        let liquid_esplora_url = opt_str_arg(liquid_esplora_url, "liquidEsploraUrl")?;
         let cc = build_chain_client(
             &network,
             &bitcoin_esplora_url,
@@ -1067,10 +1204,13 @@ impl BoltzWsApi {
     /// `new BoltzWsApi(wsUrl)` — e.g. `wss://maker.signet.kaleidoswap.com/v2/ws`
     /// (or `wss://api.boltz.exchange/v2/ws` for Boltz).
     #[wasm_bindgen(constructor)]
-    pub fn new(ws_url: String) -> BoltzWsApi {
-        BoltzWsApi {
-            inner: Arc::new(CoreBoltzWsApi::new(ws_url, BoltzWsConfig::default())),
-        }
+    pub fn new(ws_url: StringArg) -> Result<BoltzWsApi, JsValue> {
+        Ok(BoltzWsApi {
+            inner: Arc::new(CoreBoltzWsApi::new(
+                str_arg(ws_url, "wsUrl")?,
+                BoltzWsConfig::default(),
+            )),
+        })
     }
 
     /// Start the reconnecting WS loop in the background. Returns a Promise that
@@ -1086,7 +1226,8 @@ impl BoltzWsApi {
 
     /// Subscribe to status updates for a swap id.
     #[wasm_bindgen(js_name = subscribeSwap)]
-    pub async fn subscribe_swap(&self, swap_id: String) -> Result<(), JsValue> {
+    pub async fn subscribe_swap(&self, swap_id: StringArg) -> Result<(), JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
         self.inner.subscribe_swap(&swap_id).await.map_err(core_err)
     }
 
@@ -1109,7 +1250,7 @@ impl BoltzWsUpdates {
     /// Resolve with the next `SwapStatus`, or reject if the stream lagged/closed.
     pub async fn next(&self) -> Result<JsValue, JsValue> {
         let mut rx = self.inner.lock().await;
-        let status = rx.recv().await.map_err(js_err)?;
+        let status = rx.recv().await.map_err(internal_err)?;
         to_js(&status)
     }
 }

@@ -98,6 +98,11 @@ Boltz request and response payloads are Rust-defined and cross the boundary as
 plain objects typed `any`; the rest of the surface is hand-typed. The packaged
 `dist/index.d.ts` carries the full signatures and their documentation.
 
+Every rejection is an `Error` carrying a `code`. Input the SDK rejects on the way
+in — a mistyped argument, an unparseable key, a request object missing a required
+field — uses the code `InvalidArgument` and names the argument or field in its
+message; failures from the swap engine carry their own code.
+
 ## Lossless integer values
 
 Amounts cross the WASM boundary as `bigint`. Use the exported `toJson` helper
