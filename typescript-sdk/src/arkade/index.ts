@@ -38,19 +38,30 @@ import {
   ArkAddress,
   RestArkProvider,
   RestIndexerProvider,
+  Transaction,
   VHTLC,
+  asset,
 } from "@arkade-os/sdk";
 import type {
+  AssetSwap,
+  AssetSwapRepository,
   InvoiceFacts,
   LockupFate,
   RefundArkProvider,
   RefundIndexer,
   RfqQuote,
   RfqTransport,
+  SpendKind,
   SwapSecrets,
 } from "@arkade-os/swap";
 import {
+  addAssetSwap,
+  cancelOffer,
   claimReceiveLockup,
+  classifyDepositSpend,
+  createOffer,
+  decodeOffer,
+  getAssetSwaps,
   preimageForRfqSecrets,
   readLockupFate,
   refundIfUnresolved,
@@ -59,6 +70,8 @@ import {
   rfqSecretsOfRecord,
   rfqSecretsToRecord,
   senderIdentityForRfqSecrets,
+  spendTxidsOf,
+  updateAssetSwap,
 } from "@arkade-os/swap";
 
 /** Routes this venue serves today. Corridor grammar matches the Intents docs. */
@@ -201,7 +214,8 @@ export class InMemoryArkadeSwapStore implements ArkadeSwapStore {
   }
 }
 
-/** What one `reconcile()` pass did, keyed by record id. */
+/** What one `reconcile()` pass did, keyed by record id (asset swaps key by
+ * funding txid). */
 export interface ReconcileReport {
   settled: string[];
   refunded: string[];
@@ -223,6 +237,15 @@ export interface ArkadeIntentsFlows {
   claimReceiveLockup: typeof claimReceiveLockup;
   refundIfUnresolved: typeof refundIfUnresolved;
   readLockupFate: typeof readLockupFate;
+  createOffer: typeof createOffer;
+  cancelOffer: typeof cancelOffer;
+  /** The deposit-spend classifier for asset-swap reconciliation: given the
+   * swap and its spent deposit outpoint, name the covenant leaf the spend
+   * took. Defaults to the fetch-and-classify recipe over the indexer. */
+  classifyAssetSwapSpend: (
+    swap: AssetSwap,
+    deposit: { txid: string; vout: number; spendTxids: string[] },
+  ) => Promise<SpendKind>;
 }
 
 export interface ArkadeIntentsVenueOptions {
@@ -231,12 +254,33 @@ export interface ArkadeIntentsVenueOptions {
   /** RFQ transport from the solver's card (`nostrRfqTransport`, HTTP, …). */
   transport: RfqTransport;
   store: ArkadeSwapStore;
+  /** Enables the intra-Arkade asset-swap route. The ecosystem repository
+   * type on purpose (`InMemoryAssetSwapRepository`,
+   * `IndexedDbAssetSwapRepository`, or your own): `cancelOffer` and the
+   * restore scan are written against it, and a funded offer's recovery net
+   * is the chain scan — the offer packet rides the funding tx itself. */
+  assetSwapRepository?: AssetSwapRepository;
   /** Defaults to REST providers on `arkServerUrl`. */
   arkProvider?: RefundArkProvider;
   indexerProvider?: RefundIndexer & Parameters<typeof readLockupFate>[0];
   /** Unix seconds; injectable for tests. */
   now?: () => number;
   flows?: Partial<ArkadeIntentsFlows>;
+}
+
+/** Result of {@link ArkadeIntentsVenue.prepareAssetSwap}. */
+export interface PreparedAssetSwap {
+  /** The encoded offer — `cancelOffer`'s only required input. Persisted by
+   * {@link ArkadeIntentsVenue.notifyAssetSwapFunded}; until funding it can
+   * simply be dropped and re-derived. */
+  offerHex: string;
+  /** Fund this address… */
+  address: string;
+  /** …including this packet in `wallet.send`'s `extensions` — it is what
+   * makes the funded offer discoverable to solvers. Omit it and the deposit
+   * sits indexed by nobody. */
+  extension: { type: number; payload: Uint8Array };
+  swapPkScriptHex: string;
 }
 
 /** Result of {@link ArkadeIntentsVenue.prepareLightningSend}. */
@@ -274,6 +318,15 @@ const hex = {
       if (Number.isNaN(byte)) throw new Error("invalid hex");
       out[i] = byte;
     }
+    return out;
+  },
+};
+
+const base64 = {
+  decode(value: string): Uint8Array {
+    const raw = atob(value);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
     return out;
   },
 };
@@ -386,12 +439,14 @@ export class ArkadeIntentsVenue {
     Parameters<typeof readLockupFate>[0];
   private readonly now: () => number;
   private readonly flows: ArkadeIntentsFlows;
+  private readonly assetSwaps?: AssetSwapRepository;
 
   constructor(options: ArkadeIntentsVenueOptions) {
     this.wallet = options.wallet;
     this.arkServerUrl = options.arkServerUrl;
     this.transport = options.transport;
     this.store = options.store;
+    this.assetSwaps = options.assetSwapRepository;
     this.ark = options.arkProvider ?? new RestArkProvider(options.arkServerUrl);
     this.indexer =
       options.indexerProvider ?? new RestIndexerProvider(options.arkServerUrl);
@@ -402,6 +457,10 @@ export class ArkadeIntentsVenue {
       claimReceiveLockup,
       refundIfUnresolved,
       readLockupFate,
+      createOffer,
+      cancelOffer,
+      classifyAssetSwapSpend: (swap, deposit) =>
+        this.fetchAndClassifySpend(swap, deposit),
       ...options.flows,
     };
   }
@@ -700,6 +759,7 @@ export class ArkadeIntentsVenue {
         report.errors.push({ id: record.id, error });
       }
     }
+    if (this.assetSwaps) await this.reconcileAssetSwaps(report);
     return report;
   }
 
@@ -843,5 +903,219 @@ export class ArkadeIntentsVenue {
       swapPkScript: hex.decode(record.swapPkScriptHex),
       paymentHash,
     });
+  }
+
+  // ─── Intra-Arkade asset swaps ────────────────────────────────────────────
+
+  /**
+   * Derive the non-interactive asset-swap covenant (BTC ↔ Arkade asset).
+   *
+   * Unlike the corridor `prepare*` calls this persists NOTHING, mirroring
+   * the upstream design it wraps: `createOffer` is pure derivation plus a
+   * contract-manager registration, so before funding there is nothing at
+   * stake and a dropped result is simply re-derived. The record is written
+   * by {@link notifyAssetSwapFunded} — and even a crash between funding and
+   * that call is recoverable, because the offer packet rides the funding
+   * transaction itself (the restore scan rebuilds the record from chain).
+   *
+   * Fund `address` including `extension` in `wallet.send`'s `extensions` —
+   * without the packet the deposit is invisible to every solver.
+   */
+  async prepareAssetSwap(params: {
+    /** The covenant's floor: a fill must deliver at least this. */
+    wantAmountAtomic: bigint;
+    /** Set exactly one: the asset bought (deposit is BTC)… */
+    wantAssetId?: string;
+    /** …or the asset sold (payout is BTC sats). */
+    offerAssetId?: string;
+    emulatorPubkey?: string;
+  }): Promise<PreparedAssetSwap> {
+    const offer = await this.flows.createOffer(this.wallet, this.arkServerUrl, {
+      wantAmount: params.wantAmountAtomic,
+      wantAsset: params.wantAssetId
+        ? asset.AssetId.fromString(params.wantAssetId)
+        : undefined,
+      offerAsset: params.offerAssetId
+        ? asset.AssetId.fromString(params.offerAssetId)
+        : undefined,
+      emulatorPubkey: params.emulatorPubkey,
+    });
+    return {
+      offerHex: offer.offerHex,
+      address: offer.address,
+      extension: offer.extension,
+      swapPkScriptHex: hex.encode(offer.swapPkScript),
+    };
+  }
+
+  /**
+   * Persist the funded offer. The funding txid — not the address — is the
+   * swap's identity: identical terms derive the identical address, so two
+   * deposits can share one address and only the txid tells them apart.
+   */
+  async notifyAssetSwapFunded(input: {
+    prepared: PreparedAssetSwap;
+    fundingTxid: string;
+    /** 'btc' or a 68-hex asset id, per the ecosystem record shape. */
+    fromAssetId: string;
+    toAssetId: string;
+    fromAmountAtomic: bigint;
+    toAmountAtomic: bigint;
+  }): Promise<AssetSwap> {
+    const repository = this.assetSwapsOrThrow();
+    const swap: AssetSwap = {
+      id: input.fundingTxid,
+      fromAsset: input.fromAssetId,
+      toAsset: input.toAssetId,
+      fromAmount: input.fromAmountAtomic.toString(),
+      toAmount: input.toAmountAtomic.toString(),
+      swapAddress: input.prepared.address,
+      swapPkScript: input.prepared.swapPkScriptHex,
+      offerHex: input.prepared.offerHex,
+      fundingTxid: input.fundingTxid,
+      status: "pending",
+      createdAt: this.now() * 1000,
+    };
+    await addAssetSwap(repository, swap);
+    return swap;
+  }
+
+  /**
+   * Cancel an open offer — no solver signature, no timeout to wait out; an
+   * unfilled offer never expires, so this is the ONLY exit. Cancellation
+   * races a fill: when the deposit is already spent this classifies the
+   * spend instead of failing, and a race lost to the solver reports the
+   * swap `fulfilled` — a success, not an error.
+   */
+  async cancelAssetSwap(fundingTxid: string): Promise<AssetSwap> {
+    const repository = this.assetSwapsOrThrow();
+    const swap = (await getAssetSwaps(repository)).find(
+      (s) => s.id === fundingTxid,
+    );
+    if (!swap) throw new Error(`unknown asset swap: ${fundingTxid}`);
+    try {
+      // Writes the cancelling → cancelled transition into the repository
+      // itself; nothing to persist here on success.
+      await this.flows.cancelOffer(
+        this.wallet,
+        this.arkServerUrl,
+        swap.offerHex,
+        {
+          repository,
+          fundingTxid: swap.fundingTxid,
+          swapAddress: swap.swapAddress,
+        },
+      );
+    } catch (error) {
+      // A spent deposit means the race resolved without us — classify it
+      // rather than guessing, and rethrow only when the chain answers
+      // nothing (a transient failure the next reconcile pass retries).
+      const updated = await this.reconcileAssetSwap(swap);
+      if (updated.status === "pending" || updated.status === "cancelling") {
+        throw error;
+      }
+      return updated;
+    }
+    const after = (await getAssetSwaps(repository)).find(
+      (s) => s.id === fundingTxid,
+    );
+    return after ?? swap;
+  }
+
+  private assetSwapsOrThrow(): AssetSwapRepository {
+    if (!this.assetSwaps) {
+      throw new Error(
+        "asset swaps need an assetSwapRepository on the venue options",
+      );
+    }
+    return this.assetSwaps;
+  }
+
+  /** One polling pass over the repository's live asset swaps — the
+   * alarm-friendly stand-in for `watchOfferSwaps`, which needs a live
+   * contract-event stream this venue deliberately does not own. */
+  private async reconcileAssetSwaps(report: ReconcileReport): Promise<void> {
+    const repository = this.assetSwapsOrThrow();
+    for (const swap of await getAssetSwaps(repository)) {
+      if (swap.status !== "pending" && swap.status !== "cancelling") continue;
+      try {
+        const updated = await this.reconcileAssetSwap(swap);
+        switch (updated.status) {
+          case "fulfilled":
+            report.settled.push(swap.id);
+            break;
+          case "cancelled":
+            report.cancelled.push(swap.id);
+            break;
+          case "recoverable":
+            report.needsRecovery.push(swap.id);
+            break;
+          default:
+            report.pending.push(swap.id);
+        }
+      } catch (error) {
+        report.errors.push({ id: swap.id, error });
+      }
+    }
+  }
+
+  /** Classify one swap's deposit from chain evidence and persist any
+   * transition. An unspent or unfound deposit changes nothing — never
+   * guess; a later pass decides. */
+  private async reconcileAssetSwap(swap: AssetSwap): Promise<AssetSwap> {
+    const repository = this.assetSwapsOrThrow();
+    const { vtxos } = await this.indexer.getVtxos({
+      scripts: [swap.swapPkScript],
+    });
+    const deposit = (vtxos ?? []).find(
+      (v: { txid: string }) => v.txid === swap.fundingTxid,
+    );
+    if (!deposit) return swap;
+    const spent = Boolean(
+      deposit.isSpent || deposit.spentBy || deposit.settledBy,
+    );
+    if (!spent) return swap;
+    const spendTxids = spendTxidsOf(deposit);
+    const kind = await this.flows.classifyAssetSwapSpend(swap, {
+      txid: deposit.txid,
+      vout: deposit.vout,
+      spendTxids,
+    });
+    if (kind === "indeterminate") return swap;
+    const status = kind === "fulfilled" ? "fulfilled" : "cancelled";
+    const spentTxid = spendTxids[0];
+    await updateAssetSwap(repository, swap.id, {
+      status,
+      spentTxid,
+      completedAt: this.now() * 1000,
+    });
+    return { ...swap, status, spentTxid, completedAt: this.now() * 1000 };
+  }
+
+  /** The default `classifyAssetSwapSpend`: fetch the candidate spending
+   * transactions and read which covenant leaf the spend took — the same
+   * recipe the upstream watcher and restore scan use. */
+  private async fetchAndClassifySpend(
+    swap: AssetSwap,
+    deposit: { txid: string; vout: number; spendTxids: string[] },
+  ): Promise<SpendKind> {
+    if (deposit.spendTxids.length === 0) return "indeterminate";
+    const info = await this.ark.getInfo();
+    // 33-byte compressed hex on the wire; the covenant wants x-only.
+    const serverPubkey = hex.decode(info.signerPubkey).slice(1);
+    const { txs } = await this.indexer.getVirtualTxs(deposit.spendTxids);
+    const parsed = (txs ?? []).flatMap((psbt: string) => {
+      try {
+        return [Transaction.fromPSBT(base64.decode(psbt))];
+      } catch {
+        return [];
+      }
+    });
+    return classifyDepositSpend(
+      decodeOffer(hex.decode(swap.offerHex)),
+      serverPubkey,
+      parsed,
+      { txid: deposit.txid, vout: deposit.vout },
+    );
   }
 }
