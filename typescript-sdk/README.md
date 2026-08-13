@@ -98,6 +98,16 @@ Boltz request and response payloads are Rust-defined and cross the boundary as
 plain objects typed `any`; the rest of the surface is hand-typed. The packaged
 `dist/index.d.ts` carries the full signatures and their documentation.
 
+Every rejection produced after an argument reaches the Rust binding is an `Error`
+carrying a `code`. Input the binding rejects — a mistyped string argument, an
+unparseable key or preimage, or a request object missing a required field — uses
+`InvalidArgument` and names the argument or field. Failures from the swap engine
+carry their own code; binding-internal failures use `Internal`.
+
+Values rejected earlier by wasm-bindgen's generated ABI glue remain native
+JavaScript errors. In particular, passing a `number` where a declared `bigint` is
+required throws `TypeError` before Rust can attach a code.
+
 ## Lossless integer values
 
 Amounts cross the WASM boundary as `bigint`. Use the exported `toJson` helper

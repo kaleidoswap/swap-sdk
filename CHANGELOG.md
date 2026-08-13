@@ -54,6 +54,58 @@ that `json!` would have quietly rendered as `preimage: null` against a declared
 `string`. `from_swap_key` always populates it, so the case was unreachable; it now
 returns an error instead of a null field.
 
+### Breaking — every rejection from the WebAssembly binding is an `Error`
+
+The change below alters the type of a value already in callers' hands, so it is
+breaking for the WebAssembly binding; the Rust crate and the Python distribution
+throw nothing across this boundary and are unaffected.
+
+`js_err` threw `JsValue::from_str(...)`, so `catch (e)` yielded a bare **string**:
+no `.message`, no `.stack`, `e instanceof Error` false, and invisible to the
+`isKaleidoSwapError` narrowing this package documents. That covered every
+deserialization failure and every hex/enum parse, while failures from the swap
+engine were already proper `Error`s carrying a `code` — so the shape of a
+rejection depended on how far into the call it got.
+
+Every rejection produced after an argument reaches Rust is now a JS `Error` with
+a stable `code`. Input the bindings reject themselves uses `InvalidArgument` and
+names the offending argument or field; engine failures keep their own code and
+binding-internal failures use `Internal`. Values rejected earlier by
+wasm-bindgen's generated ABI glue — for example a `number` supplied where a
+declared `bigint` is required — remain native JavaScript errors without an SDK
+code. Key and preimage arguments name themselves too, since upstream parsers can
+otherwise return messages that do not identify the offending argument.
+
+Callers who compared a rejection as a string (`e === "unknown network: x"`, or a
+`typeof e === "string"` branch) must read `e.message`, or branch on `e.code` via
+`isKaleidoSwapError`. Callers who already used `isKaleidoSwapError` see strictly
+more rejections through it than before. Note that `String(e)` now carries the code
+as a name prefix (`InvalidArgument: unknown network: x`), matching how engine
+errors have always stringified.
+
+### Fixed — a mistyped argument is reported instead of trapping the module
+
+Passing a non-string where the binding declares `string` trapped with
+`RuntimeError: memory access out of bounds`, from a frame containing no Rust. It
+reproduces on the published `@kaleidorg/swap-sdk@0.2.0`.
+
+wasm-bindgen marshals a `String` parameter in its generated JS glue, *before* any
+Rust code runs: `passStringToWasm0` reads `arg.length` and `arg.charCodeAt` and
+hands the result to the wasm allocator. Given a non-string it computed a bogus
+length and trapped inside the allocator. Passing arguments in the wrong order was
+the ordinary way to reach it, and TypeScript cannot catch that for a plain-JS
+caller — so the failure read as memory corruption when nothing was corrupt. The
+argument never got as far as the function, which is also why it pre-empted the
+error the request object itself would have produced: a malformed request now
+rejects with ``missing field `from` ``, the message serde produced all along.
+
+Every exported string parameter is now taken as an unconverted JS value and
+checked in Rust, rejecting with ``argument `network` must be a string``. The
+consumer-facing parameter declarations remain byte-for-byte unchanged — those
+parameters are still declared `string`, and the check is what a plain-JS caller
+gets in place of a trap. Internal wasm-bindgen declarations do change but are not
+re-exported by the TypeScript SDK.
+
 ## [0.2.0] - 2026-08-11
 
 The breaking change and the new binding below each make this `0.2.0` rather than
