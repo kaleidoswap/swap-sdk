@@ -105,13 +105,18 @@ export interface FundedLiquidPset {
 }
 
 /**
- * Stable error shape thrown by every operation across the WASM boundary.
+ * Stable error shape for rejections produced after an argument reaches the
+ * Rust WASM binding.
  *
  * Input the SDK rejects on the way in — a mistyped argument, an unparseable key,
  * a request object missing a required field — carries the code
  * `"InvalidArgument"` and names the offending argument or field in its message.
  * Failures from the swap engine carry their own code (`"Protocol"`, `"HTTP"`,
- * `"Hex"`, …).
+ * `"Hex"`, …), while binding-internal failures use `"Internal"`.
+ *
+ * Values rejected earlier by wasm-bindgen's generated ABI glue remain native
+ * JavaScript errors. For example, passing a `number` where a declared `bigint`
+ * is required throws `TypeError` before Rust can attach a code.
  */
 export interface KaleidoSwapError extends Error {
   readonly code: string;

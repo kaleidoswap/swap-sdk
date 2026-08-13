@@ -78,8 +78,9 @@ test("derived keys and preimages cross as plain objects, not Maps", () => {
 
 const SUBMARINE_RESPONSE = {
   acceptZeroConf: true,
-  address: "bcrt1qexampleaddress",
-  bip21: "bitcoin:bcrt1qexampleaddress",
+  address: "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr",
+  bip21:
+    "bitcoin:bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr",
   claimPublicKey: PUBKEY,
   expectedAmount: 100000n,
   id: "swapid",
@@ -96,6 +97,17 @@ const SUBMARINE_RESPONSE = {
     },
   },
   timeoutBlockHeight: 100n,
+};
+
+const CLAIM_PARAMS = {
+  outputAddress:
+    "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr",
+  swapId: "swapid",
+  keysSecretHex: "11".repeat(32),
+  boltzBaseUrl: "https://example.invalid",
+  network: "regtest",
+  bitcoinEsploraUrl: "https://example.invalid",
+  feeAbsoluteSat: 100n,
 };
 
 /**
@@ -229,6 +241,20 @@ test("an unparseable key argument names the argument", async () => {
         "02" + "11".repeat(32),
       ),
     /argument `ourPubkeyHex` is not a hex public key/,
+  );
+});
+
+test("an unparseable claim preimage names preimageHex", async () => {
+  const script = SwapScript.fromSubmarine(
+    "bitcoin",
+    "regtest",
+    SUBMARINE_RESPONSE,
+    PUBKEY,
+  );
+
+  await assertInvalidArgument(
+    () => script.constructClaim("zz", CLAIM_PARAMS),
+    /argument `preimageHex` is not a hex preimage/,
   );
 });
 

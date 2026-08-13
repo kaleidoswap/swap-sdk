@@ -67,12 +67,14 @@ deserialization failure and every hex/enum parse, while failures from the swap
 engine were already proper `Error`s carrying a `code` — so the shape of a
 rejection depended on how far into the call it got.
 
-Everything thrown across the boundary is now a JS `Error` with a stable `code`.
-Input the bindings reject themselves uses `InvalidArgument` and names the
-offending argument or field; engine failures keep their own code. Key arguments
-name themselves too, since the upstream parsers render some failures — including a
-public key that is well-formed hex of the right length but not a point on the
-curve — as the bare string `string error`.
+Every rejection produced after an argument reaches Rust is now a JS `Error` with
+a stable `code`. Input the bindings reject themselves uses `InvalidArgument` and
+names the offending argument or field; engine failures keep their own code and
+binding-internal failures use `Internal`. Values rejected earlier by
+wasm-bindgen's generated ABI glue — for example a `number` supplied where a
+declared `bigint` is required — remain native JavaScript errors without an SDK
+code. Key and preimage arguments name themselves too, since upstream parsers can
+otherwise return messages that do not identify the offending argument.
 
 Callers who compared a rejection as a string (`e === "unknown network: x"`, or a
 `typeof e === "string"` branch) must read `e.message`, or branch on `e.code` via
@@ -99,8 +101,10 @@ rejects with ``missing field `from` ``, the message serde produced all along.
 
 Every exported string parameter is now taken as an unconverted JS value and
 checked in Rust, rejecting with ``argument `network` must be a string``. The
-generated `.d.ts` is byte-for-byte unchanged — those parameters are still declared
-`string`, and the check is what a plain-JS caller gets in place of a trap.
+consumer-facing parameter declarations remain byte-for-byte unchanged — those
+parameters are still declared `string`, and the check is what a plain-JS caller
+gets in place of a trap. Internal wasm-bindgen declarations do change but are not
+re-exported by the TypeScript SDK.
 
 ## [0.2.0] - 2026-08-11
 

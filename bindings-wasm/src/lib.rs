@@ -13,10 +13,10 @@ use wasm_bindgen::prelude::*;
 
 // ---- Errors -----------------------------------------------------------------
 //
-// Everything thrown across this boundary is a JS `Error` carrying a stable
-// `code`, never a bare string: a caller that catches a string gets no `.message`
-// and no `.stack`, and `instanceof Error` is false for it, so the generic
-// `isKaleidoSwapError` narrowing in the TS SDK cannot see it.
+// Every rejection produced after an argument reaches Rust is a JS `Error`
+// carrying a stable `code`, never a bare string. Values rejected earlier by
+// wasm-bindgen's generated ABI glue (for example a Number supplied for a `u64` /
+// JS `bigint`) remain native JavaScript errors and do not carry this code.
 
 /// Code for input these bindings reject before, or instead of, reaching the core
 /// SDK: a mistyped argument, an unparseable hex/enum value, or a request object
@@ -271,12 +271,7 @@ use kaleidorg_swap_sdk::boltz::{
 
 fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
-    error.set_name(&e.name());
-    let _ = js_sys::Reflect::set(
-        error.as_ref(),
-        &JsValue::from_str("code"),
-        &JsValue::from_str(&e.name()),
-    );
+    set_code(&error, &e.name());
     error.into()
 }
 
@@ -674,6 +669,11 @@ fn parse_secret_key_arg(hex: &str, param: &str) -> Result<SecretKey, JsValue> {
         .map_err(|e| arg_err(format!("argument `{param}` is not a hex secret key: {e}")))
 }
 
+fn parse_preimage_arg(hex: &str, param: &str) -> Result<CorePreimage, JsValue> {
+    CorePreimage::from_str(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex preimage: {e}")))
+}
+
 fn build_chain(kind: &str, network: &str) -> Result<Chain, JsValue> {
     let net = parse_network(network)?;
     match kind.to_lowercase().as_str() {
@@ -896,7 +896,7 @@ impl SwapScript {
         let p: TxParams = from_js(params)?;
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
-        let preimage = CorePreimage::from_str(&preimage_hex).map_err(core_err)?;
+        let preimage = parse_preimage_arg(&preimage_hex, "preimageHex")?;
         let tx_params = SwapTransactionParams {
             keys: p.keypair()?,
             output_address: p.output_address.clone(),
@@ -955,7 +955,7 @@ impl SwapScript {
         }
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
-        let preimage = CorePreimage::from_str(&preimage_hex).map_err(core_err)?;
+        let preimage = parse_preimage_arg(&preimage_hex, "preimageHex")?;
         let keys = p.keypair()?;
         let refund_keys = TxParams::keypair_from(&refund_keys_secret_hex, "refundKeysSecretHex")?;
         let tx_params = SwapTransactionParams {
@@ -1094,7 +1094,7 @@ impl PreparedLiquidSpend {
         let funded: FundedLiquidPset = from_js(funded_pset)?;
         let secret = parse_secret_key_arg(&keys_secret_hex, "keysSecretHex")?;
         let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
-        let preimage = CorePreimage::from_str(&preimage_hex).map_err(core_err)?;
+        let preimage = parse_preimage_arg(&preimage_hex, "preimageHex")?;
         let tx = self
             .inner
             .finalize_claim(funded, &keys, &preimage)
