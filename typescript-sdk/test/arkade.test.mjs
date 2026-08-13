@@ -512,3 +512,157 @@ test("a quote without refund_locktime falls back to the covenant's", async () =>
   assert.equal(refundInput.refundLocktime, NOW + 3600);
   assert.equal((await store.get("rfq-1")).resolvedTxid, "fallback-refund");
 });
+
+// ─── Asset-swap route ───────────────────────────────────────────────────────
+
+import { InMemoryAssetSwapRepository, updateAssetSwap } from "@arkade-os/swap";
+
+function assetVenue({ flows = {}, indexer, now = () => NOW } = {}) {
+  const repository = new InMemoryAssetSwapRepository();
+  const venue = new ArkadeIntentsVenue({
+    wallet: {},
+    arkServerUrl: "https://ark.example",
+    transport: {},
+    store: new InMemoryArkadeSwapStore(),
+    assetSwapRepository: repository,
+    arkProvider: {
+      getInfo: async () => ({ signerPubkey: "02" + "aa".repeat(32) }),
+    },
+    indexerProvider: indexer ?? { getVtxos: async () => ({ vtxos: [] }) },
+    now,
+    flows: {
+      createOffer: async () => ({
+        offerHex: "0f0f",
+        extension: { type: 3, payload: new Uint8Array([1]) },
+        address: "ark1qoffer",
+        swapPkScript: new Uint8Array(34).fill(9),
+      }),
+      cancelOffer: async () => "cancel-txid",
+      classifyAssetSwapSpend: async () => "indeterminate",
+      ...flows,
+    },
+  });
+  return { venue, repository };
+}
+
+async function fundedAssetSwap(venue) {
+  const prepared = await venue.prepareAssetSwap({
+    wantAmountAtomic: 100n,
+    wantAssetId: "f1".repeat(34),
+  });
+  return venue.notifyAssetSwapFunded({
+    prepared,
+    fundingTxid: "fund-tx",
+    fromAssetId: "btc",
+    toAssetId: "f1".repeat(34),
+    fromAmountAtomic: 1_000n,
+    toAmountAtomic: 100n,
+  });
+}
+
+test("a funded asset swap is persisted pending, keyed by funding txid", async () => {
+  const { venue, repository } = assetVenue();
+  const swap = await fundedAssetSwap(venue);
+  assert.equal(swap.id, "fund-tx");
+  assert.equal(swap.status, "pending");
+  const stored = await repository.getAllSwaps();
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].offerHex, "0f0f");
+});
+
+test("reconcile settles an asset swap whose deposit was filled", async () => {
+  const { venue, repository } = assetVenue({
+    indexer: {
+      getVtxos: async () => ({
+        vtxos: [
+          { txid: "fund-tx", vout: 0, spentBy: "fill-tx", isSpent: true },
+        ],
+      }),
+    },
+    flows: { classifyAssetSwapSpend: async () => "fulfilled" },
+  });
+  await fundedAssetSwap(venue);
+  const report = await venue.reconcile();
+  assert.deepEqual(report.settled, ["fund-tx"]);
+  const [stored] = await repository.getAllSwaps();
+  assert.equal(stored.status, "fulfilled");
+  assert.equal(stored.spentTxid, "fill-tx");
+});
+
+test("an unspent asset-swap deposit stays pending forever — no expiry", async () => {
+  const { venue, repository } = assetVenue({
+    indexer: {
+      getVtxos: async () => ({ vtxos: [{ txid: "fund-tx", vout: 0 }] }),
+    },
+    now: () => NOW + 10_000_000, // months later; offers never time out
+  });
+  await fundedAssetSwap(venue);
+  const report = await venue.reconcile();
+  assert.deepEqual(report.pending, ["fund-tx"]);
+  assert.equal((await repository.getAllSwaps())[0].status, "pending");
+});
+
+test("an unclassifiable spend is left alone, never guessed", async () => {
+  const { venue, repository } = assetVenue({
+    indexer: {
+      getVtxos: async () => ({
+        vtxos: [{ txid: "fund-tx", vout: 0, spentBy: "spend-tx" }],
+      }),
+    },
+    flows: { classifyAssetSwapSpend: async () => "indeterminate" },
+  });
+  await fundedAssetSwap(venue);
+  const report = await venue.reconcile();
+  assert.deepEqual(report.pending, ["fund-tx"]);
+  assert.equal((await repository.getAllSwaps())[0].status, "pending");
+});
+
+test("cancelAssetSwap losing the race to a fill reports fulfilled", async () => {
+  const { venue, repository } = assetVenue({
+    indexer: {
+      getVtxos: async () => ({
+        vtxos: [{ txid: "fund-tx", vout: 0, spentBy: "fill-tx" }],
+      }),
+    },
+    flows: {
+      cancelOffer: async () => {
+        throw new Error("deposit already spent");
+      },
+      classifyAssetSwapSpend: async () => "fulfilled",
+    },
+  });
+  await fundedAssetSwap(venue);
+  const outcome = await venue.cancelAssetSwap("fund-tx");
+  assert.equal(outcome.status, "fulfilled");
+  assert.equal((await repository.getAllSwaps())[0].status, "fulfilled");
+});
+
+test("cancelAssetSwap rethrows when the chain answers nothing", async () => {
+  const { venue } = assetVenue({
+    indexer: { getVtxos: async () => ({ vtxos: [] }) },
+    flows: {
+      cancelOffer: async () => {
+        throw new Error("relay hiccup");
+      },
+    },
+  });
+  await fundedAssetSwap(venue);
+  await assert.rejects(() => venue.cancelAssetSwap("fund-tx"), /relay hiccup/);
+});
+
+test("cancelAssetSwap happy path returns the repository's view", async () => {
+  const { venue, repository } = assetVenue({
+    flows: {
+      cancelOffer: async (_w, _u, _hex, opts) => {
+        await updateAssetSwap(opts.repository, "fund-tx", {
+          status: "cancelled",
+        });
+        return "cancel-txid";
+      },
+    },
+  });
+  await fundedAssetSwap(venue);
+  const outcome = await venue.cancelAssetSwap("fund-tx");
+  assert.equal(outcome.status, "cancelled");
+  assert.equal((await repository.getAllSwaps())[0].status, "cancelled");
+});
