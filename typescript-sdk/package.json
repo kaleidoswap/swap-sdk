@@ -21,6 +21,11 @@
         "default": "./dist/index.js"
       }
     },
+    "./arkade": {
+      "types": "./dist/arkade/index.d.ts",
+      "import": "./dist/arkade/index.js",
+      "default": "./dist/arkade/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -59,7 +64,21 @@
     "smoke:package": "node scripts/smoke-package.mjs",
     "smoke:browser-package": "node scripts/smoke-browser-package.mjs"
   },
+  "peerDependencies": {
+    "@arkade-os/sdk": ">=0.4.60",
+    "@arkade-os/swap": "^0.0.3"
+  },
+  "peerDependenciesMeta": {
+    "@arkade-os/sdk": {
+      "optional": true
+    },
+    "@arkade-os/swap": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@arkade-os/sdk": "0.4.60",
+    "@arkade-os/swap": "0.0.3",
     "@eslint/js": "10.0.1",
     "@types/node": "^22.20.1",
     "eslint": "10.8.0",
