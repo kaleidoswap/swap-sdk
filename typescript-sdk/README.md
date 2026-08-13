@@ -109,6 +109,39 @@ import { toJson } from "@kaleidorg/swap-sdk";
 console.log(toJson({ amount: 1000n }));
 ```
 
+## Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
+
+An optional subpath serving the Arkade Intents RFQ routes
+(`arkade:BTC ↔ lightning:BTC`) against any solver card. Opt-in by design:
+it peer-depends on `@arkade-os/sdk` and `@arkade-os/swap`, which a
+Boltz-only consumer never installs.
+
+```ts
+import {
+  ArkadeIntentsVenue,
+  InMemoryArkadeSwapStore,
+} from "@kaleidorg/swap-sdk/arkade";
+
+const venue = new ArkadeIntentsVenue({
+  wallet,
+  arkServerUrl,
+  transport,
+  store,
+});
+const { address, fundAmountSats } = await venue.prepareLightningSend({
+  invoice,
+});
+// The recovery record is persisted BEFORE this returns. Funding is the
+// quote acceptance:
+const txid = await wallet.send({ address, amount: fundAmountSats });
+await venue.notifyFunded(record.id, txid);
+```
+
+Drive `venue.reconcile()` from your own scheduler (MV3 `chrome.alarms`, a
+node interval) — one evidence-driven pass that claims funded receives,
+refunds matured sends, and resolves records from chain evidence. The venue
+owns no timers and trusts no relay status message.
+
 ## Development checks
 
 Build fresh WASM bindings from the repository root before running the package
