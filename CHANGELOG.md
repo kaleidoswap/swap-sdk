@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking — map-valued responses cross to JS as plain objects, not `Map`
+
+The change below alters the shape of values already in callers' hands, so the
+next release is a minor bump rather than a patch. It is confined to the
+WebAssembly binding: the Rust crate and the Python distribution never went
+through this serializer and are unaffected.
+
+`to_js` built its `serde_wasm_bindgen::Serializer` without
+`serialize_maps_as_objects`, so the JS shape of a response followed the Rust type
+that produced it — a struct became a plain object, a `HashMap` became a `Map`.
+The pairs and nodes responses are a struct wrapping a `HashMap<String, _>`, which
+put the transition *inside* a single response, with nothing in the shape to mark
+where:
+
+```js
+pairs.BTC            // struct field — a property read
+pairs.BTC["L-BTC"]   // HashMap entry — undefined; needed .get("L-BTC")
+```
+
+Property access on a `Map` returns `undefined` rather than throwing, so this
+failed silently, and TypeScript could not catch it: these payloads are Rust-defined
+and typed `any`. `submarinePairs`, `reversePairs`, `chainPairs`, and `nodes` are
+the affected responses. Every map crossing the boundary is keyed by `String`, so
+the conversion loses nothing, and a uniform object shape is what this binding's
+docs already claimed.
+
+Callers who worked around the old shape with `.get(key)` must switch to property
+or index access. Callers who wrote what the types promised now work.
+
+### Fixed — `derivePreimage` returns the object its declared type describes
+
+`derivePreimage` serialized a `serde_json::json!` value, whose object variant is
+a map, so it reached JS as a `Map` while its neighbour `deriveSwapKey` — built
+from a real struct — arrived as a plain object. Against the `DerivedPreimage`
+interface the TS SDK declares, `preimage.sha256` type-checked and read
+`undefined` at runtime.
+
+This one was the most expensive to diagnose: `sha256` is the preimage hash passed
+as `preimageHash` when creating a reverse or chain swap, so the lost value
+surfaced as the maker rejecting the request for a missing field, several steps
+away from the SDK that dropped it. It is now a named `DerivedPreimage` struct
+mirroring `DerivedKey`; nothing about a preimage has dynamic keys. The serializer
+change above fixes the shape either way, but the struct is what makes the
+boundary type match the declaration on both sides.
+
+Replacing the `json!` value also surfaced that `Preimage::bytes` is an `Option`
+that `json!` would have quietly rendered as `preimage: null` against a declared
+`string`. `from_swap_key` always populates it, so the case was unreachable; it now
+returns an error instead of a null field.
+
 ## [0.2.0] - 2026-08-11
 
 The breaking change and the new binding below each make this `0.2.0` rather than

@@ -271,7 +271,6 @@ dependencies = [
  "kaleidorg-swap-sdk",
  "serde",
  "serde-wasm-bindgen",
- "serde_json",
  "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
