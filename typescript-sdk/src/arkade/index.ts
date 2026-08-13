@@ -930,20 +930,16 @@ export class ArkadeIntentsVenue {
     offerAssetId?: string;
     emulatorPubkey?: string;
   }): Promise<PreparedAssetSwap> {
-    const offer = await this.flows.createOffer(
-      this.wallet,
-      this.arkServerUrl,
-      {
-        wantAmount: params.wantAmountAtomic,
-        wantAsset: params.wantAssetId
-          ? asset.AssetId.fromString(params.wantAssetId)
-          : undefined,
-        offerAsset: params.offerAssetId
-          ? asset.AssetId.fromString(params.offerAssetId)
-          : undefined,
-        emulatorPubkey: params.emulatorPubkey,
-      },
-    );
+    const offer = await this.flows.createOffer(this.wallet, this.arkServerUrl, {
+      wantAmount: params.wantAmountAtomic,
+      wantAsset: params.wantAssetId
+        ? asset.AssetId.fromString(params.wantAssetId)
+        : undefined,
+      offerAsset: params.offerAssetId
+        ? asset.AssetId.fromString(params.offerAssetId)
+        : undefined,
+      emulatorPubkey: params.emulatorPubkey,
+    });
     return {
       offerHex: offer.offerHex,
       address: offer.address,
