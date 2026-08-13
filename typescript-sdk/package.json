@@ -1,7 +1,7 @@
 {
   "name": "@kaleidorg/swap-sdk",
   "version": "0.2.0",
-  "description": "KaleidoSwap swap SDK — Boltz-protocol atomic swaps (submarine/reverse/chain) for the browser over WebAssembly",
+  "description": "KaleidoSwap swap SDK \u2014 Boltz-protocol atomic swaps (submarine/reverse/chain) for the browser over WebAssembly",
   "type": "module",
   "main": "dist/index.node.js",
   "types": "dist/index.node.d.ts",
@@ -65,7 +65,7 @@
     "smoke:browser-package": "node scripts/smoke-browser-package.mjs"
   },
   "peerDependencies": {
-    "@arkade-os/sdk": ">=0.4.60",
+    "@arkade-os/sdk": ">=0.4.60 <0.5.0",
     "@arkade-os/swap": "^0.0.3"
   },
   "peerDependenciesMeta": {

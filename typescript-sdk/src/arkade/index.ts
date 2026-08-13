@@ -25,8 +25,12 @@
  * ## Version coupling
  *
  * `@arkade-os/swap` hard-pins its own `@arkade-os/sdk`; the `wallet` object
- * crossing this boundary must come from that same SDK line (>= 0.4.60 — the
- * `VHTLC.ScriptV2` era). The host app owns the pin.
+ * crossing this boundary must come from that same SDK line. The peer ranges
+ * encode it: `>=0.4.60 <0.5.0` for the SDK (0.4.60 introduced
+ * `VHTLC.ScriptV2`; 0.5.x is uncharted and excluded on purpose) and
+ * `^0.0.3` for `@arkade-os/swap` — which under 0.0.x semver rules resolves
+ * to exactly 0.0.3, intentionally, while its API is pre-stability. The host
+ * app owns the pins.
  */
 
 import type { IWallet } from "@arkade-os/sdk";
@@ -502,12 +506,21 @@ export class ArkadeIntentsVenue {
   /**
    * Record the caller's commitment: the send-lockup funding txid, or (for
    * receives, txid omitted) that the hold-invoice payment was dispatched.
+   *
+   * Only `prepared` records advance (repeating on an already-`funded`
+   * record is a harmless idempotent retry); a terminal record refuses —
+   * re-entering it into the pending set would resurrect a finished swap.
    */
   async notifyFunded(
     id: string,
     fundingTxid?: string,
   ): Promise<ArkadeSwapRecord> {
     const record = await this.mustGet(id);
+    if (record.phase !== "prepared" && record.phase !== "funded") {
+      throw new Error(
+        `notifyFunded: swap ${id} is ${record.phase}, not prepared/funded`,
+      );
+    }
     record.phase = "funded";
     if (fundingTxid !== undefined) record.fundingTxid = fundingTxid;
     await this.store.put(record);
@@ -587,25 +600,36 @@ export class ArkadeIntentsVenue {
       },
     );
     switch (outcome.outcome) {
-      case "resolved":
+      case "resolved": {
         record.phase =
           outcome.status.state === "refunded" ? "refunded" : "settled";
+        // The solver's terminal receipt may name the settling transaction;
+        // best-effort, since the profile shape is solver-defined.
+        const txid = outcome.status.profile?.txid;
+        if (typeof txid === "string") record.resolvedTxid = txid;
         break;
+      }
       case "refunded":
         record.phase = "refunded";
         record.resolvedTxid = outcome.arkTxid;
         break;
       case "nothing_to_refund": {
-        // The lockup is empty. Chain evidence says which way it went:
-        // a preimage-revealing spend is the solver completing (invoice
-        // paid); anything else returned the funds; never funded = the
-        // quote simply lapsed.
-        if (!record.fundingTxid) {
-          record.phase = "cancelled";
-          break;
-        }
+        // The lockup is empty. Chain evidence — never the local record —
+        // says which way it went: a preimage-revealing spend is the solver
+        // completing (invoice paid), any other spend returned the funds,
+        // and a lockup that never saw an output means the quote simply
+        // lapsed. `fundingTxid` is NOT consulted: `notifyFunded(id)` may
+        // legitimately have recorded no txid, and the host may have
+        // funded and crashed before calling it at all.
         const fate = await this.fateOf(record);
-        record.phase = fate.fate === "claimed" ? "settled" : "refunded";
+        record.phase =
+          fate.fate === "claimed"
+            ? "settled"
+            : fate.fate === "returned"
+              ? "refunded"
+              : fate.fate === "unknown"
+                ? "cancelled"
+                : record.phase; // "open" contradicts nothing_to_refund; re-read next pass
         break;
       }
       case "needs_recovery":
@@ -617,13 +641,28 @@ export class ArkadeIntentsVenue {
     return record;
   }
 
+  /** In-flight reconcile pass; a second caller joins it instead of racing. */
+  private reconcilePass: Promise<ReconcileReport> | null = null;
+
   /**
    * One evidence-driven pass over every pending record. Never throws for a
    * single record's failure — errors are reported and the record keeps its
    * phase for the next pass. Designed to be called from a host alarm/timer;
    * a relay timeout inside any step means "unknown", not "failed".
+   *
+   * Re-entrant calls share the running pass: a pass can spend seconds
+   * waiting on a claim, and a host alarm firing meanwhile must not run a
+   * second pass over the same records.
    */
-  async reconcile(): Promise<ReconcileReport> {
+  reconcile(): Promise<ReconcileReport> {
+    if (this.reconcilePass) return this.reconcilePass;
+    this.reconcilePass = this.reconcileOnce().finally(() => {
+      this.reconcilePass = null;
+    });
+    return this.reconcilePass;
+  }
+
+  private async reconcileOnce(): Promise<ReconcileReport> {
     const report: ReconcileReport = {
       settled: [],
       refunded: [],
@@ -667,16 +706,17 @@ export class ArkadeIntentsVenue {
   private async reconcileSend(
     record: ArkadeSwapRecord,
   ): Promise<ArkadeSwapRecord> {
-    if (record.phase === "prepared") {
-      // Nothing funded. Past the quote's commitment window the negotiation
-      // is dead — nothing was ever at stake.
-      if (this.now() >= record.quote.valid_until) {
-        record.phase = "cancelled";
-        await this.store.put(record);
-      }
+    if (record.phase === "prepared" && this.now() < record.quote.valid_until) {
+      // Inside the commitment window with no funding reported: nothing to
+      // do yet, and no reason to poll the chain every pass.
       return record;
     }
-    // Funded: read the lockup's fate before considering a refund push.
+    // Everything else is decided from chain evidence first. In particular a
+    // `prepared` record past `valid_until` is NOT cancelled on the local
+    // flag alone: funding is acceptance, so the host may have broadcast the
+    // lockup and died before `notifyFunded` — a record dropped from the
+    // pending set here would strand real sats in a VHTLC whose derivation
+    // only this record holds.
     const fate = await this.fateOf(record);
     if (fate.fate === "claimed") {
       record.phase = "settled";
@@ -687,6 +727,23 @@ export class ArkadeIntentsVenue {
       record.phase = "refunded";
       await this.store.put(record);
       return record;
+    }
+    if (fate.fate === "unknown") {
+      if (record.phase === "prepared") {
+        // Past the window and the chain has never seen the lockup: the
+        // negotiation is dead and nothing was ever at stake.
+        record.phase = "cancelled";
+        await this.store.put(record);
+      }
+      // `funded` + no chain trace: the funding may still be propagating —
+      // keep watching rather than invent a terminal state.
+      return record;
+    }
+    // The lockup is live. A prepared record self-heals to funded (the
+    // crash-between-broadcast-and-notify case), and a matured one refunds.
+    if (record.phase === "prepared") {
+      record.phase = "funded";
+      await this.store.put(record);
     }
     if (this.now() >= this.refundLocktimeOf(record)) {
       return this.refundSend(record.id);
@@ -710,9 +767,25 @@ export class ArkadeIntentsVenue {
     }
     // Payment dispatched: claim as soon as the solver's lockup appears. Past
     // the solver's refund horizon the claim window is closed — claiming
-    // would publish the preimage into a refund race.
+    // would publish the preimage into a refund race — but the record is NOT
+    // cancelled on the clock alone: `covclaimdPubkey` exists precisely so
+    // the solver's claim daemon can claim for us while we were offline, and
+    // that claim settled the swap.
     if (deadline !== undefined && this.now() >= deadline) {
-      record.phase = "cancelled";
+      const fate = await this.fateOf(record);
+      if (fate.fate === "claimed") {
+        record.phase = "settled";
+      } else if (fate.fate === "returned") {
+        // The solver reclaimed its lockup; our LN payment fails back.
+        record.phase = "refunded";
+      } else if (fate.fate === "unknown") {
+        // Never funded and no longer claimable.
+        record.phase = "cancelled";
+      } else {
+        // Still open past the deadline: the solver's to resolve — claiming
+        // now would race its refund. Keep watching.
+        return record;
+      }
       await this.store.put(record);
       return record;
     }
@@ -738,10 +811,14 @@ export class ArkadeIntentsVenue {
   }
 
   private refundLocktimeOf(record: ArkadeSwapRecord): number {
-    const locktime = record.quote.refund_locktime;
-    if (locktime === undefined)
-      throw new Error(`swap ${record.id}: quote has no refund_locktime`);
-    return locktime;
+    // The quote carries the binding value; the covenant's own locktime is
+    // the fallback — the script is the enforcement, so a record whose quote
+    // somehow lacks the field still terminates instead of erroring on
+    // every reconcile pass forever.
+    return (
+      record.quote.refund_locktime ??
+      Number(record.scriptOptions.refundLocktime)
+    );
   }
 
   private payoutAddressOf(record: ArkadeSwapRecord): string {

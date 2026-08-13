@@ -21,6 +21,8 @@ const requiredPaths = [
   "dist/index.js",
   "dist/index.node.d.ts",
   "dist/index.node.js",
+  "dist/arkade/index.d.ts",
+  "dist/arkade/index.js",
   "package.json",
   "vendor/bindings_wasm.d.ts",
   "vendor/bindings_wasm.js",
@@ -148,6 +150,27 @@ try {
     if (!resolved.endsWith(expected)) {
       throw new Error(
         `conditions [${conditions.join(", ")}] resolved to ${resolved}, expected ${expected}`,
+      );
+    }
+  }
+
+  // The ./arkade subpath must resolve from the packed tarball's exports map.
+  // Resolution only — executing it would need the optional @arkade-os/* peer
+  // deps, which a Boltz-only consumer (like this smoke consumer) never
+  // installs; that opt-in is the subpath's whole point.
+  {
+    const resolved = execFileSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        'process.stdout.write(import.meta.resolve("@kaleidorg/swap-sdk/arkade"))',
+      ],
+      { cwd: consumerRoot, encoding: "utf8" },
+    );
+    if (!resolved.endsWith("dist/arkade/index.js")) {
+      throw new Error(
+        `./arkade resolved to ${resolved}, expected dist/arkade/index.js`,
       );
     }
   }
