@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-13
+
+### Added — Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
+
+An optional subpath serving the Arkade Intents RFQ routes — `arkade:BTC ↔
+lightning:BTC` plus the intra-Arkade asset-swap covenant — against any solver
+card. It is opt-in at the bundler level: `@arkade-os/sdk` and `@arkade-os/swap`
+are optional peer dependencies resolved only when the subpath is imported, so a
+Boltz-only consumer never pays for the Arkade dependency graph. The imports are
+static because MV3 service workers forbid dynamic `import()`.
+
+`ArkadeIntentsVenue` exposes prepare / notifyFunded / claimReceive / refundSend
+for the corridors, prepareAssetSwap / notifyAssetSwapFunded / cancelAssetSwap
+for the intra-Arkade offers, and one resumable `reconcile()` the host drives
+from its own scheduler — the venue owns no timers, which is what lets an MV3
+popup close mid-swap.
+
+Two properties are load-bearing rather than incidental:
+
+- **Every recovery record is persisted before value moves.** A corridor record
+  is written before the lockup is funded, and it is plain JSON end-to-end —
+  including the serialized `VHTLC.ScriptV2` options — so any store can hold it
+  and the covenant rebuilds byte-identically after a restart.
+- **Every terminal transition is decided from chain evidence**, never from a
+  local flag or a relay status message. A prepared send whose lockup is live
+  self-heals to funded rather than being cancelled (the host may have broadcast
+  and crashed before reporting), a receive past its refund horizon settles when
+  the solver's claim daemon claimed it, and a timeout means unknown, not failed.
+
+Asset swaps never expire: an unfilled offer stays open until a solver fills it
+or the user cancels, and cancellation races a fill — a race lost to the solver
+is reported as fulfilled, which is a success rather than an error.
+
 ### Breaking — map-valued responses cross to JS as plain objects, not `Map`
 
 The change below alters the shape of values already in callers' hands, so the
