@@ -40,7 +40,13 @@ if (!rawInvoice) throw new Error("set INVOICE (mutinynet, payable by the maker)"
 const which = (process.argv[2] ?? "both").toLowerCase();
 
 const wallet = await Wallet.create({
-  identity: MnemonicIdentity.fromMnemonic(seed),
+  // Mutinynet is a testnet, so the identity must derive on coin type 1. The
+  // SDK refuses the mismatch rather than deriving keys nobody can spend from,
+  // which is the right call — but it fails at wallet construction, long before
+  // anything hints that a seed is involved.
+  identity: MnemonicIdentity.fromMnemonic(seed, {
+    isMainnet: (process.env.ARK_NETWORK ?? "mutinynet") === "bitcoin",
+  }),
   arkProvider: new RestArkProvider(ARK),
   settlementConfig: false,
   walletMode: "static",
