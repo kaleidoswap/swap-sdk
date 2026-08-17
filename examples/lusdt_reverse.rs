@@ -90,6 +90,7 @@ async fn main() -> Result<()> {
             invoice: None,
             invoice_amount: Some(invoice_amount),
             preimage_hash: Some(preimage.sha256),
+            pair_hash: None,
             description: None,
             description_hash: None,
             address: None,
