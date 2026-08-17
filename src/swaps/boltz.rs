@@ -2167,12 +2167,39 @@ pub struct TransactionOut {
     pub vout: u32,
 }
 
+/// One entry of a swap's history, as served in [`GetSwapResponse::events`].
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct SwapEvent {
+    /// What happened, e.g. `invoice_issued`, `expired`.
+    pub kind: String,
+    /// Unix seconds.
+    pub ts: i64,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSwapResponse {
     pub status: String,
     pub zero_conf_rejected: Option<bool>,
     pub transaction: Option<TransactionResponse>,
+    /// Everything below is served by the KaleidoSwap maker and absent from
+    /// Boltz, so each one is optional: an unmodelled field is dropped by
+    /// serde, and callers were getting back `status` alone with no way to see
+    /// what a swap had done or why it failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// `submarine` / `reverse` / `chain`. Named around the `type` keyword.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub swap_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_details: Option<String>,
+    /// The swap's history, oldest first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<SwapEvent>>,
 }
 
 #[cfg(test)]
@@ -2187,6 +2214,58 @@ mod tests {
     /// `signet_resolves_to_signet_not_testnet3`. Networks we run no maker on
     /// error out; a third-party fallback would hand the caller a counterparty
     /// they never chose.
+    /// A swap status must carry the history and failure detail the maker
+    /// sends, not just `status`.
+    ///
+    /// The unmodelled fields were dropped by serde, so callers saw
+    /// `{"status": ...}` alone — no `events` to tell what a swap had done, and
+    /// no `failureReason` to say why it stopped.
+    #[test]
+    fn swap_status_keeps_the_maker_history_and_failure_fields() {
+        // Exactly what the maker serves for a created reverse swap.
+        let body = serde_json::json!({
+            "events": [{"kind": "invoice_issued", "ts": 1_786_704_659_i64}],
+            "failureDetails": null,
+            "failureReason": null,
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "paymentStatus": "pending",
+            "status": "swap.created",
+            "type": "reverse",
+        });
+
+        let parsed: GetSwapResponse = serde_json::from_value(body).unwrap();
+        assert_eq!(parsed.status, "swap.created");
+        assert_eq!(parsed.id.as_deref(), Some("01KZZYB138E7C3HZX7Q1YBGAQG"));
+        assert_eq!(parsed.swap_type.as_deref(), Some("reverse"));
+        assert_eq!(parsed.payment_status.as_deref(), Some("pending"));
+        assert_eq!(
+            parsed.events.as_deref(),
+            Some(
+                [SwapEvent {
+                    kind: "invoice_issued".to_owned(),
+                    ts: 1_786_704_659,
+                }]
+                .as_slice()
+            ),
+        );
+
+        // Round-trips back out under the wire names the maker uses.
+        let out = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(out["type"], "reverse");
+        assert_eq!(out["paymentStatus"], "pending");
+        assert_eq!(out["events"][0]["kind"], "invoice_issued");
+
+        // A Boltz maker sends none of them; that must still parse, and must
+        // not invent keys on the way back out.
+        let boltz: GetSwapResponse =
+            serde_json::from_value(serde_json::json!({ "status": "invoice.set" })).unwrap();
+        assert_eq!(boltz.status, "invoice.set");
+        assert!(boltz.events.is_none());
+        let out = serde_json::to_value(&boltz).unwrap();
+        assert!(out.get("events").is_none());
+        assert!(out.get("type").is_none());
+    }
+
     #[test]
     fn default_maker_endpoints_match_their_network() {
         assert_eq!(
