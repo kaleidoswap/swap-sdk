@@ -1231,6 +1231,17 @@ impl BoltzWsApi {
         self.inner.subscribe_swap(&swap_id).await.map_err(core_err)
     }
 
+    /// Whether the loop currently holds a live socket.
+    ///
+    /// `runWsLoop` reconnects rather than returning, which is what you want
+    /// for a long watch — but it means a dropped connection is invisible from
+    /// JS: updates simply stop arriving, indistinguishable from a quiet swap.
+    /// This is the signal that tells the two apart.
+    #[wasm_bindgen(js_name = isConnected)]
+    pub async fn is_connected(&self) -> bool {
+        self.inner.is_connected().await
+    }
+
     /// A cursor over swap-status updates (see `BoltzWsUpdates.next`).
     pub fn updates(&self) -> BoltzWsUpdates {
         BoltzWsUpdates {
