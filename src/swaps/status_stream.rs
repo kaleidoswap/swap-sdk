@@ -4,6 +4,7 @@ use crate::util::{ensure_rustls_crypto_provider, sleep};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, trace, warn};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot, Mutex};
@@ -77,6 +78,12 @@ pub struct BoltzWsApi {
 
     shutdown_sender: Mutex<Option<oneshot::Sender<()>>>,
     restart_sender: Mutex<Option<oneshot::Sender<()>>>,
+    /// Whether a socket is established right now.
+    ///
+    /// Tracked separately from `restart_sender`, which exists for the whole
+    /// life of the loop — including while it is dialling — and so cannot say
+    /// whether the connection is actually up.
+    connected: AtomicBool,
 }
 
 impl BoltzWsApi {
@@ -99,11 +106,12 @@ impl BoltzWsApi {
             update_notifier,
             shutdown_sender: Mutex::new(None),
             restart_sender: Mutex::new(None),
+            connected: AtomicBool::new(false),
         }
     }
 
     pub async fn is_connected(&self) -> bool {
-        self.restart_sender.lock().await.is_some()
+        self.connected.load(Ordering::SeqCst)
     }
 
     pub async fn is_tracking(&self, id: &str) -> bool {
@@ -269,6 +277,10 @@ impl BoltzWsApi {
         let _ = self.shutdown_sender.lock().await.replace(shutdown_sender);
 
         'outer: loop {
+            // Nothing is established until the dial below succeeds; every path
+            // back to the top of this loop is a lost or not-yet-made socket.
+            self.connected.store(false, Ordering::SeqCst);
+
             // Set up restart channel at the start of each connection attempt
             let (restart_sender, mut restart_receiver) = oneshot::channel();
             let _ = self.restart_sender.lock().await.replace(restart_sender);
@@ -285,6 +297,7 @@ impl BoltzWsApi {
                 .map(|p| p.iter().map(|s| s.as_ref()).collect::<Vec<_>>());
             match BoltzWsConnection::new(self.ws_url.as_str(), protocols.as_deref()).await {
                 Ok(mut connection) => {
+                    self.connected.store(true, Ordering::SeqCst);
                     {
                         let subscriptions = self.subscriptions.lock().await;
                         for subscribe_request in subscriptions.values() {
@@ -419,6 +432,10 @@ impl BoltzWsApi {
                 }
             }
         }
+
+        // Reached only by `break 'outer` — shutdown, or a resubscribe that
+        // failed. Either way there is no socket any more.
+        self.connected.store(false, Ordering::SeqCst);
     }
 }
 
