@@ -1417,6 +1417,15 @@ pub struct CreateReverseRequest {
     pub referral_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub webhook: Option<Webhook<RevSwapStates>>,
+    /// Hash of the rate card the caller priced against, as
+    /// [`CreateSubmarineRequest::pair_hash`] and
+    /// [`CreateChainRequest::pair_hash`] already carry.
+    ///
+    /// Without it the maker cannot check the rate the caller agreed to, so a
+    /// reverse swap is created at whatever the rate happens to be now — the
+    /// one route of the three where the rate lock silently did nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pair_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2264,6 +2273,72 @@ mod tests {
         let out = serde_json::to_value(&boltz).unwrap();
         assert!(out.get("events").is_none());
         assert!(out.get("type").is_none());
+    }
+
+    /// All three create requests must put the caller's rate lock on the wire.
+    ///
+    /// `pair_hash` was absent from `CreateReverseRequest` while submarine and
+    /// chain both carried it, so the maker had nothing to check a reverse swap
+    /// against and created it at whatever the rate happened to be — silently,
+    /// on exactly one of the three routes.
+    #[test]
+    fn every_create_request_serialises_pair_hash() {
+        let hash = "20461469e74be40d9faa21ff9d1f654ab30387fbacb9a6e1c9473fab4d7e5f3c";
+        let key: PublicKey = "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2"
+            .parse()
+            .unwrap();
+
+        let reverse = serde_json::to_value(CreateReverseRequest {
+            from: "BTC".to_owned(),
+            to: "L-BTC".to_owned(),
+            claim_public_key: key,
+            invoice: None,
+            invoice_amount: Some(100_000),
+            preimage_hash: None,
+            pair_hash: Some(hash.to_owned()),
+            description: None,
+            description_hash: None,
+            address: None,
+            address_signature: None,
+            referral_id: None,
+            webhook: None,
+        })
+        .unwrap();
+        assert_eq!(
+            reverse["pairHash"], hash,
+            "reverse must send the rate lock: {reverse}"
+        );
+
+        let submarine = serde_json::to_value(CreateSubmarineRequest {
+            from: "L-USDT".to_owned(),
+            to: "BTC".to_owned(),
+            invoice: "lnbcrt1".to_owned(),
+            refund_public_key: key,
+            pair_hash: Some(hash.to_owned()),
+            referral_id: None,
+            webhook: None,
+        })
+        .unwrap();
+        assert_eq!(submarine["pairHash"], hash);
+
+        // Omitted stays omitted — the field is optional, not defaulted.
+        let without = serde_json::to_value(CreateReverseRequest {
+            from: "BTC".to_owned(),
+            to: "L-BTC".to_owned(),
+            claim_public_key: key,
+            invoice: None,
+            invoice_amount: Some(100_000),
+            preimage_hash: None,
+            pair_hash: None,
+            description: None,
+            description_hash: None,
+            address: None,
+            address_signature: None,
+            referral_id: None,
+            webhook: None,
+        })
+        .unwrap();
+        assert!(without.get("pairHash").is_none());
     }
 
     #[test]

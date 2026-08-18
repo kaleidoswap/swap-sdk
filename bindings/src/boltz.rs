@@ -157,6 +157,7 @@ impl BoltzApiClientV2 {
                         .map_err(|e| Error::Generic(e.to_string()))?,
                 ),
                 claim_public_key: swap_request.claim_public_key,
+                pair_hash: swap_request.pair_hash,
                 description: swap_request.description,
                 description_hash: swap_request.description_hash,
                 address: swap_request.address,
@@ -403,6 +404,9 @@ pub struct CreateReverseRequest {
     pub preimage_hash: String,
     pub claim_public_key: PublicKey,
     pub invoice_amount: u64,
+    /// Rate card the caller priced against, as submarine and chain accept.
+    #[uniffi(default = None)]
+    pub pair_hash: Option<String>,
     #[uniffi(default = None)]
     pub description: Option<String>,
     #[uniffi(default = None)]

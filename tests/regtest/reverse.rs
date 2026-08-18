@@ -50,6 +50,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient) {
         address: Some(claim_address.clone()),
         claim_public_key,
         referral_id: None, // Add address signature here.
+        pair_hash: None,
         webhook: None,
     };
 
@@ -154,6 +155,7 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
         address: Some(claim_address.clone()),
         claim_public_key,
         referral_id: None, // Add address signature here.
+        pair_hash: None,
         webhook: None,
     };
 

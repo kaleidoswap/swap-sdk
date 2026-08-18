@@ -2545,6 +2545,11 @@ class CreateReverseRequest:
     preimage_hash: "str"
     claim_public_key: "PublicKey"
     invoice_amount: "int"
+    pair_hash: "typing.Optional[str]"
+    """
+    Rate card the caller priced against, as submarine and chain accept.
+    """
+
     description: "typing.Optional[str]"
     description_hash: "typing.Optional[str]"
     address: "typing.Optional[str]"
@@ -2561,6 +2566,7 @@ class CreateReverseRequest:
         preimage_hash: "str",
         claim_public_key: "PublicKey",
         invoice_amount: "int",
+        pair_hash: "typing.Optional[str]" = _DEFAULT,
         description: "typing.Optional[str]" = _DEFAULT,
         description_hash: "typing.Optional[str]" = _DEFAULT,
         address: "typing.Optional[str]" = _DEFAULT,
@@ -2580,6 +2586,10 @@ class CreateReverseRequest:
         self.preimage_hash = preimage_hash
         self.claim_public_key = claim_public_key
         self.invoice_amount = invoice_amount
+        if pair_hash is _DEFAULT:
+            self.pair_hash = None
+        else:
+            self.pair_hash = pair_hash
         if description is _DEFAULT:
             self.description = None
         else:
@@ -2602,7 +2612,7 @@ class CreateReverseRequest:
             self.referral_id = referral_id
 
     def __str__(self):
-        return "CreateReverseRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, invoice_amount={}, description={}, description_hash={}, address={}, address_signature={}, referral_id={})".format(
+        return "CreateReverseRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, invoice_amount={}, pair_hash={}, description={}, description_hash={}, address={}, address_signature={}, referral_id={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -2610,6 +2620,7 @@ class CreateReverseRequest:
             self.preimage_hash,
             self.claim_public_key,
             self.invoice_amount,
+            self.pair_hash,
             self.description,
             self.description_hash,
             self.address,
@@ -2631,6 +2642,8 @@ class CreateReverseRequest:
         if self.claim_public_key != other.claim_public_key:
             return False
         if self.invoice_amount != other.invoice_amount:
+            return False
+        if self.pair_hash != other.pair_hash:
             return False
         if self.description != other.description:
             return False
@@ -2656,6 +2669,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
             preimage_hash=_UniffiConverterString.read(buf),
             claim_public_key=_UniffiConverterTypePublicKey.read(buf),
             invoice_amount=_UniffiConverterUInt64.read(buf),
+            pair_hash=_UniffiConverterOptionalString.read(buf),
             description=_UniffiConverterOptionalString.read(buf),
             description_hash=_UniffiConverterOptionalString.read(buf),
             address=_UniffiConverterOptionalString.read(buf),
@@ -2672,6 +2686,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
         _UniffiConverterString.check_lower(value.preimage_hash)
         _UniffiConverterTypePublicKey.check_lower(value.claim_public_key)
         _UniffiConverterUInt64.check_lower(value.invoice_amount)
+        _UniffiConverterOptionalString.check_lower(value.pair_hash)
         _UniffiConverterOptionalString.check_lower(value.description)
         _UniffiConverterOptionalString.check_lower(value.description_hash)
         _UniffiConverterOptionalString.check_lower(value.address)
@@ -2687,6 +2702,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.preimage_hash, buf)
         _UniffiConverterTypePublicKey.write(value.claim_public_key, buf)
         _UniffiConverterUInt64.write(value.invoice_amount, buf)
+        _UniffiConverterOptionalString.write(value.pair_hash, buf)
         _UniffiConverterOptionalString.write(value.description, buf)
         _UniffiConverterOptionalString.write(value.description_hash, buf)
         _UniffiConverterOptionalString.write(value.address, buf)
