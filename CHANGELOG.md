@@ -4,6 +4,74 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — reverse swap creation sends the caller's `pairHash`
+
+`CreateReverseRequest` carried no `pair_hash` while `CreateSubmarineRequest`
+and `CreateChainRequest` both did, so serde dropped the field and the maker
+received a reverse create with no rate lock. It then created the swap at
+whatever the rate happened to be.
+
+The maker enforces the lock correctly once it arrives — a wrong hash comes back
+`pair_hash_mismatch`, a malformed one `invalid_length`. Neither check could run
+for reverse. Measured against a live maker, the same call per swap type with a
+well-formed but deliberately wrong hash:
+
+| type | result before |
+|---|---|
+| submarine | `pair_hash_mismatch` |
+| chain | `pair_hash_mismatch` |
+| reverse | swap created |
+
+**Callers who were passing a stale or wrong `pairHash` on a reverse create and
+succeeding will now be rejected.** That is the point of the field, but it is a
+visible change: the rejection is new, not the staleness. It matters most on
+pairs that re-price on every call, which is exactly when the lock is load
+bearing.
+
+### Fixed — a swap status keeps the maker's history and failure fields
+
+`GetSwapResponse` modelled only `status`, `zeroConfRejected` and `transaction`,
+so serde discarded everything else the maker sends:
+
+```json
+{"events":[{"kind":"invoice_issued","ts":1786704659}],
+ "failureDetails":null,"failureReason":null,
+ "id":"01KZZYB138E7C3HZX7Q1YBGAQG","paymentStatus":"pending",
+ "status":"swap.created","type":"reverse"}
+```
+
+Callers got the bare `status` — no history to see what a swap had done, and no
+`failureReason`/`failureDetails` to say why it stopped. Anything needing the
+timeline had to bypass the SDK and query the maker directly.
+
+Now carries `id`, `type`, `paymentStatus`, `failureReason`, `failureDetails`
+and `events` (a new `SwapEvent { kind, ts }`). All optional: Boltz serves none
+of them, so those responses still parse, and an absent field stays absent on
+the way back out rather than appearing as a null.
+
+### Added — `isConnected()` on the WebAssembly binding
+
+`runWsLoop` reconnects rather than returning, which is right for a long watch
+but leaves a dropped socket invisible from JS: updates simply stop arriving,
+indistinguishable from a swap with nothing to report, and the loop's promise
+never settles because it is not a failure signal. `isConnected()` is the bit
+that tells those apart.
+
+### Fixed — `is_connected()` reports the socket rather than the loop
+
+It tested whether `restart_sender` was `Some`. That sender is installed at the
+top of *every* connection attempt, before the dial, and reinstalled on each
+retry — so through an outage, with the loop cycling failed dials and
+`reconnect_delay` sleeps, it answered `true` throughout.
+
+It now tracks an explicit flag: cleared while dialling or retrying, set only
+while a socket is established, cleared again when the loop exits.
+
+**Existing Rust callers see different values.** Anything reading it as "the
+loop is running" will now read false during an outage — which is the answer the
+name promises, and the reason the previous value was not usable for detecting
+one.
+
 ## [0.3.0] - 2026-08-13
 
 ### Added — Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
