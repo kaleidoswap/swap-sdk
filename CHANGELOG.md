@@ -40,7 +40,7 @@ so serde discarded everything else the maker sends:
  "status":"swap.created","type":"reverse"}
 ```
 
-Callers got `status` alone — no history to see what a swap had done, and no
+Callers got the bare `status` — no history to see what a swap had done, and no
 `failureReason`/`failureDetails` to say why it stopped. Anything needing the
 timeline had to bypass the SDK and query the maker directly.
 
