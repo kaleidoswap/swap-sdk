@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking — chain re-quote acceptance carries the per-swap `swapAuth`
+
+`POST /v2/swap/chain/{id}/quote` accepts the maker's re-quote and commits the
+maker's payout at the re-quoted amount. It was authorized by knowledge of the
+swap id alone — and the id is not a secret: create returns it, every status poll
+carries it in the path, and it appears in `/v2/ws`, webhooks and logs. The
+KaleidoSwap maker now gates the route on a per-swap taker credential
+([kaleidoswap-maker-rs#289](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/289)).
+
+The SDK modelled neither half of it. The credential arrives as `swapAuth` on the
+create response, and the three response structs did not declare the field, so
+serde dropped it and no caller could reach it; `accept_quote` had no way to send
+a header at all. Against a gated maker the call returns `401 invalid_swap_auth`,
+and **no other route resolves the re-quote** — the swap sits until it expires
+into its refund path.
+
+- `CreateSubmarineResponse`, `CreateReverseResponse` and `CreateChainResponse`
+  now carry `swap_auth: Option<String>`. `Option` because this is a KaleidoSwap
+  extension: upstream Boltz declares no auth on the route and sends no field.
+- `accept_quote` sends it in `X-Swap-Auth` (exported as `SWAP_AUTH_HEADER`). A
+  malformed or empty credential is rejected before the request goes out, naming
+  the credential, rather than arriving as a generic send failure or a `401` that
+  reads like the maker refused the swap.
+- `GET /v2/swap/chain/{id}/quote` (`get_quote`) stays open — it reads a proposal
+  the maker published and commits nothing. So the failure mode is "I can see the
+  re-quote but can never accept it".
+- The field crosses to Python, Kotlin and Swift as `swap_auth` too, so those
+  callers can persist it. They have no `accept_quote` to spend it on yet: the
+  UniFFI surface exposes no quote route at all.
+
+**`accept_quote` takes a third argument**, so the next release is a minor bump
+rather than a patch. Rust callers pass `Some(&swap_auth)`, or `None` for a maker
+that issues no credential. The WebAssembly `acceptQuote(swapId, amountSat,
+swapAuth?)` leaves it optional, so existing two-argument JS calls still compile
+— and still get a `401` against a gated maker, which is the point.
+
+**Callers must persist `swapAuth` with the swap.** It is issued exactly once,
+and nothing re-issues it: `POST /v2/swap/restore` authenticates with an XPUB
+alone and does not hand it back. Treat it as secret material — it is the taker's
+full capability over that swap. A swap created before this change has no stored
+credential, and recovering one is an operator action.
+
 ### Fixed — reverse swap creation sends the caller's `pairHash`
 
 `CreateReverseRequest` carried no `pair_hash` while `CreateSubmarineRequest`

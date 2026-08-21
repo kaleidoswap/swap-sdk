@@ -25,6 +25,7 @@ use crate::{BtcSwapScript, LiquidAssetContext, LiquidSwapScript};
 use bitcoin::secp256k1;
 use bitcoin::{hashes::sha256, hex::DisplayHex, PublicKey};
 use lightning_invoice::Bolt11Invoice;
+use reqwest::header::HeaderValue;
 use reqwest::Method;
 use secp256k1_musig::musig;
 use serde::de::DeserializeOwned;
@@ -44,6 +45,13 @@ pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
 ///
 /// [`BitcoinChain::BitcoinSignet`]: crate::network::BitcoinChain::BitcoinSignet
 pub const KALEIDOSWAP_SIGNET_URL_V2: &str = "https://maker.signet.kaleidoswap.com/v2";
+
+/// Header carrying the per-swap taker credential the KaleidoSwap maker issues
+/// as `swapAuth` on a create response.
+///
+/// See [`CreateChainResponse::swap_auth`] for what the credential is and
+/// [`BoltzApiClientV2::accept_quote`] for the one route that needs it.
+pub const SWAP_AUTH_HEADER: &str = "X-Swap-Auth";
 
 #[cfg(feature = "ws")]
 pub use crate::swaps::status_stream::{BoltzWsApi, BoltzWsConfig};
@@ -598,7 +606,18 @@ impl BoltzApiClientV2 {
         end_point: &str,
         data: impl Serialize,
     ) -> Result<T, Error> {
-        let response = self.post_response(end_point, data).await?;
+        self.post_json_with_swap_auth(end_point, data, None).await
+    }
+
+    /// Same as [`Self::post_json`], with the per-swap taker credential in
+    /// [`SWAP_AUTH_HEADER`] when the caller holds one.
+    async fn post_json_with_swap_auth<T: DeserializeOwned>(
+        &self,
+        end_point: &str,
+        data: impl Serialize,
+        swap_auth: Option<&str>,
+    ) -> Result<T, Error> {
+        let response = self.post_response(end_point, data, swap_auth).await?;
         Self::parse_json_response(response).await
     }
 
@@ -623,9 +642,11 @@ impl BoltzApiClientV2 {
         &self,
         end_point: &str,
         data: impl Serialize,
+        swap_auth: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
-        self.request_response(Method::POST, url, data).await
+        self.request_response(Method::POST, url, data, swap_auth)
+            .await
     }
 
     /// Make a PATCH request. Returns the Response
@@ -641,7 +662,9 @@ impl BoltzApiClientV2 {
         url: String,
         data: impl Serialize,
     ) -> Result<Value, Error> {
-        let response = self.request_response(method.clone(), url, data).await?;
+        let response = self
+            .request_response(method.clone(), url, data, None)
+            .await?;
         Self::parse_json_response(response).await
     }
 
@@ -650,10 +673,12 @@ impl BoltzApiClientV2 {
         method: Method,
         url: String,
         data: impl Serialize,
+        swap_auth: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
         let method_str = method.to_string();
         let req_builder = self.http_client.request(method, url).json(&data);
         let req_builder = self.maybe_add_timeout(req_builder);
+        let req_builder = Self::maybe_add_swap_auth(req_builder, swap_auth)?;
         match req_builder.send().await {
             Ok(response) => Ok(response),
             Err(e) => {
@@ -669,6 +694,36 @@ impl BoltzApiClientV2 {
         } else {
             req_builder
         }
+    }
+
+    /// Attach the per-swap taker credential, rejecting a value that cannot be
+    /// a header before it reaches the wire.
+    ///
+    /// `reqwest` would otherwise swallow the malformed value and surface it as
+    /// a generic send failure at the end of the request, which reads like the
+    /// maker refused the swap rather than like a bad credential — the one
+    /// distinction a caller debugging a stored `swapAuth` needs. An empty
+    /// string is rejected too: it is a well-formed header the maker can only
+    /// answer `401`, so failing here says what actually went wrong.
+    fn maybe_add_swap_auth(
+        req_builder: RequestBuilder,
+        swap_auth: Option<&str>,
+    ) -> Result<RequestBuilder, Error> {
+        let Some(swap_auth) = swap_auth else {
+            return Ok(req_builder);
+        };
+        if swap_auth.is_empty() {
+            return Err(Error::Protocol(format!(
+                "swap auth credential is empty — pass no credential at all for a \
+                 maker that issues none, rather than an empty {SWAP_AUTH_HEADER}"
+            )));
+        }
+        let value = HeaderValue::from_str(swap_auth).map_err(|_| {
+            Error::Protocol(format!(
+                "swap auth credential is not a valid {SWAP_AUTH_HEADER} value"
+            ))
+        })?;
+        Ok(req_builder.header(SWAP_AUTH_HEADER, value))
     }
 
     pub async fn get_fee_estimation(&self) -> Result<GetFeeEstimationResponse, Error> {
@@ -954,13 +1009,39 @@ impl BoltzApiClientV2 {
     ///
     /// If the user locked up a valid amount, it will return the server lockup amount. In all other
     /// cases, it will return an error.
+    ///
+    /// Needs no `swapAuth`: it reads a proposal the maker itself published and
+    /// commits nothing. Only [`Self::accept_quote`] is gated, so seeing a
+    /// re-quote here says nothing about being able to accept it.
     pub async fn get_quote(&self, swap_id: &str) -> Result<GetQuoteResponse, Error> {
         let end_point = format!("swap/chain/{swap_id}/quote");
         self.get_json(&end_point).await
     }
 
     /// Accepts a specific quote for a Zero-Amount or over- or underpaid Chain Swap.
-    pub async fn accept_quote(&self, swap_id: &str, amount_sat: u64) -> Result<(), Error> {
+    ///
+    /// `swap_auth` is the per-swap taker credential the KaleidoSwap maker
+    /// returned as `swapAuth` when the swap was created — see
+    /// [`CreateChainResponse::swap_auth`]. Accepting a re-quote commits the
+    /// maker's payout at the re-quoted amount, so the maker authorizes it with
+    /// the credential rather than with the swap id: the id travels through
+    /// status polls, `/v2/ws`, webhooks and logs, and anyone who saw one could
+    /// otherwise settle — or refuse and force a refund on — a stranger's live
+    /// swap. Without the credential the KaleidoSwap maker answers
+    /// `401 invalid_swap_auth`, and no other route resolves the re-quote: the
+    /// swap sits until it expires into its refund path.
+    ///
+    /// Pass `None` for a maker that issues no credential (upstream Boltz
+    /// declares no auth on this route). A stored `swapAuth` for a swap created
+    /// against KaleidoSwap must be passed, and cannot be recovered from the
+    /// SDK: `POST /v2/swap/restore` does not re-issue it, so a lost credential
+    /// is an operator recovery, not a client one.
+    pub async fn accept_quote(
+        &self,
+        swap_id: &str,
+        amount_sat: u64,
+        swap_auth: Option<&str>,
+    ) -> Result<(), Error> {
         let data = json!(
             {
                 "amount": amount_sat
@@ -968,7 +1049,8 @@ impl BoltzApiClientV2 {
         );
 
         let end_point = format!("swap/chain/{swap_id}/quote");
-        self.post_json::<Value>(&end_point, data).await?;
+        self.post_json_with_swap_auth::<Value>(&end_point, data, swap_auth)
+            .await?;
         Ok(())
     }
 
@@ -1090,6 +1172,12 @@ pub struct CreateSubmarineResponse {
     pub asset_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_asset_id: Option<String>,
+    /// Per-swap taker credential, returned **once** on creation by the
+    /// KaleidoSwap maker. No submarine-swap route needs it today; it is captured
+    /// so a caller can persist it with the swap rather than lose it. See
+    /// [`CreateChainResponse::swap_auth`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swap_auth: Option<String>,
 }
 impl CreateSubmarineResponse {
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
@@ -1444,6 +1532,12 @@ pub struct CreateReverseResponse {
     pub asset_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_asset_id: Option<String>,
+    /// Per-swap taker credential, returned **once** on creation by the
+    /// KaleidoSwap maker. No reverse-swap route needs it today; it is captured
+    /// so a caller can persist it with the swap rather than lose it. See
+    /// [`CreateChainResponse::swap_auth`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swap_auth: Option<String>,
 }
 impl CreateReverseResponse {
     /// Validate reverse swap response
@@ -1564,6 +1658,27 @@ pub struct CreateChainResponse {
     pub id: String,
     pub claim_details: ChainSwapDetails,
     pub lockup_details: ChainSwapDetails,
+    /// Per-swap taker credential, returned **once** on creation by the
+    /// KaleidoSwap maker and required to accept a chain re-quote — pass it to
+    /// [`BoltzApiClientV2::accept_quote`], which sends it in
+    /// [`SWAP_AUTH_HEADER`].
+    ///
+    /// It is `HMAC-SHA256` of the swap id under a key only the maker holds,
+    /// and it is the taker's full capability over that swap: treat it as secret
+    /// material, and persist it alongside the swap so a re-quote created in one
+    /// session can still be accepted in the next. Nothing re-issues it —
+    /// `POST /v2/swap/restore` authenticates with an XPUB alone and does not
+    /// hand it back, so losing it means the swap can only run out its refund
+    /// path unless an operator recovers the credential.
+    ///
+    /// `None` against a maker that issues none: this is a KaleidoSwap
+    /// extension, and upstream Boltz declares no auth on the accept route.
+    ///
+    /// It is part of the derived `Debug`, and of the generated `__str__` on the
+    /// UniFFI side, so `{:?}` on a whole create response puts the credential in
+    /// your logs. Log the swap id instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub swap_auth: Option<String>,
 }
 impl CreateChainResponse {
     /// Validate chain swap response
@@ -2339,6 +2454,168 @@ mod tests {
         })
         .unwrap();
         assert!(without.get("pairHash").is_none());
+    }
+
+    /// Every create response must keep the maker's per-swap taker credential.
+    ///
+    /// The three response structs did not model `swapAuth`, so serde dropped
+    /// it. It is issued exactly once, nothing re-issues it, and it is the only
+    /// thing that can accept a chain re-quote — so dropping it left the swap
+    /// with no path but its refund.
+    #[test]
+    fn create_responses_keep_the_swap_auth_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+
+        let chain: CreateChainResponse = serde_json::from_value(serde_json::json!({
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "swapAuth": auth,
+            "claimDetails": {
+                "swapTree": {
+                    "claimLeaf": {"output": "00", "version": 196},
+                    "refundLeaf": {"output": "01", "version": 196},
+                },
+                "lockupAddress": "bcrt1qclaim",
+                "serverPublicKey":
+                    "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+                "timeoutBlockHeight": 200,
+                "amount": 100_000,
+            },
+            "lockupDetails": {
+                "swapTree": {
+                    "claimLeaf": {"output": "02", "version": 196},
+                    "refundLeaf": {"output": "03", "version": 196},
+                },
+                "lockupAddress": "bcrt1qlockup",
+                "serverPublicKey":
+                    "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+                "timeoutBlockHeight": 300,
+                "amount": 100_000,
+            },
+        }))
+        .unwrap();
+        assert_eq!(chain.swap_auth.as_deref(), Some(auth));
+        // Round-trips out under the wire name, so a caller that persists the
+        // response as JSON keeps the credential.
+        assert_eq!(serde_json::to_value(&chain).unwrap()["swapAuth"], auth);
+
+        let reverse: CreateReverseResponse = serde_json::from_value(serde_json::json!({
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "invoice": "lnbcrt1",
+            "swapTree": {
+                "claimLeaf": {"output": "00", "version": 196},
+                "refundLeaf": {"output": "01", "version": 196},
+            },
+            "lockupAddress": "bcrt1qlockup",
+            "refundPublicKey":
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            "timeoutBlockHeight": 200,
+            "onchainAmount": 100_000,
+            "swapAuth": auth,
+        }))
+        .unwrap();
+        assert_eq!(reverse.swap_auth.as_deref(), Some(auth));
+
+        let submarine: CreateSubmarineResponse = serde_json::from_value(serde_json::json!({
+            "acceptZeroConf": false,
+            "address": "bcrt1qlockup",
+            "bip21": "bitcoin:bcrt1qlockup?amount=0.001",
+            "claimPublicKey":
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            "expectedAmount": 100_000,
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "swapTree": {
+                "claimLeaf": {"output": "00", "version": 196},
+                "refundLeaf": {"output": "01", "version": 196},
+            },
+            "timeoutBlockHeight": 200,
+            "swapAuth": auth,
+        }))
+        .unwrap();
+        assert_eq!(submarine.swap_auth.as_deref(), Some(auth));
+
+        // A maker that issues none — upstream Boltz declares no auth on the
+        // accept route — must still parse, and must not gain a null key on the
+        // way back out.
+        let boltz: CreateReverseResponse = serde_json::from_value(serde_json::json!({
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "invoice": "lnbcrt1",
+            "swapTree": {
+                "claimLeaf": {"output": "00", "version": 196},
+                "refundLeaf": {"output": "01", "version": 196},
+            },
+            "lockupAddress": "bcrt1qlockup",
+            "refundPublicKey":
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            "timeoutBlockHeight": 200,
+            "onchainAmount": 100_000,
+        }))
+        .unwrap();
+        assert!(boltz.swap_auth.is_none());
+        assert!(serde_json::to_value(&boltz)
+            .unwrap()
+            .get("swapAuth")
+            .is_none());
+    }
+
+    /// The credential must reach the maker in the header it reads, and only
+    /// when the caller has one.
+    ///
+    /// A request that silently went out without it would come back
+    /// `401 invalid_swap_auth`, which is indistinguishable from a wrong
+    /// credential.
+    #[test]
+    fn swap_auth_travels_in_the_header_the_maker_reads() {
+        let client = BoltzApiClientV2::new(BOLTZ_REGTEST.to_string(), None);
+        let url = format!("{BOLTZ_REGTEST}/swap/chain/some-id/quote");
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+
+        // Pinned to the literal the maker matches on, not to the constant the
+        // code writes with: reading the name back out of `SWAP_AUTH_HEADER`
+        // would pass under any rename, and a renamed header is exactly the
+        // `401` this whole change exists to avoid.
+        assert_eq!(SWAP_AUTH_HEADER, "X-Swap-Auth");
+
+        let with_auth =
+            BoltzApiClientV2::maybe_add_swap_auth(client.http_client.post(&url), Some(auth))
+                .unwrap()
+                .build()
+                .unwrap();
+        assert_eq!(
+            with_auth.headers().get("X-Swap-Auth").unwrap(),
+            auth,
+            "the credential must go out in X-Swap-Auth",
+        );
+
+        // No credential means no header at all, not an empty one: an empty
+        // value is a *wrong* credential to the maker, not an absent one.
+        let without = BoltzApiClientV2::maybe_add_swap_auth(client.http_client.post(&url), None)
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(without.headers().get("X-Swap-Auth").is_none());
+
+        // A value that cannot be a header fails here, naming the credential,
+        // rather than as a bare send failure that reads like the maker refused
+        // the swap.
+        let err = BoltzApiClientV2::maybe_add_swap_auth(
+            client.http_client.post(&url),
+            Some("bad\nvalue"),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains(SWAP_AUTH_HEADER)),
+            "expected a named credential error, got {err:?}",
+        );
+
+        // An empty credential is a well-formed header the maker can only
+        // answer `401`, which reads as "wrong credential" — so it fails here
+        // instead, saying it is empty.
+        let err = BoltzApiClientV2::maybe_add_swap_auth(client.http_client.post(&url), Some(""))
+            .unwrap_err();
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains("empty")),
+            "expected an empty-credential error, got {err:?}",
+        );
     }
 
     #[test]

@@ -108,6 +108,39 @@ Values rejected earlier by wasm-bindgen's generated ABI glue remain native
 JavaScript errors. In particular, passing a `number` where a declared `bigint` is
 required throws `TypeError` before Rust can attach a code.
 
+## `swapAuth` — persist it with the swap
+
+Every create response from the KaleidoSwap maker carries a `swapAuth`: a
+per-swap credential, issued **once**, that authorizes accepting a chain-swap
+re-quote. Store it with the swap, and treat it as secret — it is the taker's
+full capability over that swap. It is a plain property of the create response,
+so `console.log(swap)` puts it in your logs; log `swap.id` instead.
+
+```ts
+const swap = await client.createChainSwap("regtest", req);
+await store.put(swap.id, swap); // swapAuth included — it is never re-issued
+
+// Later, possibly in another session:
+const saved = await store.get(swapId);
+const quote = await client.quote(swapId);
+await client.acceptQuote(swapId, quote.amount, saved.swapAuth);
+```
+
+Accepting a re-quote commits the maker's payout at the re-quoted amount, so the
+maker authorizes it with the credential rather than with the swap id — the id
+travels through status polls, `/v2/ws`, webhooks and logs, and is no secret.
+Without it the call is rejected `401 invalid_swap_auth`, and no other route
+resolves the re-quote: the swap sits until it expires into its refund path.
+
+Reading a re-quote (`quote()`) needs no credential, so seeing one says nothing
+about being able to accept it.
+
+Nothing re-issues a lost `swapAuth` — `swapRestore()` authenticates with an XPUB
+alone and does not return it. Recovery is an operator action, not a client one.
+
+Pass `undefined` only for a maker that issues none: upstream Boltz declares no
+auth on this route, which is why the field is optional on both sides.
+
 ## Lossless integer values
 
 Amounts cross the WASM boundary as `bigint`. Use the exported `toJson` helper

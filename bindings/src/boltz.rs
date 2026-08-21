@@ -445,6 +445,9 @@ pub struct CreateSubmarineResponse {
     pub blinding_key: Option<String>,
     pub asset_id: Option<String>,
     pub fee_asset_id: Option<String>,
+    /// Per-swap taker credential the KaleidoSwap maker issues once on
+    /// creation. No submarine-swap route needs it today; persist it anyway.
+    pub swap_auth: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -460,6 +463,9 @@ pub struct CreateReverseResponse {
     pub blinding_key: Option<String>,
     pub asset_id: Option<String>,
     pub fee_asset_id: Option<String>,
+    /// Per-swap taker credential the KaleidoSwap maker issues once on
+    /// creation. No reverse-swap route needs it today; persist it anyway.
+    pub swap_auth: Option<String>,
 }
 
 #[derive(Debug, Record)]
@@ -488,6 +494,11 @@ pub struct CreateChainResponse {
     pub id: String,
     pub claim_details: ChainSwapDetails,
     pub lockup_details: ChainSwapDetails,
+    /// Per-swap taker credential the KaleidoSwap maker issues once on
+    /// creation, and the only thing that can accept a chain re-quote
+    /// afterwards. Secret material: persist it with the swap — nothing,
+    /// restore included, ever re-issues it.
+    pub swap_auth: Option<String>,
 }
 
 /// Various limits of swap parameters
