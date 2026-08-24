@@ -707,15 +707,134 @@ impl BoltzApiClientV2 {
     ) -> Result<T, Error> {
         let status = response.status();
         let body = response.text().await?;
+        Self::json_from_body(status, body)
+    }
 
+    /// Decide what a response body means, given the status it arrived with.
+    ///
+    /// The two failures are not the same failure. A non-success status is the
+    /// maker rejecting the request, and its body — `invalid_swap_auth`,
+    /// `pair_hash_mismatch` — is what makes the rejection diagnosable, so it is
+    /// kept verbatim. A success status whose body does not deserialize means the
+    /// request worked and the two sides disagree on the schema; that reports as
+    /// [`Error::HTTPResponseBodyInvalid`], describing the mismatch without
+    /// reproducing the body.
+    fn json_from_body<T: DeserializeOwned>(
+        status: reqwest::StatusCode,
+        body: String,
+    ) -> Result<T, Error> {
         if !status.is_success() {
             return Err(Error::HTTPStatusNotSuccess(status, Self::parse_value(body)));
         }
 
         match serde_json::from_str::<T>(&body) {
             Ok(parsed) => Ok(parsed),
-            Err(_) => Err(Error::HTTPStatusNotSuccess(status, Self::parse_value(body))),
+            Err(e) => Err(Error::HTTPResponseBodyInvalid(
+                status,
+                Self::describe_parse_error(&body, &e),
+            )),
         }
+    }
+
+    /// How many bytes of body key names [`Self::describe_parse_error`] will
+    /// list. A create response carries about a dozen short field names; a
+    /// server sending more than this is one we do not recognise, and the error
+    /// should stay a log line rather than become a payload.
+    const PARSE_ERROR_KEY_BUDGET: usize = 200;
+
+    /// Describe a body that did not deserialize, without reproducing it.
+    ///
+    /// The body of a create response is not safe to log. The maker returns
+    /// `swapAuth` — the per-swap taker credential — on every create, and sends
+    /// it whether or not the SDK models the field, so a schema disagreement
+    /// anywhere in the response would otherwise put the credential wherever this
+    /// error goes: `Error::message()` formats it, the WebAssembly binding turns
+    /// it into a JS `Error` message, and callers log those. So none of the
+    /// body's values reach the message:
+    ///
+    /// - serde_json's own message stays, because it is the diagnosis — a missing
+    ///   field named in backticks, an `invalid type: string, expected u32`, and
+    ///   a line/column into the body. Field, variant and type names in it are
+    ///   backticked and so survive verbatim.
+    /// - Except that on a type or value mismatch serde echoes the offending
+    ///   JSON string, formatted with `{:?}`, and that string can be the
+    ///   credential. Every double-quoted run is replaced: the shape of the
+    ///   mismatch stays, the string does not.
+    /// - serde_json names no field on a type mismatch, only a position, so the
+    ///   top-level keys the body carried stand in for it. Key names are the
+    ///   schema, which is exactly what is in dispute; the values are the secret.
+    ///
+    /// Unexpected numbers and booleans are backticked by serde, indistinguishable
+    /// there from the names worth keeping, and stay as it wrote them. The
+    /// credential this guards is a string.
+    fn describe_parse_error(body: &str, e: &serde_json::Error) -> String {
+        let mut described = Self::redact_quoted(&e.to_string());
+
+        if let Some(keys) = Self::top_level_keys(body) {
+            described.push_str("; body keys: ");
+            described.push_str(&keys);
+        }
+
+        described
+    }
+
+    /// Replace the contents of every double-quoted run with a marker, honouring
+    /// the `\"` escapes `{:?}` writes inside one.
+    fn redact_quoted(message: &str) -> String {
+        let mut out = String::with_capacity(message.len());
+        let mut in_quotes = false;
+        let mut escaped = false;
+
+        for c in message.chars() {
+            if !in_quotes {
+                out.push(c);
+                if c == '"' {
+                    out.push_str("<redacted>");
+                    in_quotes = true;
+                }
+            } else if escaped {
+                escaped = false;
+            } else if c == '\\' {
+                escaped = true;
+            } else if c == '"' {
+                out.push('"');
+                in_quotes = false;
+            }
+        }
+
+        out
+    }
+
+    /// The body's top-level object keys, sorted and bounded by
+    /// [`Self::PARSE_ERROR_KEY_BUDGET`]. `None` when there are none to report:
+    /// an empty object, an array, a scalar, or a body that is not JSON at all.
+    fn top_level_keys(body: &str) -> Option<String> {
+        let value = serde_json::from_str::<Value>(body).ok()?;
+        let mut keys: Vec<&str> = value.as_object()?.keys().map(String::as_str).collect();
+        // Deterministic regardless of how `serde_json::Map` is ordered.
+        keys.sort_unstable();
+
+        let mut listed = String::new();
+        let mut omitted = 0usize;
+        for key in keys {
+            if listed.len() + key.len() > Self::PARSE_ERROR_KEY_BUDGET {
+                omitted += 1;
+                continue;
+            }
+            if !listed.is_empty() {
+                listed.push_str(", ");
+            }
+            listed.push_str(key);
+        }
+
+        if listed.is_empty() {
+            return None;
+        }
+        if omitted > 0 {
+            listed.push_str(&format!(" (+{omitted} more)"));
+        }
+
+        Some(listed)
     }
 
     /// Make a POST request. Returns the Response
@@ -3009,6 +3128,101 @@ mod tests {
         assert!(
             format!("{none:?}").contains("swap_auth: None"),
             "whether the maker issued one is still worth seeing",
+        );
+    }
+
+    /// A 2xx response the SDK cannot deserialize must not put the body in the
+    /// error. Every create response carries `swapAuth`, the per-swap taker
+    /// credential, so the body is secret material and this error is routinely
+    /// logged. The guard does not rest on the struct: the maker sends the field
+    /// whether or not the SDK models it, and the value redacted below is the
+    /// one serde chose to echo, not the one the schema happened to name.
+    #[test]
+    fn an_unparseable_success_body_is_described_and_not_quoted() {
+        // Field order is the maker's, so keep the body a literal: serde reports
+        // the first field it cannot take, which here is `timeoutBlockHeight`.
+        const UNMODELLED: &str = "sa_live_9f2c0b7d41e84a6f";
+        const OFFENDING: &str = "sa_live_0f7ac2b19e6482d5";
+        let body = format!(
+            r#"{{"id":"01KZZYB138E7C3HZX7Q1YBGAQG",
+                 "swapAuth":"{UNMODELLED}",
+                 "timeoutBlockHeight":"{OFFENDING}"}}"#
+        );
+
+        let err = BoltzApiClientV2::json_from_body::<CreateReverseResponse>(
+            reqwest::StatusCode::CREATED,
+            body,
+        )
+        .expect_err("a u32 field given a string cannot deserialize");
+
+        assert_eq!(err.name(), "HTTPResponseBodyInvalid");
+        let message = err.message();
+
+        // serde echoes only the value it choked on, so the credential in the
+        // sibling field never reaches the message; the one it did choke on is
+        // exactly what would have gone out verbatim.
+        assert!(!message.contains(UNMODELLED), "leaked the body: {message}");
+        assert!(
+            !message.contains(OFFENDING),
+            "leaked the offending value: {message}"
+        );
+        assert!(message.contains("<redacted>"), "{message}");
+
+        // What is left is the diagnosis: the mismatch, and the field names the
+        // maker sent — including the one the SDK does not model.
+        assert!(message.contains("invalid type"), "{message}");
+        assert!(message.contains("u32"), "{message}");
+        assert!(
+            message.contains("body keys: id, swapAuth, timeoutBlockHeight"),
+            "{message}"
+        );
+    }
+
+    /// The status decides which failure this is. A maker rejection keeps its
+    /// body, because `invalid_swap_auth` or `pair_hash_mismatch` is the whole
+    /// diagnosis and callers read it; a 2xx the SDK cannot parse is schema skew
+    /// and reports as such, naming the field serde missed.
+    #[test]
+    fn a_maker_rejection_and_a_schema_mismatch_are_different_errors() {
+        let rejected = BoltzApiClientV2::json_from_body::<CreateReverseResponse>(
+            reqwest::StatusCode::UNAUTHORIZED,
+            r#"{"error":"invalid_swap_auth"}"#.to_owned(),
+        )
+        .expect_err("401 is not a success status");
+
+        assert_eq!(rejected.name(), "HTTPStatusNotSuccess");
+        assert!(
+            rejected.message().contains("invalid_swap_auth"),
+            "{}",
+            rejected.message()
+        );
+
+        let skewed = BoltzApiClientV2::json_from_body::<CreateReverseResponse>(
+            reqwest::StatusCode::CREATED,
+            r#"{"id":"01KZZYB138E7C3HZX7Q1YBGAQG"}"#.to_owned(),
+        )
+        .expect_err("a create response missing every other field cannot deserialize");
+
+        assert_eq!(skewed.name(), "HTTPResponseBodyInvalid");
+        assert!(
+            skewed.message().contains("missing field"),
+            "{}",
+            skewed.message()
+        );
+    }
+
+    /// `{:?}` escapes a quote inside the string it echoes, so the redactor has
+    /// to skip the escape rather than read it as the closing quote — otherwise
+    /// the tail of the value survives into the message.
+    #[test]
+    fn redaction_covers_a_quoted_run_containing_an_escaped_quote() {
+        let redacted = BoltzApiClientV2::redact_quoted(
+            r#"invalid type: string "before\"after", expected u32 at line 1 column 9"#,
+        );
+
+        assert_eq!(
+            redacted,
+            r#"invalid type: string "<redacted>", expected u32 at line 1 column 9"#
         );
     }
 

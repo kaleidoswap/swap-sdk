@@ -128,6 +128,55 @@ loop is running" will now read false during an outage — which is the answer th
 name promises, and the reason the previous value was not usable for detecting
 one.
 
+### Fixed — a response the SDK cannot parse no longer quotes the body back
+
+`parse_json_response` answered a **2xx** response whose body failed to
+deserialize with `Error::HTTPStatusNotSuccess(status, body)` — the variant a
+maker *rejection* uses, carrying the whole body. `Error::message()` formats that
+body verbatim, `core_err` in the WebAssembly binding turns it into a JS `Error`
+message, and callers log those.
+
+A create response is not a safe thing to log. The maker returns `swapAuth`, the
+per-swap taker credential, on submarine, reverse and chain creates, and it sends
+the field whether or not the SDK models it — so the leak did not depend on the
+struct definition, only on the two sides disagreeing about the schema anywhere
+in the response.
+
+Two separate things were wrong, and both are fixed:
+
+- **The variant was a lie about what happened.** A 2xx body that does not
+  deserialize is now `Error::HTTPResponseBodyInvalid(StatusCode, String)`, code
+  `HTTPResponseBodyInvalid` on the WebAssembly binding. The request succeeded
+  and the schemas disagree; that is not a maker rejection and does not have the
+  same fix.
+- **The message no longer carries the body.** It carries the deserialization
+  failure instead — serde's own diagnosis, which is what a developer needs:
+
+  ```
+  HTTP Response Body Invalid: 201 Created, missing field `swapTree` at line 1 column 35; body keys: id
+  HTTP Response Body Invalid: 201 Created, invalid type: string "<redacted>", expected u32 at line 3 column 64; body keys: id, swapAuth, timeoutBlockHeight
+  ```
+
+  serde echoes an offending JSON *string* with `{:?}`, and that string can be
+  the credential, so every double-quoted run in the message is replaced. It also
+  names no field on a type mismatch, only a position, so the body's top-level
+  keys stand in for it: names are the schema under dispute, values are the
+  secret. Redaction happens where the error is built, so the body cannot escape
+  through a caller that formats the variant itself.
+
+Non-2xx responses are unchanged and keep the body verbatim. A maker's error
+payload — `invalid_swap_auth`, `pair_hash_mismatch` — is what makes those
+diagnosable, and callers depend on reading it.
+
+**Callers matching `HTTPStatusNotSuccess` to catch an unparseable success body
+will stop matching it**, which is the point: that case now has its own name.
+Two things are deliberately given up with the body. A type mismatch reports a
+line/column rather than the field name, because serde_json does not provide one;
+and an unexpected *number* or *boolean* still appears, because serde backticks
+those exactly like the field and type names worth keeping — the credential this
+guards is a string. On the UniFFI bindings both variants continue to surface as
+`Error::Generic`, now distinguishable by message.
+
 ## [0.3.0] - 2026-08-13
 
 ### Added — Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
