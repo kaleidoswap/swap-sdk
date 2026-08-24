@@ -27,6 +27,20 @@ into its refund path.
   malformed or empty credential is rejected before the request goes out, naming
   the credential, rather than arriving as a generic send failure or a `401` that
   reads like the maker refused the swap.
+- The client `BoltzApiClientV2::new` builds no longer follows redirects, and
+  the header is marked sensitive. `reqwest` strips only `Authorization`,
+  `Cookie` and `Proxy-Authorization` across a cross-origin hop, so a custom
+  header follows a `302` to whatever host the `Location` names — against a
+  plain-HTTP maker that is the credential handed to a network attacker. A `3xx`
+  from the maker now surfaces as its own status instead of being chased. Build
+  your own client for `with_client` with `redirect::Policy::none()`; browsers
+  own redirect handling for `fetch` and expose no such knob, so a credential
+  that did cross origins is reported after the fact instead — the accept fails
+  naming the host it reached, so the caller knows to treat it as disclosed.
+- `Debug` on the three responses is hand-written and renders
+  `swap_auth: Some(<redacted>)`, so `{:?}` on a whole create response cannot put
+  the credential in a log. The UniFFI-generated `__str__` still prints it — that
+  is generated code — so on Python, Kotlin and Swift log the swap id.
 - `GET /v2/swap/chain/{id}/quote` (`get_quote`) stays open — it reads a proposal
   the maker published and commits nothing. So the failure mode is "I can see the
   re-quote but can never accept it".

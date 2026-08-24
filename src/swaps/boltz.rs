@@ -489,12 +489,45 @@ pub struct BoltzApiClientV2 {
 
 impl BoltzApiClientV2 {
     pub fn new(base_url: String, timeout: Option<Duration>) -> Self {
-        let http_client = reqwest::Client::new();
         Self {
             base_url,
-            http_client,
+            http_client: Self::default_http_client(),
             timeout,
         }
+    }
+
+    /// The client every constructor here builds: `reqwest::Client::new` except
+    /// that it never follows a redirect.
+    ///
+    /// [`Self::accept_quote`] sends the per-swap credential in
+    /// [`SWAP_AUTH_HEADER`], and reqwest strips only `Authorization`, `Cookie`
+    /// and `Proxy-Authorization` when a redirect crosses origins — a custom
+    /// header rides along to whatever host the `Location` names. Against a
+    /// plain-HTTP maker ([`BOLTZ_REGTEST`], or a self-hosted one) a network
+    /// attacker answering `302` would collect the taker's full capability over
+    /// that swap; a compromised maker could hand it to a third party the same
+    /// way. The maker API redirects nowhere, so declining to follow costs
+    /// nothing: a stray `3xx` surfaces as its own status instead of being
+    /// chased.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn default_http_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            // Same failure mode as `reqwest::Client::new`, which panics here
+            // too: nothing in this builder can fail but TLS backend init.
+            .expect("reqwest client with a redirect policy and no other configuration")
+    }
+
+    /// `reqwest` sets no `RequestInit.redirect` on wasm, so `fetch` follows
+    /// redirects and there is no policy to set here. A cross-origin hop does
+    /// need a CORS preflight for [`SWAP_AUTH_HEADER`], but the host the
+    /// `Location` names answers that preflight itself, so it is no barrier.
+    /// [`Self::reject_credential_leaking_redirect`] catches it after the fact
+    /// instead — the browser path can report the disclosure, not prevent it.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    fn default_http_client() -> reqwest::Client {
+        reqwest::Client::new()
     }
 
     /// Client pointed at the default **KaleidoSwap maker** for a network.
@@ -540,6 +573,14 @@ impl BoltzApiClientV2 {
         Ok(Self::new(base_url, None))
     }
 
+    /// Client over a caller-supplied `reqwest::Client`, keeping its proxy, TLS
+    /// and pool configuration.
+    ///
+    /// Build it with [`reqwest::redirect::Policy::none`] if it will carry a
+    /// `swapAuth`: reqwest forwards custom headers across a cross-origin
+    /// redirect, so a redirect-following client can hand [`SWAP_AUTH_HEADER`]
+    /// to another host. [`Self::new`] does this for you — see
+    /// [`Self::default_http_client`].
     pub fn with_client(
         base_url: String,
         http_client: reqwest::Client,
@@ -618,7 +659,47 @@ impl BoltzApiClientV2 {
         swap_auth: Option<&str>,
     ) -> Result<T, Error> {
         let response = self.post_response(end_point, data, swap_auth).await?;
+        if swap_auth.is_some() {
+            self.reject_credential_leaking_redirect(&response)?;
+        }
         Self::parse_json_response(response).await
+    }
+
+    /// Fail a credential-bearing request that came back from a host other than
+    /// the one it was addressed to.
+    ///
+    /// [`Self::default_http_client`] follows no redirects, so this cannot fire
+    /// for a client built here. It can for a caller-supplied one
+    /// ([`Self::with_client`]) and in the browser, where `fetch` owns redirect
+    /// handling and reqwest sets no policy on it — a cross-origin hop needs a
+    /// CORS preflight for [`SWAP_AUTH_HEADER`], but the host the `Location`
+    /// names is free to answer that preflight itself.
+    ///
+    /// The header is already at the other host by the time this runs, so this
+    /// prevents nothing. It makes the disclosure visible, which is the
+    /// difference between a credential the caller knows to treat as burnt and
+    /// one they do not.
+    fn reject_credential_leaking_redirect(
+        &self,
+        response: &reqwest::Response,
+    ) -> Result<(), Error> {
+        let sent_to = reqwest::Url::parse(&self.base_url)?;
+        let came_from = response.url();
+        let same_origin = sent_to.scheme() == came_from.scheme()
+            && sent_to.host_str() == came_from.host_str()
+            && sent_to.port_or_known_default() == came_from.port_or_known_default();
+        if same_origin {
+            return Ok(());
+        }
+        Err(Error::Protocol(format!(
+            "a request carrying {SWAP_AUTH_HEADER} was redirected to {} — the \
+             credential reached that host, so treat it as disclosed and do not \
+             reuse the swap",
+            came_from
+                .host_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| came_from.to_string()),
+        )))
     }
 
     async fn parse_json_response<T: DeserializeOwned>(
@@ -718,11 +799,15 @@ impl BoltzApiClientV2 {
                  maker that issues none, rather than an empty {SWAP_AUTH_HEADER}"
             )));
         }
-        let value = HeaderValue::from_str(swap_auth).map_err(|_| {
+        let mut value = HeaderValue::from_str(swap_auth).map_err(|_| {
             Error::Protocol(format!(
                 "swap auth credential is not a valid {SWAP_AUTH_HEADER} value"
             ))
         })?;
+        // Keeps the credential out of hyper's header dumps and, over HTTP/2,
+        // out of the HPACK dynamic table that a connection-level observer or a
+        // later request on the same connection could otherwise index it into.
+        value.set_sensitive(true);
         Ok(req_builder.header(SWAP_AUTH_HEADER, value))
     }
 
@@ -1153,7 +1238,24 @@ pub struct CreateSubmarineRequest {
     pub webhook: Option<Webhook<SubSwapStates>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Renders a `swap_auth` field for `Debug` without printing it.
+///
+/// The credential is the taker's full capability over a swap, so a caller that
+/// logs a whole create response — `log::debug!("{resp:?}")` — must not thereby
+/// log the credential. Whether the maker issued one is still worth seeing, so
+/// only the value is withheld.
+struct RedactedSwapAuth<'a>(&'a Option<String>);
+
+impl std::fmt::Debug for RedactedSwapAuth<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Some(_) => f.write_str("Some(<redacted>)"),
+            None => f.write_str("None"),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSubmarineResponse {
     pub accept_zero_conf: bool,
@@ -1178,6 +1280,44 @@ pub struct CreateSubmarineResponse {
     /// [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+}
+/// Hand-written only to redact `swap_auth`; every other field prints as the
+/// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
+/// added to the struct later fails to compile here rather than silently going
+/// missing from the output.
+impl std::fmt::Debug for CreateSubmarineResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            accept_zero_conf,
+            address,
+            bip21,
+            claim_public_key,
+            expected_amount,
+            id,
+            referral_id,
+            swap_tree,
+            timeout_block_height,
+            blinding_key,
+            asset_id,
+            fee_asset_id,
+            swap_auth,
+        } = self;
+        f.debug_struct("CreateSubmarineResponse")
+            .field("accept_zero_conf", accept_zero_conf)
+            .field("address", address)
+            .field("bip21", bip21)
+            .field("claim_public_key", claim_public_key)
+            .field("expected_amount", expected_amount)
+            .field("id", id)
+            .field("referral_id", referral_id)
+            .field("swap_tree", swap_tree)
+            .field("timeout_block_height", timeout_block_height)
+            .field("blinding_key", blinding_key)
+            .field("asset_id", asset_id)
+            .field("fee_asset_id", fee_asset_id)
+            .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .finish()
+    }
 }
 impl CreateSubmarineResponse {
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
@@ -1516,7 +1656,7 @@ pub struct CreateReverseRequest {
     pub pair_hash: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateReverseResponse {
     pub id: String,
@@ -1538,6 +1678,40 @@ pub struct CreateReverseResponse {
     /// [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+}
+/// Hand-written only to redact `swap_auth`; every other field prints as the
+/// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
+/// added to the struct later fails to compile here rather than silently going
+/// missing from the output.
+impl std::fmt::Debug for CreateReverseResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            id,
+            invoice,
+            swap_tree,
+            lockup_address,
+            refund_public_key,
+            timeout_block_height,
+            onchain_amount,
+            blinding_key,
+            asset_id,
+            fee_asset_id,
+            swap_auth,
+        } = self;
+        f.debug_struct("CreateReverseResponse")
+            .field("id", id)
+            .field("invoice", invoice)
+            .field("swap_tree", swap_tree)
+            .field("lockup_address", lockup_address)
+            .field("refund_public_key", refund_public_key)
+            .field("timeout_block_height", timeout_block_height)
+            .field("onchain_amount", onchain_amount)
+            .field("blinding_key", blinding_key)
+            .field("asset_id", asset_id)
+            .field("fee_asset_id", fee_asset_id)
+            .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .finish()
+    }
 }
 impl CreateReverseResponse {
     /// Validate reverse swap response
@@ -1652,7 +1826,7 @@ pub struct CreateChainRequest {
     pub webhook: Option<Webhook<ChainSwapStates>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateChainResponse {
     pub id: String,
@@ -1674,11 +1848,33 @@ pub struct CreateChainResponse {
     /// `None` against a maker that issues none: this is a KaleidoSwap
     /// extension, and upstream Boltz declares no auth on the accept route.
     ///
-    /// It is part of the derived `Debug`, and of the generated `__str__` on the
-    /// UniFFI side, so `{:?}` on a whole create response puts the credential in
-    /// your logs. Log the swap id instead.
+    /// `Debug` on these responses redacts it, so `{:?}` on a whole create
+    /// response is safe to log. The generated UniFFI `__str__` does not — that
+    /// is generated code, and dropping the field from the FFI surface would
+    /// take the credential away from the Python, Kotlin and Swift callers who
+    /// need to persist it — so on those bindings log the swap id instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+}
+/// Hand-written only to redact `swap_auth`; every other field prints as the
+/// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
+/// added to the struct later fails to compile here rather than silently going
+/// missing from the output.
+impl std::fmt::Debug for CreateChainResponse {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            id,
+            claim_details,
+            lockup_details,
+            swap_auth,
+        } = self;
+        f.debug_struct("CreateChainResponse")
+            .field("id", id)
+            .field("claim_details", claim_details)
+            .field("lockup_details", lockup_details)
+            .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .finish()
+    }
 }
 impl CreateChainResponse {
     /// Validate chain swap response
@@ -2456,19 +2652,11 @@ mod tests {
         assert!(without.get("pairHash").is_none());
     }
 
-    /// Every create response must keep the maker's per-swap taker credential.
-    ///
-    /// The three response structs did not model `swapAuth`, so serde dropped
-    /// it. It is issued exactly once, nothing re-issues it, and it is the only
-    /// thing that can accept a chain re-quote — so dropping it left the swap
-    /// with no path but its refund.
-    #[test]
-    fn create_responses_keep_the_swap_auth_credential() {
-        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
-
-        let chain: CreateChainResponse = serde_json::from_value(serde_json::json!({
+    /// A chain create response as the KaleidoSwap maker sends it, with or
+    /// without the credential.
+    fn chain_create_response_json(swap_auth: Option<&str>) -> serde_json::Value {
+        let mut value = serde_json::json!({
             "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
-            "swapAuth": auth,
             "claimDetails": {
                 "swapTree": {
                     "claimLeaf": {"output": "00", "version": 196},
@@ -2491,8 +2679,25 @@ mod tests {
                 "timeoutBlockHeight": 300,
                 "amount": 100_000,
             },
-        }))
-        .unwrap();
+        });
+        if let Some(swap_auth) = swap_auth {
+            value["swapAuth"] = serde_json::json!(swap_auth);
+        }
+        value
+    }
+
+    /// Every create response must keep the maker's per-swap taker credential.
+    ///
+    /// The three response structs did not model `swapAuth`, so serde dropped
+    /// it. It is issued exactly once, nothing re-issues it, and it is the only
+    /// thing that can accept a chain re-quote — so dropping it left the swap
+    /// with no path but its refund.
+    #[test]
+    fn create_responses_keep_the_swap_auth_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+
+        let chain: CreateChainResponse =
+            serde_json::from_value(chain_create_response_json(Some(auth))).unwrap();
         assert_eq!(chain.swap_auth.as_deref(), Some(auth));
         // Round-trips out under the wire name, so a caller that persists the
         // response as JSON keeps the credential.
@@ -2615,6 +2820,195 @@ mod tests {
         assert!(
             matches!(&err, Error::Protocol(msg) if msg.contains("empty")),
             "expected an empty-credential error, got {err:?}",
+        );
+    }
+
+    /// A single-request stand-in for the maker: binds an ephemeral port, hands
+    /// back the base URL to point a client at, and yields the raw request it
+    /// received.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn capture_one_request() -> (String, std::thread::JoinHandle<String>) {
+        capture_one_request_answering(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+                .to_vec(),
+        )
+    }
+
+    /// [`capture_one_request`] with a response of the test's choosing.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn capture_one_request_answering(
+        response: Vec<u8>,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}/v2", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 1024];
+            loop {
+                let read = stream.read(&mut buf).unwrap();
+                if read == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..read]);
+                let Some(head_end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+                    continue;
+                };
+                // Drain the body as well before answering. Closing the socket
+                // under bytes the client is still writing reaches `reqwest` as
+                // a connection reset rather than as the 200 below.
+                let body_len: usize = String::from_utf8_lossy(&raw[..head_end])
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse().ok())?
+                    })
+                    .unwrap_or(0);
+                if raw.len() >= head_end + 4 + body_len {
+                    break;
+                }
+            }
+            stream.write_all(&response).unwrap();
+            stream.flush().unwrap();
+            String::from_utf8_lossy(&raw).into_owned()
+        });
+        (base_url, handle)
+    }
+
+    /// The credential must survive the trip from `accept_quote` to the wire.
+    ///
+    /// `swap_auth_travels_in_the_header_the_maker_reads` pins the header helper
+    /// in isolation, which leaves the threading between them untested: route
+    /// `accept_quote` back through `post_json`, or drop the argument in a
+    /// refactor, and the credential silently stops being sent while both other
+    /// tests stay green. Every accept then comes back `401 invalid_swap_auth`
+    /// and the swap runs out to its refund path.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn accept_quote_sends_the_credential_to_the_maker() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+        let header = SWAP_AUTH_HEADER.to_lowercase();
+
+        let (base_url, maker) = capture_one_request();
+        BoltzApiClientV2::new(base_url, None)
+            .accept_quote("01KZZYB138E7C3HZX7Q1YBGAQG", 100_000, Some(auth))
+            .await
+            .unwrap();
+        let request = maker.join().unwrap().to_lowercase();
+
+        assert!(
+            request.starts_with("post /v2/swap/chain/01kzzyb138e7c3hzx7q1ybgaqg/quote "),
+            "wrong route, got:\n{request}",
+        );
+        assert!(
+            request.contains(&format!("{header}: {auth}")),
+            "accept_quote must put the credential on the wire, got:\n{request}",
+        );
+
+        // ...and must send no header at all for a maker that issues none, which
+        // is a different thing to the maker than an empty one.
+        let (base_url, maker) = capture_one_request();
+        BoltzApiClientV2::new(base_url, None)
+            .accept_quote("01KZZYB138E7C3HZX7Q1YBGAQG", 100_000, None)
+            .await
+            .unwrap();
+        let request = maker.join().unwrap().to_lowercase();
+
+        assert!(
+            !request.contains(&header),
+            "no credential means no header, got:\n{request}",
+        );
+    }
+
+    /// A redirect that carried the credential elsewhere must be reported.
+    ///
+    /// `reqwest` drops only `Authorization`, `Cookie` and `Proxy-Authorization`
+    /// when a redirect crosses origins, so a custom header follows a `302` to
+    /// whatever host the `Location` names — this test pins that behaviour as
+    /// much as it pins the reaction to it. Clients from
+    /// [`BoltzApiClientV2::default_http_client`] follow no redirects and so
+    /// never get here; a caller-supplied client, or the browser, can. Nothing
+    /// can call the credential back at that point, so the requirement is that
+    /// the caller be told rather than handed a parsed response from a host they
+    /// never addressed.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_redirect_that_carried_the_credential_is_reported() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+
+        let (elsewhere_url, elsewhere) = capture_one_request();
+        let elsewhere_host = elsewhere_url
+            .strip_prefix("http://")
+            .and_then(|url| url.strip_suffix("/v2"))
+            .unwrap()
+            .to_string();
+        let (base_url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{elsewhere_host}/v2/elsewhere\r\n\
+                 Content-Length: 0\r\n\r\n"
+            )
+            .into_bytes(),
+        );
+
+        // A caller-supplied client on reqwest's default policy, which follows.
+        let follows_redirects = reqwest::Client::builder().build().unwrap();
+        let err = BoltzApiClientV2::with_client(base_url, follows_redirects, None)
+            .accept_quote("01KZZYB138E7C3HZX7Q1YBGAQG", 100_000, Some(auth))
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains(SWAP_AUTH_HEADER)),
+            "expected the disclosure to be named, got {err:?}",
+        );
+
+        maker.join().unwrap();
+        let forwarded = elsewhere.join().unwrap().to_lowercase();
+        assert!(
+            forwarded.contains(&format!("{}: {auth}", SWAP_AUTH_HEADER.to_lowercase())),
+            "reqwest forwards the credential across the hop \u{2014} that is what the \
+             error is reporting, and what default_http_client exists to prevent. \
+             Got:\n{forwarded}",
+        );
+    }
+
+    /// `{:?}` on a create response must not print the credential.
+    ///
+    /// It is the taker's full capability over the swap, and logging a whole
+    /// response is the ordinary way to trace one — so the derive would put the
+    /// credential wherever those logs go.
+    #[test]
+    fn debug_redacts_the_swap_auth_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+
+        let chain: CreateChainResponse =
+            serde_json::from_value(chain_create_response_json(Some(auth))).unwrap();
+        let rendered = format!("{chain:?}");
+
+        assert!(
+            !rendered.contains(auth),
+            "the credential must not reach a log line, got:\n{rendered}",
+        );
+        assert!(
+            rendered.contains("swap_auth: Some(<redacted>)"),
+            "{rendered}"
+        );
+        // Everything else still prints, so the redaction did not cost the
+        // response its usefulness in a log.
+        assert!(
+            rendered.contains("01KZZYB138E7C3HZX7Q1YBGAQG"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("claim_details"), "{rendered}");
+
+        let none: CreateChainResponse =
+            serde_json::from_value(chain_create_response_json(None)).unwrap();
+        assert!(
+            format!("{none:?}").contains("swap_auth: None"),
+            "whether the maker issued one is still worth seeing",
         );
     }
 

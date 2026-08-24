@@ -117,11 +117,17 @@ full capability over that swap. It is a plain property of the create response,
 so `console.log(swap)` puts it in your logs; log `swap.id` instead.
 
 ```ts
+import { toJson } from "@kaleidorg/swap-sdk";
+
 const swap = await client.createChainSwap("regtest", req);
-await store.put(swap.id, swap); // swapAuth included — it is never re-issued
+// `toJson`, not `JSON.stringify`: a create response carries bigint amounts that
+// `JSON.stringify` throws on, and the throw would land on the one step whose
+// whole purpose is not losing the credential. See "Lossless integer values"
+// below; `swapAuth` is a plain string and survives either way.
+await store.put(swap.id, toJson(swap)); // swapAuth included — never re-issued
 
 // Later, possibly in another session:
-const saved = await store.get(swapId);
+const saved = JSON.parse(await store.get(swapId));
 const quote = await client.quote(swapId);
 await client.acceptQuote(swapId, quote.amount, saved.swapAuth);
 ```
