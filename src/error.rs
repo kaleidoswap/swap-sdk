@@ -43,6 +43,16 @@ pub enum Error {
     LiquidFeeAssetRequired,
     Generic(String),
     HTTPStatusNotSuccess(reqwest::StatusCode, Value),
+    /// A request the server answered with a success status, whose body did not
+    /// deserialize into the expected type: the request worked and the two sides
+    /// disagree on the schema.
+    ///
+    /// Distinct from `HTTPStatusNotSuccess`, which is the server rejecting the
+    /// request. The payload describes the deserialization failure and never
+    /// reproduces the body: a create response carries per-swap secrets and this
+    /// error is routinely logged. See `BoltzApiClientV2::describe_parse_error`
+    /// for what goes into it.
+    HTTPResponseBodyInvalid(reqwest::StatusCode, String),
 }
 
 #[cfg(feature = "electrum")]
@@ -295,6 +305,7 @@ impl Error {
             Error::LiquidFeeAssetRequired => "liquid_fee_asset_required",
             Error::Generic(_) => "Generic",
             Error::HTTPStatusNotSuccess(_, _) => "HTTPStatusNotSuccess",
+            Error::HTTPResponseBodyInvalid(_, _) => "HTTPResponseBodyInvalid",
         }
         .to_string()
     }
@@ -338,6 +349,9 @@ impl Error {
             Error::Generic(e) => e.clone(),
             Error::HTTPStatusNotSuccess(status, body) => {
                 format!("HTTP Status Not Success: {status}, {body}")
+            }
+            Error::HTTPResponseBodyInvalid(status, description) => {
+                format!("HTTP Response Body Invalid: {status}, {description}")
             }
         }
     }
