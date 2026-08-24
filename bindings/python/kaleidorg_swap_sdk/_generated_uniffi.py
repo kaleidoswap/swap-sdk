@@ -2488,6 +2488,13 @@ class CreateChainResponse:
     id: "str"
     claim_details: "ChainSwapDetails"
     lockup_details: "ChainSwapDetails"
+    swap_auth: "typing.Optional[str]"
+    """
+    Per-swap taker credential the KaleidoSwap maker issues once on
+    creation, and the only thing that can accept a chain re-quote
+    afterwards. Secret material: persist it with the swap — nothing,
+    restore included, ever re-issues it.
+    """
 
     def __init__(
         self,
@@ -2495,14 +2502,16 @@ class CreateChainResponse:
         id: "str",
         claim_details: "ChainSwapDetails",
         lockup_details: "ChainSwapDetails",
+        swap_auth: "typing.Optional[str]",
     ):
         self.id = id
         self.claim_details = claim_details
         self.lockup_details = lockup_details
+        self.swap_auth = swap_auth
 
     def __str__(self):
-        return "CreateChainResponse(id={}, claim_details={}, lockup_details={})".format(
-            self.id, self.claim_details, self.lockup_details
+        return "CreateChainResponse(id={}, claim_details={}, lockup_details={}, swap_auth={})".format(
+            self.id, self.claim_details, self.lockup_details, self.swap_auth
         )
 
     def __eq__(self, other):
@@ -2511,6 +2520,8 @@ class CreateChainResponse:
         if self.claim_details != other.claim_details:
             return False
         if self.lockup_details != other.lockup_details:
+            return False
+        if self.swap_auth != other.swap_auth:
             return False
         return True
 
@@ -2522,6 +2533,7 @@ class _UniffiConverterTypeCreateChainResponse(_UniffiConverterRustBuffer):
             id=_UniffiConverterString.read(buf),
             claim_details=_UniffiConverterTypeChainSwapDetails.read(buf),
             lockup_details=_UniffiConverterTypeChainSwapDetails.read(buf),
+            swap_auth=_UniffiConverterOptionalString.read(buf),
         )
 
     @staticmethod
@@ -2529,12 +2541,14 @@ class _UniffiConverterTypeCreateChainResponse(_UniffiConverterRustBuffer):
         _UniffiConverterString.check_lower(value.id)
         _UniffiConverterTypeChainSwapDetails.check_lower(value.claim_details)
         _UniffiConverterTypeChainSwapDetails.check_lower(value.lockup_details)
+        _UniffiConverterOptionalString.check_lower(value.swap_auth)
 
     @staticmethod
     def write(value, buf):
         _UniffiConverterString.write(value.id, buf)
         _UniffiConverterTypeChainSwapDetails.write(value.claim_details, buf)
         _UniffiConverterTypeChainSwapDetails.write(value.lockup_details, buf)
+        _UniffiConverterOptionalString.write(value.swap_auth, buf)
 
 
 class CreateReverseRequest:
@@ -2721,6 +2735,11 @@ class CreateReverseResponse:
     blinding_key: "typing.Optional[str]"
     asset_id: "typing.Optional[str]"
     fee_asset_id: "typing.Optional[str]"
+    swap_auth: "typing.Optional[str]"
+    """
+    Per-swap taker credential the KaleidoSwap maker issues once on
+    creation. No reverse-swap route needs it today; persist it anyway.
+    """
 
     def __init__(
         self,
@@ -2735,6 +2754,7 @@ class CreateReverseResponse:
         blinding_key: "typing.Optional[str]",
         asset_id: "typing.Optional[str]",
         fee_asset_id: "typing.Optional[str]",
+        swap_auth: "typing.Optional[str]",
     ):
         self.id = id
         self.invoice = invoice
@@ -2746,9 +2766,10 @@ class CreateReverseResponse:
         self.blinding_key = blinding_key
         self.asset_id = asset_id
         self.fee_asset_id = fee_asset_id
+        self.swap_auth = swap_auth
 
     def __str__(self):
-        return "CreateReverseResponse(id={}, invoice={}, swap_tree={}, lockup_address={}, refund_public_key={}, timeout_block_height={}, onchain_amount={}, blinding_key={}, asset_id={}, fee_asset_id={})".format(
+        return "CreateReverseResponse(id={}, invoice={}, swap_tree={}, lockup_address={}, refund_public_key={}, timeout_block_height={}, onchain_amount={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={})".format(
             self.id,
             self.invoice,
             self.swap_tree,
@@ -2759,6 +2780,7 @@ class CreateReverseResponse:
             self.blinding_key,
             self.asset_id,
             self.fee_asset_id,
+            self.swap_auth,
         )
 
     def __eq__(self, other):
@@ -2782,6 +2804,8 @@ class CreateReverseResponse:
             return False
         if self.fee_asset_id != other.fee_asset_id:
             return False
+        if self.swap_auth != other.swap_auth:
+            return False
         return True
 
 
@@ -2799,6 +2823,7 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
             blinding_key=_UniffiConverterOptionalString.read(buf),
             asset_id=_UniffiConverterOptionalString.read(buf),
             fee_asset_id=_UniffiConverterOptionalString.read(buf),
+            swap_auth=_UniffiConverterOptionalString.read(buf),
         )
 
     @staticmethod
@@ -2813,6 +2838,7 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.blinding_key)
         _UniffiConverterOptionalString.check_lower(value.asset_id)
         _UniffiConverterOptionalString.check_lower(value.fee_asset_id)
+        _UniffiConverterOptionalString.check_lower(value.swap_auth)
 
     @staticmethod
     def write(value, buf):
@@ -2826,6 +2852,7 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.blinding_key, buf)
         _UniffiConverterOptionalString.write(value.asset_id, buf)
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
+        _UniffiConverterOptionalString.write(value.swap_auth, buf)
 
 
 class CreateSubmarineRequest:
@@ -2953,6 +2980,11 @@ class CreateSubmarineResponse:
     blinding_key: "typing.Optional[str]"
     asset_id: "typing.Optional[str]"
     fee_asset_id: "typing.Optional[str]"
+    swap_auth: "typing.Optional[str]"
+    """
+    Per-swap taker credential the KaleidoSwap maker issues once on
+    creation. No submarine-swap route needs it today; persist it anyway.
+    """
 
     def __init__(
         self,
@@ -2969,6 +3001,7 @@ class CreateSubmarineResponse:
         blinding_key: "typing.Optional[str]",
         asset_id: "typing.Optional[str]",
         fee_asset_id: "typing.Optional[str]",
+        swap_auth: "typing.Optional[str]",
     ):
         self.accept_zero_conf = accept_zero_conf
         self.address = address
@@ -2982,9 +3015,10 @@ class CreateSubmarineResponse:
         self.blinding_key = blinding_key
         self.asset_id = asset_id
         self.fee_asset_id = fee_asset_id
+        self.swap_auth = swap_auth
 
     def __str__(self):
-        return "CreateSubmarineResponse(accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={})".format(
+        return "CreateSubmarineResponse(accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={})".format(
             self.accept_zero_conf,
             self.address,
             self.bip21,
@@ -2997,6 +3031,7 @@ class CreateSubmarineResponse:
             self.blinding_key,
             self.asset_id,
             self.fee_asset_id,
+            self.swap_auth,
         )
 
     def __eq__(self, other):
@@ -3024,6 +3059,8 @@ class CreateSubmarineResponse:
             return False
         if self.fee_asset_id != other.fee_asset_id:
             return False
+        if self.swap_auth != other.swap_auth:
+            return False
         return True
 
 
@@ -3043,6 +3080,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
             blinding_key=_UniffiConverterOptionalString.read(buf),
             asset_id=_UniffiConverterOptionalString.read(buf),
             fee_asset_id=_UniffiConverterOptionalString.read(buf),
+            swap_auth=_UniffiConverterOptionalString.read(buf),
         )
 
     @staticmethod
@@ -3059,6 +3097,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.blinding_key)
         _UniffiConverterOptionalString.check_lower(value.asset_id)
         _UniffiConverterOptionalString.check_lower(value.fee_asset_id)
+        _UniffiConverterOptionalString.check_lower(value.swap_auth)
 
     @staticmethod
     def write(value, buf):
@@ -3074,6 +3113,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.blinding_key, buf)
         _UniffiConverterOptionalString.write(value.asset_id, buf)
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
+        _UniffiConverterOptionalString.write(value.swap_auth, buf)
 
 
 class ElectrumBuilder:

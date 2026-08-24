@@ -575,11 +575,30 @@ impl BoltzClient {
         let swap_id = str_arg(swap_id, "swapId")?;
         to_js(&self.inner.get_quote(&swap_id).await.map_err(core_err)?)
     }
+    /// Accept a chain-swap re-quote at `amountSat`.
+    ///
+    /// `swapAuth` is the per-swap credential the KaleidoSwap maker returned as
+    /// `swapAuth` on the create response. Accepting commits the maker's payout,
+    /// so the maker authorizes it with that credential rather than with the
+    /// swap id — which is not a secret. Omit it only for a maker that issues
+    /// none (upstream Boltz); against KaleidoSwap the call is rejected with
+    /// `401 invalid_swap_auth` and no other route resolves the re-quote, so the
+    /// swap runs out its refund path instead.
+    ///
+    /// Persist `swapAuth` with the swap when you create it. Nothing re-issues
+    /// it — `swapRestore` authenticates with an XPUB alone and does not return
+    /// it.
     #[wasm_bindgen(js_name = acceptQuote)]
-    pub async fn accept_quote(&self, swap_id: StringArg, amount_sat: u64) -> Result<(), JsValue> {
+    pub async fn accept_quote(
+        &self,
+        swap_id: StringArg,
+        amount_sat: u64,
+        swap_auth: Option<StringArg>,
+    ) -> Result<(), JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;
+        let swap_auth = opt_str_arg(swap_auth, "swapAuth")?;
         self.inner
-            .accept_quote(&swap_id, amount_sat)
+            .accept_quote(&swap_id, amount_sat, swap_auth.as_deref())
             .await
             .map_err(core_err)
     }
