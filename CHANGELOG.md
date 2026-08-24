@@ -155,27 +155,40 @@ Two separate things were wrong, and both are fixed:
   ```
   HTTP Response Body Invalid: 201 Created, missing field `swapTree` at line 1 column 35; body keys: id
   HTTP Response Body Invalid: 201 Created, invalid type: string "<redacted>", expected u32 at line 3 column 64; body keys: id, swapAuth, timeoutBlockHeight
+  HTTP Response Body Invalid: 200 OK, unknown variant `<redacted>`, expected one of `reverse`, `submarine`, `chain` at line 1 column 51; body keys: createdAt, from, id, status, to, type
   ```
 
-  serde echoes an offending JSON *string* with `{:?}`, and that string can be
-  the credential, so every double-quoted run in the message is replaced. It also
-  names no field on a type mismatch, only a position, so the body's top-level
-  keys stand in for it: names are the schema under dispute, values are the
-  secret. Redaction happens where the error is built, so the body cannot escape
-  through a caller that formats the variant itself.
+  Every value serde reads out of the body arrives in a delimited run, and both
+  kinds of run are handled. A double-quoted run is a string serde echoed with
+  `{:?}`, always a body value, so always replaced. A backticked run is either a
+  name out of the schema — `missing field`, `expected one of` — or the value of
+  an unknown enum variant, which serde renders identically; the body is what
+  tells them apart, so a backticked run is replaced exactly when the body
+  carries that string as a scalar. `SwapRestoreResponse::swap_type` makes the
+  second case reachable today, and a credential landing in an enum-typed field
+  would otherwise have survived verbatim.
+
+  Prose outside a delimited run is never touched, so nothing can mangle the
+  diagnosis. serde also names no field on a type mismatch, only a position, so
+  the body's top-level keys are appended: names are the schema under dispute,
+  values are the secret. Redaction happens where the error is built, so the body
+  cannot escape through a caller that formats the variant's fields itself.
 
 Non-2xx responses are unchanged and keep the body verbatim. A maker's error
 payload — `invalid_swap_auth`, `pair_hash_mismatch` — is what makes those
 diagnosable, and callers depend on reading it.
 
 **Callers matching `HTTPStatusNotSuccess` to catch an unparseable success body
-will stop matching it**, which is the point: that case now has its own name.
-Two things are deliberately given up with the body. A type mismatch reports a
-line/column rather than the field name, because serde_json does not provide one;
-and an unexpected *number* or *boolean* still appears, because serde backticks
-those exactly like the field and type names worth keeping — the credential this
-guards is a string. On the UniFFI bindings both variants continue to surface as
-`Error::Generic`, now distinguishable by message.
+will stop matching it**, which is the point: that case now has its own name. On
+the UniFFI bindings both variants continue to surface as `Error::Generic`, now
+distinguishable by message.
+
+One thing is deliberately given up with the body: a type mismatch reports a
+line/column rather than the field name, because serde_json provides none without
+a path-tracking dependency. The redaction is exact-match against the body's own
+scalars, so a value serde renders differently than `serde_json` stores it — a
+float, or a string carrying a backtick that ends the run early — can still leave
+a fragment. Neither shape is a credential the maker issues.
 
 ## [0.3.0] - 2026-08-13
 

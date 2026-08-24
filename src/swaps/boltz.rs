@@ -31,7 +31,7 @@ use secp256k1_musig::musig;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::time::Duration;
@@ -742,6 +742,9 @@ impl BoltzApiClientV2 {
     /// should stay a log line rather than become a payload.
     const PARSE_ERROR_KEY_BUDGET: usize = 200;
 
+    /// What replaces a value the body owned.
+    const REDACTED: &'static str = "<redacted>";
+
     /// Describe a body that did not deserialize, without reproducing it.
     ///
     /// The body of a create response is not safe to log. The maker returns
@@ -749,28 +752,41 @@ impl BoltzApiClientV2 {
     /// it whether or not the SDK models the field, so a schema disagreement
     /// anywhere in the response would otherwise put the credential wherever this
     /// error goes: `Error::message()` formats it, the WebAssembly binding turns
-    /// it into a JS `Error` message, and callers log those. So none of the
-    /// body's values reach the message:
+    /// it into a JS `Error` message, and callers log those.
     ///
-    /// - serde_json's own message stays, because it is the diagnosis — a missing
-    ///   field named in backticks, an `invalid type: string, expected u32`, and
-    ///   a line/column into the body. Field, variant and type names in it are
-    ///   backticked and so survive verbatim.
-    /// - Except that on a type or value mismatch serde echoes the offending
-    ///   JSON string, formatted with `{:?}`, and that string can be the
-    ///   credential. Every double-quoted run is replaced: the shape of the
-    ///   mismatch stays, the string does not.
-    /// - serde_json names no field on a type mismatch, only a position, so the
-    ///   top-level keys the body carried stand in for it. Key names are the
-    ///   schema, which is exactly what is in dispute; the values are the secret.
+    /// What is kept is serde_json's own message, because it is the diagnosis —
+    /// the missing field, the type that did not fit, a line/column into the
+    /// body. What that message may also contain is a value serde read out of the
+    /// body, and serde puts every such value in a delimited run:
     ///
-    /// Unexpected numbers and booleans are backticked by serde, indistinguishable
-    /// there from the names worth keeping, and stay as it wrote them. The
-    /// credential this guards is a string.
+    /// - A double-quoted run is a string serde echoed with `{:?}`, from an
+    ///   `invalid type` or `invalid value`. Always a body value, so always
+    ///   replaced.
+    /// - A backticked run is either a name out of the schema — `missing field`,
+    ///   `expected one of` — or the value of an unknown enum variant, which
+    ///   serde renders identically. The body is what tells them apart, so a
+    ///   backticked run is replaced exactly when the body carries that string as
+    ///   a scalar. `SwapRestoreResponse::swap_type` makes this reachable, and a
+    ///   maker credential landing in an enum-typed field would otherwise have
+    ///   survived verbatim.
+    ///
+    /// Prose outside a delimited run is never touched, so nothing can mangle the
+    /// diagnosis. Then come the body's top-level keys, which serde does not
+    /// report for a type mismatch: names are the schema under dispute, and the
+    /// values are the secret.
     fn describe_parse_error(body: &str, e: &serde_json::Error) -> String {
-        let mut described = Self::redact_quoted(&e.to_string());
+        // One parse, shared by both halves. `None` when the body is not JSON at
+        // all, in which case serde's error is a syntax error and carries no
+        // body content to redact.
+        let body = serde_json::from_str::<Value>(body).ok();
 
-        if let Some(keys) = Self::top_level_keys(body) {
+        let mut scalars = HashSet::new();
+        if let Some(body) = &body {
+            Self::collect_scalars(body, &mut scalars);
+        }
+        let mut described = Self::redact_body_values(&e.to_string(), &scalars);
+
+        if let Some(keys) = body.as_ref().and_then(Self::top_level_keys) {
             described.push_str("; body keys: ");
             described.push_str(&keys);
         }
@@ -778,28 +794,70 @@ impl BoltzApiClientV2 {
         described
     }
 
-    /// Replace the contents of every double-quoted run with a marker, honouring
-    /// the `\"` escapes `{:?}` writes inside one.
-    fn redact_quoted(message: &str) -> String {
+    /// Every scalar the body carries, rendered the way serde renders it in a
+    /// message. Object keys are deliberately excluded: a key is a name from the
+    /// schema under dispute, which [`Self::describe_parse_error`] reports on
+    /// purpose. `serde_json` caps its own recursion when building a [`Value`],
+    /// so the depth here is bounded by the parse that produced it.
+    fn collect_scalars(body: &Value, into: &mut HashSet<String>) {
+        match body {
+            Value::Object(fields) => fields.values().for_each(|v| Self::collect_scalars(v, into)),
+            Value::Array(items) => items.iter().for_each(|v| Self::collect_scalars(v, into)),
+            Value::String(s) => {
+                into.insert(s.clone());
+            }
+            Value::Number(n) => {
+                into.insert(n.to_string());
+            }
+            Value::Bool(b) => {
+                into.insert(b.to_string());
+            }
+            Value::Null => {}
+        }
+    }
+
+    /// Replace the body's own values where serde quoted them back, leaving the
+    /// rest of its message alone. See [`Self::describe_parse_error`] for which
+    /// runs are body values and why.
+    fn redact_body_values(message: &str, scalars: &HashSet<String>) -> String {
         let mut out = String::with_capacity(message.len());
-        let mut in_quotes = false;
+        let mut run = String::new();
+        let mut delimiter = None;
         let mut escaped = false;
 
         for c in message.chars() {
-            if !in_quotes {
+            let Some(opened) = delimiter else {
                 out.push(c);
-                if c == '"' {
-                    out.push_str("<redacted>");
-                    in_quotes = true;
+                if c == '"' || c == '`' {
+                    delimiter = Some(c);
+                    run.clear();
                 }
-            } else if escaped {
+                continue;
+            };
+
+            // Only `{:?}` escapes, and only inside the run it wrote, so a `\"`
+            // there is part of the value rather than its end.
+            if opened == '"' && escaped {
                 escaped = false;
-            } else if c == '\\' {
+                run.push(c);
+            } else if opened == '"' && c == '\\' {
                 escaped = true;
-            } else if c == '"' {
-                out.push('"');
-                in_quotes = false;
+            } else if c == opened {
+                if opened == '"' || scalars.contains(&run) {
+                    out.push_str(Self::REDACTED);
+                } else {
+                    out.push_str(&run);
+                }
+                out.push(c);
+                delimiter = None;
+            } else {
+                run.push(c);
             }
+        }
+
+        // A run serde never closed is a value of unknown extent. Drop it.
+        if delimiter.is_some() {
+            out.push_str(Self::REDACTED);
         }
 
         out
@@ -807,10 +865,9 @@ impl BoltzApiClientV2 {
 
     /// The body's top-level object keys, sorted and bounded by
     /// [`Self::PARSE_ERROR_KEY_BUDGET`]. `None` when there are none to report:
-    /// an empty object, an array, a scalar, or a body that is not JSON at all.
-    fn top_level_keys(body: &str) -> Option<String> {
-        let value = serde_json::from_str::<Value>(body).ok()?;
-        let mut keys: Vec<&str> = value.as_object()?.keys().map(String::as_str).collect();
+    /// an empty object, an array, or a scalar.
+    fn top_level_keys(body: &Value) -> Option<String> {
+        let mut keys: Vec<&str> = body.as_object()?.keys().map(String::as_str).collect();
         // Deterministic regardless of how `serde_json::Map` is ordered.
         keys.sort_unstable();
 
@@ -3211,18 +3268,79 @@ mod tests {
         );
     }
 
-    /// `{:?}` escapes a quote inside the string it echoes, so the redactor has
-    /// to skip the escape rather than read it as the closing quote — otherwise
-    /// the tail of the value survives into the message.
+    /// serde renders an unknown enum variant in *backticks* — the same way it
+    /// renders a field or type name out of the schema — so a body value in an
+    /// enum-typed field is not covered by redacting double-quoted runs alone.
+    /// `SwapRestoreResponse::swap_type` makes that reachable on a real response.
     #[test]
-    fn redaction_covers_a_quoted_run_containing_an_escaped_quote() {
-        let redacted = BoltzApiClientV2::redact_quoted(
-            r#"invalid type: string "before\"after", expected u32 at line 1 column 9"#,
+    fn a_body_value_serde_reports_in_backticks_is_redacted_too() {
+        const CREDENTIAL: &str = "sa_live_9f2c0b7d41e84a6f";
+        let body = format!(
+            r#"{{"id":"01KZZYB138E7C3HZX7Q1YBGAQG","type":"{CREDENTIAL}",
+                 "status":"swap.created","createdAt":1,"from":"BTC","to":"BTC"}}"#
         );
 
+        let err =
+            BoltzApiClientV2::json_from_body::<SwapRestoreResponse>(reqwest::StatusCode::OK, body)
+                .expect_err("no variant of SwapRestoreType matches");
+
+        assert_eq!(err.name(), "HTTPResponseBodyInvalid");
+        let message = err.message();
+
+        assert!(
+            !message.contains(CREDENTIAL),
+            "leaked in backticks: {message}"
+        );
+        assert!(
+            message.contains("unknown variant `<redacted>`"),
+            "{message}"
+        );
+        // The variant names in the same message come from the schema, not the
+        // body, and are the half of it worth reading.
+        assert!(
+            message.contains("expected one of `reverse`, `submarine`, `chain`"),
+            "{message}"
+        );
+    }
+
+    /// The two kinds of delimited run, side by side. `{:?}` escapes a quote
+    /// inside the string it echoes, so the redactor has to skip the escape
+    /// rather than read it as the run's end; and a backticked run survives only
+    /// when the body does not claim it as a value.
+    #[test]
+    fn redaction_spares_schema_names_and_covers_escaped_quotes() {
+        let body = serde_json::json!({"type": "reverse", "nested": ["from-the-body"]});
+        let mut scalars = HashSet::new();
+        BoltzApiClientV2::collect_scalars(&body, &mut scalars);
+
+        // A name the schema owns is kept; the same run is redacted once the body
+        // claims that string — here `reverse`, which is both.
         assert_eq!(
-            redacted,
-            r#"invalid type: string "<redacted>", expected u32 at line 1 column 9"#
+            BoltzApiClientV2::redact_body_values(
+                "missing field `swapTree` at line 1 column 35",
+                &scalars
+            ),
+            "missing field `swapTree` at line 1 column 35",
+        );
+        assert_eq!(
+            BoltzApiClientV2::redact_body_values(
+                "unknown variant `reverse`, expected one of `submarine`, `chain`",
+                &scalars
+            ),
+            "unknown variant `<redacted>`, expected one of `submarine`, `chain`",
+        );
+        // Nesting is no escape from the scalar sweep.
+        assert_eq!(
+            BoltzApiClientV2::redact_body_values("unknown variant `from-the-body`", &scalars),
+            "unknown variant `<redacted>`",
+        );
+        // A quoted run goes regardless, escapes and all.
+        assert_eq!(
+            BoltzApiClientV2::redact_body_values(
+                r#"invalid type: string "before\"after", expected u32 at line 1 column 9"#,
+                &scalars
+            ),
+            r#"invalid type: string "<redacted>", expected u32 at line 1 column 9"#,
         );
     }
 
