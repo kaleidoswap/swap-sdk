@@ -56,12 +56,18 @@ use crate::swaps::boltz::BoltzApiClientV2;
 
 /// The header the organization API key travels in, as a `Bearer` credential.
 ///
-/// The standard `Authorization` header on purpose, and not a custom one:
-/// `reqwest` — like every other HTTP client that implements the same rule —
-/// strips `Authorization` when a redirect crosses origins, while a custom header
-/// rides along to whatever host the `Location` names. `X-Swap-Auth` had to be
-/// defended against that with a redirect policy of its own; this one is covered
-/// by the client's default behaviour before the SDK does anything.
+/// The standard `Authorization` header on purpose, and not a custom one: HTTP
+/// clients strip `Authorization` when a redirect leaves the host it was
+/// addressed to, while a custom header rides along to whatever the `Location`
+/// names. `X-Swap-Auth` had to be defended against that with a redirect policy
+/// of its own; this one is largely covered by the client's own behaviour.
+///
+/// *Largely*, not entirely. `reqwest` compares host and effective port and
+/// ignores the scheme, so `https://h` → `http://h:443` keeps the header and
+/// sends the key in the clear. The SDK cannot stop that on a redirect-following
+/// client, but it does report it: the redirect check picks its advice from
+/// reqwest's rule rather than from the stricter one the SDK uses to decide what
+/// counts as the maker, so a scheme-only hop says *revoke the key*.
 pub const API_KEY_HEADER: &str = "Authorization";
 
 /// The prefix every KaleidoSwap organization API key carries.
@@ -106,8 +112,14 @@ impl Display for ApiKeyEnvironment {
 /// revoked key or a suspended organization.
 ///
 /// The secret never leaves this type: there is no accessor for it, no `Display`,
-/// no `Serialize`, and [`Debug`] renders [`Self::redacted`]. It is held in
-/// [`Zeroizing`] so a dropped key does not stay in freed memory.
+/// no `Serialize`, and [`Debug`] renders [`Self::redacted`].
+///
+/// It is held in [`Zeroizing`], which wipes the stored copy and the per-request
+/// buffer on drop. That bounds the exposure rather than ending it: the
+/// `HeaderValue` each request carries, the buffer hyper encodes it into, and the
+/// string the caller handed to [`Self::parse`] are all outside this type and
+/// none of them are wiped. Treat a process that has sent one authenticated
+/// request as a process with the key in its heap.
 #[derive(Clone)]
 pub struct ApiKey {
     environment: ApiKeyEnvironment,
@@ -170,6 +182,15 @@ impl ApiKey {
         // `split_once` and not a full split: the key id never contains an
         // underscore, so everything after the third one is the secret — which
         // may itself be base64url, where `_` is a perfectly ordinary byte.
+        //
+        // The key id is the half this assumption rests on. Were Platform ever to
+        // issue one containing `_`, the split would land early: the wire value
+        // still reconstructs byte-for-byte (the same separators go back in, and
+        // `a_key_parses_into_its_parts_and_the_secret_keeps_its_underscores`
+        // pins that), so swaps would keep working — but `key_id()` and
+        // `redacted()` would report a truncated id, which is the value the docs
+        // tell partners to match against the panel. The charset check below
+        // pins the assumption from this side.
         let Some((key_id, secret)) = rest.split_once('_') else {
             return Err(Self::malformed(
                 "it has no secret segment — expected `kld_<env>_<key_id>_<secret>`",
@@ -348,11 +369,14 @@ impl KaleidoMakerClient {
     /// [`Self::new`] over a caller-supplied `reqwest::Client`, keeping its proxy,
     /// TLS and pool configuration.
     ///
-    /// Build it with [`reqwest::redirect::Policy::none`]. `reqwest` does strip
-    /// `Authorization` across a cross-origin redirect, so the key itself is safe
-    /// on a redirect-following client — but the same client carries
-    /// [`SWAP_AUTH_HEADER`] on a chain re-quote, and *that* header follows the
-    /// hop. [`Self::new`] does this for you.
+    /// Build it with [`reqwest::redirect::Policy::none`]. A redirect-following
+    /// client leaks on two counts: [`SWAP_AUTH_HEADER`], carried on a chain
+    /// re-quote, is a custom header and follows the hop unconditionally; and
+    /// `reqwest` keeps `Authorization` when only the scheme changes, so an
+    /// `https` maker answering `302 http://same-host:443/…` re-sends the
+    /// organization key in the clear. [`Self::new`] sets the policy for you, and
+    /// there is no way to set it from here — this constructor takes the client
+    /// as configured.
     ///
     /// [`SWAP_AUTH_HEADER`]: crate::boltz::SWAP_AUTH_HEADER
     pub fn with_client(
@@ -379,6 +403,16 @@ impl KaleidoMakerClient {
     /// fails here rather than after the key is already on the wire. Loopback is
     /// exempt because that is the regtest harness, where the "network" is a
     /// socket on the same machine.
+    ///
+    /// A URL carrying userinfo is refused too, and that one is not about
+    /// eavesdropping. `reqwest` turns `https://user:pw@host/v2` into an
+    /// `Authorization: Basic …` header of its own, and `RequestBuilder::header`
+    /// *appends* — so the request would go out with two `Authorization` headers
+    /// and the maker, reading the first, would never see the key. In the maker's
+    /// optional mode that is a swap silently recorded as anonymous, which is the
+    /// one failure this whole feature is supposed to make impossible; in its
+    /// required mode it is a `401` with nothing in it to diagnose. Nothing
+    /// legitimate needs credentials in the URL, so this fails loudly instead.
     fn validate_maker_url(maker_url: &str) -> Result<(), Error> {
         let url = reqwest::Url::parse(maker_url)?;
         let Some(host) = url.host_str() else {
@@ -387,6 +421,14 @@ impl KaleidoMakerClient {
                  bound to one origin and there is nothing here to bind it to"
             )));
         };
+        if !url.username().is_empty() || url.password().is_some() {
+            return Err(Error::Protocol(format!(
+                "maker URL for {host} carries a username or password — those become \
+                 an Authorization header of their own, which would displace the \
+                 organization API key and leave the swap unattributed. Put the \
+                 credentials in your own reqwest client instead"
+            )));
+        }
         match url.scheme() {
             "https" => Ok(()),
             "http" if is_loopback(host) => Ok(()),
@@ -537,7 +579,13 @@ mod tests {
         }
 
         let oversized = format!("kld_test_abc_{}", "x".repeat(ApiKey::MAX_LEN));
-        assert!(ApiKey::parse(&oversized).is_err());
+        let err = ApiKey::parse(&oversized).unwrap_err();
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains("bytes long")),
+            "an oversized value should say so, got {err:?}",
+        );
+        // ...and must not quote the thing it just refused to accept as a key.
+        assert!(!format!("{err:?}").contains("xxxx"), "{err:?}");
     }
 
     /// A key read from a file or a heredoc arrives with a trailing newline. No
@@ -638,6 +686,24 @@ mod tests {
         assert!(build("ftp://maker.signet.kaleidoswap.com/v2").is_err());
         assert!(build("not a url").is_err());
 
+        // Userinfo in the URL is not a second way to authenticate: `reqwest`
+        // turns it into an `Authorization: Basic …` of its own, and
+        // `RequestBuilder::header` appends rather than replaces — so the request
+        // would carry two `Authorization` headers and the maker, reading the
+        // first, would never see the key. In its optional mode that is a swap
+        // silently recorded as anonymous.
+        for with_userinfo in [
+            "https://ci:hunter2@maker.signet.kaleidoswap.com/v2",
+            "https://ci@maker.signet.kaleidoswap.com/v2",
+        ] {
+            let err = build(with_userinfo).unwrap_err();
+            assert!(
+                matches!(&err, Error::Protocol(msg) if msg.contains("username or password")),
+                "{with_userinfo} must be refused, got {err:?}",
+            );
+            assert!(!format!("{err:?}").contains("hunter2"), "{err:?}");
+        }
+
         // ...and the generic client is unaffected: it carries no credential, so
         // a plain-HTTP maker is the caller's business.
         assert!(
@@ -645,6 +711,32 @@ mod tests {
                 .api_key()
                 .is_none()
         );
+    }
+
+    /// `with_client` must apply exactly the same URL policy as `new`.
+    ///
+    /// It is the constructor a caller reaches for to get a proxy or a custom TLS
+    /// setup, and it would be a quiet way around every check above if it took
+    /// the URL on trust.
+    #[test]
+    fn a_caller_supplied_client_is_held_to_the_same_url_policy() {
+        let build = |maker_url: &str| {
+            KaleidoMakerClient::with_client(
+                KaleidoMakerClientOptions {
+                    maker_url: maker_url.to_string(),
+                    api_key: ApiKey::parse(KEY).unwrap(),
+                    timeout: None,
+                },
+                reqwest::Client::builder().build().unwrap(),
+            )
+        };
+
+        let client = build("https://maker.signet.kaleidoswap.com/v2").unwrap();
+        assert_eq!(client.api_key_id(), "01KZZYB138E7C3HZX7Q1YBGAQG");
+
+        assert!(build("http://maker.signet.kaleidoswap.com/v2").is_err());
+        assert!(build("https://ci:hunter2@maker.signet.kaleidoswap.com/v2").is_err());
+        assert!(build("ftp://maker.signet.kaleidoswap.com/v2").is_err());
     }
 
     /// The Kaleido client must be usable everywhere the generic one is, or the

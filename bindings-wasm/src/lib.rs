@@ -328,19 +328,108 @@ mod boltz_asset_tests {
     }
 }
 
-/// Async client for the Boltz swap API.
 /// `{ makerUrl, apiKey, timeoutSecs? }` for
 /// [`BoltzClient::for_kaleido_maker`]. A named struct rather than positional
 /// arguments: two adjacent strings, one of them a secret, is exactly the
 /// signature callers transpose.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct KaleidoMakerOptions {
     maker_url: String,
     api_key: String,
     timeout_secs: Option<u64>,
 }
 
+/// The properties [`KaleidoMakerOptions`] reads, for the unknown-key check.
+const KALEIDO_MAKER_OPTION_KEYS: [&str; 3] = ["makerUrl", "apiKey", "timeoutSecs"];
+
+impl KaleidoMakerOptions {
+    /// Read the options object by hand, without `from_js`.
+    ///
+    /// `from_js` reports a type mismatch by handing back serde's message, and
+    /// serde renders the offending **value** — so
+    /// `forKaleidoMaker(process.env.KALEIDOSWAP_API_KEY)`, the exact transposed
+    /// call the named-options shape exists to catch, would throw
+    /// `invalid type: string "kld_live_…"` and put the organization key
+    /// verbatim into whatever caught it. `ApiKey::parse` is careful never to
+    /// echo its input; that care is worth nothing if the value can be echoed
+    /// before it ever reaches the parser.
+    ///
+    /// So every error below names a property and never its contents.
+    fn from_js_options(options: JsValue) -> Result<Self, JsValue> {
+        let shape = "forKaleidoMaker expects an options object \
+                     `{ makerUrl, apiKey, timeoutSecs? }`";
+        if !options.is_object() || js_sys::Array::is_array(&options) {
+            return Err(arg_err(shape));
+        }
+        let options: js_sys::Object = options.unchecked_into();
+
+        // Unknown properties are rejected rather than ignored. The near misses
+        // are `apikey` and `timeout`, and silently ignoring the latter means a
+        // client the caller believes is bounded runs with no timeout at all.
+        // Property names are the caller's own literals, so naming them is safe.
+        let unknown: Vec<String> = js_sys::Object::keys(&options)
+            .iter()
+            .filter_map(|key| key.as_string())
+            .filter(|key| !KALEIDO_MAKER_OPTION_KEYS.contains(&key.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(arg_err(format!(
+                "unknown option{} {} — {shape}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+            )));
+        }
+
+        Ok(Self {
+            maker_url: required_string_option(&options, "makerUrl")?,
+            api_key: required_string_option(&options, "apiKey")?,
+            timeout_secs: timeout_secs_option(&options)?,
+        })
+    }
+}
+
+/// A required string property, named but never quoted back.
+fn required_string_option(options: &js_sys::Object, name: &str) -> Result<String, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Err(arg_err(format!("option `{name}` is required")));
+    }
+    value
+        .as_string()
+        .ok_or_else(|| arg_err(format!("option `{name}` must be a string")))
+}
+
+/// The optional `timeoutSecs`, as a whole non-negative number of seconds.
+///
+/// A `bigint` is accepted alongside a `number`: the rest of this surface takes
+/// 64-bit values as `bigint`, and a caller who reaches for one here should not
+/// be told their timeout is not a number.
+fn timeout_secs_option(options: &js_sys::Object) -> Result<Option<u64>, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str("timeoutSecs"))
+        .map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    if let Some(seconds) = value.as_f64() {
+        if seconds.is_finite() && seconds >= 0.0 && seconds.fract() == 0.0 {
+            return Ok(Some(seconds as u64));
+        }
+    } else if let Some(seconds) = value.dyn_ref::<js_sys::BigInt>() {
+        if let Ok(seconds) = u64::try_from(seconds.clone()) {
+            return Ok(Some(seconds));
+        }
+    }
+    Err(arg_err(
+        "option `timeoutSecs` must be a whole number of seconds, and not negative",
+    ))
+}
+
+/// A failure on our side of the boundary, from a `JsValue` that is already an
+/// exception rather than a `Display` value.
+fn internal_err_js(_: JsValue) -> JsValue {
+    coded_err(INTERNAL, "reading the options object threw")
+}
+
+/// Async client for the Boltz swap API.
 #[wasm_bindgen]
 pub struct BoltzClient {
     inner: BoltzApiClientV2,
@@ -410,7 +499,7 @@ impl BoltzClient {
     /// crosses origins — but the response is not the maker's.
     #[wasm_bindgen(js_name = forKaleidoMaker)]
     pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
-        let options: KaleidoMakerOptions = from_js(options)?;
+        let options = KaleidoMakerOptions::from_js_options(options)?;
         let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
             maker_url: options.maker_url,
             api_key: ApiKey::parse(&options.api_key).map_err(core_err)?,

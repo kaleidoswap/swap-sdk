@@ -88,10 +88,16 @@ sensitive so it stays out of header dumps and out of the HTTP/2 HPACK dynamic
 table. It is bound to the maker URL it was configured with and is never attached
 to a request addressed anywhere else — not Esplora, not a second maker. That URL
 must be `https` unless it is a loopback address, since a bearer credential over
-plain HTTP is readable by anything on the path. Nothing renders the secret:
-`Debug`, `__str__` and the JS getters show the key id and environment only. A
-value that cannot be a key is rejected locally rather than reaching the maker as
-a `401`, which is the same answer a revoked key gets.
+plain HTTP is readable by anything on the path, and it may not carry userinfo —
+`https://user:pw@host/v2` becomes an `Authorization: Basic …` of its own that
+would displace the key and leave the swap unattributed. Redirects are declined
+outright where the SDK owns the policy (`KaleidoMakerClient::new`); a
+caller-supplied client and the browser keep their own, so there a hop off the
+maker is reported after the fact instead. Nothing renders the secret: the
+Rust `Debug` prints `kld_test_<key_id>_<redacted>`, Python and JS expose the key
+id and environment and no accessor for the secret at all. A value that cannot be
+a key is rejected locally rather than reaching the maker as a `401`, which is the
+same answer a revoked key gets.
 
 **Server and native integrations only.** A key in a browser bundle is visible to
 every visitor, who can then attribute their own swaps to — or exhaust the limits

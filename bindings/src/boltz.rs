@@ -102,9 +102,11 @@ impl BoltzApiClientV2 {
     /// it from configuration rather than committing it, and never ship it inside
     /// a mobile or desktop application binary, where every user holds it.
     ///
-    /// UniFFI's generated `__str__` on this object prints only what
-    /// `BoltzApiClientV2`'s `Debug` prints, and that redacts the key — see
-    /// `api_key_id` for the half that is safe to log.
+    /// No exported method returns the secret, and UniFFI renders no string form
+    /// of this object at all — it emits `__str__` only for an object that
+    /// exports `Display`, and this one does not, so `str(client)` is the default
+    /// `<... object at 0x...>`. See `api_key_id` for the half that is safe to
+    /// log.
     #[uniffi::constructor]
     pub fn kaleido_maker(
         maker_url: &str,

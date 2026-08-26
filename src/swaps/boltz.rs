@@ -491,6 +491,35 @@ pub(crate) fn same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
         && a.port_or_known_default() == b.port_or_known_default()
 }
 
+/// Whether a redirect from `sent_to` to `came_from` made an HTTP client strip
+/// [`API_KEY_HEADER`] on the way.
+///
+/// Deliberately *not* [`same_origin`]. `reqwest` compares host and effective
+/// port and ignores the scheme entirely, so this mirrors that rule rather than
+/// the stricter one the SDK uses to decide what counts as the maker. The gap
+/// between the two is `https://h` → `http://h:443`, where the key is re-sent in
+/// the clear.
+fn redirect_strips_api_key(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> bool {
+    sent_to.host_str() != came_from.host_str()
+        || sent_to.port_or_known_default() != came_from.port_or_known_default()
+}
+
+/// What a caller should do about the organization API key after a redirect off
+/// the maker. See [`BoltzApiClientV2::reject_credential_leaking_redirect`].
+fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> String {
+    if redirect_strips_api_key(sent_to, came_from) {
+        return format!(
+            "; the redirect changed host or port, so {API_KEY_HEADER} was dropped and \
+             the organization API key did not travel — but nothing this response says \
+             came from the maker"
+        );
+    }
+    "; the redirect changed only the scheme, which native HTTP clients do not treat \
+     as cross-origin — assume the organization API key reached that host, in the \
+     clear if the hop was to http, and revoke it"
+        .to_string()
+}
+
 /// Reference Documnetation: <https://api.boltz.exchange/swagger>
 #[derive(Debug, Clone)]
 pub struct BoltzApiClientV2 {
@@ -742,11 +771,21 @@ impl BoltzApiClientV2 {
     /// treat as burnt and one they do not.
     ///
     /// The two credentials do not travel alike, and the message says which
-    /// happened, because the reactions differ. `reqwest` and `fetch` both drop
-    /// [`API_KEY_HEADER`] when a redirect crosses origins, so the organization
-    /// key does not reach the new host and there is nothing to revoke.
-    /// [`SWAP_AUTH_HEADER`] is a custom header and rides along, so that one is
-    /// genuinely disclosed and the swap is burnt.
+    /// happened, because the reactions differ. [`SWAP_AUTH_HEADER`] is a custom
+    /// header and rides along unconditionally, so it is always disclosed and the
+    /// swap is always burnt.
+    ///
+    /// [`API_KEY_HEADER`] is stripped by the redirect — but on a *narrower* rule
+    /// than the one this function calls an origin. `reqwest` drops it when the
+    /// host or the port changes and does not look at the scheme at all
+    /// (`redirect::remove_sensitive_headers`), so an `https` maker redirected to
+    /// `http://same-host:443/…` re-sends the key **in cleartext**. That is the
+    /// case [`same_origin`] catches and reqwest does not, and telling the partner
+    /// there was nothing to revoke would be exactly wrong there. So the reaction
+    /// is chosen from reqwest's rule, not from ours. Browsers are stricter — a
+    /// scheme change is cross-origin to `fetch`, which drops `Authorization`
+    /// with the rest of the CORS non-wildcard headers — so the advice is
+    /// pessimistic there rather than wrong.
     fn reject_credential_leaking_redirect(
         &self,
         response: &reqwest::Response,
@@ -761,14 +800,15 @@ impl BoltzApiClientV2 {
             return Ok(());
         }
 
-        let host = came_from
-            .host_str()
-            .map(str::to_string)
-            .unwrap_or_else(|| came_from.to_string());
+        // Named the way the destination differs, port included: a hop between
+        // two ports on one host would otherwise read as a redirect to the host
+        // it was already talking to, which reads like a bug in the SDK.
         let mut message = format!(
-            "a request carrying {} was redirected to {host}, which is not the maker \
-             it was addressed to",
+            "a request carrying {} was redirected to {}, which is not the maker it \
+             was addressed to ({})",
             carried.join(" and "),
+            came_from.origin().ascii_serialization(),
+            sent_to.origin().ascii_serialization(),
         );
         if carried.contains(&SWAP_AUTH_HEADER) {
             message.push_str(&format!(
@@ -778,11 +818,7 @@ impl BoltzApiClientV2 {
             ));
         }
         if carried.contains(&API_KEY_HEADER) {
-            message.push_str(&format!(
-                "; {API_KEY_HEADER} is dropped across an origin hop, so the \
-                 organization API key did not travel, but nothing this response \
-                 says came from the maker"
-            ));
+            message.push_str(&api_key_redirect_advice(&sent_to, came_from));
         }
         Err(Error::Protocol(message))
     }
@@ -3464,6 +3500,13 @@ mod tests {
             "the error must say the key stayed put, or the caller revokes a key \
              that was never exposed: {err:?}",
         );
+        // The port is part of naming where it went: both ends are 127.0.0.1
+        // here, and "redirected to 127.0.0.1" would read like a bug in the SDK.
+        let redirected_to = elsewhere_url.strip_suffix("/v2").unwrap();
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains(redirected_to)),
+            "the error must name the origin including its port, got {err:?}",
+        );
 
         maker.join().unwrap();
         let forwarded = elsewhere.join().unwrap().to_lowercase();
@@ -3472,6 +3515,104 @@ mod tests {
             "reqwest must drop the key across the hop \u{2014} that is what the error \
              reports. Got:\n{forwarded}",
         );
+    }
+
+    /// A redirect that changes only the scheme must say **revoke the key**.
+    ///
+    /// This is the one hop where the SDK's notion of an origin and `reqwest`'s
+    /// disagree, and the disagreement runs the dangerous way. `same_origin` is
+    /// scheme-sensitive; `redirect::remove_sensitive_headers` compares host and
+    /// effective port and never looks at the scheme, so `https://h` →
+    /// `http://h:443` keeps `Authorization` and re-sends a permanent
+    /// organization credential in cleartext. Choosing the advice from the
+    /// SDK's own rule would tell the partner there was nothing to revoke at
+    /// exactly the moment their key hit the wire in the clear.
+    ///
+    /// Pinned against a constructed pair of URLs rather than a live socket:
+    /// standing up an HTTPS listener with a trusted certificate for this is a
+    /// lot of machinery to pin one boolean, and the boolean is the whole bug.
+    #[test]
+    fn a_scheme_only_redirect_says_revoke_the_key() {
+        let secure: reqwest::Url = "https://maker.signet.kaleidoswap.com/v2".parse().unwrap();
+
+        // Explicit :443 is how reqwest sees it: same host, same effective port,
+        // so it keeps the header. The SDK still calls it a different origin.
+        let downgraded: reqwest::Url = "http://maker.signet.kaleidoswap.com:443/v2/x"
+            .parse()
+            .unwrap();
+        assert!(
+            !same_origin(&secure, &downgraded),
+            "a scheme change is a different origin to the SDK",
+        );
+        assert!(
+            !redirect_strips_api_key(&secure, &downgraded),
+            "reqwest compares host and port only — if this ever changes, the \
+             advice below can be relaxed",
+        );
+        let advice = api_key_redirect_advice(&secure, &downgraded);
+        assert!(advice.contains("revoke it"), "{advice}");
+        assert!(
+            !advice.contains("did not travel"),
+            "the key did travel, in the clear: {advice}",
+        );
+
+        // A host change is the ordinary case, and there the header really is
+        // dropped — so the partner must not be sent to revoke a live key.
+        let elsewhere: reqwest::Url = "https://elsewhere.example.com/v2/x".parse().unwrap();
+        assert!(redirect_strips_api_key(&secure, &elsewhere));
+        let advice = api_key_redirect_advice(&secure, &elsewhere);
+        assert!(advice.contains("did not travel"), "{advice}");
+        assert!(!advice.contains("revoke it"), "{advice}");
+
+        // ...as is a port change on the same host.
+        let other_port: reqwest::Url = "https://maker.signet.kaleidoswap.com:8443/v2/x"
+            .parse()
+            .unwrap();
+        assert!(redirect_strips_api_key(&secure, &other_port));
+        assert!(api_key_redirect_advice(&secure, &other_port).contains("did not travel"));
+    }
+
+    /// An unauthenticated client must keep following redirects and parsing what
+    /// comes back.
+    ///
+    /// The redirect check is new on the GET path, and it guards a credential
+    /// nobody without a key has. A caller pointed at a maker that answers `302`
+    /// — a vanity host, a trailing-slash normalisation — worked before this
+    /// change and has to keep working.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_keyless_client_still_follows_a_redirect_off_its_base_url() {
+        let body = r#"{"BTC":800000,"L-BTC":1}"#;
+        let (elsewhere_url, elsewhere) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\
+                 \r\n\r\n{body}",
+                body.len(),
+            )
+            .into_bytes(),
+        );
+        let elsewhere_host = elsewhere_url
+            .strip_prefix("http://")
+            .and_then(|url| url.strip_suffix("/v2"))
+            .unwrap()
+            .to_string();
+        let (base_url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{elsewhere_host}/v2/chain/heights\r\n\
+                 Content-Length: 0\r\n\r\n"
+            )
+            .into_bytes(),
+        );
+
+        let follows_redirects = reqwest::Client::builder().build().unwrap();
+        let heights = BoltzApiClientV2::with_client(base_url, follows_redirects, None)
+            .get_height()
+            .await
+            .expect("a keyless client carries nothing a redirect could disclose");
+        assert_eq!(heights.btc, 800_000);
+
+        maker.join().unwrap();
+        elsewhere.join().unwrap();
     }
 
     /// `{:?}` on a create response must not print the credential.

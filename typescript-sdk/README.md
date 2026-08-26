@@ -153,9 +153,12 @@ read as a suspended organization. There is no accessor for the secret half:
 One protection is also weaker under `fetch` than on a server. `fetch` owns
 redirect handling and the SDK can set no policy on it, so a `3xx` away from the
 maker is reported after the fact instead of declined: the call fails naming the
-host that answered. The key itself is not disclosed by such a hop — `fetch` drops
-`Authorization` when a redirect crosses origins — but nothing that response says
-came from the maker.
+origin that answered. The key itself is not disclosed by such a hop — `fetch`
+treats any change of scheme, host or port as cross-origin and drops
+`Authorization` — but nothing that response says came from the maker. The advice
+in that error is written for native clients, whose stripping rule ignores the
+scheme, so on a scheme-only hop it will tell you to revoke a key `fetch` had in
+fact already dropped. Erring that way round is deliberate.
 
 ## `swapAuth` — persist it with the swap
 

@@ -41,21 +41,35 @@ Credential handling, on every target:
   anywhere else, so it cannot reach Esplora, the Platform API, a webhook or a
   second maker. The maker URL itself must be `https` unless it is loopback: a
   bearer credential over plain HTTP is readable by anything on the path, and an
-  organization key read once has to be revoked.
+  organization key read once has to be revoked. A maker URL carrying userinfo is
+  refused as well — `reqwest` turns `https://user:pw@host/v2` into an
+  `Authorization: Basic …` of its own and the key would be *appended* behind it,
+  so the maker would read the wrong header and record the swap as anonymous.
+- Redirects are declined outright only where the SDK owns the policy:
+  `KaleidoMakerClient::new` builds its client on `redirect::Policy::none()`. A
+  caller-supplied client (`with_client`) keeps its own policy, and in the browser
+  `fetch` owns redirects with no knob to set — on those two a hop off the maker
+  is caught after the fact by the check below rather than prevented.
 - A value that cannot be a key is rejected before any request. The maker answers
   `401` for a revoked key and for a suspended organization too, so a typo or a
   truncated paste would otherwise be indistinguishable from those.
 - Nothing renders the secret. `ApiKey`'s `Debug` prints
-  `kld_test_<key_id>_<redacted>`, `BoltzApiClientV2`'s `Debug` and UniFFI's
-  `__str__` inherit that, and JS gets `apiKeyId`/`apiKeyEnvironment` with no
-  accessor for the secret half at all.
+  `kld_test_<key_id>_<redacted>` and `BoltzApiClientV2`'s `Debug` inherits that;
+  Python and JS expose `api_key_id`/`api_key_environment` and no accessor for the
+  secret at all. `Zeroizing` wipes the stored copy and the per-request buffer,
+  which bounds the exposure without ending it — the header value each request
+  carries is outside the type's control.
 - A response that arrives from a host the client never addressed now fails for
-  an authenticated client rather than being parsed. The key is *not* disclosed
-  by that hop — `reqwest` and `fetch` both drop `Authorization` when a redirect
-  crosses origins — and the error says so, because the reaction to a leaked
-  `swapAuth` (burn the swap) and to a stray redirect (nothing to revoke) are
-  different. `X-Swap-Auth` is a custom header and does follow the hop, so its
-  message is unchanged.
+  an authenticated client rather than being parsed, and the error says what to do
+  about each credential, because the reactions differ. `X-Swap-Auth` is a custom
+  header and always follows the hop, so the swap is burnt. `Authorization` is
+  stripped by the redirect — but on `reqwest`'s rule, which compares host and
+  port and **ignores the scheme**, so an `https` maker redirected to
+  `http://same-host:443/…` re-sends the key in the clear. The advice is chosen
+  from that rule rather than from the SDK's stricter notion of an origin, so a
+  scheme-only hop says *revoke the key* instead of promising there is nothing to
+  revoke. (Browsers are stricter still — `fetch` treats a scheme change as
+  cross-origin — so the advice is pessimistic there, never wrong.)
 
 **Browsers are out of scope for this release.** An organization key has no
 origin binding and no per-key rate limit, so one embedded in browser JavaScript

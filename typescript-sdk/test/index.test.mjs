@@ -312,10 +312,32 @@ test("a Kaleido maker client exposes the key's public half and not its secret", 
   assert.equal(client.apiKeyId, "01KZZYB138E7C3HZX7Q1YBGAQG");
 
   // There is no accessor for the secret at all: the key crosses into wasm once
-  // and JS cannot read it back out.
+  // and JS cannot read it back out. Checked by asking the object for everything
+  // it will answer, rather than by listing own properties — a wasm-bindgen
+  // instance owns only `__wbg_ptr`, so a property scan can never fail and would
+  // pass just as well against a client that exposed the key outright.
+  const readable = [
+    ...Object.getOwnPropertyNames(client),
+    ...Object.getOwnPropertyNames(Object.getPrototypeOf(client)),
+  ]
+    .filter((name) => name !== "constructor" && name !== "free")
+    .map((name) => {
+      try {
+        const value = client[name];
+        return typeof value === "function" ? "" : String(value);
+      } catch {
+        return "";
+      }
+    });
   assert.equal(
-    JSON.stringify(Object.getOwnPropertyNames(client)).includes("s3cr3t"),
+    readable.some((value) => value.includes("s3cr3t")),
     false,
+    `a client property exposed the key secret: ${readable.join(" | ")}`,
+  );
+  // ...and the scan is worth something: it does see the half that is public.
+  assert.equal(
+    readable.some((value) => value.includes("01KZZYB138E7C3HZX7Q1YBGAQG")),
+    true,
   );
 
   // The plain constructor authenticates nothing — that is what keeps the client
@@ -367,4 +389,76 @@ test("the options object names the field that is wrong", () => {
     () => createKaleidoMakerClient({ apiKey: API_KEY }),
     (error) => isKaleidoSwapError(error) && /makerUrl/.test(error.message),
   );
+
+  // An unknown property is refused rather than ignored. The near misses are
+  // `apikey` and `timeout`, and silently dropping the latter leaves a client the
+  // caller believes is bounded running with no timeout at all.
+  assert.throws(
+    () =>
+      BoltzClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: API_KEY,
+        timeout: 30,
+      }),
+    (error) => isKaleidoSwapError(error) && /timeout/.test(error.message),
+  );
+
+  // `timeoutSecs` itself takes a number or a bigint, and nothing else.
+  assert.ok(
+    BoltzClient.forKaleidoMaker({
+      makerUrl: MAKER_URL,
+      apiKey: API_KEY,
+      timeoutSecs: 30,
+    }) instanceof BoltzClient,
+  );
+  assert.ok(
+    BoltzClient.forKaleidoMaker({
+      makerUrl: MAKER_URL,
+      apiKey: API_KEY,
+      timeoutSecs: 30n,
+    }) instanceof BoltzClient,
+  );
+  assert.throws(() =>
+    BoltzClient.forKaleidoMaker({
+      makerUrl: MAKER_URL,
+      apiKey: API_KEY,
+      timeoutSecs: -1,
+    }),
+  );
+});
+
+// A rejected call must name the property and never quote its contents.
+//
+// The options object is deserialized by hand for this reason. Routing it
+// through serde-wasm-bindgen put the *value* in the message — so
+// `forKaleidoMaker(process.env.KALEIDOSWAP_API_KEY)`, the transposed call the
+// named-options shape exists to catch, threw `invalid type: string
+// "kld_live_…"` and handed a live organization key to whatever caught it.
+test("a mistyped options argument never quotes the key back", () => {
+  const mistakes = [
+    // The whole key where the options object belongs.
+    () => BoltzClient.forKaleidoMaker(API_KEY),
+    // A wrapped key, the shape a config object would produce.
+    () =>
+      BoltzClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: { key: API_KEY },
+      }),
+    () =>
+      BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: [API_KEY] }),
+    // Arguments the other way round.
+    () => BoltzClient.forKaleidoMaker({ makerUrl: API_KEY, apiKey: MAKER_URL }),
+  ];
+
+  for (const attempt of mistakes) {
+    assert.throws(attempt, (error) => {
+      const rendered = `${error.message} ${error.stack ?? ""}`;
+      assert.equal(
+        rendered.includes("s3cr3t"),
+        false,
+        `the key secret reached the error: ${error.message}`,
+      );
+      return isKaleidoSwapError(error);
+    });
+  }
 });

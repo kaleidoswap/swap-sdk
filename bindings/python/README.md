@@ -77,7 +77,8 @@ The URL must be `https` unless it is a loopback address, since a bearer
 credential over plain HTTP is readable by anything on the path. A value that
 cannot be a key is rejected here rather than reaching the maker as a `401` —
 which is the same answer a revoked key gets. There is no accessor for the secret
-half, and `str(client)` prints the key id and environment only.
+half: `api_key_id()` and `api_key_environment()` are all the client will tell
+you, and UniFFI renders no string form of the object at all.
 
 Keep the key in server-side configuration. It is permanent until revoked, so
 never ship it inside a mobile or desktop application, where every user holds it.
