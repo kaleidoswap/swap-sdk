@@ -4,6 +4,65 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — partner attribution through an organization API key
+
+A partner organization can now have the swaps it originates attributed to it, so
+the volume and fees it drives reach its own statistics
+([kaleidoswap-maker-rs#319](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/319)).
+Attribution is opt-in and needs an organization API key from the KaleidoSwap
+partner panel — `kld_test_…` for signet and staging, `kld_live_…` for mainnet
+and production. **Nothing changes for callers who do not configure one**: every
+existing constructor authenticates nothing, which is also what keeps the client
+usable against a Boltz maker, where organizations do not exist.
+
+- Rust: `kaleido::KaleidoMakerClient::new(KaleidoMakerClientOptions { maker_url,
+  api_key, timeout })`, which derefs to `BoltzApiClientV2` — it is the ordinary
+  client plus a credential, not a second API. `kaleido::ApiKey` parses the key
+  (`FromStr`, so `"kld_test_…".parse()` works).
+- Python: `BoltzApiClientV2.kaleido_maker(maker_url, api_key, timeout)`, plus
+  `api_key_environment()` and `api_key_id()`.
+- WebAssembly: `BoltzClient.forKaleidoMaker({ makerUrl, apiKey, timeoutSecs })`,
+  plus the `apiKeyEnvironment` and `apiKeyId` getters.
+- TypeScript: `createKaleidoMakerClient({ makerUrl, apiKey, timeoutSecs })`, with
+  the options object typed.
+
+The key answers *which partner organization created this swap?* and nothing
+else. It authorizes no claim, no refund, no fund movement, no panel access and
+no administrative operation; the per-swap `swapAuth` below is what authorizes
+the outcome of a specific swap, and the two travel as separate headers.
+
+Credential handling, on every target:
+
+- The key goes out as `Authorization: Bearer …`, marked sensitive, so it stays
+  out of hyper's header dumps and — over HTTP/2 — out of the HPACK dynamic table
+  a connection-level observer or a later request on the same connection could
+  index it into.
+- It is bound to the configured maker origin and refused for a request addressed
+  anywhere else, so it cannot reach Esplora, the Platform API, a webhook or a
+  second maker. The maker URL itself must be `https` unless it is loopback: a
+  bearer credential over plain HTTP is readable by anything on the path, and an
+  organization key read once has to be revoked.
+- A value that cannot be a key is rejected before any request. The maker answers
+  `401` for a revoked key and for a suspended organization too, so a typo or a
+  truncated paste would otherwise be indistinguishable from those.
+- Nothing renders the secret. `ApiKey`'s `Debug` prints
+  `kld_test_<key_id>_<redacted>`, `BoltzApiClientV2`'s `Debug` and UniFFI's
+  `__str__` inherit that, and JS gets `apiKeyId`/`apiKeyEnvironment` with no
+  accessor for the secret half at all.
+- A response that arrives from a host the client never addressed now fails for
+  an authenticated client rather than being parsed. The key is *not* disclosed
+  by that hop — `reqwest` and `fetch` both drop `Authorization` when a redirect
+  crosses origins — and the error says so, because the reaction to a leaked
+  `swapAuth` (burn the swap) and to a stray redirect (nothing to revoke) are
+  different. `X-Swap-Auth` is a custom header and does follow the hop, so its
+  message is unchanged.
+
+**Browsers are out of scope for this release.** An organization key has no
+origin binding and no per-key rate limit, so one embedded in browser JavaScript
+is visible to every visitor, who can attribute their own swaps to — or exhaust
+the limits of — an organization that is not theirs. Keep the key in server-side
+configuration; a publishable attribution key is a separate, later concept.
+
 ### Breaking — chain re-quote acceptance carries the per-swap `swapAuth`
 
 `POST /v2/swap/chain/{id}/quote` accepts the maker's re-quote and commits the

@@ -8,6 +8,7 @@ import { isKaleidoSwapError, toJson } from "../dist/index.js";
 import {
   BoltzClient,
   BoltzWsApi,
+  createKaleidoMakerClient,
   init,
   SwapMasterKey,
   SwapScript,
@@ -291,4 +292,79 @@ test("the wasm instance stays usable after a rejected call", async () => {
     PUBKEY,
   );
   assert.ok(BoltzClient.forNetwork("signet") instanceof BoltzClient);
+});
+
+// ---------------------------------------------------------------------------
+// Partner attribution: the organization API key.
+// ---------------------------------------------------------------------------
+
+const API_KEY = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz";
+const MAKER_URL = "https://maker.signet.kaleidoswap.com/v2";
+
+test("a Kaleido maker client exposes the key's public half and not its secret", () => {
+  const client = createKaleidoMakerClient({
+    makerUrl: MAKER_URL,
+    apiKey: API_KEY,
+  });
+
+  assert.ok(client instanceof BoltzClient);
+  assert.equal(client.apiKeyEnvironment, "test");
+  assert.equal(client.apiKeyId, "01KZZYB138E7C3HZX7Q1YBGAQG");
+
+  // There is no accessor for the secret at all: the key crosses into wasm once
+  // and JS cannot read it back out.
+  assert.equal(
+    JSON.stringify(Object.getOwnPropertyNames(client)).includes("s3cr3t"),
+    false,
+  );
+
+  // The plain constructor authenticates nothing — that is what keeps the client
+  // usable against a Boltz maker, which has no notion of an organization key.
+  const generic = BoltzClient.forNetwork("signet");
+  assert.equal(generic.apiKeyEnvironment, undefined);
+  assert.equal(generic.apiKeyId, undefined);
+});
+
+test("a value that cannot be an organization key is rejected locally", () => {
+  for (const apiKey of [
+    "",
+    "sk_test_abc_secret",
+    "kld_staging_abc_secret",
+    "kld_test_abc",
+  ]) {
+    assert.throws(
+      () => createKaleidoMakerClient({ makerUrl: MAKER_URL, apiKey }),
+      // A `401` from the maker is what a *revoked* key gets, so a local typo
+      // must not arrive looking like one.
+      (error) => isKaleidoSwapError(error),
+      `"${apiKey}" should not have been accepted`,
+    );
+  }
+});
+
+test("an organization key is refused a maker it must not be sent to", () => {
+  // Plain HTTP to a remote host: a bearer credential anything on the path can
+  // read, and the key is permanent until revoked.
+  assert.throws(() =>
+    createKaleidoMakerClient({
+      makerUrl: "http://maker.signet.kaleidoswap.com/v2",
+      apiKey: API_KEY,
+    }),
+  );
+
+  // Loopback is the regtest harness, where the "network" is a socket on this
+  // machine.
+  assert.ok(
+    createKaleidoMakerClient({
+      makerUrl: "http://127.0.0.1:9001/v2",
+      apiKey: API_KEY,
+    }) instanceof BoltzClient,
+  );
+});
+
+test("the options object names the field that is wrong", () => {
+  assert.throws(
+    () => createKaleidoMakerClient({ apiKey: API_KEY }),
+    (error) => isKaleidoSwapError(error) && /makerUrl/.test(error.message),
+  );
 });

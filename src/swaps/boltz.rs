@@ -17,6 +17,7 @@
 //!     output_amount - base_fees - claim_fee
 //! );
 
+use crate::kaleido::{ApiKey, API_KEY_HEADER};
 use crate::network::{Currency, Network};
 #[cfg(feature = "ws")]
 use crate::util::ensure_rustls_crypto_provider;
@@ -479,12 +480,29 @@ fn require_pair_asset_context(
     })
 }
 
+/// Whether two URLs share an origin — scheme, host and effective port.
+///
+/// The unit a credential is scoped to. A different port on the same host is a
+/// different server, and `http` to a host is a different server from `https` to
+/// it, so neither is folded away here.
+pub(crate) fn same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
+    a.scheme() == b.scheme()
+        && a.host_str() == b.host_str()
+        && a.port_or_known_default() == b.port_or_known_default()
+}
+
 /// Reference Documnetation: <https://api.boltz.exchange/swagger>
 #[derive(Debug, Clone)]
 pub struct BoltzApiClientV2 {
     base_url: String,
     http_client: reqwest::Client,
     timeout: Option<Duration>,
+    /// The partner organization API key, when one was configured through
+    /// [`KaleidoMakerClient`]. `None` for every generic constructor here — the
+    /// Boltz-compatible client authenticates nothing.
+    ///
+    /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
+    api_key: Option<ApiKey>,
 }
 
 impl BoltzApiClientV2 {
@@ -493,6 +511,7 @@ impl BoltzApiClientV2 {
             base_url,
             http_client: Self::default_http_client(),
             timeout,
+            api_key: None,
         }
     }
 
@@ -590,10 +609,34 @@ impl BoltzApiClientV2 {
             base_url,
             http_client,
             timeout,
+            api_key: None,
         }
     }
 
-    /// Returns the WebSocket URL for the Boltz server
+    /// Bind a partner organization API key to this client.
+    ///
+    /// Crate-private: a key may only be paired with a URL [`KaleidoMakerClient`]
+    /// has already vetted, which is what makes "this client sends the key" and
+    /// "this client is allowed to" the same statement.
+    ///
+    /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
+    pub(crate) fn with_api_key(mut self, api_key: ApiKey) -> Self {
+        self.api_key = Some(api_key);
+        self
+    }
+
+    /// The partner organization API key this client carries, if any. The key's
+    /// secret is not reachable through it — see [`ApiKey`].
+    pub fn api_key(&self) -> Option<&ApiKey> {
+        self.api_key.as_ref()
+    }
+
+    /// Returns the WebSocket URL for the Boltz server.
+    ///
+    /// The organization API key is not carried on it. `/v2/ws` publishes swap
+    /// status for ids the subscriber already holds and creates nothing, so there
+    /// is nothing on it to attribute — and the WebSocket client this SDK uses
+    /// sends no custom headers on the handshake in the browser regardless.
     pub fn get_ws_url(&self) -> String {
         self.base_url.clone().replace("http", "ws") + "/ws"
     }
@@ -623,9 +666,12 @@ impl BoltzApiClientV2 {
     /// Make a GET request. Returns the Response
     async fn get_response(&self, end_point: &str) -> Result<reqwest::Response, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
-        let req_builder = self.http_client.get(url);
+        let req_builder = self.http_client.get(&url);
         let req_builder = self.maybe_add_timeout(req_builder);
-        Ok(req_builder.send().await?)
+        let req_builder = self.maybe_add_api_key(req_builder, &url)?;
+        let response = req_builder.send().await?;
+        self.reject_credential_leaking_redirect(&response, self.credentials_sent(None))?;
+        Ok(response)
     }
 
     /// Make a GET request. Returns the Response as text
@@ -658,11 +704,25 @@ impl BoltzApiClientV2 {
         data: impl Serialize,
         swap_auth: Option<&str>,
     ) -> Result<T, Error> {
+        // `post_response` already checked the redirect: every credential this
+        // client can send goes on in `request_response`, so that is the one place
+        // that knows what a response might have carried away.
         let response = self.post_response(end_point, data, swap_auth).await?;
-        if swap_auth.is_some() {
-            self.reject_credential_leaking_redirect(&response)?;
-        }
         Self::parse_json_response(response).await
+    }
+
+    /// The credential headers a request just went out with: the per-swap
+    /// `swapAuth` when the caller passed one, and the organization API key when
+    /// this client carries one.
+    fn credentials_sent(&self, swap_auth: Option<&str>) -> Vec<&'static str> {
+        let mut sent = Vec::new();
+        if swap_auth.is_some() {
+            sent.push(SWAP_AUTH_HEADER);
+        }
+        if self.api_key.is_some() {
+            sent.push(API_KEY_HEADER);
+        }
+        sent
     }
 
     /// Fail a credential-bearing request that came back from a host other than
@@ -675,31 +735,56 @@ impl BoltzApiClientV2 {
     /// CORS preflight for [`SWAP_AUTH_HEADER`], but the host the `Location`
     /// names is free to answer that preflight itself.
     ///
-    /// The header is already at the other host by the time this runs, so this
-    /// prevents nothing. It makes the disclosure visible, which is the
-    /// difference between a credential the caller knows to treat as burnt and
-    /// one they do not.
+    /// The hop has already happened by the time this runs, so this prevents
+    /// nothing. What it does is refuse to hand back a response the maker did not
+    /// send, and — where a credential went with it — make the disclosure
+    /// visible, which is the difference between a credential the caller knows to
+    /// treat as burnt and one they do not.
+    ///
+    /// The two credentials do not travel alike, and the message says which
+    /// happened, because the reactions differ. `reqwest` and `fetch` both drop
+    /// [`API_KEY_HEADER`] when a redirect crosses origins, so the organization
+    /// key does not reach the new host and there is nothing to revoke.
+    /// [`SWAP_AUTH_HEADER`] is a custom header and rides along, so that one is
+    /// genuinely disclosed and the swap is burnt.
     fn reject_credential_leaking_redirect(
         &self,
         response: &reqwest::Response,
+        carried: Vec<&'static str>,
     ) -> Result<(), Error> {
-        let sent_to = reqwest::Url::parse(&self.base_url)?;
-        let came_from = response.url();
-        let same_origin = sent_to.scheme() == came_from.scheme()
-            && sent_to.host_str() == came_from.host_str()
-            && sent_to.port_or_known_default() == came_from.port_or_known_default();
-        if same_origin {
+        if carried.is_empty() {
             return Ok(());
         }
-        Err(Error::Protocol(format!(
-            "a request carrying {SWAP_AUTH_HEADER} was redirected to {} — the \
-             credential reached that host, so treat it as disclosed and do not \
-             reuse the swap",
-            came_from
-                .host_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| came_from.to_string()),
-        )))
+        let sent_to = reqwest::Url::parse(&self.base_url)?;
+        let came_from = response.url();
+        if same_origin(&sent_to, came_from) {
+            return Ok(());
+        }
+
+        let host = came_from
+            .host_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| came_from.to_string());
+        let mut message = format!(
+            "a request carrying {} was redirected to {host}, which is not the maker \
+             it was addressed to",
+            carried.join(" and "),
+        );
+        if carried.contains(&SWAP_AUTH_HEADER) {
+            message.push_str(&format!(
+                "; {SWAP_AUTH_HEADER} is a custom header and follows a redirect, so \
+                 the per-swap credential reached that host — treat it as disclosed \
+                 and do not reuse the swap"
+            ));
+        }
+        if carried.contains(&API_KEY_HEADER) {
+            message.push_str(&format!(
+                "; {API_KEY_HEADER} is dropped across an origin hop, so the \
+                 organization API key did not travel, but nothing this response \
+                 says came from the maker"
+            ));
+        }
+        Err(Error::Protocol(message))
     }
 
     async fn parse_json_response<T: DeserializeOwned>(
@@ -933,11 +1018,18 @@ impl BoltzApiClientV2 {
         swap_auth: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
         let method_str = method.to_string();
-        let req_builder = self.http_client.request(method, url).json(&data);
+        let req_builder = self.http_client.request(method, &url).json(&data);
         let req_builder = self.maybe_add_timeout(req_builder);
         let req_builder = Self::maybe_add_swap_auth(req_builder, swap_auth)?;
+        let req_builder = self.maybe_add_api_key(req_builder, &url)?;
         match req_builder.send().await {
-            Ok(response) => Ok(response),
+            Ok(response) => {
+                self.reject_credential_leaking_redirect(
+                    &response,
+                    self.credentials_sent(swap_auth),
+                )?;
+                Ok(response)
+            }
             Err(e) => {
                 log::error!("{method_str} error: {e:#?}");
                 Err(e.into())
@@ -951,6 +1043,39 @@ impl BoltzApiClientV2 {
         } else {
             req_builder
         }
+    }
+
+    /// Attach the partner organization API key — and only to the exact origin
+    /// it was configured for.
+    ///
+    /// The key names an organization to the KaleidoSwap maker and to nobody
+    /// else. Esplora, the Platform API, a merchant webhook and a second maker
+    /// are all hosts that would learn a permanent credential they have no use
+    /// for, and any one of them could then attribute its own swaps to that
+    /// organization. Every URL this client builds is `base_url` plus a path, so
+    /// the comparison holds structurally; it is written out anyway, because
+    /// "the code currently only builds URLs one way" is not a property the type
+    /// system is checking, and a mismatch here means the key was about to go
+    /// somewhere it was never meant to.
+    fn maybe_add_api_key(
+        &self,
+        req_builder: RequestBuilder,
+        url: &str,
+    ) -> Result<RequestBuilder, Error> {
+        let Some(api_key) = &self.api_key else {
+            return Ok(req_builder);
+        };
+        let configured = reqwest::Url::parse(&self.base_url)?;
+        let target = reqwest::Url::parse(url)?;
+        if !same_origin(&configured, &target) {
+            return Err(Error::Protocol(format!(
+                "refusing to send organization API key {} to {} — it is bound to {}",
+                api_key.redacted(),
+                target.host_str().unwrap_or(url),
+                configured.host_str().unwrap_or(&self.base_url),
+            )));
+        }
+        Ok(req_builder.header(API_KEY_HEADER, api_key.bearer_header_value()?))
     }
 
     /// Attach the per-swap taker credential, rejecting a value that cannot be
@@ -3148,6 +3273,204 @@ mod tests {
             "reqwest forwards the credential across the hop \u{2014} that is what the \
              error is reporting, and what default_http_client exists to prevent. \
              Got:\n{forwarded}",
+        );
+    }
+
+    /// A client built for a partner organization must put the key in
+    /// `Authorization: Bearer …`, and one built without must send no such header
+    /// at all.
+    ///
+    /// The header name is pinned to the literal the maker reads rather than to
+    /// the constant the code writes with — reading it back out of
+    /// [`API_KEY_HEADER`] would pass under any rename, and a renamed header is a
+    /// swap the maker records as anonymous while the partner waits for it to
+    /// appear in their statistics.
+    #[test]
+    fn the_organization_key_travels_in_the_authorization_header() {
+        assert_eq!(API_KEY_HEADER, "Authorization");
+
+        let key = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz";
+        let base_url = "https://maker.signet.kaleidoswap.com/v2";
+        let url = format!("{base_url}/swap/submarine");
+
+        let authenticated = BoltzApiClientV2::new(base_url.to_string(), None)
+            .with_api_key(key.parse::<crate::kaleido::ApiKey>().unwrap());
+        let request = authenticated
+            .maybe_add_api_key(authenticated.http_client.post(&url), &url)
+            .unwrap()
+            .build()
+            .unwrap();
+        let sent = request.headers().get("Authorization").unwrap();
+        assert_eq!(sent.to_str().unwrap(), format!("Bearer {key}"));
+        assert!(
+            sent.is_sensitive(),
+            "the key must be marked sensitive, or HTTP/2 indexes it into the HPACK \
+             dynamic table",
+        );
+
+        // The generic client authenticates nothing — that is the whole contract
+        // with a Boltz maker, which has no notion of an organization key.
+        let generic = BoltzApiClientV2::new(base_url.to_string(), None);
+        let request = generic
+            .maybe_add_api_key(generic.http_client.post(&url), &url)
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(request.headers().get("Authorization").is_none());
+    }
+
+    /// The key must never be attached to a request addressed anywhere but the
+    /// maker it was configured for.
+    ///
+    /// It is a permanent organization credential. Esplora, the Platform API, a
+    /// merchant webhook and a second maker would each learn a secret they have
+    /// no use for, and any of them could then attribute their own swaps to that
+    /// organization. Nothing in this client builds such a URL today; the check
+    /// is what keeps that true when something does.
+    #[test]
+    fn the_organization_key_is_bound_to_the_configured_origin() {
+        let base_url = "https://maker.signet.kaleidoswap.com/v2";
+        let client = BoltzApiClientV2::new(base_url.to_string(), None).with_api_key(
+            "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t"
+                .parse::<crate::kaleido::ApiKey>()
+                .unwrap(),
+        );
+
+        for elsewhere in [
+            "https://blockstream.info/api/tx",
+            "https://api.kaleidoswap.com/v1/whatever",
+            "https://maker.signet.kaleidoswap.evil/v2/swap/submarine",
+            // Same host, different port: a different server.
+            "https://maker.signet.kaleidoswap.com:8443/v2/swap/submarine",
+            // Same host, plain HTTP: the key would go out in clear.
+            "http://maker.signet.kaleidoswap.com/v2/swap/submarine",
+        ] {
+            let err = client
+                .maybe_add_api_key(client.http_client.post(elsewhere), elsewhere)
+                .unwrap_err();
+            assert!(
+                matches!(&err, Error::Protocol(msg) if msg.contains("refusing to send")),
+                "the key must not go to {elsewhere}, got {err:?}",
+            );
+            // ...and the message must not be the thing that leaks it.
+            assert!(!format!("{err:?}").contains("s3cr3t"), "{err:?}");
+        }
+
+        // Any path under the configured origin is the maker.
+        let same = format!("{base_url}/swap/chain/some-id/quote");
+        assert!(client
+            .maybe_add_api_key(client.http_client.post(&same), &same)
+            .is_ok());
+    }
+
+    /// The key must reach the wire on every route, not only on create.
+    ///
+    /// Attribution is decided when the maker sees the request, and the SDK sends
+    /// the key by carrying it on the client rather than by threading it through
+    /// each call — so the test that matters is that a route nobody thought about
+    /// still carries it.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn an_authenticated_client_sends_the_key_on_every_route() {
+        let key = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz";
+        let expected = format!("authorization: bearer {}", key.to_lowercase());
+
+        // A GET route: no request body, nothing swap-specific, still attributed.
+        let (base_url, maker) = capture_one_request();
+        let client = BoltzApiClientV2::new(base_url, None)
+            .with_api_key(key.parse::<crate::kaleido::ApiKey>().unwrap());
+        let _ = client.get_height().await;
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(
+            request.starts_with("get /v2/chain/heights "),
+            "wrong route, got:\n{request}",
+        );
+        assert!(
+            request.contains(&expected),
+            "a GET must carry the organization key, got:\n{request}",
+        );
+
+        // A POST route, alongside the per-swap credential: the two are separate
+        // headers answering separate questions, and both must go out.
+        let (base_url, maker) = capture_one_request();
+        let client = BoltzApiClientV2::new(base_url, None)
+            .with_api_key(key.parse::<crate::kaleido::ApiKey>().unwrap());
+        let swap_auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+        client
+            .accept_quote("01KZZYB138E7C3HZX7Q1YBGAQG", 100_000, Some(swap_auth))
+            .await
+            .unwrap();
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(
+            request.contains(&expected),
+            "a POST must carry the organization key, got:\n{request}",
+        );
+        assert!(
+            request.contains(&format!("{}: {swap_auth}", SWAP_AUTH_HEADER.to_lowercase())),
+            "the per-swap credential must still go out beside it, got:\n{request}",
+        );
+
+        // And an unauthenticated client sends neither.
+        let (base_url, maker) = capture_one_request();
+        let _ = BoltzApiClientV2::new(base_url, None).get_height().await;
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(
+            !request.contains("authorization:"),
+            "the generic client must authenticate nothing, got:\n{request}",
+        );
+    }
+
+    /// A response that came back from a host the client never addressed must
+    /// fail, even though the key itself did not travel there.
+    ///
+    /// `reqwest` and `fetch` both drop `Authorization` across an origin hop, so
+    /// the key is not disclosed — but the swap this would otherwise parse came
+    /// from whoever answered, not from the maker, and the error has to say which
+    /// of those two things happened so the caller knows whether to revoke
+    /// anything.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_redirect_away_from_the_maker_fails_an_authenticated_request() {
+        let key = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz";
+
+        let (elsewhere_url, elsewhere) = capture_one_request();
+        let elsewhere_host = elsewhere_url
+            .strip_prefix("http://")
+            .and_then(|url| url.strip_suffix("/v2"))
+            .unwrap()
+            .to_string();
+        let (base_url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{elsewhere_host}/v2/elsewhere\r\n\
+                 Content-Length: 0\r\n\r\n"
+            )
+            .into_bytes(),
+        );
+
+        // A caller-supplied client on reqwest's default policy, which follows.
+        let follows_redirects = reqwest::Client::builder().build().unwrap();
+        let err = BoltzApiClientV2::with_client(base_url, follows_redirects, None)
+            .with_api_key(key.parse::<crate::kaleido::ApiKey>().unwrap())
+            .get_height()
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains(API_KEY_HEADER)),
+            "expected the hop to be reported, got {err:?}",
+        );
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains("did not travel")),
+            "the error must say the key stayed put, or the caller revokes a key \
+             that was never exposed: {err:?}",
+        );
+
+        maker.join().unwrap();
+        let forwarded = elsewhere.join().unwrap().to_lowercase();
+        assert!(
+            !forwarded.contains("authorization:"),
+            "reqwest must drop the key across the hop \u{2014} that is what the error \
+             reports. Got:\n{forwarded}",
         );
     }
 

@@ -108,6 +108,55 @@ Values rejected earlier by wasm-bindgen's generated ABI glue remain native
 JavaScript errors. In particular, passing a `number` where a declared `bigint` is
 required throws `TypeError` before Rust can attach a code.
 
+## Partner attribution — `createKaleidoMakerClient`
+
+A partner organization can have the swaps it originates attributed to it. That
+needs an **organization API key** from the KaleidoSwap partner panel — a
+`kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
+production. Without one, `BoltzClient` behaves exactly as before and creates
+unattributed swaps.
+
+```ts
+import { init, createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
+
+await init();
+const client = createKaleidoMakerClient({
+  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+  apiKey: process.env.KALEIDOSWAP_API_KEY!,
+});
+
+client.apiKeyEnvironment; // "test"
+client.apiKeyId; // the key id the partner panel shows
+```
+
+The result is an ordinary `BoltzClient` — every route works the same way — that
+sends the key as `Authorization: Bearer …` on requests to `makerUrl`, and only
+to `makerUrl`. The key answers _which partner organization created this swap?_
+and nothing else: it authorizes no claim, no refund, no fund movement and no
+panel access. The per-swap `swapAuth` below stays separate and unchanged.
+
+`makerUrl` must be `https` unless it is a loopback address, since a bearer
+credential over plain HTTP is readable by anything on the path. A value that
+cannot be a key is rejected here rather than reaching the maker as a `401` —
+which is the same answer a revoked key gets, so a local typo would otherwise
+read as a suspended organization. There is no accessor for the secret half:
+`apiKeyId` and `apiKeyEnvironment` are all JS can read back.
+
+> **Do not ship an organization key to a browser.** It is permanent until
+> revoked, with no origin binding and no per-key rate limit, so a key in a
+> bundle is visible to every visitor — who can then attribute their own swaps
+> to, or exhaust the limits of, an organization that is not theirs. This release
+> supports **server and native integrations only**: call this from Node, keep the
+> key in server-side configuration, and leave browser code on the plain
+> `BoltzClient` constructor.
+
+One protection is also weaker under `fetch` than on a server. `fetch` owns
+redirect handling and the SDK can set no policy on it, so a `3xx` away from the
+maker is reported after the fact instead of declined: the call fails naming the
+host that answered. The key itself is not disclosed by such a hop — `fetch` drops
+`Authorization` when a redirect crosses origins — but nothing that response says
+came from the maker.
+
 ## `swapAuth` — persist it with the swap
 
 Every create response from the KaleidoSwap maker carries a `swapAuth`: a

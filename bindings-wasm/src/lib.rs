@@ -268,6 +268,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
 use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
+use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 
 fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
@@ -328,6 +329,18 @@ mod boltz_asset_tests {
 }
 
 /// Async client for the Boltz swap API.
+/// `{ makerUrl, apiKey, timeoutSecs? }` for
+/// [`BoltzClient::for_kaleido_maker`]. A named struct rather than positional
+/// arguments: two adjacent strings, one of them a secret, is exactly the
+/// signature callers transpose.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct KaleidoMakerOptions {
+    maker_url: String,
+    api_key: String,
+    timeout_secs: Option<u64>,
+}
+
 #[wasm_bindgen]
 pub struct BoltzClient {
     inner: BoltzApiClientV2,
@@ -360,6 +373,74 @@ impl BoltzClient {
         Ok(BoltzClient {
             inner: BoltzApiClientV2::default(parse_network(&network)?).map_err(core_err)?,
         })
+    }
+
+    /// `BoltzClient.forKaleidoMaker({ makerUrl, apiKey, timeoutSecs? })` — a
+    /// client that attributes the swaps it creates to a partner organization.
+    ///
+    /// `apiKey` is the organization key from the partner panel, a `kld_test_…`
+    /// or `kld_live_…` value. It answers "which partner organization created
+    /// this swap?" and nothing else: it authorizes no claim, no refund, no fund
+    /// movement and no panel access. The per-swap `swapAuth` credential the
+    /// maker returns on create stays separate and unchanged.
+    ///
+    /// The key is bound to `makerUrl` and is never sent anywhere else — not to
+    /// Esplora, not to a second maker. `makerUrl` must be `https` unless it is a
+    /// loopback address, because a bearer credential over plain HTTP is readable
+    /// by anything on the path. A value that cannot be a key is rejected here
+    /// rather than reaching the maker as a `401`, which is the same answer a
+    /// revoked key gets.
+    ///
+    /// # Do not use this in a browser
+    ///
+    /// The key is a permanent organization credential with no origin binding and
+    /// no per-key rate limit. Bundled into browser JavaScript it is visible to
+    /// every visitor, who can then attribute their own swaps to — or exhaust the
+    /// limits of — an organization that is not theirs, and nothing in the bundle
+    /// can prevent it. **This release supports server and native integrations
+    /// only:** call this from Node, keep the key in server-side configuration,
+    /// and leave the browser bundle on the unauthenticated `BoltzClient`
+    /// constructor.
+    ///
+    /// One protection is also weaker here than on the server. `fetch` owns
+    /// redirect handling and wasm-bindgen can set no policy on it, so a `3xx`
+    /// away from the maker is caught after the fact instead of declined: the
+    /// request fails naming the host that answered. The key itself is not
+    /// disclosed by that hop — `fetch` drops `Authorization` when a redirect
+    /// crosses origins — but the response is not the maker's.
+    #[wasm_bindgen(js_name = forKaleidoMaker)]
+    pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
+        let options: KaleidoMakerOptions = from_js(options)?;
+        let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
+            maker_url: options.maker_url,
+            api_key: ApiKey::parse(&options.api_key).map_err(core_err)?,
+            timeout: options.timeout_secs.map(std::time::Duration::from_secs),
+        })
+        .map_err(core_err)?;
+        Ok(BoltzClient {
+            inner: client.into_inner(),
+        })
+    }
+
+    /// The environment the configured organization key is scoped to — `"test"`
+    /// or `"live"` — or `undefined` for an unauthenticated client.
+    ///
+    /// Worth asserting at start-up: a `kld_test_…` key against a production
+    /// maker is refused by the maker, and this says so before any swap is
+    /// attempted.
+    #[wasm_bindgen(getter, js_name = apiKeyEnvironment)]
+    pub fn api_key_environment(&self) -> Option<String> {
+        self.inner
+            .api_key()
+            .map(|key| key.environment().to_string())
+    }
+
+    /// The configured organization key's public identifier — the same one the
+    /// partner panel shows. Safe to log; the secret half is not reachable from
+    /// JS at all.
+    #[wasm_bindgen(getter, js_name = apiKeyId)]
+    pub fn api_key_id(&self) -> Option<String> {
+        self.inner.api_key().map(|key| key.key_id().to_string())
     }
 
     // ---- Rates / limits ----------------------------------------------------

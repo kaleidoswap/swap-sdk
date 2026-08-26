@@ -519,6 +519,20 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment()
+        != 48519
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id()
+        != 50977
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_chain_swap()
         != 57308
     ):
@@ -681,6 +695,13 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_default()
         != 9152
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_kaleido_maker()
+        != 501
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -967,6 +988,13 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_default.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_default.restype = (
     ctypes.c_void_p
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_kaleido_maker.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_kaleido_maker.restype = ctypes.c_void_p
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_new.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
@@ -974,6 +1002,18 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_new.argtype
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_new.restype = (
     ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_environment.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_environment.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_id.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_id.restype = (
+    _UniffiRustBuffer
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_create_chain_swap.argtypes = (
     ctypes.c_void_p,
@@ -1551,6 +1591,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_chain_swap.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_chain_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_reverse_swap.argtypes = ()
@@ -1633,6 +1677,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooper
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_default.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_default.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_kaleido_maker.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_kaleido_maker.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_new.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzapiclientv2_new.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_boltzwsapi_new.argtypes = ()
@@ -5822,6 +5868,31 @@ class _UniffiConverterTypeSecretKey:
 
 # objects.
 class BoltzApiClientV2Protocol(typing.Protocol):
+    def api_key_environment(
+        self,
+    ):
+        """
+        The environment the configured organization key is scoped to — `"test"`
+        or `"live"` — or `None` for an unauthenticated client.
+
+        Worth asserting at start-up: a `kld_test_…` key against a production
+        maker is refused by the maker, and this says so before any swap is
+        attempted.
+        """
+
+        raise NotImplementedError
+
+    def api_key_id(
+        self,
+    ):
+        """
+        The configured organization key's public identifier — the same one the
+        partner panel shows. Safe to log and to name in a support request; the
+        secret half is not reachable from here.
+        """
+
+        raise NotImplementedError
+
     def create_chain_swap(self, swap_request: "CreateChainRequest"):
         raise NotImplementedError
 
@@ -5912,6 +5983,87 @@ class BoltzApiClientV2:
             _UniffiConverterTypeNetwork.lower(network),
         )
         return cls._make_instance_(pointer)
+
+    @classmethod
+    def kaleido_maker(
+        cls, maker_url: "str", api_key: "str", timeout: "typing.Optional[int]"
+    ):
+        """
+        Client for the **KaleidoSwap maker** that attributes the swaps it creates
+        to a partner organization.
+
+        `api_key` is the organization key from the partner panel — a
+        `kld_test_…` or `kld_live_…` value. It answers "which partner
+        organization created this swap?" and nothing else: it authorizes no
+        claim, no refund, no fund movement and no panel access. The per-swap
+        `swap_auth` credential the maker returns on create stays separate and
+        unchanged.
+
+        A value that cannot be a key is rejected here rather than reaching the
+        maker as a `401`, which is the same answer a revoked key gets. The key is
+        bound to `maker_url` and is never sent anywhere else, and `maker_url`
+        must be `https` unless it is a loopback address — a bearer credential
+        over plain HTTP is readable by anything on the path.
+
+        The key is a permanent organization credential: keep it on a server, load
+        it from configuration rather than committing it, and never ship it inside
+        a mobile or desktop application binary, where every user holds it.
+
+        UniFFI's generated `__str__` on this object prints only what
+        `BoltzApiClientV2`'s `Debug` prints, and that redacts the key — see
+        `api_key_id` for the half that is safe to log.
+        """
+
+        _UniffiConverterString.check_lower(maker_url)
+
+        _UniffiConverterString.check_lower(api_key)
+
+        _UniffiConverterOptionalUInt64.check_lower(timeout)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_kaleido_maker,
+            _UniffiConverterString.lower(maker_url),
+            _UniffiConverterString.lower(api_key),
+            _UniffiConverterOptionalUInt64.lower(timeout),
+        )
+        return cls._make_instance_(pointer)
+
+    def api_key_environment(
+        self,
+    ) -> "typing.Optional[str]":
+        """
+        The environment the configured organization key is scoped to — `"test"`
+        or `"live"` — or `None` for an unauthenticated client.
+
+        Worth asserting at start-up: a `kld_test_…` key against a production
+        maker is refused by the maker, and this says so before any swap is
+        attempted.
+        """
+
+        return _UniffiConverterOptionalString.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_environment,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def api_key_id(
+        self,
+    ) -> "typing.Optional[str]":
+        """
+        The configured organization key's public identifier — the same one the
+        partner panel shows. Safe to log and to name in a support request; the
+        secret half is not reachable from here.
+        """
+
+        return _UniffiConverterOptionalString.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_id,
+                self._uniffi_clone_pointer(),
+            )
+        )
 
     async def create_chain_swap(
         self, swap_request: "CreateChainRequest"
