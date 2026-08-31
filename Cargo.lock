@@ -2402,8 +2402,7 @@ dependencies = [
 [[package]]
 name = "secp256k1"
 version = "0.32.0-beta.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c5fdc7d6e800869d3fd60ff857c479bf0a83ea7bf44b389e64461e844204994"
+source = "git+https://github.com/rust-bitcoin/rust-secp256k1?rev=6e5c556e566d6ca1954daa1d8592efac70e75d06#6e5c556e566d6ca1954daa1d8592efac70e75d06"
 dependencies = [
  "rand 0.9.5",
  "secp256k1-sys 0.12.0",
@@ -2421,8 +2420,7 @@ dependencies = [
 [[package]]
 name = "secp256k1-sys"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d3be00697c88c00fe102af8dc316038cc2062eab8da646e7463f4c0e70ca9fd"
+source = "git+https://github.com/rust-bitcoin/rust-secp256k1?rev=6e5c556e566d6ca1954daa1d8592efac70e75d06#6e5c556e566d6ca1954daa1d8592efac70e75d06"
 dependencies = [
  "cc",
 ]
