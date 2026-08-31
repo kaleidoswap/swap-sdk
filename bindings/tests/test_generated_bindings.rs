@@ -26,3 +26,9 @@ fn chain() {
 fn submarine() {
     run_test("tests/bindings/submarine.py");
 }
+
+#[test]
+#[serial]
+fn kaleido_auth() {
+    run_test("tests/bindings/kaleido_auth.py");
+}

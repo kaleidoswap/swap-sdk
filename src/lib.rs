@@ -38,7 +38,7 @@ pub use lightning_invoice::Bolt11Invoice;
 pub use swaps::liquid::{LBtcSwapScript, LBtcSwapTx};
 pub use swaps::{
     bitcoin::{BtcSwapScript, BtcSwapTx},
-    boltz,
+    boltz, kaleido,
     liquid::{decode_swap_output, LiquidAssetContext, LiquidSwapScript, LiquidSwapTx},
 };
 pub use util::fees;

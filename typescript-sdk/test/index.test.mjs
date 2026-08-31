@@ -8,6 +8,7 @@ import { isKaleidoSwapError, toJson } from "../dist/index.js";
 import {
   BoltzClient,
   BoltzWsApi,
+  createKaleidoMakerClient,
   init,
   SwapMasterKey,
   SwapScript,
@@ -291,4 +292,229 @@ test("the wasm instance stays usable after a rejected call", async () => {
     PUBKEY,
   );
   assert.ok(BoltzClient.forNetwork("signet") instanceof BoltzClient);
+});
+
+// ---------------------------------------------------------------------------
+// Partner attribution: the organization API key.
+// ---------------------------------------------------------------------------
+
+const API_KEY = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz";
+const MAKER_URL = "https://maker.signet.kaleidoswap.com/v2";
+
+test("a Kaleido maker client exposes the key's public half and not its secret", () => {
+  const client = createKaleidoMakerClient({
+    makerUrl: MAKER_URL,
+    apiKey: API_KEY,
+  });
+
+  assert.ok(client instanceof BoltzClient);
+  assert.equal(client.apiKeyEnvironment, "test");
+  assert.equal(client.apiKeyId, "01KZZYB138E7C3HZX7Q1YBGAQG");
+
+  // There is no accessor for the secret at all: the key crosses into wasm once
+  // and JS cannot read it back out. Checked by asking the object for everything
+  // it will answer, rather than by listing own properties — a wasm-bindgen
+  // instance owns only `__wbg_ptr`, so a property scan can never fail and would
+  // pass just as well against a client that exposed the key outright.
+  const readable = [
+    ...Object.getOwnPropertyNames(client),
+    ...Object.getOwnPropertyNames(Object.getPrototypeOf(client)),
+  ]
+    .filter((name) => name !== "constructor" && name !== "free")
+    .map((name) => {
+      try {
+        const value = client[name];
+        return typeof value === "function" ? "" : String(value);
+      } catch {
+        return "";
+      }
+    });
+  assert.equal(
+    readable.some((value) => value.includes("s3cr3t")),
+    false,
+    `a client property exposed the key secret: ${readable.join(" | ")}`,
+  );
+  // ...and the scan is worth something: it does see the half that is public.
+  assert.equal(
+    readable.some((value) => value.includes("01KZZYB138E7C3HZX7Q1YBGAQG")),
+    true,
+  );
+
+  // The plain constructor authenticates nothing — that is what keeps the client
+  // usable against a Boltz maker, which has no notion of an organization key.
+  const generic = BoltzClient.forNetwork("signet");
+  assert.equal(generic.apiKeyEnvironment, undefined);
+  assert.equal(generic.apiKeyId, undefined);
+});
+
+test("a value that cannot be an organization key is rejected locally", () => {
+  for (const apiKey of [
+    "",
+    "sk_test_abc_secret",
+    "kld_staging_abc_secret",
+    "kld_test_abc",
+  ]) {
+    assert.throws(
+      () => createKaleidoMakerClient({ makerUrl: MAKER_URL, apiKey }),
+      // A `401` from the maker is what a *revoked* key gets, so a local typo
+      // must not arrive looking like one.
+      (error) => isKaleidoSwapError(error),
+      `"${apiKey}" should not have been accepted`,
+    );
+  }
+});
+
+test("an organization key is refused a maker it must not be sent to", () => {
+  // Plain HTTP to a remote host: a bearer credential anything on the path can
+  // read, and the key is permanent until revoked.
+  assert.throws(() =>
+    createKaleidoMakerClient({
+      makerUrl: "http://maker.signet.kaleidoswap.com/v2",
+      apiKey: API_KEY,
+    }),
+  );
+
+  // Loopback is the regtest harness, where the "network" is a socket on this
+  // machine.
+  assert.ok(
+    createKaleidoMakerClient({
+      makerUrl: "http://127.0.0.1:9001/v2",
+      apiKey: API_KEY,
+    }) instanceof BoltzClient,
+  );
+});
+
+test("the options object names the field that is wrong", () => {
+  assert.throws(
+    () => createKaleidoMakerClient({ apiKey: API_KEY }),
+    (error) => isKaleidoSwapError(error) && /makerUrl/.test(error.message),
+  );
+
+  // An unknown property is refused rather than ignored. The near misses are
+  // `apikey` and `timeout`, and silently dropping the latter leaves a client the
+  // caller believes is bounded running with no timeout at all.
+  assert.throws(
+    () =>
+      BoltzClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: API_KEY,
+        timeout: 30,
+      }),
+    (error) => isKaleidoSwapError(error) && /timeout/.test(error.message),
+  );
+
+  // A document context is a browser, and an organization key in a page is
+  // visible to every visitor. §7 of the attribution design says server and
+  // native only for this release, and this is what makes the code say it too.
+  const hadDocument = "document" in globalThis;
+  globalThis.document = {};
+  try {
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
+      (error) => isKaleidoSwapError(error) && /browser/.test(error.message),
+    );
+    // The error must not quote the key it just refused.
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
+      (error) => !error.message.includes(API_KEY),
+    );
+    // Deliberate exceptions stay possible, and have to be written down.
+    assert.ok(
+      BoltzClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: API_KEY,
+        allowBrowser: true,
+      }) instanceof BoltzClient,
+    );
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({
+          makerUrl: MAKER_URL,
+          apiKey: API_KEY,
+          allowBrowser: "yes",
+        }),
+      (error) =>
+        isKaleidoSwapError(error) && /allowBrowser/.test(error.message),
+    );
+  } finally {
+    if (!hadDocument) {
+      delete globalThis.document;
+    }
+  }
+
+  // `timeoutSecs` itself takes a number or a bigint, and nothing else.
+  assert.ok(
+    BoltzClient.forKaleidoMaker({
+      makerUrl: MAKER_URL,
+      apiKey: API_KEY,
+      timeoutSecs: 30,
+    }) instanceof BoltzClient,
+  );
+  assert.ok(
+    BoltzClient.forKaleidoMaker({
+      makerUrl: MAKER_URL,
+      apiKey: API_KEY,
+      timeoutSecs: 30n,
+    }) instanceof BoltzClient,
+  );
+  for (const timeoutSecs of [
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    // Above 2**64. `as u64` on a float saturates rather than failing, so
+    // without a range check this arrived as `u64::MAX` seconds — a deadline
+    // tokio never reaches, leaving a client the caller believes is bounded
+    // running with no timeout at all.
+    1e20,
+  ]) {
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({
+          makerUrl: MAKER_URL,
+          apiKey: API_KEY,
+          timeoutSecs,
+        }),
+      (error) => isKaleidoSwapError(error) && /timeoutSecs/.test(error.message),
+      `timeoutSecs: ${timeoutSecs} should have been rejected`,
+    );
+  }
+});
+
+// A rejected call must name the property and never quote its contents.
+//
+// The options object is deserialized by hand for this reason. Routing it
+// through serde-wasm-bindgen put the *value* in the message — so
+// `forKaleidoMaker(process.env.KALEIDOSWAP_API_KEY)`, the transposed call the
+// named-options shape exists to catch, threw `invalid type: string
+// "kld_live_…"` and handed a live organization key to whatever caught it.
+test("a mistyped options argument never quotes the key back", () => {
+  const mistakes = [
+    // The whole key where the options object belongs.
+    () => BoltzClient.forKaleidoMaker(API_KEY),
+    // A wrapped key, the shape a config object would produce.
+    () =>
+      BoltzClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: { key: API_KEY },
+      }),
+    () =>
+      BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: [API_KEY] }),
+    // Arguments the other way round.
+    () => BoltzClient.forKaleidoMaker({ makerUrl: API_KEY, apiKey: MAKER_URL }),
+  ];
+
+  for (const attempt of mistakes) {
+    assert.throws(attempt, (error) => {
+      const rendered = `${error.message} ${error.stack ?? ""}`;
+      assert.equal(
+        rendered.includes("s3cr3t"),
+        false,
+        `the key secret reached the error: ${error.message}`,
+      );
+      return isKaleidoSwapError(error);
+    });
+  }
 });

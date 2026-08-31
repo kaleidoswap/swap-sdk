@@ -7,6 +7,7 @@ use kaleidorg_swap_sdk::boltz::{
     ChannelInfo, FailureReasonIncorrectAmounts, SubSwapStates, SwapStatus, TransactionInfo,
 };
 use kaleidorg_swap_sdk::error::Error as CoreError;
+use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 use kaleidorg_swap_sdk::network::{Chain, Currency, Network};
 use kaleidorg_swap_sdk::swaps::boltz::*;
 use kaleidorg_swap_sdk::util::secrets::Preimage;
@@ -79,6 +80,68 @@ impl BoltzApiClientV2 {
         Ok(Self {
             inner: boltz::BoltzApiClientV2::default(network)?,
         })
+    }
+
+    /// Client for the **KaleidoSwap maker** that attributes the swaps it creates
+    /// to a partner organization.
+    ///
+    /// `api_key` is the organization key from the partner panel — a
+    /// `kld_test_…` or `kld_live_…` value. It answers "which partner
+    /// organization created this swap?" and nothing else: it authorizes no
+    /// claim, no refund, no fund movement and no panel access. The per-swap
+    /// `swap_auth` credential the maker returns on create stays separate and
+    /// unchanged.
+    ///
+    /// A value that cannot be a key is rejected here rather than reaching the
+    /// maker as a `401`, which is the same answer a revoked key gets. The key is
+    /// bound to `maker_url` and is never sent anywhere else, and `maker_url`
+    /// must be `https` unless it is a loopback address — a bearer credential
+    /// over plain HTTP is readable by anything on the path.
+    ///
+    /// The key is a permanent organization credential: keep it on a server, load
+    /// it from configuration rather than committing it, and never ship it inside
+    /// a mobile or desktop application binary, where every user holds it.
+    ///
+    /// No exported method returns the secret, and UniFFI renders no string form
+    /// of this object at all — it emits `__str__` only for an object that
+    /// exports `Display`, and this one does not, so `str(client)` is the default
+    /// `<... object at 0x...>`. See `api_key_id` for the half that is safe to
+    /// log.
+    #[uniffi::constructor]
+    pub fn kaleido_maker(
+        maker_url: &str,
+        api_key: &str,
+        timeout: Option<u64>,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            inner: KaleidoMakerClient::new(KaleidoMakerClientOptions {
+                maker_url: maker_url.to_string(),
+                api_key: ApiKey::parse(api_key)?,
+                timeout: timeout.map(Duration::from_secs),
+            })?
+            .into_inner(),
+        })
+    }
+
+    /// The environment the configured organization key is scoped to — `"test"`
+    /// or `"live"` — or `None` for an unauthenticated client.
+    ///
+    /// Worth asserting at start-up: a `kld_test_…` key against a production
+    /// maker is refused by the maker, and this says so before any swap is
+    /// attempted.
+    #[uniffi::method]
+    pub fn api_key_environment(&self) -> Option<String> {
+        self.inner
+            .api_key()
+            .map(|key| key.environment().to_string())
+    }
+
+    /// The configured organization key's public identifier — the same one the
+    /// partner panel shows. Safe to log and to name in a support request; the
+    /// secret half is not reachable from here.
+    #[uniffi::method]
+    pub fn api_key_id(&self) -> Option<String> {
+        self.inner.api_key().map(|key| key.key_id().to_string())
     }
 
     #[uniffi::method]

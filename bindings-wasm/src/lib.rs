@@ -268,6 +268,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
 use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
+use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 
 fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
@@ -327,6 +328,146 @@ mod boltz_asset_tests {
     }
 }
 
+/// `{ makerUrl, apiKey, timeoutSecs? }` for
+/// [`BoltzClient::for_kaleido_maker`]. A named struct rather than positional
+/// arguments: two adjacent strings, one of them a secret, is exactly the
+/// signature callers transpose.
+struct KaleidoMakerOptions {
+    maker_url: String,
+    api_key: String,
+    timeout_secs: Option<u64>,
+    allow_browser: bool,
+}
+
+/// The properties [`KaleidoMakerOptions`] reads, for the unknown-key check.
+const KALEIDO_MAKER_OPTION_KEYS: [&str; 4] = ["makerUrl", "apiKey", "timeoutSecs", "allowBrowser"];
+
+impl KaleidoMakerOptions {
+    /// Read the options object by hand, without `from_js`.
+    ///
+    /// `from_js` reports a type mismatch by handing back serde's message, and
+    /// serde renders the offending **value** — so
+    /// `forKaleidoMaker(process.env.KALEIDOSWAP_API_KEY)`, the exact transposed
+    /// call the named-options shape exists to catch, would throw
+    /// `invalid type: string "kld_live_…"` and put the organization key
+    /// verbatim into whatever caught it. `ApiKey::parse` is careful never to
+    /// echo its input; that care is worth nothing if the value can be echoed
+    /// before it ever reaches the parser.
+    ///
+    /// So every error below names a property and never its contents.
+    fn from_js_options(options: JsValue) -> Result<Self, JsValue> {
+        let shape = "forKaleidoMaker expects an options object \
+                     `{ makerUrl, apiKey, timeoutSecs? }`";
+        if !options.is_object() || js_sys::Array::is_array(&options) {
+            return Err(arg_err(shape));
+        }
+        let options: js_sys::Object = options.unchecked_into();
+
+        // Unknown properties are rejected rather than ignored. The near misses
+        // are `apikey` and `timeout`, and silently ignoring the latter means a
+        // client the caller believes is bounded runs with no timeout at all.
+        // Property names are the caller's own literals, so naming them is safe.
+        let unknown: Vec<String> = js_sys::Object::keys(&options)
+            .iter()
+            .filter_map(|key| key.as_string())
+            .filter(|key| !KALEIDO_MAKER_OPTION_KEYS.contains(&key.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(arg_err(format!(
+                "unknown option{} {} — {shape}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+            )));
+        }
+
+        Ok(Self {
+            maker_url: required_string_option(&options, "makerUrl")?,
+            api_key: required_string_option(&options, "apiKey")?,
+            timeout_secs: timeout_secs_option(&options)?,
+            allow_browser: bool_option(&options, "allowBrowser")?,
+        })
+    }
+}
+
+/// Whether this looks like a document context — i.e. a browser.
+///
+/// One wasm artifact serves both Node and the browser, so there is no
+/// build-time split to make this decision at. `document` is the cheapest
+/// reliable divider: Node has none, and a bundle that ships to a page does.
+fn in_browser() -> bool {
+    js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("document")).unwrap_or(false)
+}
+
+/// An optional boolean property, defaulting to `false`.
+fn bool_option(options: &js_sys::Object, name: &str) -> Result<bool, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(false);
+    }
+    value
+        .as_bool()
+        .ok_or_else(|| arg_err(format!("option `{name}` must be a boolean")))
+}
+
+/// A required string property, named but never quoted back.
+fn required_string_option(options: &js_sys::Object, name: &str) -> Result<String, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Err(arg_err(format!("option `{name}` is required")));
+    }
+    value
+        .as_string()
+        .ok_or_else(|| arg_err(format!("option `{name}` must be a string")))
+}
+
+/// The optional `timeoutSecs`, as a whole non-negative number of seconds.
+///
+/// A `bigint` is accepted alongside a `number`: the rest of this surface takes
+/// 64-bit values as `bigint`, and a caller who reaches for one here should not
+/// be told their timeout is not a number.
+///
+/// The upper bound is not decoration. `as` on a float is a *saturating* cast, so
+/// without it `timeoutSecs: 1e20` would be accepted as `u64::MAX` — a timeout
+/// tokio clamps to a deadline that never arrives, leaving a client the caller
+/// believes is bounded running with none at all. That is the failure the
+/// unknown-option check above exists to prevent, and a caller who spelled the
+/// property right should not hit it. No value this accepts is silently changed:
+/// every one below the bound casts exactly.
+fn timeout_secs_option(options: &js_sys::Object) -> Result<Option<u64>, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str("timeoutSecs"))
+        .map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    if let Some(seconds) = value.as_f64() {
+        // `u64::MAX as f64` rounds *up* to 2^64, so the comparison has to be
+        // strict: every f64 strictly below it is within u64 and casts exactly.
+        if seconds.is_finite()
+            && seconds >= 0.0
+            && seconds.fract() == 0.0
+            && seconds < u64::MAX as f64
+        {
+            return Ok(Some(seconds as u64));
+        }
+    } else if let Some(seconds) = value.dyn_ref::<js_sys::BigInt>() {
+        // `try_from` already refuses anything outside u64, so a `bigint` is
+        // never truncated either.
+        if let Ok(seconds) = u64::try_from(seconds.clone()) {
+            return Ok(Some(seconds));
+        }
+    }
+    Err(arg_err(
+        "option `timeoutSecs` must be a whole number of seconds, not negative, \
+         and within 64 bits",
+    ))
+}
+
+/// A failure on our side of the boundary, from a `JsValue` that is already an
+/// exception rather than a `Display` value.
+fn internal_err_js(_: JsValue) -> JsValue {
+    coded_err(INTERNAL, "reading the options object threw")
+}
+
 /// Async client for the Boltz swap API.
 #[wasm_bindgen]
 pub struct BoltzClient {
@@ -360,6 +501,90 @@ impl BoltzClient {
         Ok(BoltzClient {
             inner: BoltzApiClientV2::default(parse_network(&network)?).map_err(core_err)?,
         })
+    }
+
+    /// `BoltzClient.forKaleidoMaker({ makerUrl, apiKey, timeoutSecs? })` — a
+    /// client that attributes the swaps it creates to a partner organization.
+    ///
+    /// `apiKey` is the organization key from the partner panel, a `kld_test_…`
+    /// or `kld_live_…` value. It answers "which partner organization created
+    /// this swap?" and nothing else: it authorizes no claim, no refund, no fund
+    /// movement and no panel access. The per-swap `swapAuth` credential the
+    /// maker returns on create stays separate and unchanged.
+    ///
+    /// The key is bound to `makerUrl` and is never sent anywhere else — not to
+    /// Esplora, not to a second maker. `makerUrl` must be `https` unless it is a
+    /// loopback address, because a bearer credential over plain HTTP is readable
+    /// by anything on the path. A value that cannot be a key is rejected here
+    /// rather than reaching the maker as a `401`, which is the same answer a
+    /// revoked key gets.
+    ///
+    /// # Do not use this in a browser
+    ///
+    /// The key is a permanent organization credential with no origin binding and
+    /// no per-key rate limit. Bundled into browser JavaScript it is visible to
+    /// every visitor, who can then attribute their own swaps to — or exhaust the
+    /// limits of — an organization that is not theirs, and nothing in the bundle
+    /// can prevent it. **This release supports server and native integrations
+    /// only:** call this from Node, keep the key in server-side configuration,
+    /// and leave the browser bundle on the unauthenticated `BoltzClient`
+    /// constructor.
+    ///
+    /// One protection is also weaker here than on the server. `fetch` owns
+    /// redirect handling and wasm-bindgen can set no policy on it, so a `3xx`
+    /// away from the maker is caught after the fact instead of declined: the
+    /// request fails naming the host that answered. The key itself is not
+    /// disclosed by that hop — `fetch` drops `Authorization` when a redirect
+    /// crosses origins — but the response is not the maker's.
+    #[wasm_bindgen(js_name = forKaleidoMaker)]
+    pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
+        let options = KaleidoMakerOptions::from_js_options(options)?;
+        if !options.allow_browser && in_browser() {
+            // §7 of the attribution design says server and native only for the
+            // first release, and until now that was said in documentation
+            // while the constructor happily ran in a page. Refusing makes the
+            // code enforce what the docs promise; `allowBrowser: true` is
+            // there for a deliberate exception, so the decision is at least
+            // written down at the call site.
+            return Err(arg_err(
+                "refusing to build an attributed client in a browser: the \
+                 organization API key is a permanent credential with no origin \
+                 binding and no per-key rate limit, so a key in a page is \
+                 visible to every visitor. Call this from Node with the key in \
+                 server-side configuration, or pass `allowBrowser: true` if you \
+                 have accepted that exposure.",
+            ));
+        }
+        let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
+            maker_url: options.maker_url,
+            api_key: ApiKey::parse(&options.api_key).map_err(core_err)?,
+            timeout: options.timeout_secs.map(std::time::Duration::from_secs),
+        })
+        .map_err(core_err)?;
+        Ok(BoltzClient {
+            inner: client.into_inner(),
+        })
+    }
+
+    /// The environment the configured organization key is scoped to — `"test"`
+    /// or `"live"` — or `undefined` for an unauthenticated client.
+    ///
+    /// Worth asserting at start-up: a `kld_test_…` key against a production
+    /// maker is refused by the maker, and this says so before any swap is
+    /// attempted.
+    #[wasm_bindgen(getter, js_name = apiKeyEnvironment)]
+    pub fn api_key_environment(&self) -> Option<String> {
+        self.inner
+            .api_key()
+            .map(|key| key.environment().to_string())
+    }
+
+    /// The configured organization key's public identifier — the same one the
+    /// partner panel shows. Safe to log; the secret half is not reachable from
+    /// JS at all.
+    #[wasm_bindgen(getter, js_name = apiKeyId)]
+    pub fn api_key_id(&self) -> Option<String> {
+        self.inner.api_key().map(|key| key.key_id().to_string())
     }
 
     // ---- Rates / limits ----------------------------------------------------

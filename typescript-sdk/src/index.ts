@@ -5,6 +5,7 @@
 // domain types with hand-written interfaces.
 
 import initWasm, {
+  BoltzClient as WasmBoltzClient,
   BtcLikeTransaction,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
   SwapScript as WasmSwapScript,
@@ -26,6 +27,86 @@ export const wasmUrl = new URL(
 export { BoltzClient } from "../vendor/bindings_wasm.js";
 
 export { BtcLikeTransaction };
+
+/** Options for {@link createKaleidoMakerClient}. */
+export interface KaleidoMakerClientOptions {
+  /** The maker's `/v2` base URL — the only origin the key is ever sent to. */
+  makerUrl: string;
+  /**
+   * The organization API key from the KaleidoSwap partner panel, a
+   * `kld_test_…` or `kld_live_…` value.
+   */
+  apiKey: string;
+  /** Per-request timeout in seconds. Omit to leave it to the HTTP stack. */
+  timeoutSecs?: number;
+  /**
+   * Build the client even in a document context. Off by default, and the
+   * constructor throws rather than running in a browser — see below. Set this
+   * only if you have accepted that every visitor can read the key.
+   */
+  allowBrowser?: boolean;
+}
+
+/**
+ * A {@link BoltzClient} that attributes the swaps it creates to a partner
+ * organization.
+ *
+ * The key answers *"which partner organization created this swap?"* and nothing
+ * else: it authorizes no claim, no refund, no fund movement and no panel access.
+ * The per-swap `swapAuth` credential the maker returns on create is what
+ * authorizes the outcome of a specific swap, and the two stay separate.
+ *
+ * The key is bound to `makerUrl` and never sent anywhere else — not to Esplora,
+ * not to a second maker. `makerUrl` must be `https` unless it is a loopback
+ * address, since a bearer credential over plain HTTP is readable by anything on
+ * the path. A value that cannot be a key is rejected here rather than reaching
+ * the maker as a `401`, which is the same answer a revoked key gets.
+ *
+ * ```ts
+ * import { init, createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
+ *
+ * await init();
+ * const client = createKaleidoMakerClient({
+ *   makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+ *   apiKey: process.env.KALEIDOSWAP_API_KEY!,
+ * });
+ * ```
+ *
+ * ## Server and native integrations only
+ *
+ * **This throws if called from a browser.** One wasm artifact serves both Node
+ * and the browser, so the check is a runtime one: a document context is
+ * refused unless you pass `allowBrowser: true`. The key is a permanent
+ * organization credential with no origin binding and no per-key rate limit, so a
+ * key in a browser bundle is visible to every visitor — who can then attribute
+ * their own swaps to, or exhaust the limits of, an organization that is not
+ * theirs. Nothing in the bundle can prevent that; a publishable attribution key
+ * with allowed origins and per-key limits is a separate, later concept. Put the
+ * key in server-side configuration, talk to the maker from there, and leave the
+ * browser bundle on the unauthenticated `BoltzClient` constructor.
+ *
+ * One protection is also weaker under `fetch` than on a server: `fetch` owns
+ * redirect handling and the SDK can set no policy on it, so a `3xx` away from
+ * the maker is reported after the fact instead of declined. The key is not
+ * disclosed by such a hop — `fetch` drops `Authorization` when a redirect
+ * crosses origins — but the response is not the maker's, and the call fails
+ * naming the host that answered.
+ *
+ * ## Error reporters that capture locals
+ *
+ * The key crosses this boundary as a plain `string`, so it is an argument on a
+ * stack frame for the length of the call. The SDK keeps it out of its own
+ * errors, logs and `toString`, but a reporter configured to capture local
+ * variables or function arguments — Sentry's `includeLocalVariables`, and the
+ * equivalent in Python (`pytest --showlocals`, `with_locals`) — will capture it
+ * from the frame regardless. Scrub `apiKey` in your reporter's
+ * before-send hook.
+ */
+export function createKaleidoMakerClient(
+  options: KaleidoMakerClientOptions,
+): WasmBoltzClient {
+  return WasmBoltzClient.forKaleidoMaker(options);
+}
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.

@@ -44,6 +44,52 @@ async def main():
 asyncio.run(main())
 ```
 
+## Partner attribution (organization API keys)
+
+A partner organization can have the swaps it originates attributed to it. That
+needs an **organization API key** from the KaleidoSwap partner panel — a
+`kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
+production. Without one, `BoltzApiClientV2` behaves exactly as before and
+creates unattributed swaps.
+
+```python
+import os
+import kaleidorg_swap_sdk
+
+client = kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+    "https://maker.signet.kaleidoswap.com/v2",
+    os.environ["KALEIDOSWAP_API_KEY"],
+    None,  # timeout in seconds
+)
+
+client.api_key_environment()  # "test"
+client.api_key_id()           # the key id the partner panel shows
+```
+
+> **Scrub the key in error reporters that capture locals.** It crosses the
+> binding as a plain `str`, so it is a function argument on a stack frame for
+> the length of the call. The SDK keeps it out of its own errors, logs and
+> `repr`, but anything that renders frame locals — `pytest --showlocals`,
+> Sentry's `with_locals`, some logging formatters — reads it off the frame
+> regardless. Scrub it in your reporter's before-send hook.
+
+The result is an ordinary client — every swap route works the same way — that
+sends the key as `Authorization: Bearer …` to that maker URL, and only to that
+maker URL. The key answers *which partner organization created this swap?* and
+nothing else: it authorizes no claim, no refund, no fund movement and no panel
+access. The per-swap `swap_auth` credential the maker returns on create stays
+separate and unchanged.
+
+The URL must be `https` unless it is a loopback address, since a bearer
+credential over plain HTTP is readable by anything on the path. A value that
+cannot be a key is rejected here rather than reaching the maker as a `401` —
+which is the same answer a revoked key gets. There is no accessor for the secret
+half: `api_key_id()` and `api_key_environment()` are all the client will tell
+you, and UniFFI renders no string form of the object at all.
+
+Keep the key in server-side configuration. It is permanent until revoked, so
+never ship it inside a mobile or desktop application, where every user holds it.
+
 ## Swap Types
 
 - **Submarine swaps** - Lightning → On-chain Bitcoin/Liquid

@@ -4,6 +4,93 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — partner attribution through an organization API key
+
+A partner organization can now have the swaps it originates attributed to it, so
+the volume and fees it drives reach its own statistics
+([kaleidoswap-maker-rs#319](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/319)).
+Attribution is opt-in and needs an organization API key from the KaleidoSwap
+partner panel — `kld_test_…` for signet and staging, `kld_live_…` for mainnet
+and production. **Nothing changes for callers who do not configure one**: every
+existing constructor authenticates nothing, which is also what keeps the client
+usable against a Boltz maker, where organizations do not exist.
+
+- Rust: `kaleido::KaleidoMakerClient::new(KaleidoMakerClientOptions { maker_url,
+  api_key, timeout })`, which derefs to `BoltzApiClientV2` — it is the ordinary
+  client plus a credential, not a second API. `kaleido::ApiKey` parses the key
+  (`FromStr`, so `"kld_test_…".parse()` works).
+- Python: `BoltzApiClientV2.kaleido_maker(maker_url, api_key, timeout)`, plus
+  `api_key_environment()` and `api_key_id()`.
+- WebAssembly: `BoltzClient.forKaleidoMaker({ makerUrl, apiKey, timeoutSecs })`,
+  plus the `apiKeyEnvironment` and `apiKeyId` getters.
+- TypeScript: `createKaleidoMakerClient({ makerUrl, apiKey, timeoutSecs })`, with
+  the options object typed.
+
+Both JavaScript entry points **refuse to build in a document context**. One wasm
+artifact serves Node and the browser, so there is no build-time split to make
+that decision at, and an organization key in a page is readable by every
+visitor. Pass `allowBrowser: true` for a deliberate exception.
+
+The key answers *which partner organization created this swap?* and nothing
+else. It authorizes no claim, no refund, no fund movement, no panel access and
+no administrative operation; the per-swap `swapAuth` below is what authorizes
+the outcome of a specific swap, and the two travel as separate headers.
+
+Credential handling, on every target:
+
+- The key goes out as `Authorization: Bearer …`, marked sensitive, so it stays
+  out of hyper's header dumps and — over HTTP/2 — out of the HPACK dynamic table
+  a connection-level observer or a later request on the same connection could
+  index it into.
+- It is bound to the configured maker origin and refused for a request addressed
+  anywhere else, so it cannot reach Esplora, the Platform API, a webhook or a
+  second maker. The maker URL itself must be `https` unless it is loopback: a
+  bearer credential over plain HTTP is readable by anything on the path, and an
+  organization key read once has to be revoked. A maker URL carrying userinfo is
+  refused as well — `reqwest` turns `https://user:pw@host/v2` into an
+  `Authorization: Basic …` of its own and the key would be *appended* behind it,
+  so the maker would read the wrong header and record the swap as anonymous.
+- Redirects are declined outright on every native path, because the SDK owns the
+  policy on both constructors: `KaleidoMakerClient::new` builds its client on
+  `redirect::Policy::none()`, and `with_client_builder` takes a
+  `reqwest::ClientBuilder` — not a built `Client` — so it can apply the same
+  policy while keeping the caller's proxy, TLS and pool settings. That shape is
+  deliberate: a `Client` does not report its redirect policy and a `Response`
+  carries only the URL the chain *ended* at, so a hop that detoured through
+  another host and came back cannot be detected afterwards. In the browser
+  `fetch` owns redirects with no knob to set, so there alone a hop off the maker
+  is caught after the fact by the check below rather than prevented.
+- A value that cannot be a key is rejected before any request. The maker answers
+  `401` for a revoked key and for a suspended organization too, so a typo or a
+  truncated paste would otherwise be indistinguishable from those.
+- Nothing renders the secret. `ApiKey`'s `Debug` prints
+  `kld_test_<key_id>_<redacted>` and `BoltzApiClientV2`'s `Debug` inherits that;
+  Python and JS expose `api_key_id`/`api_key_environment` and no accessor for the
+  secret at all. `Zeroizing` wipes the stored copy and the per-request buffer,
+  which bounds the exposure without ending it — the header value each request
+  carries is outside the type's control.
+- A response that arrives from a host the client never addressed now fails for
+  an authenticated client rather than being parsed, and the error says what to do
+  about each credential, because the reactions differ. `X-Swap-Auth` is a custom
+  header and always follows the hop, so the swap is burnt. `Authorization` is
+  stripped by the redirect — but on `reqwest`'s rule, which compares host and
+  port and **ignores the scheme**, so an `https` maker redirected to
+  `http://same-host:443/…` re-sends the key in the clear. The advice is chosen
+  from that rule rather than from the SDK's stricter notion of an origin, so a
+  scheme-only hop says *revoke the key* instead of promising there is nothing to
+  revoke. (Browsers are stricter still — `fetch` treats a scheme change as
+  cross-origin — so the advice is pessimistic there, never wrong.) Neither branch
+  claims more than the final URL can support: `reqwest` applies its rule per hop
+  and a `Response` exposes no hop list, so the reassuring branch says the key did
+  not travel *to that host* and names the multi-hop chain — where an earlier
+  scheme-only hop would have kept it — as one to treat the key as exposed.
+
+**Browsers are out of scope for this release.** An organization key has no
+origin binding and no per-key rate limit, so one embedded in browser JavaScript
+is visible to every visitor, who can attribute their own swaps to — or exhaust
+the limits of — an organization that is not theirs. Keep the key in server-side
+configuration; a publishable attribution key is a separate, later concept.
+
 ### Breaking — chain re-quote acceptance carries the per-swap `swapAuth`
 
 `POST /v2/swap/chain/{id}/quote` accepts the maker's re-quote and commits the

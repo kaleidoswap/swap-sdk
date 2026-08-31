@@ -41,6 +41,72 @@ the battle-tested swap engine (taproot swap scripts, MuSig2 cooperative signing,
 claim/refund transaction construction, BIP85 key derivation) is kept intact, and
 the KaleidoSwap layers are built on top of it.
 
+## Partner attribution (organization API keys)
+
+A partner organization can have the swaps it originates attributed to it, so the
+volume and fees it drives show up in its own statistics. Attribution is opt-in
+and needs an **organization API key** from the KaleidoSwap partner panel — a
+`kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
+production. Without one, every client here behaves exactly as before and creates
+unattributed swaps.
+
+The key answers one question — *which partner organization created this swap?* —
+and nothing else. It authorizes no claim, no refund, no fund movement and no
+panel access. The per-swap `swapAuth` credential the maker returns on create is
+what authorizes the outcome of a specific swap, and the two stay separate.
+
+```rust
+use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+
+let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
+    maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
+    api_key: std::env::var("KALEIDOSWAP_API_KEY").unwrap().parse::<ApiKey>()?,
+    timeout: None,
+})?;
+```
+
+```python
+client = kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+    "https://maker.signet.kaleidoswap.com/v2", os.environ["KALEIDOSWAP_API_KEY"], None
+)
+```
+
+```ts
+import { createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
+
+const client = createKaleidoMakerClient({
+  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+  apiKey: process.env.KALEIDOSWAP_API_KEY!,
+});
+```
+
+Every maker route is available on the result — it is the ordinary client plus a
+credential, not a second API.
+
+**Credential handling.** The key travels as `Authorization: Bearer …`, marked
+sensitive so it stays out of header dumps and out of the HTTP/2 HPACK dynamic
+table. It is bound to the maker URL it was configured with and is never attached
+to a request addressed anywhere else — not Esplora, not a second maker. That URL
+must be `https` unless it is a loopback address, since a bearer credential over
+plain HTTP is readable by anything on the path, and it may not carry userinfo —
+`https://user:pw@host/v2` becomes an `Authorization: Basic …` of its own that
+would displace the key and leave the swap unattributed. Redirects are declined
+outright on both native constructors — `with_client_builder` takes a
+`reqwest::ClientBuilder` rather than a built client precisely so the SDK can set
+the policy while keeping your proxy and TLS configuration; only in the browser,
+where `fetch` owns redirects, is a hop off the maker reported after the fact
+instead. Nothing renders the secret: the
+Rust `Debug` prints `kld_test_<key_id>_<redacted>`, Python and JS expose the key
+id and environment and no accessor for the secret at all. A value that cannot be
+a key is rejected locally rather than reaching the maker as a `401`, which is the
+same answer a revoked key gets.
+
+**Server and native integrations only.** A key in a browser bundle is visible to
+every visitor, who can then attribute their own swaps to — or exhaust the limits
+of — an organization that is not theirs. Keep it in server-side configuration
+and leave browser code on the unauthenticated client; a publishable attribution
+key with allowed origins and per-key rate limits is a separate, later concept.
+
 ## Repository structure
 
 | Path | What it is |
