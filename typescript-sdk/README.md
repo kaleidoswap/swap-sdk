@@ -142,13 +142,22 @@ which is the same answer a revoked key gets, so a local typo would otherwise
 read as a suspended organization. There is no accessor for the secret half:
 `apiKeyId` and `apiKeyEnvironment` are all JS can read back.
 
-> **Do not ship an organization key to a browser.** It is permanent until
-> revoked, with no origin binding and no per-key rate limit, so a key in a
-> bundle is visible to every visitor — who can then attribute their own swaps
-> to, or exhaust the limits of, an organization that is not theirs. This release
-> supports **server and native integrations only**: call this from Node, keep the
+> **This throws in a browser.** An organization key is permanent until revoked,
+> with no origin binding and no per-key rate limit, so a key in a bundle is
+> visible to every visitor — who can then attribute their own swaps to, or
+> exhaust the limits of, an organization that is not theirs. This release
+> supports **server and native integrations only**, and because one wasm
+> artifact serves both runtimes the check is a runtime one: a document context
+> is refused unless you pass `allowBrowser: true`. Call this from Node, keep the
 > key in server-side configuration, and leave browser code on the plain
 > `BoltzClient` constructor.
+
+> **Scrub the key in error reporters that capture locals.** It crosses the wasm
+> boundary as a plain `string`, so it is a function argument on a stack frame
+> for the length of the call. The SDK keeps it out of its own errors, logs and
+> `toString`, but a reporter configured to capture local variables — Sentry's
+> `includeLocalVariables`, and its equivalents — reads it off the frame
+> regardless. Drop `apiKey` in your before-send hook.
 
 One protection is also weaker under `fetch` than on a server. `fetch` owns
 redirect handling and the SDK can set no policy on it, so a `3xx` away from the

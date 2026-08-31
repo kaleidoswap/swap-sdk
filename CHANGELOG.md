@@ -26,6 +26,11 @@ usable against a Boltz maker, where organizations do not exist.
 - TypeScript: `createKaleidoMakerClient({ makerUrl, apiKey, timeoutSecs })`, with
   the options object typed.
 
+Both JavaScript entry points **refuse to build in a document context**. One wasm
+artifact serves Node and the browser, so there is no build-time split to make
+that decision at, and an organization key in a page is readable by every
+visitor. Pass `allowBrowser: true` for a deliberate exception.
+
 The key answers *which partner organization created this swap?* and nothing
 else. It authorizes no claim, no refund, no fund movement, no panel access and
 no administrative operation; the per-swap `swapAuth` below is what authorizes

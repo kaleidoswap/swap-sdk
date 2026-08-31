@@ -336,10 +336,11 @@ struct KaleidoMakerOptions {
     maker_url: String,
     api_key: String,
     timeout_secs: Option<u64>,
+    allow_browser: bool,
 }
 
 /// The properties [`KaleidoMakerOptions`] reads, for the unknown-key check.
-const KALEIDO_MAKER_OPTION_KEYS: [&str; 3] = ["makerUrl", "apiKey", "timeoutSecs"];
+const KALEIDO_MAKER_OPTION_KEYS: [&str; 4] = ["makerUrl", "apiKey", "timeoutSecs", "allowBrowser"];
 
 impl KaleidoMakerOptions {
     /// Read the options object by hand, without `from_js`.
@@ -383,8 +384,29 @@ impl KaleidoMakerOptions {
             maker_url: required_string_option(&options, "makerUrl")?,
             api_key: required_string_option(&options, "apiKey")?,
             timeout_secs: timeout_secs_option(&options)?,
+            allow_browser: bool_option(&options, "allowBrowser")?,
         })
     }
+}
+
+/// Whether this looks like a document context — i.e. a browser.
+///
+/// One wasm artifact serves both Node and the browser, so there is no
+/// build-time split to make this decision at. `document` is the cheapest
+/// reliable divider: Node has none, and a bundle that ships to a page does.
+fn in_browser() -> bool {
+    js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("document")).unwrap_or(false)
+}
+
+/// An optional boolean property, defaulting to `false`.
+fn bool_option(options: &js_sys::Object, name: &str) -> Result<bool, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(false);
+    }
+    value
+        .as_bool()
+        .ok_or_else(|| arg_err(format!("option `{name}` must be a boolean")))
 }
 
 /// A required string property, named but never quoted back.
@@ -517,6 +539,22 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = forKaleidoMaker)]
     pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
         let options = KaleidoMakerOptions::from_js_options(options)?;
+        if !options.allow_browser && in_browser() {
+            // §7 of the attribution design says server and native only for the
+            // first release, and until now that was said in documentation
+            // while the constructor happily ran in a page. Refusing makes the
+            // code enforce what the docs promise; `allowBrowser: true` is
+            // there for a deliberate exception, so the decision is at least
+            // written down at the call site.
+            return Err(arg_err(
+                "refusing to build an attributed client in a browser: the \
+                 organization API key is a permanent credential with no origin \
+                 binding and no per-key rate limit, so a key in a page is \
+                 visible to every visitor. Call this from Node with the key in \
+                 server-side configuration, or pass `allowBrowser: true` if you \
+                 have accepted that exposure.",
+            ));
+        }
         let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
             maker_url: options.maker_url,
             api_key: ApiKey::parse(&options.api_key).map_err(core_err)?,

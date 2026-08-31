@@ -403,6 +403,47 @@ test("the options object names the field that is wrong", () => {
     (error) => isKaleidoSwapError(error) && /timeout/.test(error.message),
   );
 
+  // A document context is a browser, and an organization key in a page is
+  // visible to every visitor. §7 of the attribution design says server and
+  // native only for this release, and this is what makes the code say it too.
+  const hadDocument = "document" in globalThis;
+  globalThis.document = {};
+  try {
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
+      (error) => isKaleidoSwapError(error) && /browser/.test(error.message),
+    );
+    // The error must not quote the key it just refused.
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
+      (error) => !error.message.includes(API_KEY),
+    );
+    // Deliberate exceptions stay possible, and have to be written down.
+    assert.ok(
+      BoltzClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: API_KEY,
+        allowBrowser: true,
+      }) instanceof BoltzClient,
+    );
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({
+          makerUrl: MAKER_URL,
+          apiKey: API_KEY,
+          allowBrowser: "yes",
+        }),
+      (error) =>
+        isKaleidoSwapError(error) && /allowBrowser/.test(error.message),
+    );
+  } finally {
+    if (!hadDocument) {
+      delete globalThis.document;
+    }
+  }
+
   // `timeoutSecs` itself takes a number or a bigint, and nothing else.
   assert.ok(
     BoltzClient.forKaleidoMaker({

@@ -3609,6 +3609,47 @@ mod tests {
         maker.join().unwrap();
     }
 
+    /// The same guarantee, on the constructor almost every caller uses.
+    ///
+    /// `KaleidoMakerClient::new` gets its policy indirectly, from
+    /// `default_http_client`, which trunk never tested either. Without this,
+    /// a regression there would silently remove the guarantee for the primary
+    /// path while the caller-supplied-builder test above kept passing.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn the_default_maker_client_declines_redirects() {
+        use crate::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+
+        let dead_port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            socket.local_addr().unwrap().port()
+        };
+        let (base_url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{dead_port}/v2/elsewhere\r\n\
+                 Content-Length: 0\r\n\r\n"
+            )
+            .into_bytes(),
+        );
+
+        let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
+            maker_url: base_url,
+            api_key: "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t"
+                .parse::<ApiKey>()
+                .unwrap(),
+            timeout: None,
+        })
+        .expect("a loopback http maker is the regtest harness");
+
+        let err = client.get_height().await.unwrap_err();
+        assert!(
+            matches!(&err, Error::HTTPStatusNotSuccess(status, _) if status.as_u16() == 302),
+            "the 302 must surface as its own status, not be chased: {err:?}",
+        );
+
+        maker.join().unwrap();
+    }
+
     /// A redirect that changes only the scheme must say **revoke the key**.
     ///
     /// This is the one hop where the SDK's notion of an origin and `reqwest`'s

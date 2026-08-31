@@ -347,6 +347,12 @@ pub struct KaleidoMakerClientOptions {
 #[derive(Debug, Clone)]
 pub struct KaleidoMakerClient {
     inner: BoltzApiClientV2,
+    /// The same key the inner client carries. Held here so the accessors below
+    /// are total: reaching for it through `inner.api_key()` would be an
+    /// `Option` this type can never see as `None`, and the `expect` closing
+    /// that gap is a panic path in a library the moment a third constructor is
+    /// added without one.
+    api_key: ApiKey,
 }
 
 impl KaleidoMakerClient {
@@ -362,7 +368,8 @@ impl KaleidoMakerClient {
         } = options;
         Self::validate_maker_url(&maker_url)?;
         Ok(Self {
-            inner: BoltzApiClientV2::new(maker_url, timeout).with_api_key(api_key),
+            inner: BoltzApiClientV2::new(maker_url, timeout).with_api_key(api_key.clone()),
+            api_key,
         })
     }
 
@@ -411,7 +418,8 @@ impl KaleidoMakerClient {
         let http_client = http_client.build()?;
         Ok(Self {
             inner: BoltzApiClientV2::with_client(maker_url, http_client, timeout)
-                .with_api_key(api_key),
+                .with_api_key(api_key.clone()),
+            api_key,
         })
     }
 
@@ -484,12 +492,8 @@ impl KaleidoMakerClient {
         self.inner
     }
 
-    /// Infallible: only [`Self::new`] and [`Self::with_client_builder`] build
-    /// this type, and both set a key.
     fn api_key_ref(&self) -> &ApiKey {
-        self.inner
-            .api_key()
-            .expect("a KaleidoMakerClient is only ever built with an API key")
+        &self.api_key
     }
 }
 

@@ -39,6 +39,12 @@ export interface KaleidoMakerClientOptions {
   apiKey: string;
   /** Per-request timeout in seconds. Omit to leave it to the HTTP stack. */
   timeoutSecs?: number;
+  /**
+   * Build the client even in a document context. Off by default, and the
+   * constructor throws rather than running in a browser — see below. Set this
+   * only if you have accepted that every visitor can read the key.
+   */
+  allowBrowser?: boolean;
 }
 
 /**
@@ -68,7 +74,9 @@ export interface KaleidoMakerClientOptions {
  *
  * ## Server and native integrations only
  *
- * **Do not call this from code that ships to a browser.** The key is a permanent
+ * **This throws if called from a browser.** One wasm artifact serves both Node
+ * and the browser, so the check is a runtime one: a document context is
+ * refused unless you pass `allowBrowser: true`. The key is a permanent
  * organization credential with no origin binding and no per-key rate limit, so a
  * key in a browser bundle is visible to every visitor — who can then attribute
  * their own swaps to, or exhaust the limits of, an organization that is not
@@ -83,6 +91,16 @@ export interface KaleidoMakerClientOptions {
  * disclosed by such a hop — `fetch` drops `Authorization` when a redirect
  * crosses origins — but the response is not the maker's, and the call fails
  * naming the host that answered.
+ *
+ * ## Error reporters that capture locals
+ *
+ * The key crosses this boundary as a plain `string`, so it is an argument on a
+ * stack frame for the length of the call. The SDK keeps it out of its own
+ * errors, logs and `toString`, but a reporter configured to capture local
+ * variables or function arguments — Sentry's `includeLocalVariables`, and the
+ * equivalent in Python (`pytest --showlocals`, `with_locals`) — will capture it
+ * from the frame regardless. Scrub `apiKey` in your reporter's
+ * before-send hook.
  */
 export function createKaleidoMakerClient(
   options: KaleidoMakerClientOptions,

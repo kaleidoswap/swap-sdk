@@ -66,6 +66,13 @@ client.api_key_environment()  # "test"
 client.api_key_id()           # the key id the partner panel shows
 ```
 
+> **Scrub the key in error reporters that capture locals.** It crosses the
+> binding as a plain `str`, so it is a function argument on a stack frame for
+> the length of the call. The SDK keeps it out of its own errors, logs and
+> `repr`, but anything that renders frame locals — `pytest --showlocals`,
+> Sentry's `with_locals`, some logging formatters — reads it off the frame
+> regardless. Scrub it in your reporter's before-send hook.
+
 The result is an ordinary client — every swap route works the same way — that
 sends the key as `Authorization: Bearer …` to that maker URL, and only to that
 maker URL. The key answers *which partner organization created this swap?* and
