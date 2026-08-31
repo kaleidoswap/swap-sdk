@@ -403,6 +403,14 @@ fn required_string_option(options: &js_sys::Object, name: &str) -> Result<String
 /// A `bigint` is accepted alongside a `number`: the rest of this surface takes
 /// 64-bit values as `bigint`, and a caller who reaches for one here should not
 /// be told their timeout is not a number.
+///
+/// The upper bound is not decoration. `as` on a float is a *saturating* cast, so
+/// without it `timeoutSecs: 1e20` would be accepted as `u64::MAX` — a timeout
+/// tokio clamps to a deadline that never arrives, leaving a client the caller
+/// believes is bounded running with none at all. That is the failure the
+/// unknown-option check above exists to prevent, and a caller who spelled the
+/// property right should not hit it. No value this accepts is silently changed:
+/// every one below the bound casts exactly.
 fn timeout_secs_option(options: &js_sys::Object) -> Result<Option<u64>, JsValue> {
     let value = js_sys::Reflect::get(options, &JsValue::from_str("timeoutSecs"))
         .map_err(internal_err_js)?;
@@ -410,16 +418,25 @@ fn timeout_secs_option(options: &js_sys::Object) -> Result<Option<u64>, JsValue>
         return Ok(None);
     }
     if let Some(seconds) = value.as_f64() {
-        if seconds.is_finite() && seconds >= 0.0 && seconds.fract() == 0.0 {
+        // `u64::MAX as f64` rounds *up* to 2^64, so the comparison has to be
+        // strict: every f64 strictly below it is within u64 and casts exactly.
+        if seconds.is_finite()
+            && seconds >= 0.0
+            && seconds.fract() == 0.0
+            && seconds < u64::MAX as f64
+        {
             return Ok(Some(seconds as u64));
         }
     } else if let Some(seconds) = value.dyn_ref::<js_sys::BigInt>() {
+        // `try_from` already refuses anything outside u64, so a `bigint` is
+        // never truncated either.
         if let Ok(seconds) = u64::try_from(seconds.clone()) {
             return Ok(Some(seconds));
         }
     }
     Err(arg_err(
-        "option `timeoutSecs` must be a whole number of seconds, and not negative",
+        "option `timeoutSecs` must be a whole number of seconds, not negative, \
+         and within 64 bits",
     ))
 }
 

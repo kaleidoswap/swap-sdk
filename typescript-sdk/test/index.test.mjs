@@ -418,13 +418,28 @@ test("the options object names the field that is wrong", () => {
       timeoutSecs: 30n,
     }) instanceof BoltzClient,
   );
-  assert.throws(() =>
-    BoltzClient.forKaleidoMaker({
-      makerUrl: MAKER_URL,
-      apiKey: API_KEY,
-      timeoutSecs: -1,
-    }),
-  );
+  for (const timeoutSecs of [
+    -1,
+    1.5,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    // Above 2**64. `as u64` on a float saturates rather than failing, so
+    // without a range check this arrived as `u64::MAX` seconds — a deadline
+    // tokio never reaches, leaving a client the caller believes is bounded
+    // running with no timeout at all.
+    1e20,
+  ]) {
+    assert.throws(
+      () =>
+        BoltzClient.forKaleidoMaker({
+          makerUrl: MAKER_URL,
+          apiKey: API_KEY,
+          timeoutSecs,
+        }),
+      (error) => isKaleidoSwapError(error) && /timeoutSecs/.test(error.message),
+      `timeoutSecs: ${timeoutSecs} should have been rejected`,
+    );
+  }
 });
 
 // A rejected call must name the property and never quote its contents.

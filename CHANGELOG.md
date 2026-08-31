@@ -45,10 +45,15 @@ Credential handling, on every target:
   refused as well — `reqwest` turns `https://user:pw@host/v2` into an
   `Authorization: Basic …` of its own and the key would be *appended* behind it,
   so the maker would read the wrong header and record the swap as anonymous.
-- Redirects are declined outright only where the SDK owns the policy:
-  `KaleidoMakerClient::new` builds its client on `redirect::Policy::none()`. A
-  caller-supplied client (`with_client`) keeps its own policy, and in the browser
-  `fetch` owns redirects with no knob to set — on those two a hop off the maker
+- Redirects are declined outright on every native path, because the SDK owns the
+  policy on both constructors: `KaleidoMakerClient::new` builds its client on
+  `redirect::Policy::none()`, and `with_client_builder` takes a
+  `reqwest::ClientBuilder` — not a built `Client` — so it can apply the same
+  policy while keeping the caller's proxy, TLS and pool settings. That shape is
+  deliberate: a `Client` does not report its redirect policy and a `Response`
+  carries only the URL the chain *ended* at, so a hop that detoured through
+  another host and came back cannot be detected afterwards. In the browser
+  `fetch` owns redirects with no knob to set, so there alone a hop off the maker
   is caught after the fact by the check below rather than prevented.
 - A value that cannot be a key is rejected before any request. The maker answers
   `401` for a revoked key and for a suspended organization too, so a typo or a
@@ -69,7 +74,11 @@ Credential handling, on every target:
   from that rule rather than from the SDK's stricter notion of an origin, so a
   scheme-only hop says *revoke the key* instead of promising there is nothing to
   revoke. (Browsers are stricter still — `fetch` treats a scheme change as
-  cross-origin — so the advice is pessimistic there, never wrong.)
+  cross-origin — so the advice is pessimistic there, never wrong.) Neither branch
+  claims more than the final URL can support: `reqwest` applies its rule per hop
+  and a `Response` exposes no hop list, so the reassuring branch says the key did
+  not travel *to that host* and names the multi-hop chain — where an earlier
+  scheme-only hop would have kept it — as one to treat the key as exposed.
 
 **Browsers are out of scope for this release.** An organization key has no
 origin binding and no per-key rate limit, so one embedded in browser JavaScript

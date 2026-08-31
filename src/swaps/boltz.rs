@@ -491,7 +491,7 @@ pub(crate) fn same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
         && a.port_or_known_default() == b.port_or_known_default()
 }
 
-/// Whether a redirect from `sent_to` to `came_from` made an HTTP client strip
+/// Whether a *single* hop from `sent_to` to `came_from` made an HTTP client strip
 /// [`API_KEY_HEADER`] on the way.
 ///
 /// Deliberately *not* [`same_origin`]. `reqwest` compares host and effective
@@ -499,6 +499,14 @@ pub(crate) fn same_origin(a: &reqwest::Url, b: &reqwest::Url) -> bool {
 /// the stricter one the SDK uses to decide what counts as the maker. The gap
 /// between the two is `https://h` → `http://h:443`, where the key is re-sent in
 /// the clear.
+///
+/// "Single" is the load-bearing word, and the reason the caller of this cannot
+/// promise the key stayed put. `reqwest` applies its rule to each hop against
+/// the one before it (`remove_sensitive_headers(headers, next, previous)`),
+/// while a [`reqwest::Response`] carries only the URL the chain *ended* at — no
+/// hop list, no `redirected` flag, on either target. So `https://maker` →
+/// `http://maker:443` → `https://elsewhere` ends somewhere this returns `true`
+/// for, having leaked the key in the clear on the first hop.
 fn redirect_strips_api_key(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> bool {
     sent_to.host_str() != came_from.host_str()
         || sent_to.port_or_known_default() != came_from.port_or_known_default()
@@ -506,12 +514,24 @@ fn redirect_strips_api_key(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
 
 /// What a caller should do about the organization API key after a redirect off
 /// the maker. See [`BoltzApiClientV2::reject_credential_leaking_redirect`].
+///
+/// Neither branch claims more than the SDK can see, which is the origin the
+/// response came back from and nothing about how it got there — see
+/// [`redirect_strips_api_key`]. So the reassuring branch is scoped to the hop it
+/// can actually account for, and names the chain it cannot: an intermediate hop
+/// that changed only the scheme would have kept the key, and a partner told
+/// flatly that there was nothing to revoke would leave a leaked permanent
+/// credential live.
 fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> String {
     if redirect_strips_api_key(sent_to, came_from) {
         return format!(
-            "; the redirect changed host or port, so {API_KEY_HEADER} was dropped and \
-             the organization API key did not travel — but nothing this response says \
-             came from the maker"
+            "; the response came back from a different host or port, so a direct hop \
+             there dropped {API_KEY_HEADER} and the organization API key did not \
+             travel — but nothing this response says came from the maker. If the \
+             maker answered with a chain of redirects rather than one, an earlier hop \
+             could have changed only the scheme and kept the key: this SDK sees only \
+             where the chain ended, so treat the key as exposed unless you can rule \
+             that out"
         );
     }
     "; the redirect changed only the scheme, which native HTTP clients do not treat \
@@ -762,13 +782,27 @@ impl BoltzApiClientV2 {
     /// ([`Self::with_client`]) and in the browser, where `fetch` owns redirect
     /// handling and reqwest sets no policy on it — a cross-origin hop needs a
     /// CORS preflight for [`SWAP_AUTH_HEADER`], but the host the `Location`
-    /// names is free to answer that preflight itself.
+    /// names is free to answer that preflight itself. An *authenticated* client
+    /// is narrower still: both [`KaleidoMakerClient`] constructors set
+    /// `Policy::none()` themselves, so on native this is unreachable for one and
+    /// the browser is the only case left.
     ///
     /// The hop has already happened by the time this runs, so this prevents
     /// nothing. What it does is refuse to hand back a response the maker did not
     /// send, and — where a credential went with it — make the disclosure
     /// visible, which is the difference between a credential the caller knows to
     /// treat as burnt and one they do not.
+    ///
+    /// It is a backstop and not the guarantee, because a [`reqwest::Response`]
+    /// reports only the URL the chain *ended* at — no hop list, no `redirected`
+    /// flag. A chain that detoured through another host and came back to the
+    /// maker is therefore indistinguishable from no redirect at all, and
+    /// [`SWAP_AUTH_HEADER`] would have ridden along to the detour. Only owning
+    /// the redirect policy closes that, which is what
+    /// [`Self::default_http_client`] and both [`KaleidoMakerClient`]
+    /// constructors do.
+    ///
+    /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
     ///
     /// The two credentials do not travel alike, and the message says which
     /// happened, because the reactions differ. [`SWAP_AUTH_HEADER`] is a custom
@@ -3517,6 +3551,64 @@ mod tests {
         );
     }
 
+    /// A client built through `with_client_builder` must not follow a redirect,
+    /// whatever the caller configured.
+    ///
+    /// This is the guarantee that makes the after-the-fact check unnecessary on
+    /// native rather than load-bearing, and it cannot be recovered later: a
+    /// `reqwest::Client` does not report its redirect policy, and a
+    /// `reqwest::Response` carries only the URL the chain ended at — so a chain
+    /// that detoured through another host and came back looks exactly like no
+    /// redirect at all, while `X-Swap-Auth` rode along to the detour. Taking the
+    /// builder instead of the built client is what closes that.
+    ///
+    /// `Location` points at a port nothing listens on, so following it could
+    /// only fail as a connection error. Coming back as the `302` itself is the
+    /// proof it was declined.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_client_from_a_caller_supplied_builder_declines_redirects() {
+        use crate::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+
+        let dead_port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            socket.local_addr().unwrap().port()
+        };
+        let (base_url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:{dead_port}/v2/elsewhere\r\n\
+                 Content-Length: 0\r\n\r\n"
+            )
+            .into_bytes(),
+        );
+
+        // `reqwest::Client::builder()` defaults to following up to 10 redirects.
+        // The point is that the caller does not get to keep that here.
+        let client = KaleidoMakerClient::with_client_builder(
+            KaleidoMakerClientOptions {
+                maker_url: base_url,
+                api_key: "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t"
+                    .parse::<ApiKey>()
+                    .unwrap(),
+                timeout: None,
+            },
+            reqwest::Client::builder(),
+        )
+        .expect("a loopback http maker is the regtest harness");
+
+        let err = client.get_height().await.unwrap_err();
+        assert!(
+            matches!(&err, Error::HTTPStatusNotSuccess(status, _) if status.as_u16() == 302),
+            "the 302 must surface as its own status, not be chased: {err:?}",
+        );
+        assert!(
+            !matches!(&err, Error::Protocol(msg) if msg.contains("was redirected to")),
+            "the hop must be declined outright, not reported after the fact: {err:?}",
+        );
+
+        maker.join().unwrap();
+    }
+
     /// A redirect that changes only the scheme must say **revoke the key**.
     ///
     /// This is the one hop where the SDK's notion of an origin and `reqwest`'s
@@ -3556,13 +3648,26 @@ mod tests {
             "the key did travel, in the clear: {advice}",
         );
 
-        // A host change is the ordinary case, and there the header really is
-        // dropped — so the partner must not be sent to revoke a live key.
+        // A host change is the ordinary case, and there the *direct* hop really
+        // does drop the header — so the partner must not be sent to revoke a
+        // live key.
         let elsewhere: reqwest::Url = "https://elsewhere.example.com/v2/x".parse().unwrap();
         assert!(redirect_strips_api_key(&secure, &elsewhere));
         let advice = api_key_redirect_advice(&secure, &elsewhere);
         assert!(advice.contains("did not travel"), "{advice}");
         assert!(!advice.contains("revoke it"), "{advice}");
+        // ...but "direct" is all this function can see. `reqwest` applies its
+        // rule to each hop against the one before it, while a `Response` carries
+        // only the URL the chain ended at, so `https://maker` →
+        // `http://maker:443` → `https://elsewhere` lands here having leaked the
+        // key in the clear on the first hop. The reassurance has to name the
+        // chain it cannot rule out, or that partner is told there is nothing to
+        // revoke at exactly the wrong moment.
+        assert!(
+            advice.contains("chain of redirects"),
+            "the advice must not promise more than the final URL can support: \
+             {advice}",
+        );
 
         // ...as is a port change on the same host.
         let other_port: reqwest::Url = "https://maker.signet.kaleidoswap.com:8443/v2/x"

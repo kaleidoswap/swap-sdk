@@ -366,22 +366,37 @@ impl KaleidoMakerClient {
         })
     }
 
-    /// [`Self::new`] over a caller-supplied `reqwest::Client`, keeping its proxy,
-    /// TLS and pool configuration.
+    /// [`Self::new`] over a caller-supplied `reqwest::ClientBuilder`, keeping the
+    /// proxy, TLS and pool configuration set on it.
     ///
-    /// Build it with [`reqwest::redirect::Policy::none`]. A redirect-following
-    /// client leaks on two counts: [`SWAP_AUTH_HEADER`], carried on a chain
-    /// re-quote, is a custom header and follows the hop unconditionally; and
-    /// `reqwest` keeps `Authorization` when only the scheme changes, so an
-    /// `https` maker answering `302 http://same-host:443/…` re-sends the
-    /// organization key in the clear. [`Self::new`] sets the policy for you, and
-    /// there is no way to set it from here — this constructor takes the client
-    /// as configured.
+    /// A *builder* and not a built `reqwest::Client`, because the redirect policy
+    /// is the one setting a caller does not get to choose here. A
+    /// redirect-following client leaks on two counts: [`SWAP_AUTH_HEADER`],
+    /// carried on a chain re-quote, is a custom header and follows the hop
+    /// unconditionally; and `reqwest` keeps `Authorization` when only the scheme
+    /// changes, so an `https` maker answering `302 http://same-host:443/…`
+    /// re-sends the organization key in the clear.
+    ///
+    /// Neither can be caught afterwards. A [`reqwest::Client`] does not report
+    /// its policy, and a [`reqwest::Response`] carries only the URL the chain
+    /// *ended* at — no hop list, no `redirected` flag — so a chain that detoured
+    /// through another host and came back is indistinguishable from no redirect
+    /// at all. Taking the configuration before it is frozen is what makes the
+    /// guarantee structural instead of advisory: this applies
+    /// [`reqwest::redirect::Policy::none`] itself and leaves every other setting
+    /// on the builder untouched.
+    ///
+    /// The browser is the one place this cannot help. `fetch` owns redirect
+    /// handling and wasm-bindgen can set no policy on it, so there the hop is
+    /// reported after the fact by
+    /// [`BoltzApiClientV2::reject_credential_leaking_redirect`] rather than
+    /// declined — see the [module docs][self] for why browsers are out of scope.
     ///
     /// [`SWAP_AUTH_HEADER`]: crate::boltz::SWAP_AUTH_HEADER
-    pub fn with_client(
+    /// [`BoltzApiClientV2::reject_credential_leaking_redirect`]: crate::boltz::BoltzApiClientV2
+    pub fn with_client_builder(
         options: KaleidoMakerClientOptions,
-        http_client: reqwest::Client,
+        http_client: reqwest::ClientBuilder,
     ) -> Result<Self, Error> {
         let KaleidoMakerClientOptions {
             maker_url,
@@ -389,6 +404,11 @@ impl KaleidoMakerClient {
             timeout,
         } = options;
         Self::validate_maker_url(&maker_url)?;
+        // No `redirect` on the wasm builder to call: `fetch` owns redirects and
+        // exposes no policy, which is why the after-the-fact check exists.
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        let http_client = http_client.redirect(reqwest::redirect::Policy::none());
+        let http_client = http_client.build()?;
         Ok(Self {
             inner: BoltzApiClientV2::with_client(maker_url, http_client, timeout)
                 .with_api_key(api_key),
@@ -464,8 +484,8 @@ impl KaleidoMakerClient {
         self.inner
     }
 
-    /// Infallible: only [`Self::new`] and [`Self::with_client`] build this type,
-    /// and both set a key.
+    /// Infallible: only [`Self::new`] and [`Self::with_client_builder`] build
+    /// this type, and both set a key.
     fn api_key_ref(&self) -> &ApiKey {
         self.inner
             .api_key()
@@ -713,7 +733,7 @@ mod tests {
         );
     }
 
-    /// `with_client` must apply exactly the same URL policy as `new`.
+    /// `with_client_builder` must apply exactly the same URL policy as `new`.
     ///
     /// It is the constructor a caller reaches for to get a proxy or a custom TLS
     /// setup, and it would be a quiet way around every check above if it took
@@ -721,13 +741,13 @@ mod tests {
     #[test]
     fn a_caller_supplied_client_is_held_to_the_same_url_policy() {
         let build = |maker_url: &str| {
-            KaleidoMakerClient::with_client(
+            KaleidoMakerClient::with_client_builder(
                 KaleidoMakerClientOptions {
                     maker_url: maker_url.to_string(),
                     api_key: ApiKey::parse(KEY).unwrap(),
                     timeout: None,
                 },
-                reqwest::Client::builder().build().unwrap(),
+                reqwest::Client::builder(),
             )
         };
 
