@@ -3977,67 +3977,70 @@ mod tests {
         );
     }
 
-    /// Probe whether a base URL's host is answering at all.
+    /// How long a live third-party API may take before it counts as absent.
     ///
-    /// The status code is deliberately ignored. This is not asking whether the
-    /// API is healthy, only whether it produced an answer — which is what
-    /// separates "the host is down" from "the host replied and this crate
-    /// could not use the reply".
+    /// Bounded, and comfortably under `wasm-bindgen-test`'s 20-second default
+    /// per test. An unbounded call is not portable: a host refusing connections
+    /// returns instantly on a developer machine, but the same dead host has
+    /// consumed over 60 seconds per call on the CI runner. Unbounded, that
+    /// silently became a browser-job timeout reported as "failed to detect test
+    /// as having been run" — no failing assertion, nothing to read.
     ///
-    /// One asymmetry to know about: under `wasm-pack test` this goes through
-    /// `fetch`, so a host that sets CORS headers on its API routes but not on
-    /// the bare base URL reads as unreachable even while it is serving. The
-    /// effect is a skip where a failure was due — in the browser job only. The
-    /// native job runs the same assertions without CORS in the way, so a real
-    /// regression still fails CI there rather than escaping it.
-    async fn host_reachable(base_url: &str) -> bool {
-        // No `.timeout()`: reqwest's wasm builder has none and these tests
-        // compile for wasm too. The case that matters — a refused connection —
-        // returns immediately anyway.
-        reqwest::Client::new().get(base_url).send().await.is_ok()
+    /// Generous enough that a working endpoint answers well inside it, so the
+    /// bound decides "absent", never "slow but fine".
+    const LIVE_API_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// A client for a live third-party API, bounded by [`LIVE_API_TIMEOUT`].
+    fn live_client(base_url: &str) -> BoltzApiClientV2 {
+        BoltzApiClientV2::new(base_url.to_string(), Some(LIVE_API_TIMEOUT))
     }
 
-    /// Unwrap a live third-party API result, or skip the test if that API is
-    /// unreachable.
+    /// Unwrap a live third-party API result, or skip the test if that API never
+    /// answered.
     ///
     /// A live-API test has two failure modes that deserve opposite reactions,
-    /// and a bare `assert!(result.is_ok())` cannot tell them apart:
+    /// and `assert!(result.is_ok())` cannot tell them apart:
     ///
-    /// - **The host is down.** Nothing is learned, and failing here makes a
-    ///   third party's outage block every merge and release. `None` is
-    ///   returned so the caller returns early.
-    /// - **The host answered and the answer did not fit.** A schema or
-    ///   protocol regression — the only reason these tests exist. This panics.
+    /// - **Nothing came back.** Nothing is learned, and failing here makes a
+    ///   third party's outage block every merge and release.
+    /// - **Something came back and this crate could not use it.** A schema or
+    ///   protocol regression — the only reason these tests exist.
     ///
-    /// The host is re-probed only after a call has already failed, so a passing
-    /// run costs no extra request.
-    async fn live<T>(result: Result<T, Error>, base_url: &str, what: &str) -> Option<T> {
-        let error = match result {
-            Ok(value) => return Some(value),
-            Err(error) => error,
-        };
-        assert!(
-            !host_reachable(base_url).await,
-            "{what} failed against a reachable {base_url}: {error:?}"
-        );
-        // Announced, not silent: a run where every live test skipped must not
-        // read like one where they all passed.
-        eprintln!("SKIPPED {what}: {base_url} is unreachable ({error:?})");
-        None
+    /// The error variant already carries that distinction, so this costs no
+    /// second request. An earlier version re-probed the host over the network
+    /// to decide; that doubled the wait against a dead host and was itself what
+    /// pushed the browser job over its limit.
+    fn live<T>(result: Result<T, Error>, base_url: &str, what: &str) -> Option<T> {
+        match result {
+            Ok(value) => Some(value),
+            // `Error::HTTP` is this crate's `From<reqwest::Error>`, and nothing
+            // on this client's path produces it any other way: a rejected
+            // status becomes `HTTPStatusNotSuccess`, and a body that will not
+            // deserialize becomes `HTTPResponseBodyInvalid` or `JSON`. So this
+            // variant means the request never came back — refused, DNS, TLS, or
+            // the timeout above — and the SDK is not what is under test.
+            Err(Error::HTTP(detail)) => {
+                // Announced, not silent: a run where every live test skipped
+                // must not read like one where they all passed.
+                eprintln!("SKIPPED {what}: {base_url} did not answer ({detail})");
+                None
+            }
+            Err(error) => panic!("{what} failed against a responding {base_url}: {error:?}"),
+        }
     }
 
     #[macros::async_test_all]
     async fn test_get_fee_estimation() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_fee_estimation().await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_fee_estimation").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_fee_estimation");
     }
 
     #[macros::async_test_all]
     async fn test_get_height() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_height().await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_height").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_height");
     }
 
     // Hits the live mainnet swap/restore endpoint with the swap-master xpub
@@ -4053,16 +4056,14 @@ mod tests {
         let xpub = swap_master_key.get_master_xpub().to_string();
         println!("SWAP_RESTORE_TEST xpub: {xpub}");
 
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let Some(responses) = live(
             client
                 .post_swap_restore(&xpub, Some("m".to_string()), Some(100))
                 .await,
             BOLTZ_MAINNET_URL_V2,
             "post_swap_restore",
-        )
-        .await
-        else {
+        ) else {
             return;
         };
         println!("SWAP_RESTORE_TEST returned {} swaps", responses.len());
@@ -4101,7 +4102,7 @@ mod tests {
         println!("CREATE_RESTORE refund pubkey: {refund_public_key} (index 0)");
         println!("CREATE_RESTORE claim pubkey : {claim_public_key} (index 1)");
 
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let req = CreateChainRequest {
             from: "BTC".to_string(),
             to: "L-BTC".to_string(),
@@ -4135,9 +4136,7 @@ mod tests {
                 .await,
             BOLTZ_MAINNET_URL_V2,
             "post_swap_restore",
-        )
-        .await
-        else {
+        ) else {
             return;
         };
         println!("CREATE_RESTORE restore returned {} swaps", responses.len());
@@ -4165,80 +4164,79 @@ mod tests {
 
     #[macros::async_test_all]
     async fn test_get_submarine_pairs() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_submarine_pairs().await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_submarine_pairs").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_submarine_pairs");
     }
 
     #[macros::async_test_all]
     async fn test_get_reverse_pairs() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_reverse_pairs().await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_reverse_pairs").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_reverse_pairs");
     }
 
     #[macros::async_test_all]
     async fn test_get_chain_pairs() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_chain_pairs().await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_chain_pairs").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_chain_pairs");
     }
 
     #[macros::async_test_all]
     #[ignore]
     async fn test_get_submarine_claim_tx_details() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz".to_string();
         let result = client.get_submarine_claim_tx_details(&id).await;
         live(
             result,
             BOLTZ_MAINNET_URL_V2,
             "get_submarine_claim_tx_details",
-        )
-        .await;
+        );
     }
 
     #[macros::async_test_all]
     #[ignore]
     async fn test_get_chain_claim_tx_details() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "3BIJf8UqGaSC".to_string();
         let result = client.get_chain_claim_tx_details(&id).await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_chain_claim_tx_details").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_chain_claim_tx_details");
     }
 
     #[macros::async_test_all]
     #[ignore]
     async fn test_get_reverse_tx() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
         let result = client.get_reverse_tx(id).await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_reverse_tx").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_reverse_tx");
     }
 
     #[macros::async_test_all]
     #[ignore]
     async fn test_get_submarine_tx() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
         let result = client.get_submarine_tx(id).await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_submarine_tx").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_submarine_tx");
     }
 
     #[macros::async_test_all]
     async fn test_get_chain_txs() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
         let result = client.get_chain_txs(id).await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_chain_txs").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_chain_txs");
     }
 
     #[macros::async_test_all]
     async fn test_get_swap() {
-        let client = BoltzApiClientV2::new(BOLTZ_MAINNET_URL_V2.to_string(), None);
+        let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
         let result = client.get_swap(id).await;
-        live(result, BOLTZ_MAINNET_URL_V2, "get_swap").await;
+        live(result, BOLTZ_MAINNET_URL_V2, "get_swap");
     }
 
     // The same read-only routes against the KaleidoSwap signet maker.
@@ -4265,55 +4263,52 @@ mod tests {
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[macros::async_test]
     async fn test_kaleidoswap_signet_get_height() {
-        let client = BoltzApiClientV2::new(KALEIDOSWAP_SIGNET_URL_V2.to_string(), None);
+        let client = live_client(KALEIDOSWAP_SIGNET_URL_V2);
         let result = client.get_height().await;
-        live(result, KALEIDOSWAP_SIGNET_URL_V2, "signet get_height").await;
+        live(result, KALEIDOSWAP_SIGNET_URL_V2, "signet get_height");
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[macros::async_test]
     async fn test_kaleidoswap_signet_get_fee_estimation() {
-        let client = BoltzApiClientV2::new(KALEIDOSWAP_SIGNET_URL_V2.to_string(), None);
+        let client = live_client(KALEIDOSWAP_SIGNET_URL_V2);
         let result = client.get_fee_estimation().await;
         live(
             result,
             KALEIDOSWAP_SIGNET_URL_V2,
             "signet get_fee_estimation",
-        )
-        .await;
+        );
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[macros::async_test]
     async fn test_kaleidoswap_signet_get_submarine_pairs() {
-        let client = BoltzApiClientV2::new(KALEIDOSWAP_SIGNET_URL_V2.to_string(), None);
+        let client = live_client(KALEIDOSWAP_SIGNET_URL_V2);
         let result = client.get_submarine_pairs().await;
         live(
             result,
             KALEIDOSWAP_SIGNET_URL_V2,
             "signet get_submarine_pairs",
-        )
-        .await;
+        );
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[macros::async_test]
     async fn test_kaleidoswap_signet_get_reverse_pairs() {
-        let client = BoltzApiClientV2::new(KALEIDOSWAP_SIGNET_URL_V2.to_string(), None);
+        let client = live_client(KALEIDOSWAP_SIGNET_URL_V2);
         let result = client.get_reverse_pairs().await;
         live(
             result,
             KALEIDOSWAP_SIGNET_URL_V2,
             "signet get_reverse_pairs",
-        )
-        .await;
+        );
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[macros::async_test]
     async fn test_kaleidoswap_signet_get_chain_pairs() {
-        let client = BoltzApiClientV2::new(KALEIDOSWAP_SIGNET_URL_V2.to_string(), None);
+        let client = live_client(KALEIDOSWAP_SIGNET_URL_V2);
         let result = client.get_chain_pairs().await;
-        live(result, KALEIDOSWAP_SIGNET_URL_V2, "signet get_chain_pairs").await;
+        live(result, KALEIDOSWAP_SIGNET_URL_V2, "signet get_chain_pairs");
     }
 }
