@@ -3977,6 +3977,24 @@ mod tests {
         );
     }
 
+    // Every test below that drives a live third-party API is native-only.
+    //
+    // Their value is proving this crate still parses what a real maker sends,
+    // and the native job proves exactly that. Running them under `wasm-pack
+    // test` adds a browser between the assertion and the answer, and that
+    // browser brings failure modes the SDK does not control: the maker sends no
+    // CORS headers, and against a blackholed host the tests stopped reporting
+    // entirely — `wasm-bindgen-test` gave up with "failed to detect test as
+    // having been run", which names no assertion and points at no line. A
+    // 10-second `reqwest` timeout did not settle it, and reqwest does arm a
+    // real `AbortController` on wasm, so the remaining cause is in the browser
+    // rather than anywhere a change here would reach.
+    //
+    // Keeping them on wasm therefore bought no coverage the native job lacks
+    // and handed a third party's uptime a veto over the browser job — the exact
+    // failure this whole helper exists to remove. The wasm-specific surface is
+    // covered by the tests that do not leave the machine.
+
     /// How long a live third-party API may take before it counts as absent.
     ///
     /// Bounded, and comfortably under `wasm-bindgen-test`'s 20-second default
@@ -3988,9 +4006,11 @@ mod tests {
     ///
     /// Generous enough that a working endpoint answers well inside it, so the
     /// bound decides "absent", never "slow but fine".
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     const LIVE_API_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// A client for a live third-party API, bounded by [`LIVE_API_TIMEOUT`].
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn live_client(base_url: &str) -> BoltzApiClientV2 {
         BoltzApiClientV2::new(base_url.to_string(), Some(LIVE_API_TIMEOUT))
     }
@@ -4010,6 +4030,7 @@ mod tests {
     /// second request. An earlier version re-probed the host over the network
     /// to decide; that doubled the wait against a dead host and was itself what
     /// pushed the browser job over its limit.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn live<T>(result: Result<T, Error>, base_url: &str, what: &str) -> Option<T> {
         match result {
             Ok(value) => Some(value),
@@ -4029,14 +4050,16 @@ mod tests {
         }
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_fee_estimation() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_fee_estimation().await;
         live(result, BOLTZ_MAINNET_URL_V2, "get_fee_estimation");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_height() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_height().await;
@@ -4046,7 +4069,8 @@ mod tests {
     // Hits the live mainnet swap/restore endpoint with the swap-master xpub
     // derived from a known wallet mnemonic, and prints what boltz returns.
     // Run: cargo test test_swap_restore_endpoint_print -- --nocapture
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_swap_restore_endpoint_print() {
         let wallet_mnemonic =
             "slogan prevent affair connect autumn crop together earn track ribbon horn copy";
@@ -4080,7 +4104,8 @@ mod tests {
     // swap/restore (and swap/restore/index) with the same xpub to see whether
     // boltz matches the just-registered leaf pubkeys.
     // Run: cargo test test_create_chain_then_restore -- --nocapture
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_create_chain_then_restore() {
         use crate::util::secrets::{Preimage, SwapMasterKey};
         let wallet_mnemonic =
@@ -4162,28 +4187,32 @@ mod tests {
         }
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_submarine_pairs() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_submarine_pairs().await;
         live(result, BOLTZ_MAINNET_URL_V2, "get_submarine_pairs");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_reverse_pairs() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_reverse_pairs().await;
         live(result, BOLTZ_MAINNET_URL_V2, "get_reverse_pairs");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_chain_pairs() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let result = client.get_chain_pairs().await;
         live(result, BOLTZ_MAINNET_URL_V2, "get_chain_pairs");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     #[ignore]
     async fn test_get_submarine_claim_tx_details() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
@@ -4196,7 +4225,8 @@ mod tests {
         );
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     #[ignore]
     async fn test_get_chain_claim_tx_details() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
@@ -4205,7 +4235,8 @@ mod tests {
         live(result, BOLTZ_MAINNET_URL_V2, "get_chain_claim_tx_details");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     #[ignore]
     async fn test_get_reverse_tx() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
@@ -4214,7 +4245,8 @@ mod tests {
         live(result, BOLTZ_MAINNET_URL_V2, "get_reverse_tx");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     #[ignore]
     async fn test_get_submarine_tx() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
@@ -4223,7 +4255,8 @@ mod tests {
         live(result, BOLTZ_MAINNET_URL_V2, "get_submarine_tx");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_chain_txs() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
@@ -4231,7 +4264,8 @@ mod tests {
         live(result, BOLTZ_MAINNET_URL_V2, "get_chain_txs");
     }
 
-    #[macros::async_test_all]
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[macros::async_test]
     async fn test_get_swap() {
         let client = live_client(BOLTZ_MAINNET_URL_V2);
         let id = "G6c6GJJY8eXz";
