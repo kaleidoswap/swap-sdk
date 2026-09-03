@@ -243,9 +243,12 @@ they are unreachable except from a job that environment gates.
 
 ### npm — `NPM_TOKEN`
 
-`@kaleidorg/swap-sdk` does not exist on npm yet. npm configures trusted
-publishing from an existing package's settings, so a brand-new package cannot be
-created by OIDC alone — which is the practical reason this pipeline uses a token.
+`@kaleidorg/swap-sdk` did not exist on npm when this pipeline was built, and
+npm configures trusted publishing from an existing package's settings, so a
+brand-new package could not be created by OIDC alone — which is the practical
+reason this pipeline uses a token. The package now exists, so that constraint is
+spent: migrating to trusted publishing is possible whenever someone wants to
+retire the stored credential.
 
 1. An owner of the `@kaleidorg` scope creates an **automation** token with
    publish rights (granular access tokens scoped to this package are preferable
@@ -272,8 +275,9 @@ an unused privilege.
 ### PyPI — `PYPI_TOKEN`
 
 1. A PyPI account with upload rights for `kaleidorg-swap-sdk` creates an API
-   token. The project does not exist yet, so an account-scoped token is needed
-   for the first upload; narrow it to the project afterwards.
+   token. The project now exists, so scope the token to it rather than to the
+   whole account — the account-scoped token the first upload required should not
+   still be in use.
 2. Store it as `PYPI_TOKEN` on the `release` environment.
 3. Set `PYPI_PUBLISH_ENABLED=true`.
 
@@ -411,22 +415,25 @@ or `cargo publish`, and `kaleidorg-swap-sdk` is unclaimed on crates.io.
 Consumers take it by tag:
 
 ```toml
-kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.1.1" }
+kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.4.0" }
 ```
 
-Pin the tag you actually want; `v0.1.1` is the latest published release at the
+Pin the tag you actually want; `v0.4.0` is the latest published release at the
 time of writing.
 
 The `repository`, `homepage`, and `include` metadata on the manifests exists so
 the crates are publishable *later* without another metadata pass, not because
 publishing happens today.
 
-Two things must be resolved before crates.io is possible, so treat this as a
+Three things must be resolved before crates.io is possible, so treat this as a
 deliberate deferral rather than an oversight:
 
-1. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
+1. `secp256k1_musig` is a git dependency as of `0.4.0`, and `cargo publish`
+   rejects a git dependency outright. Resolving it means the `0.33.x` MuSig2
+   migration described in that release's changelog entry, not a metadata change.
+2. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
    published first.
-2. The "one synchronized version" contract covers three of the five crates. The
+3. The "one synchronized version" contract covers three of the five crates. The
    root crate, Python distribution, and npm package share one public version;
    `bindings`, `bindings-wasm`, and `macros` are versioned independently of it
    and of each other. `validate-versions` deliberately checks only the three
@@ -446,11 +453,12 @@ new name was unclaimed, and `kaleidorg-swap-sdk` now holds `0.1.0` and `0.1.1`
 on PyPI. `0.1.0` reached PyPI but never reached npm, so it is permanently
 claimed there and absent from npm; see the `0.1.1` changelog entry.
 
-Public PyPI publishing defaults to **off**: `PYPI_PUBLISH_ENABLED` is absent or
-`false`, and the registry-completion gate requires the publish and verify jobs to
-be `skipped` in that case. Enabling it needs only the `PYPI_TOKEN` secret on the
-`release` environment and the variable set to `true`. Until then the Python
-artifacts are validated in CI and shipped as GitHub release assets.
+Public PyPI publishing is **enabled**: `PYPI_PUBLISH_ENABLED` is `true`, and
+`kaleidorg-swap-sdk` carries a release for every tagged version. The flag still
+defaults to off — absent or `false` — and the registry-completion gate then
+requires the publish and verify jobs to be `skipped`, with the Python artifacts
+validated in CI and shipped as GitHub release assets only. Read the live value
+before tagging rather than assuming either state.
 
 A PyPI upload is effectively permanent: a filename cannot be re-uploaded and a
 yank does not free the version. Treat enabling this flag as a one-way door for

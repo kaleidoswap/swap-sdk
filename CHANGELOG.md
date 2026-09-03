@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-03
+
 ### Added — partner attribution through an organization API key
 
 A partner organization can now have the swaps it originates attributed to it, so
@@ -276,6 +278,44 @@ a path-tracking dependency. The redaction is exact-match against the body's own
 scalars, so a value serde renders differently than `serde_json` stores it — a
 float, or a string carrying a backtick that ends the run early — can still leave
 a fragment. Neither shape is a credential the maker issues.
+
+### Fixed — `secp256k1_musig` is sourced from git, so a fresh resolve works again
+
+Every `secp256k1` `0.32.0-beta.*` was yanked on 2026-08-28, superseded by the
+stable `0.33` line. The MuSig2 API the cooperative-signing path needs is not in
+the `secp256k1` that `bitcoin` and `elements` bundle, so this crate carries a
+second copy under the `secp256k1_musig` alias — and that copy's
+`^0.32.0-beta.0` requirement became one nothing on crates.io can satisfy.
+
+This repository's own builds never noticed: cargo honours a yanked version a
+`Cargo.lock` already pins, and ours pinned `0.32.0-beta.2`. **A resolution that
+starts without that lock could not see the version at all** — which is what a
+downstream consumer adding this SDK to their own project does, and what the
+"Build as wasm dependency" job reproduces by writing a fresh lock. An exact
+`=0.32.0-beta.2` would not have helped: a yank excludes a version from a fresh
+resolution however precise the requirement, and only an existing lock entry
+grants the exception.
+
+The dependency now points at the rust-secp256k1 commit tagged
+`secp256k1-0.32.0-beta.2` (`rev = "6e5c556e…"`), which a yank does not reach. It
+is the same version the lock already held, so no call site moves and nothing in
+the signing path changes. `rev` and not `tag`, because a tag can be moved, and a
+version vanishing from underneath us is the class of surprise this cleans up
+after.
+
+The cost falls on the surfaces that build from source — the git-installed Rust
+crate and the Python sdist. One dependency is now fetched from GitHub rather
+than crates.io, so those builds need `git` and reachability to that host. The
+prebuilt wheels and the npm package embed compiled artifacts and are unaffected.
+It also adds a blocker to eventual crates.io publication, alongside the two in
+[`docs/releasing.md`](docs/releasing.md): `cargo publish` rejects a git
+dependency outright.
+
+A stopgap, not the destination. `0.33.x` is the real fix, and its MuSig2 nonce
+API differs — `SessionSecretRand::assume_unique_per_nonce_gen` takes a second
+argument and `KeyAggCache::nonce_gen` changed shape, across 13 call sites in
+`swaps/bitcoin.rs` and `swaps/liquid.rs`. That migration wants its own review
+rather than riding along on an unblocking change.
 
 ## [0.3.0] - 2026-08-13
 

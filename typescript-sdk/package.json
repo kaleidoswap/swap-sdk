@@ -1,6 +1,6 @@
 {
   "name": "@kaleidorg/swap-sdk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "KaleidoSwap swap SDK \u2014 Boltz-protocol atomic swaps (submarine/reverse/chain) for the browser over WebAssembly",
   "type": "module",
   "main": "dist/index.node.js",
