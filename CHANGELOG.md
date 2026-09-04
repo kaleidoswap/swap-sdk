@@ -93,6 +93,33 @@ is visible to every visitor, who can attribute their own swaps to — or exhaust
 the limits of — an organization that is not theirs. Keep the key in server-side
 configuration; a publishable attribution key is a separate, later concept.
 
+### Fixed — `Error` implements `std::error::Error`
+
+It derived `Debug` and implemented `Display`, but not `std::error::Error` — so
+`?` could not lift a library error into `Box<dyn std::error::Error>` or
+`anyhow::Result`, and it could not be a `source()` inside a caller's own error
+type. Every consumer needed a `map_err` at each call site to work around it.
+
+`source()` is threaded through for the variants that wrap a concrete error, so a
+caller printing a chain now reaches the underlying cause. The `String` variants
+report none — whatever produced them was flattened when it was converted — and
+neither do `Bolt11` and `BIP85`, whose upstream error types do not implement the
+trait themselves.
+
+### Added — `examples/kaleido_attribution_probe.rs`
+
+A runnable check of the attribution path against a local maker: it parses a key
+and asserts the secret is absent from both `Debug` and `redacted()`, confirms a
+plaintext non-loopback maker URL is refused at construction, creates an
+attributed swap through `KaleidoMakerClient` and an anonymous one through the
+plain `BoltzApiClientV2`, and confirms a tampered key is refused rather than
+silently downgraded.
+
+```bash
+MAKER_URL=http://127.0.0.1:9420/v2 KALEIDOSWAP_API_KEY=kld_test_… \
+  cargo run --example kaleido_attribution_probe
+```
+
 ### Breaking — chain re-quote acceptance carries the per-swap `swapAuth`
 
 `POST /v2/swap/chain/{id}/quote` accepts the maker's re-quote and commits the

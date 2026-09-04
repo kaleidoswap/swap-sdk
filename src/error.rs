@@ -363,3 +363,40 @@ impl Display for Error {
         Ok(())
     }
 }
+
+/// Without this, `?` cannot lift a library error into `Box<dyn Error>` or
+/// `anyhow::Result` — the two things almost every consumer's `main` and every
+/// wrapping error type are built on. `Display` alone is not enough for that.
+///
+/// `source` is threaded through for the variants that wrap a concrete error, so
+/// a caller reporting a chain sees the underlying cause rather than only this
+/// enum's own message. Three groups give nothing back: the `String` variants,
+/// because whatever produced them was flattened at the conversion site, and
+/// `Bolt11` / `BIP85`, whose upstream error types do not implement
+/// `std::error::Error` themselves. Their text is still in this error's own
+/// `Display`.
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            #[cfg(feature = "electrum")]
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            Error::Electrum(e) => Some(e),
+            Error::Key(e) => Some(e),
+            Error::Sighash(e) => Some(e),
+            Error::ElSighash(e) => Some(e),
+            Error::Secp(e) => Some(e),
+            Error::JSON(e) => Some(e),
+            Error::IO(e) => Some(e),
+            Error::LiquidEncode(e) => Some(e),
+            Error::BitcoinEncode(e) => Some(e),
+            Error::ConfidentialTx(e) => Some(e),
+            Error::BIP32(e) => Some(e),
+            Error::BIP39(e) => Some(e),
+            Error::Hash(e) => Some(e),
+            Error::Url(e) => Some(e),
+            #[cfg(feature = "ws")]
+            Error::WebSocket(e) => Some(e.as_ref()),
+            _ => None,
+        }
+    }
+}
