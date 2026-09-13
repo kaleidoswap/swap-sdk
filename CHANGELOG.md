@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.7.0] - 2026-09-13
 
 ### Added — the Arkade Intents corridor, in the core
 
