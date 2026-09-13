@@ -41,8 +41,12 @@ def describe(answer: sdk.RfqAnswer) -> None:
         return
     quote = answer.quote
     assert quote is not None
-    print(f"  quote {quote.rfq_id[:12]}…  give {quote.from_amount} sats, receive {quote.to_amount} sats")
-    print(f"  fee {quote.from_amount - quote.to_amount} sats, valid until {quote.valid_until}, refund deadline {quote.refund_locktime}")
+    print(
+        f"  quote {quote.rfq_id[:12]}…  give {quote.from_amount} sats, receive {quote.to_amount} sats"
+    )
+    print(
+        f"  fee {quote.from_amount - quote.to_amount} sats, valid until {quote.valid_until}, refund deadline {quote.refund_locktime}"
+    )
     print(f"  lockup {quote.profile.lockup_address}")
 
 
@@ -79,7 +83,9 @@ async def main() -> None:
         assert receive.quote.to_amount >= 12_000
         now = int(time.time())
         assert receive.quote.valid_until > now, "quote already expired"
-        print(f"  pay {receive.quote.from_amount} sats via: {receive.quote.profile.invoice[:40]}…")
+        print(
+            f"  pay {receive.quote.from_amount} sats via: {receive.quote.profile.invoice[:40]}…"
+        )
 
     # ---- send: fund an Arkade lockup, have a Lightning invoice paid -----------
     # A send needs a BOLT11 to pay and an Ark refund address to pin into the
@@ -104,14 +110,18 @@ async def main() -> None:
         now = int(time.time())
         assert send.quote.refund_locktime is not None
         assert send.quote.refund_locktime - now >= 90 * 60, "not enough refund headroom"
-        print(f"  fund {send.quote.from_amount} sats at {send.quote.profile.lockup_address}")
+        print(
+            f"  fund {send.quote.from_amount} sats at {send.quote.profile.lockup_address}"
+        )
 
     # ---- track: poll by rfq_id until a terminal state ---------------------------
     for answer in (receive, send):
         if answer.quote is None:
             continue
         status = await client.rfq_status(answer.quote.rfq_id)
-        print(f"\nstatus {answer.quote.rfq_id[:12]}…: {status.state if status else 'unknown id'}")
+        print(
+            f"\nstatus {answer.quote.rfq_id[:12]}…: {status.state if status else 'unknown id'}"
+        )
 
     # An id the maker never issued is `None`, not an error.
     assert await client.rfq_status("0" * 64) is None
