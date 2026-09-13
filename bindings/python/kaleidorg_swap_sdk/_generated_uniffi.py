@@ -518,6 +518,10 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id() != 37080:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment()
         != 48519
@@ -528,6 +532,13 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id()
         != 50977
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_corridor_url()
+        != 60153
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -570,6 +581,27 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_pairs()
         != 55905
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_receive()
+        != 36971
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_send()
+        != 6486
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_rfq_status()
+        != 58084
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1015,6 +1047,13 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_id.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_id.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_corridor_url.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_corridor_url.restype = (
+    _UniffiRustBuffer
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_create_chain_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -1044,6 +1083,23 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_pa
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_pairs.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_receive.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_receive.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_send.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_send.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_rfq_status.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_rfq_status.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_ws.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1359,6 +1415,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_lbtc_chain_from_network.argtypes = 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_lbtc_chain_from_network.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.argtypes = (
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.restype = _UniffiRustBuffer
 _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1591,10 +1651,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_corridor_url.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_corridor_url.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_chain_swap.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_chain_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_reverse_swap.argtypes = ()
@@ -1607,6 +1671,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_revers
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_pairs.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_pairs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_receive.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_receive.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_send.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_send.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_rfq_status.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_rfq_status.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_ws.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_ws.restype = (
     ctypes.c_uint16
@@ -3483,6 +3553,158 @@ class _UniffiConverterTypeLeaf(_UniffiConverterRustBuffer):
         _UniffiConverterUInt8.write(value.version, buf)
 
 
+class LightningReceiveRequest:
+    rfq_id: "str"
+    amount_side: "AmountSide"
+    amount: "int"
+    payment_hash: "str"
+    payout_address: "str"
+    payout_pubkey: "str"
+    claim_packet: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        rfq_id: "str",
+        amount_side: "AmountSide",
+        amount: "int",
+        payment_hash: "str",
+        payout_address: "str",
+        payout_pubkey: "str",
+        claim_packet: "typing.Optional[str]",
+    ):
+        self.rfq_id = rfq_id
+        self.amount_side = amount_side
+        self.amount = amount
+        self.payment_hash = payment_hash
+        self.payout_address = payout_address
+        self.payout_pubkey = payout_pubkey
+        self.claim_packet = claim_packet
+
+    def __str__(self):
+        return "LightningReceiveRequest(rfq_id={}, amount_side={}, amount={}, payment_hash={}, payout_address={}, payout_pubkey={}, claim_packet={})".format(
+            self.rfq_id,
+            self.amount_side,
+            self.amount,
+            self.payment_hash,
+            self.payout_address,
+            self.payout_pubkey,
+            self.claim_packet,
+        )
+
+    def __eq__(self, other):
+        if self.rfq_id != other.rfq_id:
+            return False
+        if self.amount_side != other.amount_side:
+            return False
+        if self.amount != other.amount:
+            return False
+        if self.payment_hash != other.payment_hash:
+            return False
+        if self.payout_address != other.payout_address:
+            return False
+        if self.payout_pubkey != other.payout_pubkey:
+            return False
+        if self.claim_packet != other.claim_packet:
+            return False
+        return True
+
+
+class _UniffiConverterTypeLightningReceiveRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return LightningReceiveRequest(
+            rfq_id=_UniffiConverterString.read(buf),
+            amount_side=_UniffiConverterTypeAmountSide.read(buf),
+            amount=_UniffiConverterUInt64.read(buf),
+            payment_hash=_UniffiConverterString.read(buf),
+            payout_address=_UniffiConverterString.read(buf),
+            payout_pubkey=_UniffiConverterString.read(buf),
+            claim_packet=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.rfq_id)
+        _UniffiConverterTypeAmountSide.check_lower(value.amount_side)
+        _UniffiConverterUInt64.check_lower(value.amount)
+        _UniffiConverterString.check_lower(value.payment_hash)
+        _UniffiConverterString.check_lower(value.payout_address)
+        _UniffiConverterString.check_lower(value.payout_pubkey)
+        _UniffiConverterOptionalString.check_lower(value.claim_packet)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.rfq_id, buf)
+        _UniffiConverterTypeAmountSide.write(value.amount_side, buf)
+        _UniffiConverterUInt64.write(value.amount, buf)
+        _UniffiConverterString.write(value.payment_hash, buf)
+        _UniffiConverterString.write(value.payout_address, buf)
+        _UniffiConverterString.write(value.payout_pubkey, buf)
+        _UniffiConverterOptionalString.write(value.claim_packet, buf)
+
+
+class LightningSendRequest:
+    rfq_id: "str"
+    invoice: "str"
+    refund_address: "str"
+    client_refund_pubkey: "str"
+
+    def __init__(
+        self,
+        *,
+        rfq_id: "str",
+        invoice: "str",
+        refund_address: "str",
+        client_refund_pubkey: "str",
+    ):
+        self.rfq_id = rfq_id
+        self.invoice = invoice
+        self.refund_address = refund_address
+        self.client_refund_pubkey = client_refund_pubkey
+
+    def __str__(self):
+        return "LightningSendRequest(rfq_id={}, invoice={}, refund_address={}, client_refund_pubkey={})".format(
+            self.rfq_id, self.invoice, self.refund_address, self.client_refund_pubkey
+        )
+
+    def __eq__(self, other):
+        if self.rfq_id != other.rfq_id:
+            return False
+        if self.invoice != other.invoice:
+            return False
+        if self.refund_address != other.refund_address:
+            return False
+        if self.client_refund_pubkey != other.client_refund_pubkey:
+            return False
+        return True
+
+
+class _UniffiConverterTypeLightningSendRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return LightningSendRequest(
+            rfq_id=_UniffiConverterString.read(buf),
+            invoice=_UniffiConverterString.read(buf),
+            refund_address=_UniffiConverterString.read(buf),
+            client_refund_pubkey=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.rfq_id)
+        _UniffiConverterString.check_lower(value.invoice)
+        _UniffiConverterString.check_lower(value.refund_address)
+        _UniffiConverterString.check_lower(value.client_refund_pubkey)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.rfq_id, buf)
+        _UniffiConverterString.write(value.invoice, buf)
+        _UniffiConverterString.write(value.refund_address, buf)
+        _UniffiConverterString.write(value.client_refund_pubkey, buf)
+
+
 class LiquidOutputSecrets:
     asset_id: "str"
     value: "int"
@@ -3836,6 +4058,79 @@ class _UniffiConverterTypePairMinerFees(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.write(value.claim, buf)
 
 
+class QuoteProfile:
+    payment_hash: "typing.Optional[str]"
+    lockup_address: "typing.Optional[str]"
+    invoice: "typing.Optional[str]"
+    receiver_pk_script: "typing.Optional[str]"
+    solver_refund_pk_script: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        payment_hash: "typing.Optional[str]",
+        lockup_address: "typing.Optional[str]",
+        invoice: "typing.Optional[str]",
+        receiver_pk_script: "typing.Optional[str]",
+        solver_refund_pk_script: "typing.Optional[str]",
+    ):
+        self.payment_hash = payment_hash
+        self.lockup_address = lockup_address
+        self.invoice = invoice
+        self.receiver_pk_script = receiver_pk_script
+        self.solver_refund_pk_script = solver_refund_pk_script
+
+    def __str__(self):
+        return "QuoteProfile(payment_hash={}, lockup_address={}, invoice={}, receiver_pk_script={}, solver_refund_pk_script={})".format(
+            self.payment_hash,
+            self.lockup_address,
+            self.invoice,
+            self.receiver_pk_script,
+            self.solver_refund_pk_script,
+        )
+
+    def __eq__(self, other):
+        if self.payment_hash != other.payment_hash:
+            return False
+        if self.lockup_address != other.lockup_address:
+            return False
+        if self.invoice != other.invoice:
+            return False
+        if self.receiver_pk_script != other.receiver_pk_script:
+            return False
+        if self.solver_refund_pk_script != other.solver_refund_pk_script:
+            return False
+        return True
+
+
+class _UniffiConverterTypeQuoteProfile(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return QuoteProfile(
+            payment_hash=_UniffiConverterOptionalString.read(buf),
+            lockup_address=_UniffiConverterOptionalString.read(buf),
+            invoice=_UniffiConverterOptionalString.read(buf),
+            receiver_pk_script=_UniffiConverterOptionalString.read(buf),
+            solver_refund_pk_script=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.payment_hash)
+        _UniffiConverterOptionalString.check_lower(value.lockup_address)
+        _UniffiConverterOptionalString.check_lower(value.invoice)
+        _UniffiConverterOptionalString.check_lower(value.receiver_pk_script)
+        _UniffiConverterOptionalString.check_lower(value.solver_refund_pk_script)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalString.write(value.payment_hash, buf)
+        _UniffiConverterOptionalString.write(value.lockup_address, buf)
+        _UniffiConverterOptionalString.write(value.invoice, buf)
+        _UniffiConverterOptionalString.write(value.receiver_pk_script, buf)
+        _UniffiConverterOptionalString.write(value.solver_refund_pk_script, buf)
+
+
 class ReverseFees:
     percentage: "float"
     miner_fees: "PairMinerFees"
@@ -4028,6 +4323,291 @@ class _UniffiConverterTypeReversePair(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.from_asset_id, buf)
         _UniffiConverterOptionalString.write(value.to_asset_id, buf)
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
+
+
+class RfqAnswer:
+    """
+    What `POST /v1/swap` answers: exactly one of the two is set.
+
+    A record with two optionals rather than an enum with payloads, because a
+    refusal is the maker's answer and not an error — it must reach the caller
+    as a value — and this is the shape that reads naturally on the Python
+    side (`if answer.refusal: ...`).
+    """
+
+    quote: "typing.Optional[RfqQuote]"
+    refusal: "typing.Optional[RfqRefusal]"
+
+    def __init__(
+        self,
+        *,
+        quote: "typing.Optional[RfqQuote]",
+        refusal: "typing.Optional[RfqRefusal]",
+    ):
+        self.quote = quote
+        self.refusal = refusal
+
+    def __str__(self):
+        return "RfqAnswer(quote={}, refusal={})".format(self.quote, self.refusal)
+
+    def __eq__(self, other):
+        if self.quote != other.quote:
+            return False
+        if self.refusal != other.refusal:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRfqAnswer(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RfqAnswer(
+            quote=_UniffiConverterOptionalTypeRfqQuote.read(buf),
+            refusal=_UniffiConverterOptionalTypeRfqRefusal.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalTypeRfqQuote.check_lower(value.quote)
+        _UniffiConverterOptionalTypeRfqRefusal.check_lower(value.refusal)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalTypeRfqQuote.write(value.quote, buf)
+        _UniffiConverterOptionalTypeRfqRefusal.write(value.refusal, buf)
+
+
+class RfqQuote:
+    v: "int"
+    rfq_id: "str"
+    pair: "str"
+    from_amount: "int"
+    to_amount: "int"
+    solver_pubkey: "str"
+    valid_until: "int"
+    refund_locktime: "typing.Optional[int]"
+    profile: "QuoteProfile"
+
+    def __init__(
+        self,
+        *,
+        v: "int",
+        rfq_id: "str",
+        pair: "str",
+        from_amount: "int",
+        to_amount: "int",
+        solver_pubkey: "str",
+        valid_until: "int",
+        refund_locktime: "typing.Optional[int]",
+        profile: "QuoteProfile",
+    ):
+        self.v = v
+        self.rfq_id = rfq_id
+        self.pair = pair
+        self.from_amount = from_amount
+        self.to_amount = to_amount
+        self.solver_pubkey = solver_pubkey
+        self.valid_until = valid_until
+        self.refund_locktime = refund_locktime
+        self.profile = profile
+
+    def __str__(self):
+        return "RfqQuote(v={}, rfq_id={}, pair={}, from_amount={}, to_amount={}, solver_pubkey={}, valid_until={}, refund_locktime={}, profile={})".format(
+            self.v,
+            self.rfq_id,
+            self.pair,
+            self.from_amount,
+            self.to_amount,
+            self.solver_pubkey,
+            self.valid_until,
+            self.refund_locktime,
+            self.profile,
+        )
+
+    def __eq__(self, other):
+        if self.v != other.v:
+            return False
+        if self.rfq_id != other.rfq_id:
+            return False
+        if self.pair != other.pair:
+            return False
+        if self.from_amount != other.from_amount:
+            return False
+        if self.to_amount != other.to_amount:
+            return False
+        if self.solver_pubkey != other.solver_pubkey:
+            return False
+        if self.valid_until != other.valid_until:
+            return False
+        if self.refund_locktime != other.refund_locktime:
+            return False
+        if self.profile != other.profile:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRfqQuote(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RfqQuote(
+            v=_UniffiConverterUInt8.read(buf),
+            rfq_id=_UniffiConverterString.read(buf),
+            pair=_UniffiConverterString.read(buf),
+            from_amount=_UniffiConverterUInt64.read(buf),
+            to_amount=_UniffiConverterUInt64.read(buf),
+            solver_pubkey=_UniffiConverterString.read(buf),
+            valid_until=_UniffiConverterUInt64.read(buf),
+            refund_locktime=_UniffiConverterOptionalUInt64.read(buf),
+            profile=_UniffiConverterTypeQuoteProfile.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt8.check_lower(value.v)
+        _UniffiConverterString.check_lower(value.rfq_id)
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterUInt64.check_lower(value.from_amount)
+        _UniffiConverterUInt64.check_lower(value.to_amount)
+        _UniffiConverterString.check_lower(value.solver_pubkey)
+        _UniffiConverterUInt64.check_lower(value.valid_until)
+        _UniffiConverterOptionalUInt64.check_lower(value.refund_locktime)
+        _UniffiConverterTypeQuoteProfile.check_lower(value.profile)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt8.write(value.v, buf)
+        _UniffiConverterString.write(value.rfq_id, buf)
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterUInt64.write(value.from_amount, buf)
+        _UniffiConverterUInt64.write(value.to_amount, buf)
+        _UniffiConverterString.write(value.solver_pubkey, buf)
+        _UniffiConverterUInt64.write(value.valid_until, buf)
+        _UniffiConverterOptionalUInt64.write(value.refund_locktime, buf)
+        _UniffiConverterTypeQuoteProfile.write(value.profile, buf)
+
+
+class RfqRefusal:
+    v: "int"
+    rfq_id: "str"
+    reason: "RefusalReason"
+
+    def __init__(self, *, v: "int", rfq_id: "str", reason: "RefusalReason"):
+        self.v = v
+        self.rfq_id = rfq_id
+        self.reason = reason
+
+    def __str__(self):
+        return "RfqRefusal(v={}, rfq_id={}, reason={})".format(
+            self.v, self.rfq_id, self.reason
+        )
+
+    def __eq__(self, other):
+        if self.v != other.v:
+            return False
+        if self.rfq_id != other.rfq_id:
+            return False
+        if self.reason != other.reason:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRfqRefusal(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RfqRefusal(
+            v=_UniffiConverterUInt8.read(buf),
+            rfq_id=_UniffiConverterString.read(buf),
+            reason=_UniffiConverterTypeRefusalReason.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt8.check_lower(value.v)
+        _UniffiConverterString.check_lower(value.rfq_id)
+        _UniffiConverterTypeRefusalReason.check_lower(value.reason)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt8.write(value.v, buf)
+        _UniffiConverterString.write(value.rfq_id, buf)
+        _UniffiConverterTypeRefusalReason.write(value.reason, buf)
+
+
+class RfqStatus:
+    v: "int"
+    kind: "str"
+    rfq_id: "str"
+    state: "RfqState"
+    updated_at: "int"
+    profile: "QuoteProfile"
+
+    def __init__(
+        self,
+        *,
+        v: "int",
+        kind: "str",
+        rfq_id: "str",
+        state: "RfqState",
+        updated_at: "int",
+        profile: "QuoteProfile",
+    ):
+        self.v = v
+        self.kind = kind
+        self.rfq_id = rfq_id
+        self.state = state
+        self.updated_at = updated_at
+        self.profile = profile
+
+    def __str__(self):
+        return "RfqStatus(v={}, kind={}, rfq_id={}, state={}, updated_at={}, profile={})".format(
+            self.v, self.kind, self.rfq_id, self.state, self.updated_at, self.profile
+        )
+
+    def __eq__(self, other):
+        if self.v != other.v:
+            return False
+        if self.kind != other.kind:
+            return False
+        if self.rfq_id != other.rfq_id:
+            return False
+        if self.state != other.state:
+            return False
+        if self.updated_at != other.updated_at:
+            return False
+        if self.profile != other.profile:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRfqStatus(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RfqStatus(
+            v=_UniffiConverterUInt8.read(buf),
+            kind=_UniffiConverterString.read(buf),
+            rfq_id=_UniffiConverterString.read(buf),
+            state=_UniffiConverterTypeRfqState.read(buf),
+            updated_at=_UniffiConverterUInt64.read(buf),
+            profile=_UniffiConverterTypeQuoteProfile.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt8.check_lower(value.v)
+        _UniffiConverterString.check_lower(value.kind)
+        _UniffiConverterString.check_lower(value.rfq_id)
+        _UniffiConverterTypeRfqState.check_lower(value.state)
+        _UniffiConverterUInt64.check_lower(value.updated_at)
+        _UniffiConverterTypeQuoteProfile.check_lower(value.profile)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt8.write(value.v, buf)
+        _UniffiConverterString.write(value.kind, buf)
+        _UniffiConverterString.write(value.rfq_id, buf)
+        _UniffiConverterTypeRfqState.write(value.state, buf)
+        _UniffiConverterUInt64.write(value.updated_at, buf)
+        _UniffiConverterTypeQuoteProfile.write(value.profile, buf)
 
 
 class SubmarineFees:
@@ -4589,6 +5169,38 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterBool.write(value.cooperative, buf)
         _UniffiConverterOptionalTypeChainClaim.write(value.chain_claim, buf)
+
+
+class AmountSide(enum.Enum):
+    FROM = 0
+
+    TO = 1
+
+
+class _UniffiConverterTypeAmountSide(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return AmountSide.FROM
+        if variant == 2:
+            return AmountSide.TO
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == AmountSide.FROM:
+            return
+        if value == AmountSide.TO:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == AmountSide.FROM:
+            buf.write_i32(1)
+        if value == AmountSide.TO:
+            buf.write_i32(2)
 
 
 class BitcoinChain(enum.Enum):
@@ -5199,6 +5811,174 @@ class _UniffiConverterTypeNetwork(_UniffiConverterRustBuffer):
             buf.write_i32(4)
 
 
+class RefusalReason(enum.Enum):
+    UNSUPPORTED_PAIR = 0
+
+    UNSUPPORTED_PAYLOAD = 1
+
+    AMOUNT_OUT_OF_RANGE = 2
+
+    EXPOSURE_CAP = 3
+
+    INVOICE_EXPIRED = 4
+
+    QUOTE_CONFLICT = 5
+
+    PRICING_UNAVAILABLE = 6
+
+    UNKNOWN = 7
+
+
+class _UniffiConverterTypeRefusalReason(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return RefusalReason.UNSUPPORTED_PAIR
+        if variant == 2:
+            return RefusalReason.UNSUPPORTED_PAYLOAD
+        if variant == 3:
+            return RefusalReason.AMOUNT_OUT_OF_RANGE
+        if variant == 4:
+            return RefusalReason.EXPOSURE_CAP
+        if variant == 5:
+            return RefusalReason.INVOICE_EXPIRED
+        if variant == 6:
+            return RefusalReason.QUOTE_CONFLICT
+        if variant == 7:
+            return RefusalReason.PRICING_UNAVAILABLE
+        if variant == 8:
+            return RefusalReason.UNKNOWN
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == RefusalReason.UNSUPPORTED_PAIR:
+            return
+        if value == RefusalReason.UNSUPPORTED_PAYLOAD:
+            return
+        if value == RefusalReason.AMOUNT_OUT_OF_RANGE:
+            return
+        if value == RefusalReason.EXPOSURE_CAP:
+            return
+        if value == RefusalReason.INVOICE_EXPIRED:
+            return
+        if value == RefusalReason.QUOTE_CONFLICT:
+            return
+        if value == RefusalReason.PRICING_UNAVAILABLE:
+            return
+        if value == RefusalReason.UNKNOWN:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == RefusalReason.UNSUPPORTED_PAIR:
+            buf.write_i32(1)
+        if value == RefusalReason.UNSUPPORTED_PAYLOAD:
+            buf.write_i32(2)
+        if value == RefusalReason.AMOUNT_OUT_OF_RANGE:
+            buf.write_i32(3)
+        if value == RefusalReason.EXPOSURE_CAP:
+            buf.write_i32(4)
+        if value == RefusalReason.INVOICE_EXPIRED:
+            buf.write_i32(5)
+        if value == RefusalReason.QUOTE_CONFLICT:
+            buf.write_i32(6)
+        if value == RefusalReason.PRICING_UNAVAILABLE:
+            buf.write_i32(7)
+        if value == RefusalReason.UNKNOWN:
+            buf.write_i32(8)
+
+
+class RfqState(enum.Enum):
+    QUOTED = 0
+
+    REFUSED = 1
+
+    EXPIRED = 2
+
+    FUNDED = 3
+
+    FILLING = 4
+
+    FILLED = 5
+
+    SETTLED = 6
+
+    REFUNDED = 7
+
+    STUCK = 8
+
+
+class _UniffiConverterTypeRfqState(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return RfqState.QUOTED
+        if variant == 2:
+            return RfqState.REFUSED
+        if variant == 3:
+            return RfqState.EXPIRED
+        if variant == 4:
+            return RfqState.FUNDED
+        if variant == 5:
+            return RfqState.FILLING
+        if variant == 6:
+            return RfqState.FILLED
+        if variant == 7:
+            return RfqState.SETTLED
+        if variant == 8:
+            return RfqState.REFUNDED
+        if variant == 9:
+            return RfqState.STUCK
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == RfqState.QUOTED:
+            return
+        if value == RfqState.REFUSED:
+            return
+        if value == RfqState.EXPIRED:
+            return
+        if value == RfqState.FUNDED:
+            return
+        if value == RfqState.FILLING:
+            return
+        if value == RfqState.FILLED:
+            return
+        if value == RfqState.SETTLED:
+            return
+        if value == RfqState.REFUNDED:
+            return
+        if value == RfqState.STUCK:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == RfqState.QUOTED:
+            buf.write_i32(1)
+        if value == RfqState.REFUSED:
+            buf.write_i32(2)
+        if value == RfqState.EXPIRED:
+            buf.write_i32(3)
+        if value == RfqState.FUNDED:
+            buf.write_i32(4)
+        if value == RfqState.FILLING:
+            buf.write_i32(5)
+        if value == RfqState.FILLED:
+            buf.write_i32(6)
+        if value == RfqState.SETTLED:
+            buf.write_i32(7)
+        if value == RfqState.REFUNDED:
+            buf.write_i32(8)
+        if value == RfqState.STUCK:
+            buf.write_i32(9)
+
+
 class Side(enum.Enum):
     LOCKUP = 0
 
@@ -5541,6 +6321,84 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             return None
         elif flag == 1:
             return _UniffiConverterTypeFailureReasonIncorrectAmounts.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRfqQuote(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRfqQuote.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRfqQuote.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRfqQuote.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRfqRefusal(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRfqRefusal.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRfqRefusal.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRfqRefusal.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRfqStatus(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRfqStatus.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRfqStatus.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRfqStatus.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -5960,6 +6818,16 @@ class BoltzApiClientV2Protocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def corridor_url(
+        self,
+    ):
+        """
+        The origin the corridor hangs off — this client's `/v2` base with the
+        suffix removed. Errors for a base that does not end in `/v2`.
+        """
+
+        raise NotImplementedError
+
     def create_chain_swap(self, swap_request: "CreateChainRequest"):
         raise NotImplementedError
 
@@ -5982,6 +6850,30 @@ class BoltzApiClientV2Protocol(typing.Protocol):
     def get_submarine_pairs(
         self,
     ):
+        raise NotImplementedError
+
+    def quote_lightning_receive(self, request: "LightningReceiveRequest"):
+        """
+        Quote `lightning:BTC->arkade:BTC`: the maker mints a hold invoice and
+        locks on Arkade once it is paid, for the trader to claim.
+        """
+
+        raise NotImplementedError
+
+    def quote_lightning_send(self, request: "LightningSendRequest"):
+        """
+        Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup
+        for the maker to pay the invoice from.
+        """
+
+        raise NotImplementedError
+
+    def rfq_status(self, rfq_id: "str"):
+        """
+        `GET /v1/rfq/{rfq_id}`. `None` for an id the maker never issued. Poll
+        until the state is terminal.
+        """
+
         raise NotImplementedError
 
     def ws(
@@ -6134,6 +7026,22 @@ class BoltzApiClientV2:
             )
         )
 
+    def corridor_url(
+        self,
+    ) -> "str":
+        """
+        The origin the corridor hangs off — this client's `/v2` base with the
+        suffix removed. Errors for a base that does not end in `/v2`.
+        """
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_corridor_url,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
     async def create_chain_swap(
         self, swap_request: "CreateChainRequest"
     ) -> "CreateChainResponse":
@@ -6235,6 +7143,75 @@ class BoltzApiClientV2:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetSubmarinePairsResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def quote_lightning_receive(
+        self, request: "LightningReceiveRequest"
+    ) -> "RfqAnswer":
+        """
+        Quote `lightning:BTC->arkade:BTC`: the maker mints a hold invoice and
+        locks on Arkade once it is paid, for the trader to claim.
+        """
+
+        _UniffiConverterTypeLightningReceiveRequest.check_lower(request)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_receive(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeLightningReceiveRequest.lower(request),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeRfqAnswer.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def quote_lightning_send(
+        self, request: "LightningSendRequest"
+    ) -> "RfqAnswer":
+        """
+        Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup
+        for the maker to pay the invoice from.
+        """
+
+        _UniffiConverterTypeLightningSendRequest.check_lower(request)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_send(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeLightningSendRequest.lower(request),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeRfqAnswer.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def rfq_status(self, rfq_id: "str") -> "typing.Optional[RfqStatus]":
+        """
+        `GET /v1/rfq/{rfq_id}`. `None` for an id the maker never issued. Poll
+        until the state is terminal.
+        """
+
+        _UniffiConverterString.check_lower(rfq_id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_rfq_status(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(rfq_id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterOptionalTypeRfqStatus.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -7434,8 +8411,22 @@ def lbtc_chain_from_network(network: "Network") -> "Chain":
     )
 
 
+def new_rfq_id() -> "str":
+    """
+    A fresh `rfq_id`: 32 random bytes, hex. Generate once per negotiation and
+    carry it — every status read is keyed by it.
+    """
+
+    return _UniffiConverterString.lift(
+        _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id,
+        )
+    )
+
+
 __all__ = [
     "InternalError",
+    "AmountSide",
     "BitcoinChain",
     "Chain",
     "ClientConnection",
@@ -7444,6 +8435,8 @@ __all__ = [
     "Fee",
     "LiquidChain",
     "Network",
+    "RefusalReason",
+    "RfqState",
     "Side",
     "SubSwapStates",
     "BoltzWsConfig",
@@ -7468,14 +8461,21 @@ __all__ = [
     "GetReversePairsResponse",
     "GetSubmarinePairsResponse",
     "Leaf",
+    "LightningReceiveRequest",
+    "LightningSendRequest",
     "LiquidOutputSecrets",
     "LiquidPsetParams",
     "LiquidPsetTemplate",
     "PairLimits",
     "PairMinerFees",
+    "QuoteProfile",
     "ReverseFees",
     "ReverseLimits",
     "ReversePair",
+    "RfqAnswer",
+    "RfqQuote",
+    "RfqRefusal",
+    "RfqStatus",
     "SubmarineFees",
     "SubmarinePair",
     "SubmarinePairLimits",
@@ -7486,6 +8486,7 @@ __all__ = [
     "TransactionOptions",
     "btc_chain_from_network",
     "lbtc_chain_from_network",
+    "new_rfq_id",
     "BoltzApiClientV2",
     "BoltzWsApi",
     "BoltzWsUpdates",

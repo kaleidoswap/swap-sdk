@@ -19,6 +19,7 @@
 
 use crate::kaleido::{ApiKey, API_KEY_HEADER};
 use crate::network::{Currency, Network};
+use crate::swaps::corridor;
 #[cfg(feature = "ws")]
 use crate::util::ensure_rustls_crypto_provider;
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
@@ -739,7 +740,14 @@ impl BoltzApiClientV2 {
 
     /// Make a GET request. Returns the Response
     async fn get_response(&self, end_point: &str) -> Result<reqwest::Response, Error> {
-        let url = format!("{}/{}", self.base_url, end_point);
+        self.get_response_at(format!("{}/{}", self.base_url, end_point))
+            .await
+    }
+
+    /// GET an absolute URL with every guard a `/v2` GET gets. Split out so
+    /// the corridor, which lives beside `/v2` rather than under it, reaches
+    /// the same origin through the same checks instead of a second client.
+    async fn get_response_at(&self, url: String) -> Result<reqwest::Response, Error> {
         let req_builder = self.http_client.get(&url);
         let req_builder = self.maybe_add_timeout(req_builder);
         let req_builder = self.maybe_add_api_key(req_builder, &url)?;
@@ -1247,6 +1255,88 @@ impl BoltzApiClientV2 {
         req: CreateChainRequest,
     ) -> Result<CreateChainResponse, Error> {
         self.post_json("swap/chain", req).await
+    }
+
+    // ---- Arkade Intents corridor (`/v1`) -----------------------------------
+    //
+    // A sibling of the `/v2` routes above, not a child: `POST /v1/swap` and
+    // `GET /v1/rfq/{id}` hang off the maker's origin. Everything a `/v2`
+    // request carries rides along — the organization API key (the maker
+    // attributes `/v1/swap` exactly like `/v2/swap/*`), the timeout, the
+    // redirect guard — because the origin is the same one the key is bound to.
+
+    /// The origin the corridor hangs off, derived from this client's `/v2`
+    /// base. See [`corridor::corridor_root_from_maker_url`].
+    pub fn corridor_root(&self) -> Result<String, Error> {
+        corridor::corridor_root_from_maker_url(&self.base_url)
+    }
+
+    /// `POST /v1/swap` — ask the maker for a binding quote.
+    ///
+    /// A refusal is a `200` carrying `rfq_refusal`, so it comes back as
+    /// [`corridor::RfqAnswer::Refusal`] rather than an error: the maker
+    /// decided, and the reason is the whole answer. Only a transport failure
+    /// or a body that is neither a quote nor a refusal is an [`Error`].
+    ///
+    /// Prefer [`Self::quote_lightning_send`] / [`Self::quote_lightning_receive`],
+    /// which build the envelope; this takes one already built.
+    pub async fn request_rfq(
+        &self,
+        request: &corridor::RfqRequest,
+    ) -> Result<corridor::RfqAnswer, Error> {
+        let url = format!("{}/v1/swap", self.corridor_root()?);
+        let response = self
+            .request_response(Method::POST, url, request, None)
+            .await?;
+        Self::parse_json_response(response).await
+    }
+
+    /// Quote `arkade:BTC->lightning:BTC`: the trader will fund an Arkade
+    /// lockup for the maker to pay its invoice from.
+    ///
+    /// Run [`corridor::RfqQuote::assert_fundable`] immediately before funding,
+    /// and derive the covenant from the quote's binding fields to compare
+    /// against `profile.lockup_address` — funding is the acceptance, and a
+    /// wrong address is money behind a tree the maker will never claim.
+    pub async fn quote_lightning_send(
+        &self,
+        request: &corridor::LightningSendRequest,
+    ) -> Result<corridor::RfqAnswer, Error> {
+        self.request_rfq(&corridor::RfqRequest::from(request)).await
+    }
+
+    /// Quote `lightning:BTC->arkade:BTC`: the maker will mint a hold invoice
+    /// and lock on Arkade once it is paid, for the trader to claim.
+    ///
+    /// Before handing `profile.invoice` to a payer, run
+    /// [`corridor::RfqQuote::verify_receive_invoice`] against the trader's
+    /// own payment hash and then [`corridor::RfqQuote::assert_receivable`]
+    /// — the invoice is the maker's, and nothing else checks it.
+    pub async fn quote_lightning_receive(
+        &self,
+        request: &corridor::LightningReceiveRequest,
+    ) -> Result<corridor::RfqAnswer, Error> {
+        self.request_rfq(&corridor::RfqRequest::from(request)).await
+    }
+
+    /// `GET /v1/rfq/{rfq_id}` — where a quoted swap stands.
+    ///
+    /// `Ok(None)` for an id the maker never issued (a `404`), which is an
+    /// answer and not a fault: a status client polls with the id it holds,
+    /// and "no such rfq" is what it needs to hear about a stale one. Poll
+    /// until [`corridor::RfqState::is_terminal`].
+    pub async fn rfq_status(&self, rfq_id: &str) -> Result<Option<corridor::RfqStatus>, Error> {
+        let url = format!("{}/v1/rfq/{rfq_id}", self.corridor_root()?);
+        let response = self.get_response_at(url).await?;
+        match Self::parse_json_response::<corridor::RfqStatus>(response).await {
+            Ok(status) => Ok(Some(status)),
+            Err(Error::HTTPStatusNotSuccess(status, _))
+                if status == reqwest::StatusCode::NOT_FOUND =>
+            {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn get_submarine_claim_tx_details(

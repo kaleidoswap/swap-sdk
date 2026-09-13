@@ -952,3 +952,80 @@ test("cancelAssetSwap happy path returns the repository's view", async () => {
   assert.equal(outcome.status, "cancelled");
   assert.equal((await repository.getAllSwaps())[0].status, "cancelled");
 });
+
+// ---------------------------------------------------------------------------
+// kaleidoswapHttpTransport — the venue reached from the SDK's own `makerUrl`.
+// ---------------------------------------------------------------------------
+
+import {
+  kaleidoswapHttpTransport,
+  corridorRootFromMakerUrl,
+} from "../dist/arkade/index.js";
+
+test("kaleidoswapHttpTransport posts to /v1/swap and reads /v1/rfq beside the /v2 base", async () => {
+  const calls = [];
+  const quote = {
+    v: 1,
+    type: "rfq_quote",
+    rfq_id: "abc",
+    pair: "arkade:BTC->lightning:BTC",
+    from_amount: 12120,
+    to_amount: 12000,
+    solver_pubkey: "02" + "ab".repeat(32),
+    valid_until: 1_900_000_000,
+    refund_locktime: 1_900_009_000,
+    profile: {
+      payment_hash: "00".repeat(32),
+      lockup_address: "tark1q",
+      receiver_pk_script: "5120aa",
+    },
+  };
+  const status = {
+    v: 1,
+    type: "rfq_status",
+    rfq_id: "abc",
+    state: "settled",
+    updated_at: 1,
+    profile: {},
+  };
+  const fetchImpl = async (url, init) => {
+    calls.push({ url: String(url), method: init?.method ?? "GET" });
+    const body = String(url).endsWith("/v1/swap") ? quote : status;
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  const transport = kaleidoswapHttpTransport("https://maker.example/v2", {
+    fetchImpl,
+  });
+  const answer = await transport.requestQuote({
+    v: 1,
+    type: "rfq_request",
+    rfq_id: "abc",
+    pair: "arkade:BTC->lightning:BTC",
+    amount_side: "to",
+    profile: {},
+  });
+  assert.equal(answer.rfq_id, "abc");
+  const seen = await transport.status("abc");
+  assert.equal(seen?.state, "settled");
+
+  assert.deepEqual(calls, [
+    { url: "https://maker.example/v1/swap", method: "POST" },
+    { url: "https://maker.example/v1/rfq/abc", method: "GET" },
+  ]);
+  assert.equal(
+    corridorRootFromMakerUrl("https://maker.example/v2"),
+    "https://maker.example",
+  );
+  await transport.close();
+});
+
+test("kaleidoswapHttpTransport refuses a base that is not a /v2 maker URL", () => {
+  assert.throws(
+    () => kaleidoswapHttpTransport("https://maker.example"),
+    /\/v2/,
+  );
+});

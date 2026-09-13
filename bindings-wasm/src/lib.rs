@@ -268,6 +268,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
 use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
+use kaleidorg_swap_sdk::corridor;
 use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 
 fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
@@ -295,14 +296,46 @@ fn asset_from_boltz(
         "BTC" => Ok((Chain::Bitcoin(net.into()), Currency::Btc)),
         "L-BTC" => Ok((Chain::Liquid(net.into()), Currency::LBtc)),
         "L-USDT" => Ok((Chain::Liquid(net.into()), Currency::LUsdt)),
+        // Named rather than falling through: the maker does publish this
+        // symbol, so a caller reading the catalogue arrives here with a route
+        // it was shown. The refusal has to say where that route actually lives.
+        "ARKD" => Err(arg_err(
+            "ARKD is bitcoin on Arkade, and this SDK cannot build or verify an \
+             Arkade VHTLC through the Boltz-shaped create routes. Use the Intents \
+             corridor instead: quoteLightningSend() / quoteLightningReceive() on \
+             this client for the quote, and @kaleidorg/swap-sdk/arkade to fund or \
+             claim the lockup",
+        )),
         other => Err(arg_err(format!("unsupported Boltz asset '{other}'"))),
     }
+}
+
+/// A fresh Intents-corridor `rfq_id`: 32 random bytes, hex. Generate once per
+/// negotiation and carry it — every status read is keyed by it.
+#[wasm_bindgen(js_name = newRfqId)]
+pub fn new_rfq_id() -> String {
+    corridor::new_rfq_id()
 }
 
 #[cfg(test)]
 mod boltz_asset_tests {
     use super::*;
     use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
+
+    /// `ARKD` is a symbol the maker publishes, so a caller reading the
+    /// catalogue arrives here holding a route it was shown. The refusal has
+    /// to name where that route actually lives, not just that it is refused.
+    #[test]
+    fn arkd_is_refused_with_a_pointer_to_the_corridor() {
+        let err = asset_from_boltz("ARKD", "signet").unwrap_err();
+        let message = js_sys::Reflect::get(&err, &JsValue::from_str("message"))
+            .ok()
+            .and_then(|m| m.as_string())
+            .unwrap_or_default();
+        assert!(message.contains("Intents corridor"), "{message}");
+        assert!(message.contains("quoteLightningReceive"), "{message}");
+        assert!(message.contains("@kaleidorg/swap-sdk/arkade"), "{message}");
+    }
 
     #[test]
     fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
@@ -607,6 +640,71 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = chainPairs)]
     pub async fn chain_pairs(&self) -> Result<JsValue, JsValue> {
         to_js(&self.inner.get_chain_pairs().await.map_err(core_err)?)
+    }
+
+    // ---- Arkade Intents corridor (`/v1`) -----------------------------------
+    //
+    // Payloads cross in the corridor's own snake_case vocabulary, not the
+    // camelCase of the Boltz DTOs above: a quote from here is structurally the
+    // `RfqQuote` that `@arkade-os/swap`'s `assertFundable`,
+    // `verifyLockupAddress` and `deriveLightningReceive` take, so a caller can
+    // hand it straight across without a field-by-field rename. 64-bit amounts
+    // and timestamps arrive as `bigint`, like every other u64 at this boundary.
+
+    /// The origin the corridor hangs off — this client's `/v2` base with the
+    /// suffix removed. Throws for a base that does not end in `/v2`.
+    #[wasm_bindgen(getter, js_name = corridorUrl)]
+    pub fn corridor_url(&self) -> Result<String, JsValue> {
+        self.inner.corridor_root().map_err(core_err)
+    }
+
+    /// `POST /v1/swap` with an envelope already built. Resolves to an
+    /// `rfq_quote` **or** an `rfq_refusal` — read `type`; a refusal is the
+    /// maker's answer, not a failure.
+    #[wasm_bindgen(js_name = requestRfq)]
+    pub async fn request_rfq(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: corridor::RfqRequest = from_js(request)?;
+        to_js(&self.inner.request_rfq(&request).await.map_err(core_err)?)
+    }
+
+    /// Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup for
+    /// the maker to pay the invoice from.
+    #[wasm_bindgen(js_name = quoteLightningSend)]
+    pub async fn quote_lightning_send(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: corridor::LightningSendRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .quote_lightning_send(&request)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
+    /// Quote `lightning:BTC->arkade:BTC`: the maker mints a hold invoice and
+    /// locks on Arkade once it is paid, for the trader to claim.
+    #[wasm_bindgen(js_name = quoteLightningReceive)]
+    pub async fn quote_lightning_receive(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: corridor::LightningReceiveRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .quote_lightning_receive(&request)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
+    /// `GET /v1/rfq/{rfqId}`. Resolves to `null` for an id the maker never
+    /// issued. Poll until `state` is terminal (`settled`, `refused`,
+    /// `expired`, `refunded`, `stuck`).
+    #[wasm_bindgen(js_name = rfqStatus)]
+    pub async fn rfq_status(&self, rfq_id: StringArg) -> Result<JsValue, JsValue> {
+        let rfq_id = str_arg(rfq_id, "rfqId")?;
+        match self.inner.rfq_status(&rfq_id).await.map_err(core_err)? {
+            Some(status) => to_js(&status),
+            None => Ok(JsValue::NULL),
+        }
     }
 
     // ---- Create swaps ------------------------------------------------------

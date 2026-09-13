@@ -518,3 +518,102 @@ test("a mistyped options argument never quotes the key back", () => {
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Arkade Intents corridor.
+// ---------------------------------------------------------------------------
+
+import {
+  IntentsCorridor,
+  RFQ_TERMINAL_STATES,
+  corridorRootFromMakerUrl,
+  isRfqQuote,
+  newRfqId,
+} from "../dist/index.node.js";
+
+// The TS rule and the Rust rule (behind the wasm `corridorUrl` getter) must
+// agree on every input, or the main entry and the `./arkade` venue would reach
+// two different origins from one `makerUrl`.
+test("the corridor root is the origin the /v2 base hangs off, in TS and in wasm alike", () => {
+  for (const [base, root] of [
+    [
+      "https://maker.signet.kaleidoswap.com/v2",
+      "https://maker.signet.kaleidoswap.com",
+    ],
+    [
+      "https://maker.signet.kaleidoswap.com/v2/",
+      "https://maker.signet.kaleidoswap.com",
+    ],
+    ["http://localhost:9001/v2", "http://localhost:9001"],
+    ["https://host/prefix/v2", "https://host/prefix"],
+  ]) {
+    assert.equal(corridorRootFromMakerUrl(base), root, base);
+    assert.equal(new BoltzClient(base).corridorUrl, root, `wasm: ${base}`);
+    assert.equal(new IntentsCorridor(new BoltzClient(base)).url, root);
+  }
+  for (const bad of [
+    "https://maker.example",
+    "https://maker.example/v1",
+    "https://maker.example/v2?x=1",
+    "https://maker.example/v2#frag",
+  ]) {
+    assert.throws(() => corridorRootFromMakerUrl(bad), bad);
+    assert.throws(() => new BoltzClient(bad).corridorUrl, `wasm: ${bad}`);
+  }
+});
+
+// `ARKD` is a symbol the maker publishes, so a caller reading the catalogue
+// arrives with a route it was shown. The refusal has to say where it lives.
+test("ARKD on a Boltz-shaped create is refused before any I/O, pointing at the corridor", async () => {
+  const client = BoltzClient.forNetwork("signet");
+  await assert.rejects(
+    client.createReverseSwap("signet", {
+      from: "BTC",
+      to: "ARKD",
+      preimageHash: "00".repeat(32),
+      claimPublicKey: PUBKEY,
+      invoiceAmount: 12000n,
+    }),
+    (error) =>
+      isKaleidoSwapError(error) &&
+      error.code === "InvalidArgument" &&
+      /Intents corridor/.test(error.message) &&
+      /quoteLightningReceive/.test(error.message),
+  );
+});
+
+test("newRfqId is 32 random bytes of hex, fresh each call", () => {
+  const a = newRfqId();
+  const b = newRfqId();
+  assert.match(a, /^[0-9a-f]{64}$/);
+  assert.notEqual(a, b);
+});
+
+test("isRfqQuote narrows on the wire type, and the terminal set matches the SDK's", () => {
+  const quote = {
+    v: 1,
+    type: "rfq_quote",
+    rfq_id: "x",
+    pair: "arkade:BTC->lightning:BTC",
+    from_amount: 12120n,
+    to_amount: 12000n,
+    solver_pubkey: "02ab",
+    valid_until: 1n,
+    profile: {},
+  };
+  const refusal = {
+    v: 1,
+    type: "rfq_refusal",
+    rfq_id: "x",
+    reason: "exposure_cap",
+  };
+  assert.equal(isRfqQuote(quote), true);
+  assert.equal(isRfqQuote(refusal), false);
+  assert.deepEqual([...RFQ_TERMINAL_STATES].sort(), [
+    "expired",
+    "refunded",
+    "refused",
+    "settled",
+    "stuck",
+  ]);
+});

@@ -41,6 +41,44 @@ the battle-tested swap engine (taproot swap scripts, MuSig2 cooperative signing,
 claim/refund transaction construction, BIP85 key derivation) is kept intact, and
 the KaleidoSwap layers are built on top of it.
 
+## Arkade Intents corridor (`arkade:BTC <-> lightning:BTC`)
+
+Bitcoin on Arkade (`ARKD` in the maker's catalogue) is not a Boltz-shaped
+route. The maker serves it as an RFQ over `POST /v1/swap` and
+`GET /v1/rfq/{id}`, beside its `/v2` surface, and this SDK speaks that wire from
+`kaleidorg_swap_sdk::corridor` on the same client:
+
+```rust
+use kaleidorg_swap_sdk::corridor::{new_rfq_id, LightningSendRequest, RfqAnswer};
+
+let answer = client
+    .quote_lightning_send(&LightningSendRequest {
+        rfq_id: new_rfq_id(),
+        invoice,                 // the BOLT11 you want paid
+        refund_address,          // your own Ark address
+        client_refund_pubkey,    // your x-only key, hex
+    })
+    .await?;
+match answer {
+    RfqAnswer::Quote(quote) => {
+        quote.assert_fundable(now)?;   // 90-minute headroom before the refund deadline
+        // Derive the covenant from the quote's binding fields, compare it against
+        // quote.profile.lockup_address, then fund quote.from_amount sats there.
+    }
+    RfqAnswer::Refusal(refusal) => eprintln!("refused: {:?}", refusal.reason),
+}
+```
+
+A refusal is the maker's answer, not an error — it comes back as a value. The
+same surface is `BoltzApiClientV2.quote_lightning_send(...)` in Python and
+`new IntentsCorridor(client).quoteLightningSend(...)` in TypeScript.
+
+What this half does **not** do is touch Arkade: funding a send lockup or
+claiming a receive lockup needs an Ark wallet, which is the
+`@kaleidorg/swap-sdk/arkade` venue's job (TypeScript, on `@arkade-os/sdk`).
+Build that venue's transport from the same maker URL with
+`kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
+
 ## Partner attribution (organization API keys)
 
 A partner organization can have the swaps it originates attributed to it, so the
