@@ -9,6 +9,12 @@ The directions are:
 
 - `lusdt_submarine`: L-USDT on Liquid to a BTC Lightning invoice.
 - `lusdt_reverse`: a BTC Lightning payment to L-USDT on Liquid.
+- `corridor_quote`: the Arkade Intents corridor (`arkade:BTC <-> lightning:BTC`)
+  in both directions — quote, run the pre-commit gates, track. It funds
+  nothing: finishing a corridor swap needs an Ark wallet, which is the
+  TypeScript `@kaleidorg/swap-sdk/arkade` venue's job. Safe to run as-is
+  against signet (`cargo run --example corridor_quote`): its default inputs are
+  undecodable on purpose, so the maker refuses before reserving anything.
 
 Both examples derive their per-swap key from `SwapMasterKey`. Set
 `KALEIDO_SWAP_MNEMONIC` to the persisted 12-word **swap mnemonic**, not a

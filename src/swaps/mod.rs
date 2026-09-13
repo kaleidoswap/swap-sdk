@@ -1,5 +1,6 @@
 pub mod bitcoin;
 pub mod boltz;
+pub mod corridor;
 pub mod fees;
 pub mod kaleido;
 pub mod liquid;

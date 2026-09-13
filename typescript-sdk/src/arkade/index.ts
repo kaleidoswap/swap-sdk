@@ -44,6 +44,8 @@
  */
 
 import type { IWallet } from "@arkade-os/sdk";
+import { corridorRootFromMakerUrl } from "../corridor-url.js";
+export { corridorRootFromMakerUrl };
 import {
   ArkAddress,
   RestArkProvider,
@@ -75,6 +77,7 @@ import {
   LockupNeedsRecoveryError,
   PreimageNotRecoverableError,
   RfqSwapManager,
+  httpTransport,
   addAssetSwap,
   cancelOffer,
   classifyDepositSpend,
@@ -387,6 +390,32 @@ export interface PreparedLightningReceive {
   invoice: string;
   payAmountSats: number;
   invoiceExpiresAt: number;
+}
+
+/**
+ * An RFQ transport for the KaleidoSwap maker, from the same `makerUrl` the
+ * rest of the SDK is configured with.
+ *
+ * The maker serves the corridor over HTTP — `POST /v1/swap`,
+ * `GET /v1/rfq/{id}` — beside its `/v2` routes, so a venue pointed at
+ * `https://maker.signet.kaleidoswap.com/v2` needs a transport rooted at
+ * `https://maker.signet.kaleidoswap.com`. {@link corridorRootFromMakerUrl}
+ * derives that with the same rule the Rust core applies to its own `/v2`
+ * base, so the main entry's `IntentsCorridor` and this venue reach the same
+ * origin by construction rather than by two copies of a string.
+ *
+ * ```ts
+ * const venue = new ArkadeIntentsVenue({
+ *   wallet, arkServerUrl, store,
+ *   transport: kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2"),
+ * });
+ * ```
+ */
+export function kaleidoswapHttpTransport(
+  makerUrl: string,
+  options?: { fetchImpl?: typeof fetch },
+): RfqTransport {
+  return httpTransport(corridorRootFromMakerUrl(makerUrl), options);
 }
 
 const hex = {

@@ -361,6 +361,205 @@ export class SwapScript {
  * i64/u64 as BigInt so amounts never lose precision through an f64). Use for
  * logging/persisting SDK responses.
  */
+// ---------------------------------------------------------------------------
+// Arkade Intents corridor — the maker's `/v1` RFQ wire.
+//
+// `arkade:BTC <-> lightning:BTC` is not a Boltz-shaped route, which is why
+// `createReverseSwap({ to: "ARKD" })` is refused at the wasm boundary. The
+// maker serves it as an RFQ: post a request, receive a binding quote or a
+// refusal, track by `rfq_id`. These types are the corridor's own snake_case
+// vocabulary on purpose — a quote here IS the `RfqQuote` that
+// `@arkade-os/swap`'s `assertFundable`, `verifyLockupAddress` and
+// `deriveLightningReceive` take, so it crosses into `@kaleidorg/swap-sdk/arkade`
+// with no rename. 64-bit amounts and timestamps arrive as `bigint`.
+//
+// This half needs no Arkade dependency: quote, verify, track. Funding a send
+// or claiming a receive needs an Ark wallet — that is the venue's job.
+// ---------------------------------------------------------------------------
+
+export { corridorRootFromMakerUrl } from "./corridor-url.js";
+export { newRfqId } from "../vendor/bindings_wasm.js";
+
+/** The two corridor routes this SDK requests. */
+export type ArkadeIntentsPair =
+  "arkade:BTC->lightning:BTC" | "lightning:BTC->arkade:BTC";
+
+export const LIGHTNING_SEND_PAIR: ArkadeIntentsPair =
+  "arkade:BTC->lightning:BTC";
+export const LIGHTNING_RECEIVE_PAIR: ArkadeIntentsPair =
+  "lightning:BTC->arkade:BTC";
+
+/** Which leg of the pair an `amount` names. */
+export type RfqAmountSide = "from" | "to";
+
+/**
+ * `arkade:BTC->lightning:BTC`. Exact-out by construction — the invoice fixes
+ * the amount — so there is none to state.
+ */
+export interface LightningSendRfqRequest {
+  /** From {@link newRfqId}. Generate once and carry it. */
+  rfq_id: string;
+  /** The BOLT11 to be paid; its amount is the swap's `to_amount`. */
+  invoice: string;
+  /** The trader's own Ark address — where a refund pays. Pinned into a
+   * covenant leaf, so an address and not just a key. */
+  refund_address: string;
+  /** The trader's x-only key (32 bytes, hex) for the sender-side leaves. */
+  client_refund_pubkey: string;
+}
+
+/**
+ * `lightning:BTC->arkade:BTC`. Nothing fixes the size — the maker mints the
+ * invoice — so the trader states an amount and which leg it means.
+ */
+export interface LightningReceiveRfqRequest {
+  rfq_id: string;
+  /** `"to"` is "receive exactly this on Arkade"; the maker inverts it through
+   * its rate card, so `to_amount` rounds *up* by a sat or two — assert `>=`,
+   * never equality. */
+  amount_side: RfqAmountSide;
+  /** Sats, on the `amount_side` leg. */
+  amount: bigint | number;
+  /** `sha256(P)` of the trader's OWN preimage, hex. */
+  payment_hash: string;
+  /** The trader's Arkade payout address — pins the claim leaf. */
+  payout_address: string;
+  /** The trader's x-only Arkade key: the covenant's `receiver`. */
+  payout_pubkey: string;
+  /** Pre-signed claim for the maker's claim daemon; omit where none runs. */
+  claim_packet?: string;
+}
+
+/** The route-specific half of a quote. A send fills `lockup_address` and
+ * `receiver_pk_script`; a receive fills `lockup_address`, `invoice` and
+ * `solver_refund_pk_script`. */
+export interface RfqQuoteProfile {
+  payment_hash?: string;
+  /** Compare-only: derive the same covenant from the binding fields and
+   * refuse on mismatch. */
+  lockup_address?: string;
+  /** Receive: the hold invoice the trader pays to arm the swap. */
+  invoice?: string;
+  /** Send: the maker's payout destination, pinned into the claim leaf. */
+  receiver_pk_script?: string;
+  /** Receive: the maker's refund destination, pinned into the refund leaf. */
+  solver_refund_pk_script?: string;
+}
+
+/** The binding answer. Funding it is the acceptance — every field is final. */
+export interface RfqQuote {
+  v: number;
+  type: "rfq_quote";
+  rfq_id: string;
+  pair: string;
+  /** What the trader gives, sats. */
+  from_amount: bigint;
+  /** What the trader receives, sats. The fee is the spread. */
+  to_amount: bigint;
+  solver_pubkey: string;
+  /** Unix seconds after which a fresh quote is needed. */
+  valid_until: bigint;
+  /** Absolute refund deadline, unix seconds — the trader's on a send, the
+   * maker's on a receive. */
+  refund_locktime?: bigint;
+  profile: RfqQuoteProfile;
+}
+
+/** The maker's vocabulary; `"unknown"` is a reason this SDK version has not
+ * heard of, still a refusal. */
+export type RfqRefusalReason =
+  | "unsupported_pair"
+  | "unsupported_payload"
+  | "amount_out_of_range"
+  | "exposure_cap"
+  | "invoice_expired"
+  | "quote_conflict"
+  | "pricing_unavailable"
+  | "unknown";
+
+export interface RfqRefusal {
+  v: number;
+  type: "rfq_refusal";
+  rfq_id: string;
+  reason: RfqRefusalReason;
+}
+
+/** What `POST /v1/swap` answers. A refusal is a `200` and the maker's
+ * decision — read `type`, do not treat it as a thrown error. */
+export type RfqAnswer = RfqQuote | RfqRefusal;
+
+export function isRfqQuote(answer: RfqAnswer): answer is RfqQuote {
+  return answer.type === "rfq_quote";
+}
+
+export type RfqState =
+  | "quoted"
+  | "refused"
+  | "expired"
+  | "funded"
+  | "filling"
+  | "filled"
+  | "settled"
+  | "refunded"
+  | "stuck";
+
+/** The states after which no further update comes — poll until one. */
+export const RFQ_TERMINAL_STATES: ReadonlySet<RfqState> = new Set<RfqState>([
+  "settled",
+  "refused",
+  "expired",
+  "refunded",
+  "stuck",
+]);
+
+export interface RfqStatus {
+  v: number;
+  type: "rfq_status";
+  rfq_id: string;
+  state: RfqState;
+  /** Unix seconds. */
+  updated_at: bigint;
+  profile: RfqQuoteProfile;
+}
+
+/**
+ * Typed façade over a {@link BoltzClient}'s corridor methods.
+ *
+ * ```ts
+ * const corridor = new IntentsCorridor(BoltzClient.forNetwork("signet"));
+ * const answer = await corridor.quoteLightningSend({
+ *   rfq_id: newRfqId(), invoice, refund_address, client_refund_pubkey,
+ * });
+ * if (!isRfqQuote(answer)) throw new Error(`refused: ${answer.reason}`);
+ * // Derive the covenant from `answer` with @kaleidorg/swap-sdk/arkade, compare
+ * // against answer.profile.lockup_address, then fund answer.from_amount.
+ * ```
+ */
+export class IntentsCorridor {
+  constructor(private readonly client: WasmBoltzClient) {}
+
+  /** The origin the corridor hangs off — the client's `/v2` base minus the
+   * suffix. Same rule as {@link corridorRootFromMakerUrl}. */
+  get url(): string {
+    return this.client.corridorUrl as string;
+  }
+
+  quoteLightningSend(request: LightningSendRfqRequest): Promise<RfqAnswer> {
+    return this.client.quoteLightningSend(request) as Promise<RfqAnswer>;
+  }
+
+  quoteLightningReceive(
+    request: LightningReceiveRfqRequest,
+  ): Promise<RfqAnswer> {
+    return this.client.quoteLightningReceive(request) as Promise<RfqAnswer>;
+  }
+
+  /** `null` for an id the maker never issued. */
+  status(rfqId: string): Promise<RfqStatus | null> {
+    return this.client.rfqStatus(rfqId) as Promise<RfqStatus | null>;
+  }
+}
+
 export function toJson(value: unknown, space?: string | number): string {
   return JSON.stringify(
     value,

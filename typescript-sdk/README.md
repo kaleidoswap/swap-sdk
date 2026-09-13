@@ -40,6 +40,41 @@ settles on Mutinynet, so pair it with Mutinynet chain access
 encode addresses identically, so a mismatch raises no error and simply creates
 swaps on one chain while funding or watching another.
 
+## Arkade Intents corridor
+
+`ARKD` in the maker's catalogue is bitcoin on Arkade, and it is not a
+Boltz-shaped route — `createReverseSwap({ to: "ARKD" })` is refused before any
+I/O. The maker serves it as an RFQ beside `/v2`, and `IntentsCorridor` speaks
+that wire over the same client:
+
+```ts
+import {
+  BoltzClient,
+  IntentsCorridor,
+  isRfqQuote,
+  newRfqId,
+} from "@kaleidorg/swap-sdk";
+
+const corridor = new IntentsCorridor(BoltzClient.forNetwork("signet"));
+const answer = await corridor.quoteLightningReceive({
+  rfq_id: newRfqId(),
+  amount_side: "to",
+  amount: 12_000, // receive exactly this on Arkade; the price is the free variable
+  payment_hash, // sha256 of YOUR preimage, hex
+  payout_address, // your Ark address
+  payout_pubkey, // your x-only Ark key, hex
+});
+if (!isRfqQuote(answer)) throw new Error(`refused: ${answer.reason}`);
+// answer.profile.invoice is the hold invoice to pay; verify it pays payment_hash
+// for exactly answer.from_amount before handing it to a payer.
+```
+
+Payloads keep the wire's snake_case and `bigint` amounts on purpose: a quote
+from here is the `RfqQuote` that `@arkade-os/swap`'s gates and derivations
+take. Funding or claiming the Arkade side needs an Ark wallet — that is the
+`@kaleidorg/swap-sdk/arkade` venue, whose transport you build from the same URL
+with `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
+
 ## Supplying the binary yourself
 
 To serve the WebAssembly binary from your own CDN, or as a bundler asset URL,

@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added — the Arkade Intents corridor, in the core
+
+`arkade:BTC <-> lightning:BTC` has never been a Boltz-shaped route: the maker
+serves it as an RFQ over `POST /v1/swap` and `GET /v1/rfq/{id}`, beside its
+`/v2` surface. Until now that wire existed in this SDK only behind the
+`@kaleidorg/swap-sdk/arkade` venue — TypeScript only, and only with
+`@arkade-os/swap` and an Ark wallet in hand. A Python host, a server, or a
+browser reading the maker's catalogue could see `ARKD` published and could do
+nothing with it but fail: `createReverseSwap({ to: "ARKD" })` was refused in
+the wasm with `unsupported Boltz asset 'ARKD'`.
+
+The corridor is now a first-class client in the Rust core, and reaches every
+binding:
+
+- **Rust** — `kaleidorg_swap_sdk::corridor`: typed `LightningSendRequest` /
+  `LightningReceiveRequest` builders, `RfqQuote` / `RfqRefusal` / `RfqStatus`,
+  and on `BoltzApiClientV2` (so `KaleidoMakerClient` too, through `Deref`):
+  `quote_lightning_send`, `quote_lightning_receive`, `request_rfq`,
+  `rfq_status`, `corridor_root`. The organization API key rides on `/v1/swap`
+  exactly as on `/v2/swap/*` — the maker attributes both.
+- **Python** — the same five methods on `BoltzApiClientV2`, plus
+  `new_rfq_id()`. `RfqAnswer` is a record with `quote` / `refusal` optionals,
+  exactly one set.
+- **TypeScript** — `IntentsCorridor` over a `BoltzClient`, `newRfqId()`,
+  `isRfqQuote()`, `RFQ_TERMINAL_STATES`, and typed `RfqQuote` / `RfqStatus` /
+  request interfaces. `./arkade` gains `kaleidoswapHttpTransport(makerUrl)`,
+  so a venue is built from the same `makerUrl` as everything else.
+
+Two decisions worth knowing about:
+
+**A refusal is an answer, not an error.** The maker answers a refusal with
+`200` and `type: "rfq_refusal"` — a priced decision — so every binding returns
+it as a value (`RfqAnswer::Refusal`, `answer.refusal`, `isRfqQuote(answer)
+=== false`) rather than throwing. Only a transport fault or an unparseable body
+is an error. A `reason` this SDK has not heard of parses as `Unknown` /
+`"unknown"`: a refusal is still a refusal.
+
+**Corridor payloads keep the wire's snake_case, unlike the camelCase Boltz
+DTOs.** A quote from this SDK is structurally the `RfqQuote` that
+`@arkade-os/swap`'s `assertFundable`, `verifyLockupAddress` and
+`deriveLightningReceive` take, so it crosses into the `./arkade` venue with no
+rename. 64-bit amounts and timestamps are `bigint` in TypeScript, like every
+other u64 at that boundary.
+
+**Pre-commit checks are on the quote.** `RfqQuote::assert_fundable(now)`
+(send: 90-minute headroom before the refund deadline, quote still valid),
+`verify_receive_invoice(payment_hash)` (receive: the maker's invoice pays
+*our* hash for exactly `from_amount`) and `assert_receivable(...)` (receive:
+30-minute claim window measured from the *pay deadline*, optional price
+ceiling) mirror the SDK's gates. They exist because funding a quote is
+accepting it — there is no accept message — so the moment before value moves
+is the only one that matters.
+
+**Where the corridor lives is derived, not configured.** `/v1` is a sibling
+of `/v2`, so `corridor_root_from_maker_url("https://maker/v2")` is
+`"https://maker"`. The `/v2` suffix is required rather than stripped when
+present: guessing an origin would send a request — and the API key on it —
+somewhere the caller did not name. The TypeScript `corridorRootFromMakerUrl`
+applies the identical rule and a test pins the two against each other.
+
+### Changed
+
+- `createSubmarineSwap` / `createReverseSwap` with an `ARKD` leg still refuse
+  before any I/O, but the message now says why and where to go — the maker
+  publishes the symbol, so a caller reading the catalogue arrives with a
+  route it was shown.
+
 ## [0.6.0] - 2026-09-11
 
 ### Breaking — pair maps keep every currency the server sends
