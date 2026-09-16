@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2026-09-16
+
+### Fixed — the caller-funded claim PSET is parseable and fundable
+
+An L-USDT claim is the caller-funded PSET flow: this crate builds a template,
+the wallet adds L-BTC to cover the Elements fee plus change, and this crate
+finalizes. No caller could get past the first step, on two counts. The
+KaleidoSwap maker mints its Liquid lockups **explicit** by design, so this was
+every L-USDT claim rather than an edge case.
+
+- **The template did not parse.** `PSET_IN_EXPLICIT_VALUE` and
+  `PSET_IN_EXPLICIT_ASSET` were written on the swap input unconditionally.
+  Those fields reveal what a *confidential* prevout holds, and Elements
+  requires each to travel with the blind proof tying it to the commitment — an
+  explicit prevout has no commitment, so the proofs cannot be constructed. The
+  template went out with the fields and without the proofs, which neither
+  Elements Core nor libwally accepts ("Input explicit value and value proof
+  must be provided together"). They are now written only for a confidential
+  prevout, and omitted for an explicit one, where `witness_utxo` already states
+  the asset and amount in the clear.
+- **Nothing could be added to the template.**
+  `PartiallySignedTransaction::from_tx` leaves `PSBT_GLOBAL_TX_MODIFIABLE`
+  unset, which BIP-370 readers take as "no inputs or outputs may be added" — on
+  a template whose whole purpose is to be funded by its caller. libwally
+  answered the wallet's first `add_tx_input` with a bare `WALLY_EINVAL`. Now
+  set to inputs-and-outputs modifiable at construction.
+- Also drops the final scriptSig/witness that `Input::from_txin` copies off the
+  unsigned input: empty values in `PSBT_IN_FINAL_SCRIPTSIG` and
+  `PSBT_IN_FINAL_SCRIPTWITNESS` declare the input already finalized with a
+  zero-length scriptSig, which is its own parse failure behind the first two.
+
+`verify_input_metadata` reads the prevout on the explicit branch and holds any
+fields that *are* present to it, so a funded PSET is checked as strictly as
+before. The asymmetry with `verify_output_metadata` is deliberate and spec-correct:
+`PSET_IN_EXPLICIT_*` are optional and must be paired with their proofs, while
+`PSET_OUT_*` are mandatory for every output.
+
+Proven against a live `kaleidoswap-maker-rs` regtest harness: `BTC-LN -> L-USDT`
+reverse completes end to end, with the payout asserted against the node's own
+balance.
+
+**Note for callers.** Nothing here changes whether a payout address may be
+confidential. A confidential payout still needs the wallet to supply the
+output's blinding factors, which is blocked on
+[Blockstream/lwk#177](https://github.com/Blockstream/lwk/issues/177).
+
 ## [0.7.0] - 2026-09-13
 
 ### Added — the Arkade Intents corridor, in the core

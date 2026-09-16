@@ -958,6 +958,12 @@ impl PreparedLiquidSpend {
         // be added", so libwally refuses the caller's first `add_tx_input`
         // with a bare EINVAL. Bit 0 is Inputs Modifiable, bit 1 Outputs
         // Modifiable; a caller-funded PSET needs both.
+        //
+        // Nothing clears these afterwards. BIP-370 has a signer clear Inputs
+        // and Outputs Modifiable when it adds a SIGHASH_ALL signature, and
+        // libwally does not enforce that today — but a stricter wallet would
+        // be within its rights to refuse to sign while they are still set, so
+        // this is the place to look if one ever does.
         pset.global.tx_data.tx_modifiable = Some(0b011);
         if payment_blinding_key.is_some() {
             // A PSET output with a blinding key must carry a valid index. The
@@ -975,7 +981,7 @@ impl PreparedLiquidSpend {
         swap_input.final_script_sig = None;
         swap_input.final_script_witness = None;
         swap_input.witness_utxo = Some(funding_utxo.clone());
-        set_explicit_input_metadata(swap_input, &funding_utxo, &secrets)?;
+        describe_input_for_wallet(swap_input, &funding_utxo, &secrets)?;
 
         let template = LiquidPsetTemplate {
             pset: pset.to_string(),
@@ -1414,6 +1420,9 @@ impl PreparedLiquidSpend {
 
 /// Describe a PSET input's amount and asset to a wallet that cannot unblind it.
 ///
+/// Named for what it does rather than for the fields it sometimes writes: on an
+/// explicit prevout the honest description is *no* explicit fields at all.
+///
 /// `PSET_IN_EXPLICIT_VALUE`/`PSET_IN_EXPLICIT_ASSET` exist to reveal what a
 /// *confidential* prevout holds, and Elements requires each of them to travel
 /// with the blind proof that ties it to the commitment in `witness_utxo`. An
@@ -1421,7 +1430,7 @@ impl PreparedLiquidSpend {
 /// no commitment to prove anything against, and the proofs cannot be
 /// constructed — so for one the fields are simply left out rather than written
 /// unpaired, which no Elements parser accepts.
-fn set_explicit_input_metadata(
+fn describe_input_for_wallet(
     input: &mut PsetInput,
     witness_utxo: &TxOut,
     secrets: &TxOutSecrets,
@@ -2471,12 +2480,67 @@ mod tests {
         };
 
         let mut input = PsetInput::default();
-        set_explicit_input_metadata(&mut input, &witness_utxo, &secrets).unwrap();
+        describe_input_for_wallet(&mut input, &witness_utxo, &secrets).unwrap();
 
         assert!(input.asset.is_none(), "explicit asset must be omitted");
         assert!(input.amount.is_none(), "explicit value must be omitted");
         assert!(input.blind_asset_proof.is_none());
         assert!(input.blind_value_proof.is_none());
+    }
+
+    /// A confidential prevout round-trips: the fields and proofs we write are
+    /// the ones our own verifier accepts.
+    ///
+    /// This is the branch that actually constructs proofs, and the KaleidoSwap
+    /// maker mints its Liquid lockups explicit — so neither the regtest harness
+    /// nor the test above reaches it. Without this it is write-only code.
+    #[test]
+    fn a_confidential_prevout_round_trips_through_its_own_verifier() {
+        let secp = Secp256k1::new();
+        let asset = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let value = 100_000u64;
+        let asset_bf = AssetBlindingFactor::new(&mut OsRng);
+        let value_bf = ValueBlindingFactor::new(&mut OsRng);
+
+        let asset_commit = Asset::new_confidential(&secp, asset, asset_bf);
+        // The value commitment is generated against the asset's generator, not
+        // the `Asset` wrapper around it.
+        let Asset::Confidential(asset_generator) = asset_commit else {
+            unreachable!("new_confidential always yields a confidential asset")
+        };
+        let value_commit = Value::new_confidential(&secp, value, asset_generator, value_bf);
+        let witness_utxo = TxOut {
+            asset: asset_commit,
+            value: value_commit,
+            nonce: elements::confidential::Nonce::Null,
+            script_pubkey: elements::Script::new(),
+            witness: elements::TxOutWitness::default(),
+        };
+        let secrets = TxOutSecrets {
+            asset,
+            asset_bf,
+            value,
+            value_bf,
+        };
+
+        let mut input = PsetInput::default();
+        describe_input_for_wallet(&mut input, &witness_utxo, &secrets).unwrap();
+
+        // The explicit fields must be present, and paired with their proofs —
+        // one without the other is exactly the PSET no parser will accept.
+        assert_eq!(input.asset, Some(asset));
+        assert_eq!(input.amount, Some(value));
+        assert!(input.blind_asset_proof.is_some(), "asset proof must accompany the explicit asset");
+        assert!(input.blind_value_proof.is_some(), "value proof must accompany the explicit value");
+
+        // And our own verifier accepts what we just wrote.
+        let (seen_asset, seen_value) =
+            verify_input_metadata(&secp, &input, &witness_utxo, 0).expect("round trip must verify");
+        assert_eq!(seen_asset, asset);
+        assert_eq!(seen_value, value);
     }
 
     fn test_script(
