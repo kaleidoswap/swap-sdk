@@ -51,6 +51,10 @@ pub struct LiquidPsetTemplate {
     pub policy_asset_id: String,
     pub amount: u64,
     pub max_fee: u64,
+    /// True when the payout address is confidential and the funding wallet
+    /// must therefore blind the payment output. A wallet that does not blind
+    /// has to rebuild the template against the unconfidential address.
+    pub payment_requires_blinding: bool,
 }
 
 impl From<swaps_bitcoin::liquid::LiquidPsetTemplate> for LiquidPsetTemplate {
@@ -63,6 +67,7 @@ impl From<swaps_bitcoin::liquid::LiquidPsetTemplate> for LiquidPsetTemplate {
             policy_asset_id: template.policy_asset_id,
             amount: template.amount,
             max_fee: template.max_fee,
+            payment_requires_blinding: template.payment_requires_blinding,
         }
     }
 }

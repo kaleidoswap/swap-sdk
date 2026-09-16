@@ -187,6 +187,17 @@ pub struct LiquidPsetTemplate {
     pub policy_asset_id: String,
     pub amount: u64,
     pub max_fee: u64,
+    /// True when the payout address is confidential, which makes blinding the
+    /// payment output the funding wallet's job: finalization requires that
+    /// output to come back with confidential asset and value, a non-null nonce
+    /// and an ECDH pubkey, and nothing else in this flow can supply them.
+    ///
+    /// A wallet that does not blind must rebuild the template against the
+    /// unconfidential form of the address — which costs the confidentiality of
+    /// that one output, and is the only way it can complete. Read this before
+    /// funding: every other way of discovering it happens after the swap has
+    /// been paid for.
+    pub payment_requires_blinding: bool,
 }
 
 /// Unblinded data for the payment output returned by the caller's wallet.
@@ -991,6 +1002,7 @@ impl PreparedLiquidSpend {
             policy_asset_id: asset_context.policy_asset.to_string(),
             amount: secrets.value,
             max_fee,
+            payment_requires_blinding: payment_blinding_key.is_some(),
         };
 
         Ok(Self {
@@ -1407,9 +1419,13 @@ impl PreparedLiquidSpend {
                     || txout.nonce.is_null()
                     || output.ecdh_pubkey.is_none()
                 {
-                    return Err(Error::Protocol(
-                        "Confidential Liquid payment output was not blinded".to_string(),
-                    ));
+                    return Err(Error::Protocol(format!(
+                        "Confidential Liquid payment output was not blinded: the payout \
+                         address is confidential, so the funding wallet must blind output \
+                         {index} (see LiquidPsetTemplate::payment_requires_blinding). A \
+                         wallet that does not blind has to rebuild the template against \
+                         the unconfidential form of the address instead"
+                    )));
                 }
             }
         }
@@ -3486,6 +3502,20 @@ mod tests {
         );
         input.amount = Some(value - 1);
         assert!(verify_input_metadata(&secp, &input, &witness_utxo, 1).is_err());
+    }
+
+    #[macros::test_all]
+    fn template_says_when_the_payment_output_must_be_blinded() {
+        // The only warning a wallet gets before it funds. Without it the first
+        // sign is a finalization error, by which time a reverse swap's invoice
+        // is paid and a fee UTXO has been spent into existence.
+        let secp = Secp256k1::new();
+        let payment_blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let (confidential, ..) = prepared_lusdt_claim_for(Some(payment_blinder.public_key()));
+        assert!(confidential.template().payment_requires_blinding);
+
+        let (unconfidential, ..) = prepared_lusdt_claim();
+        assert!(!unconfidential.template().payment_requires_blinding);
     }
 
     #[macros::test_all]
