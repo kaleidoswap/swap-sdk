@@ -2533,8 +2533,14 @@ mod tests {
         // one without the other is exactly the PSET no parser will accept.
         assert_eq!(input.asset, Some(asset));
         assert_eq!(input.amount, Some(value));
-        assert!(input.blind_asset_proof.is_some(), "asset proof must accompany the explicit asset");
-        assert!(input.blind_value_proof.is_some(), "value proof must accompany the explicit value");
+        assert!(
+            input.blind_asset_proof.is_some(),
+            "asset proof must accompany the explicit asset"
+        );
+        assert!(
+            input.blind_value_proof.is_some(),
+            "value proof must accompany the explicit value"
+        );
 
         // And our own verifier accepts what we just wrote.
         let (seen_asset, seen_value) =
