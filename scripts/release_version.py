@@ -48,6 +48,12 @@ def versions() -> dict[str, str]:
         typescript_package = json.load(file)
     with (ROOT / "typescript-sdk/package-lock.json").open(encoding="utf-8") as file:
         typescript_lock = json.load(file)
+    with (ROOT / "packages/react-native/package.json").open(encoding="utf-8") as file:
+        react_native_package = json.load(file)
+    with (ROOT / "packages/react-native/package-lock.json").open(
+        encoding="utf-8"
+    ) as file:
+        react_native_lock = json.load(file)
 
     return {
         "Rust package": cargo_toml["package"]["version"],
@@ -60,6 +66,8 @@ def versions() -> dict[str, str]:
         ),
         "TypeScript package": typescript_package["version"],
         "TypeScript lockfile": typescript_lock["packages"][""]["version"],
+        "React Native package": react_native_package["version"],
+        "React Native lockfile": react_native_lock["packages"][""]["version"],
     }
 
 
@@ -143,6 +151,7 @@ def sync(version: str) -> None:
     replace_section_version(ROOT / "Cargo.toml", "package", version)
     replace_section_version(ROOT / "bindings/python/pyproject.toml", "project", version)
     replace_json_versions(ROOT / "typescript-sdk/package.json", version, 1)
+    replace_json_versions(ROOT / "packages/react-native/package.json", version, 1)
 
     # Manifests are the source of truth; every lockfile is regenerated from them
     # by its own tool. None of these commands upgrade a dependency: they only
@@ -168,6 +177,18 @@ def sync(version: str) -> None:
         ],
         ROOT / "typescript-sdk",
         ROOT / "typescript-sdk/package-lock.json",
+    )
+    relock(
+        [
+            "npm",
+            "install",
+            "--package-lock-only",
+            "--ignore-scripts",
+            "--no-audit",
+            "--no-fund",
+        ],
+        ROOT / "packages/react-native",
+        ROOT / "packages/react-native/package-lock.json",
     )
 
 

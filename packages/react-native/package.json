@@ -1,0 +1,117 @@
+{
+  "name": "@kaleidorg/swap-sdk-react-native",
+  "version": "0.7.2",
+  "description": "KaleidoSwap swap SDK for React Native — Boltz-protocol atomic swaps (submarine/reverse/chain) over a native UniFFI module",
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/typescript/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/typescript/src/index.d.ts",
+      "import": "./lib/module/index.js",
+      "require": "./lib/commonjs/index.js"
+    },
+    "./arkade": {
+      "types": "./lib/typescript/src/arkade.d.ts",
+      "import": "./lib/module/arkade.js",
+      "require": "./lib/commonjs/arkade.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "android",
+    "ios",
+    "cpp",
+    "*.podspec",
+    "react-native.config.js",
+    "scripts",
+    "!ios/build",
+    "!android/build",
+    "!android/gradle",
+    "!android/gradlew",
+    "!android/gradlew.bat",
+    "!android/local.properties",
+    "!**/__tests__",
+    "!**/.*"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaleidoswap/swap-sdk.git",
+    "directory": "packages/react-native"
+  },
+  "homepage": "https://github.com/kaleidoswap/swap-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/kaleidoswap/swap-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "postinstall": "./scripts/postinstall.sh",
+    "prepare": "bob build",
+    "typecheck": "tsc --noEmit",
+    "clean": "del-cli android/generated ios/generated lib",
+    "ubrn:clean": "rm -rf cpp/ android/CMakeLists.txt android/src/main/java android/*.cpp ios/ src/Native* src/index.ts src/generated/",
+    "ubrn:ios": "ubrn build ios --release --config ubrn.config.yaml --and-generate",
+    "ubrn:android": "ubrn build android --release --config ubrn.config.yaml --and-generate",
+    "ubrn:build": "npm run ubrn:ios && npm run ubrn:android"
+  },
+  "dependencies": {
+    "uniffi-bindgen-react-native": "0.29.3-1"
+  },
+  "peerDependencies": {
+    "@arkade-os/sdk": ">=0.4.71 <0.5.0",
+    "@arkade-os/swap": "^0.0.14",
+    "@kaleidorg/swap-sdk": ">=0.7.2",
+    "react": "*",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "@arkade-os/sdk": {
+      "optional": true
+    },
+    "@arkade-os/swap": {
+      "optional": true
+    },
+    "@kaleidorg/swap-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "del-cli": "^6.0.0",
+    "react": "19.0.0",
+    "react-native": "0.78.0",
+    "react-native-builder-bob": "^0.40.3",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "codegenConfig": {
+    "name": "RNKaleidoSwapSdkSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.kaleidorg.swapsdk"
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json"
+        }
+      ]
+    ]
+  }
+}

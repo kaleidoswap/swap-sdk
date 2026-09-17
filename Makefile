@@ -63,6 +63,16 @@ generate-python-bindings:
 check-generated: generate-python-bindings
 	git diff --exit-code -- bindings/python/kaleidorg_swap_sdk/_generated_uniffi.py
 
+# --- React Native binding ----------------------------------------------------
+# Cross-compiles the `bindings` crate for iOS and Android and regenerates the
+# turbo module around it. Needs the Android NDK, cargo-ndk, Xcode, and the Rust
+# targets for both platforms — CI does this on macOS.
+rn-build:
+	cd packages/react-native && npm install --ignore-scripts && npm run ubrn:build
+
+rn-typecheck:
+	cd packages/react-native && npm run typecheck
+
 # --- wasm / TypeScript binding ----------------------------------------------
 # Builds the wasm-bindgen package (bindings-wasm/pkg) for the browser/TS SDK.
 # Needs a wasm-capable clang (see CLANG_PREFIX / `brew install llvm@21`).

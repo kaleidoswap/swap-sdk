@@ -1,0 +1,121 @@
+on:
+  push:
+    branches:
+      - trunk
+    paths:
+      - "src/**"
+      - "bindings/**"
+      - "packages/react-native/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build-bindings-react-native.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "bindings/**"
+      - "packages/react-native/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build-bindings-react-native.yml"
+  workflow_dispatch:
+  workflow_call:
+
+name: build react native bindings
+
+# Path-filtered rather than run on every PR: this cross-compiles the swap engine
+# for seven targets and is the slowest job in the repository. A change that
+# cannot affect the native module does not need to pay for it.
+
+concurrency:
+  group: rn-bindings-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build iOS and Android bindings
+    # macOS: the iOS half needs Xcode, and running both halves on one runner
+    # keeps the generated C++/TypeScript consistent between them — `ubrn`
+    # regenerates it per platform build.
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22.23.1"
+
+      - name: Add Rust targets
+        run: |
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
+          rustup target add aarch64-linux-android armv7-linux-androideabi \
+                            i686-linux-android x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 3.5.4 --locked
+
+      - name: Set up the NDK
+        uses: nttld/setup-ndk@afb4c9964b521afb97c864b7d40b11e6911bd410 # v1.5.0
+        id: ndk
+        with:
+          ndk-version: r27c
+
+      - name: Cache cargo and target
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: rn-bindings-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install dependencies
+        working-directory: packages/react-native
+        run: npm install --ignore-scripts
+
+      - name: Build and generate the turbo module
+        working-directory: packages/react-native
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: npm run ubrn:build
+
+      - name: Type-check the generated TypeScript
+        working-directory: packages/react-native
+        run: npm run typecheck
+
+      - name: Compress Android binaries
+        working-directory: packages/react-native
+        run: zip -9 -r android-artifacts.zip android/src/main/jniLibs
+
+      - name: Compress iOS binaries
+        working-directory: packages/react-native
+        run: zip -9 -r ios-artifacts.zip build
+
+      - name: Upload Android binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: react-native-android-artifacts
+          path: packages/react-native/android-artifacts.zip
+          retention-days: 5
+
+      - name: Upload iOS binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: react-native-ios-artifacts
+          path: packages/react-native/ios-artifacts.zip
+          retention-days: 5
+
+      - name: Upload generated sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: react-native-generated
+          path: |
+            packages/react-native/cpp/generated
+            packages/react-native/src/generated
+            packages/react-native/android/generated
+          retention-days: 5

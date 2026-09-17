@@ -1,0 +1,44 @@
+# uniffi-bindgen-react-native builds the UniFFI bindings crate for iOS and
+# Android and generates the C++/TypeScript turbo module around it.
+#
+# The `ubrn` version tracks the `uniffi` version it generates against: the npm
+# `0.29.3-N` line pairs with the `0.29.x` crate this workspace resolves. Bumping
+# one without the other produces a module whose scaffolding checksums do not
+# match the library it loads, which fails at runtime rather than at build time.
+# See the pin and its note in package.json.
+name: kaleidoswap-swap-sdk
+
+rust:
+  # Relative to this package. The bindings crate is the same one the Python
+  # wheel is built from — there is no mobile-specific Rust.
+  directory: ../..
+  manifestPath: bindings/Cargo.toml
+
+bindings:
+  cpp: cpp/generated
+  ts: src/generated
+
+turboModule:
+  cpp: cpp
+  ts: src
+
+android:
+  # All four ABIs: arm64 and x86_64 cover devices and emulators, armeabi-v7a is
+  # still a meaningful share of low-end Android, and x86 costs little.
+  targets:
+    - arm64-v8a
+    - armeabi-v7a
+    - x86
+    - x86_64
+  # A shared library rather than a static one. The static path links the Rust
+  # code into the app's own .so, which makes the swap engine's symbols collide
+  # with any other UniFFI-based library a partner already ships — and a wallet
+  # integrating this SDK is exactly the app likely to have one.
+  useSharedLibrary: true
+
+ios:
+  targets:
+    - aarch64-apple-ios
+    - aarch64-apple-ios-sim
+    - x86_64-apple-ios
+  frameworkName: build/KaleidoSwapSdk
