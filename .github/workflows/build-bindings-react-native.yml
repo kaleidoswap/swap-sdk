@@ -84,6 +84,10 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
         run: npm run ubrn:build
 
+      - name: Test the packaging scripts
+        working-directory: packages/react-native
+        run: npm test
+
       - name: Type-check the generated TypeScript
         working-directory: packages/react-native
         run: npm run typecheck

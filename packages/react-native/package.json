@@ -54,10 +54,12 @@
     "postinstall": "./scripts/postinstall.sh",
     "prepare": "bob build",
     "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
     "clean": "del-cli android/generated ios/generated lib",
     "ubrn:clean": "rm -rf cpp/ android/CMakeLists.txt android/src/main/java android/*.cpp ios/ src/Native* src/index.ts src/generated/",
-    "ubrn:ios": "IPHONEOS_DEPLOYMENT_TARGET=15.1 ubrn build ios --release --config ubrn.config.yaml --and-generate",
-    "ubrn:android": "ubrn build android --release --config ubrn.config.yaml --and-generate",
+    "ubrn:ios": "IPHONEOS_DEPLOYMENT_TARGET=15.1 ubrn build ios --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
+    "ubrn:android": "ubrn build android --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
+    "ubrn:fixup": "node scripts/fix-generated-modifiers.mjs src/generated/kaleidorg_swap_sdk.ts",
     "ubrn:build": "npm run ubrn:ios && npm run ubrn:android"
   },
   "dependencies": {
