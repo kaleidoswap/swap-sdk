@@ -1,7 +1,8 @@
 # kaleidorg-swap-sdk
 
 **KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
-Bitcoin, Lightning, and Liquid, for Rust, Python, and the browser.
+Bitcoin, Lightning, and Liquid, for Rust, Python, the browser, and React
+Native.
 
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
@@ -150,9 +151,10 @@ key with allowed origins and per-key rate limits is a separate, later concept.
 | Path | What it is |
 |---|---|
 | `src/` | The swap engine (Boltz protocol): scripts, MuSig2, tx construction, key/preimage derivation, Esplora/Electrum chain access |
-| `bindings/` | [UniFFI](https://mozilla.github.io/uniffi-rs/) bindings (Python today) |
+| `bindings/` | [UniFFI](https://mozilla.github.io/uniffi-rs/) bindings — Python today, and the crate every native target is generated from |
 | `bindings-wasm/` | wasm-bindgen bindings for the browser — same swap surface, 64-bit integers cross as `BigInt` |
 | `typescript-sdk/` | TypeScript SDK (`@kaleidorg/swap-sdk`) wrapping the wasm package with hand-written types |
+| `packages/react-native/` | React Native SDK (`@kaleidorg/swap-sdk-react-native`) — a turbo module over the UniFFI crate, because Hermes has no `WebAssembly` |
 | `macros/` | Proc-macros (wasm-compatible `async_trait`, cross-target `test_all`) |
 
 ## Installation and supported runtimes
@@ -162,6 +164,7 @@ key with allowed origins and per-key rate limits is a separate, later concept.
 | Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
 | Python | `pip install kaleidorg_swap_sdk` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
 | TypeScript | `npm install @kaleidorg/swap-sdk` | Browsers and Node 22+; `await init()` takes no argument in either |
+| React Native | `npm install @kaleidorg/swap-sdk-react-native` | iOS and Android, new architecture; a bare or prebuilt app, not Expo Go |
 
 Both registries are live and carry every release through `0.6.0`:
 `kaleidorg_swap_sdk` on PyPI (five platform wheels plus an sdist) and
@@ -195,6 +198,21 @@ repository-pinned tool inputs and rejects any drift.
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
   the typed surface (`BoltzClient`, `SwapScript`, `SwapMasterKey`,
   `BoltzWsApi`).
+- **React Native (UniFFI):** see
+  [`packages/react-native/`](packages/react-native/README.md). `make rn-build`
+  cross-compiles the bindings crate for iOS and Android and regenerates the
+  turbo module. The Arkade corridor is not part of the native module — it stays
+  TypeScript and is re-exported from `@kaleidorg/swap-sdk/arkade`.
+
+  Not published yet: the package builds and the binaries are produced in CI,
+  but the release pipeline seals one npm tarball and does not yet carry the
+  second one or attach the native archives to the release. Until it does,
+  `npm install @kaleidorg/swap-sdk-react-native` has nothing to fetch — build
+  from a checkout.
+
+`make check-binding-parity` fails when the wasm binding exposes a capability
+the UniFFI binding does not, so the native surface cannot fall behind the
+browser one unnoticed.
 
 Pull-request packaging CI builds and clean-installs Python wheels for Linux
 x86_64/aarch64, macOS x86_64/arm64, and Windows x86_64. It also reconstructs

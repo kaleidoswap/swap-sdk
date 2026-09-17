@@ -2,7 +2,20 @@
 
 Uniffi bindings for the KaleidoSwap SDK (the Boltz-protocol swap engine).
 
-[UniFFI](https://mozilla.github.io/uniffi-rs/) enables automatic generation of bindings for multiple programming languages from a single Rust codebase. Currently, only Python bindings are implemented in this repository, but UniFFI supports many other languages including Kotlin, Swift, Ruby, and more.
+[UniFFI](https://mozilla.github.io/uniffi-rs/) generates bindings for several
+languages from one Rust crate. This crate is the source for two published
+surfaces today:
+
+- **Python**, built here as a wheel (below).
+- **React Native**, built in [`packages/react-native/`](../packages/react-native/README.md)
+  by `uniffi-bindgen-react-native`, which compiles this crate for iOS and
+  Android and generates a C++/TypeScript turbo module around it.
+
+Swift and Kotlin come from the same crate and are not wired up yet; they need
+build targets and packaging, not new bindings code.
+
+Everything exported here must stay in step with `bindings-wasm/`, the browser
+surface. `make check-binding-parity` enforces that.
 
 ## Python
 
