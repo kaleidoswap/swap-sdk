@@ -291,6 +291,8 @@ mod tests {
 
     use super::*;
     use crate::network::BitcoinChain::BitcoinTestnet;
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    use crate::util::live_test::{live, LIVE_API_TIMEOUT};
     use bitcoin::absolute::LockTime;
     use bitcoin::blockdata::transaction::Transaction;
     use bitcoin::transaction::Version;
@@ -305,13 +307,56 @@ mod tests {
         assert!(ElectrumBitcoinClient::default(BitcoinChain::BitcoinSignet, None).is_err());
     }
 
+    /// The default mainnet servers still speak a protocol this crate can use.
+    ///
+    /// Live, so it skips rather than fails when a server is simply not there —
+    /// see [`live`] for why those two outcomes are not the same thing. It is
+    /// the reachability of *our defaults* that is under test, so it goes
+    /// through `default` rather than naming the hosts a second time.
+    ///
+    /// `default` already bounds this with [`DEFAULT_ELECTRUM_TIMEOUT`] — the
+    /// whole connect, across every address the name resolves to, and then each
+    /// read and write — so a dead host fails fast here without the test
+    /// arranging a bound of its own. That holds only while the constant stays
+    /// inside the live budget, which is what the assertion below pins.
+    ///
+    /// Native-only, like every other live test in this crate: the reasons are
+    /// in `swaps::boltz`'s test module, and `electrum_client` has no wasm
+    /// backend to run against in any case.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[test]
     fn test_electrum_default_clients() {
-        let electrum_client = ElectrumBitcoinClient::default(BitcoinChain::Bitcoin, None).unwrap();
-        assert!(electrum_client.inner.ping().is_ok());
+        const _: () = assert!(
+            DEFAULT_ELECTRUM_TIMEOUT as u64 <= LIVE_API_TIMEOUT.as_secs(),
+            "a default Electrum timeout above the live budget would let this \
+             test hang on a dead host instead of skipping"
+        );
 
-        let electrum_client = ElectrumLiquidClient::default(LiquidChain::Liquid, None).unwrap();
-        assert!(electrum_client.inner.ping().is_ok());
+        // Two independent halves rather than an early return: a Bitcoin server
+        // having a bad minute must not take the Liquid check down with it.
+        if let Some(client) = live(
+            ElectrumBitcoinClient::default(BitcoinChain::Bitcoin, None),
+            DEFAULT_MAINNET_NODE,
+            "ElectrumBitcoinClient::default",
+        ) {
+            live(
+                client.inner.ping().map_err(Error::from),
+                DEFAULT_MAINNET_NODE,
+                "bitcoin ping",
+            );
+        }
+
+        if let Some(client) = live(
+            ElectrumLiquidClient::default(LiquidChain::Liquid, None),
+            DEFAULT_LIQUID_MAINNET_NODE,
+            "ElectrumLiquidClient::default",
+        ) {
+            live(
+                client.inner.ping().map_err(Error::from),
+                DEFAULT_LIQUID_MAINNET_NODE,
+                "liquid ping",
+            );
+        }
     }
 
     #[test]

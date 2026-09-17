@@ -4185,82 +4185,17 @@ mod tests {
     // failure this whole helper exists to remove. The wasm-specific surface is
     // covered by the tests that do not leave the machine.
 
-    /// How long a live third-party API may take before it counts as absent.
-    ///
-    /// Bounded, and comfortably under `wasm-bindgen-test`'s 20-second default
-    /// per test. An unbounded call is not portable: a host refusing connections
-    /// returns instantly on a developer machine, but the same dead host has
-    /// consumed over 60 seconds per call on the CI runner. Unbounded, that
-    /// silently became a browser-job timeout reported as "failed to detect test
-    /// as having been run" — no failing assertion, nothing to read.
-    ///
-    /// Generous enough that a working endpoint answers well inside it, so the
-    /// bound decides "absent", never "slow but fine".
+    /// The skip-or-fail decision, and the bound that makes "absent" decidable,
+    /// both live in [`crate::util::live_test`]: the Electrum tests need the same
+    /// two outcomes, and one copy is what keeps the two transports agreeing on
+    /// what an outage is.
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    const LIVE_API_TIMEOUT: Duration = Duration::from_secs(10);
+    use crate::util::live_test::{live, LIVE_API_TIMEOUT};
 
     /// A client for a live third-party API, bounded by [`LIVE_API_TIMEOUT`].
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     fn live_client(base_url: &str) -> BoltzApiClientV2 {
         BoltzApiClientV2::new(base_url.to_string(), Some(LIVE_API_TIMEOUT))
-    }
-
-    /// Unwrap a live third-party API result, or skip the test if that API never
-    /// answered.
-    ///
-    /// A live-API test has two failure modes that deserve opposite reactions,
-    /// and `assert!(result.is_ok())` cannot tell them apart:
-    ///
-    /// - **Nothing came back.** Nothing is learned, and failing here makes a
-    ///   third party's outage block every merge and release.
-    /// - **Something came back and this crate could not use it.** A schema or
-    ///   protocol regression — the only reason these tests exist.
-    ///
-    /// The error variant already carries that distinction, so this costs no
-    /// second request. An earlier version re-probed the host over the network
-    /// to decide; that doubled the wait against a dead host and was itself what
-    /// pushed the browser job over its limit.
-    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-    fn live<T>(result: Result<T, Error>, base_url: &str, what: &str) -> Option<T> {
-        match result {
-            Ok(value) => Some(value),
-            // `Error::HTTP` is this crate's `From<reqwest::Error>`. A rejected
-            // status becomes `HTTPStatusNotSuccess` and a body that will not
-            // deserialize becomes `HTTPResponseBodyInvalid` or `JSON`, so this
-            // variant is a transport failure: refused, DNS, TLS, the timeout
-            // above — or, as the doc on the variant now says explicitly, a body
-            // this client could not read, such as a mid-body reset. The older
-            // comment here claimed the variant could only mean the request
-            // never came back, which `response.text()` makes untrue.
-            //
-            // All of those skip rather than fail. A third party resetting
-            // mid-response is that party having a bad minute, not the schema or
-            // protocol regression these tests exist to detect, and failing on
-            // it is the "outage blocks every merge" case above. The
-            // classification is named in the skip line instead, so an
-            // unexpected shape shows up in the log rather than being flattened
-            // into every other reason a host was unreachable.
-            Err(error @ Error::HTTP(_)) => {
-                // Announced, not silent: a run where every live test skipped
-                // must not read like one where they all passed. With the
-                // causes, because reqwest's own layer only says a request was
-                // sent, and which of refused / DNS / TLS / timed out it was is
-                // the whole content of a skip line.
-                //
-                // Holding the error rather than its text is what makes the
-                // classification available with no second request.
-                let kind = match &error {
-                    Error::HTTP(e) if e.is_connect() => "connect",
-                    Error::HTTP(e) if e.is_timeout() => "timeout",
-                    Error::HTTP(e) if e.is_body() || e.is_decode() => "body",
-                    _ => "other",
-                };
-                let detail = error.message_with_causes();
-                eprintln!("SKIPPED {what}: {base_url} did not answer [{kind}] ({detail})");
-                None
-            }
-            Err(error) => panic!("{what} failed against a responding {base_url}: {error:?}"),
-        }
     }
 
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
