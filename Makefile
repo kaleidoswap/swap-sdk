@@ -33,6 +33,11 @@ validate-release-readiness: validate-release-version
 	@python3 scripts/release_notes.py "$(patsubst v%,%,$(TAG))" >/dev/null
 	@echo "Validated local release readiness for $(TAG)"
 
+# Fail when the wasm binding exposes a capability the UniFFI binding does not,
+# so the mobile/native surface cannot silently fall behind the browser one.
+check-binding-parity:
+	@python3 scripts/check_binding_parity.py
+
 check-release-workflow:
 	@python3 scripts/check_release_workflow.py
 

@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added — the UniFFI binding catches up with the browser one
+
+The two bindings wrap the same core crate but are written by hand, and the wasm
+side had drifted ahead: a mobile or native SDK generated from UniFFI today would
+have shipped without a way to derive swap keys at all. The UniFFI binding now
+exposes everything the wasm binding does.
+
+- `SwapMasterKey` — BIP85 swap-key derivation from a wallet or rescue mnemonic,
+  the master xpub for `swap/restore`, and the per-index keypair and preimage.
+  Where the wasm binding returns hex, this returns the already-bound `KeyPair`
+  and `Preimage` objects the swap-script constructors take.
+- `swap_restore` / `swap_restore_index` — every swap the maker has seen for an
+  xpub, and the highest derivation index it has seen. This is how a client that
+  was reinstalled, or killed mid-swap, finds the claims and refunds it still
+  owes.
+- `get_swap`, `get_quote`, `accept_quote` — swap state with the maker's event
+  history, and the chain-swap re-quote path. Without `accept_quote` a chain swap
+  whose lockup arrived for the wrong amount has no route but its refund.
+- `get_height`, `get_fee_estimation`, `get_mrh_bip21`, `get_submarine_tx`,
+  `get_submarine_preimage`, `get_reverse_tx`, `get_chain_txs`, `get_nodes`.
+- `BoltzWsApi.is_connected` — a socket that died while the app was backgrounded
+  reports no error, so a client that resumes can check before it waits on
+  updates that will never arrive.
+
+`make check-binding-parity` now fails when the wasm binding exposes a capability
+the UniFFI binding does not. Intentional differences are recorded with their
+reason rather than left to be rediscovered.
+
 ## [0.7.2] - 2026-09-17
 
 ### Fixed — a wallet learns before it funds that it has to blind

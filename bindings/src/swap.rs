@@ -375,6 +375,14 @@ impl Default for KeyPair {
     }
 }
 
+impl KeyPair {
+    /// Wrap an already-derived keypair. Not exported: callers reach this
+    /// through `SwapMasterKey::derive_swap_key`.
+    pub(crate) fn from_keypair(inner: Keypair) -> Self {
+        KeyPair { inner }
+    }
+}
+
 uniffi::custom_type!(PublicKey, String, {
     remote,
     try_lift: |val| match PublicKey::from_str(val.as_str()) {
