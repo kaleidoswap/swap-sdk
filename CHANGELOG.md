@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed — a wallet learns before it funds that it has to blind
+
+A confidential payout address makes blinding the payment output the funding
+wallet's job: finalization requires that output back with confidential asset
+and value, a non-null nonce and an ECDH pubkey, and nothing else in the flow
+can supply them. A wallet that does not blind — one that adds its fee input
+and change through libwally and leaves every commitment alone — could not
+discover that until finalization, which for a reverse swap is after the
+invoice is paid and a fee UTXO has been spent into existence.
+
+`LiquidPsetTemplate` now carries `payment_requires_blinding`, so a wallet can
+check before it funds anything and rebuild against the unconfidential form of
+the address if it cannot blind. The finalization error names the output index
+and both remedies instead of stating the bare fact.
+
+Nothing changes for a wallet that does blind: that path is unaffected and
+still covered by `caller_funded_pset_accepts_proven_confidential_input_payout_and_change`.
+
 ## [0.7.1] - 2026-09-16
 
 ### Fixed — the caller-funded claim PSET is parseable and fundable

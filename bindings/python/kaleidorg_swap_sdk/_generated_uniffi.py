@@ -3875,6 +3875,12 @@ class LiquidPsetTemplate:
     policy_asset_id: "str"
     amount: "int"
     max_fee: "int"
+    payment_requires_blinding: "bool"
+    """
+    True when the payout address is confidential and the funding wallet
+    must therefore blind the payment output. A wallet that does not blind
+    has to rebuild the template against the unconfidential address.
+    """
 
     def __init__(
         self,
@@ -3886,6 +3892,7 @@ class LiquidPsetTemplate:
         policy_asset_id: "str",
         amount: "int",
         max_fee: "int",
+        payment_requires_blinding: "bool",
     ):
         self.pset = pset
         self.swap_input_index = swap_input_index
@@ -3894,9 +3901,10 @@ class LiquidPsetTemplate:
         self.policy_asset_id = policy_asset_id
         self.amount = amount
         self.max_fee = max_fee
+        self.payment_requires_blinding = payment_requires_blinding
 
     def __str__(self):
-        return "LiquidPsetTemplate(pset={}, swap_input_index={}, payment_output_index={}, swap_asset_id={}, policy_asset_id={}, amount={}, max_fee={})".format(
+        return "LiquidPsetTemplate(pset={}, swap_input_index={}, payment_output_index={}, swap_asset_id={}, policy_asset_id={}, amount={}, max_fee={}, payment_requires_blinding={})".format(
             self.pset,
             self.swap_input_index,
             self.payment_output_index,
@@ -3904,6 +3912,7 @@ class LiquidPsetTemplate:
             self.policy_asset_id,
             self.amount,
             self.max_fee,
+            self.payment_requires_blinding,
         )
 
     def __eq__(self, other):
@@ -3921,6 +3930,8 @@ class LiquidPsetTemplate:
             return False
         if self.max_fee != other.max_fee:
             return False
+        if self.payment_requires_blinding != other.payment_requires_blinding:
+            return False
         return True
 
 
@@ -3935,6 +3946,7 @@ class _UniffiConverterTypeLiquidPsetTemplate(_UniffiConverterRustBuffer):
             policy_asset_id=_UniffiConverterString.read(buf),
             amount=_UniffiConverterUInt64.read(buf),
             max_fee=_UniffiConverterUInt64.read(buf),
+            payment_requires_blinding=_UniffiConverterBool.read(buf),
         )
 
     @staticmethod
@@ -3946,6 +3958,7 @@ class _UniffiConverterTypeLiquidPsetTemplate(_UniffiConverterRustBuffer):
         _UniffiConverterString.check_lower(value.policy_asset_id)
         _UniffiConverterUInt64.check_lower(value.amount)
         _UniffiConverterUInt64.check_lower(value.max_fee)
+        _UniffiConverterBool.check_lower(value.payment_requires_blinding)
 
     @staticmethod
     def write(value, buf):
@@ -3956,6 +3969,7 @@ class _UniffiConverterTypeLiquidPsetTemplate(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.policy_asset_id, buf)
         _UniffiConverterUInt64.write(value.amount, buf)
         _UniffiConverterUInt64.write(value.max_fee, buf)
+        _UniffiConverterBool.write(value.payment_requires_blinding, buf)
 
 
 class PairLimits:
