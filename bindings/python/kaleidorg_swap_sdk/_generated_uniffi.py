@@ -523,6 +523,13 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_accept_quote()
+        != 34865
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment()
         != 48519
     ):
@@ -572,6 +579,48 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_chain_txs()
+        != 44095
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_fee_estimation()
+        != 52550
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_height()
+        != 27908
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_mrh_bip21()
+        != 39993
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_nodes()
+        != 52984
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_quote()
+        != 7817
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_pairs()
         != 46163
     ):
@@ -579,8 +628,36 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_tx()
+        != 42476
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_pairs()
         != 55905
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_preimage()
+        != 499
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_tx()
+        != 43732
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_swap()
+        != 59111
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -606,7 +683,25 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_swap_restore()
+        != 35713
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_swap_restore_index()
+        != 36150
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_ws() != 60817:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzwsapi_is_connected() != 61856:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -685,6 +780,34 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template()
         != 22943
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_preimage()
+        != 9238
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_swap_key()
+        != 52513
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_master_xpub()
+        != 19966
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_swap_mnemonic()
+        != 64409
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -772,6 +895,20 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new() != 58443:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_swap_mnemonic()
+        != 26148
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic()
+        != 15773
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -1035,6 +1172,15 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_new.argtype
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzapiclientv2_new.restype = (
     ctypes.c_void_p
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_accept_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_accept_quote.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_api_key_environment.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1075,14 +1221,69 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_chain_pairs.
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_chain_pairs.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_chain_txs.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_chain_txs.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_fee_estimation.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_fee_estimation.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_height.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_mrh_bip21.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_mrh_bip21.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_nodes.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_nodes.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_quote.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_reverse_pairs.argtypes = (
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_reverse_pairs.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_reverse_tx.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_reverse_tx.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_pairs.argtypes = (
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_pairs.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_preimage.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_preimage.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_tx.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_tx.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_swap.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_quote_lightning_receive.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -1100,6 +1301,22 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_rfq_status.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_rfq_status.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_swap_restore.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_swap_restore.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_swap_restore_index.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_swap_restore_index.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_ws.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1123,6 +1340,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzwsapi_new.argtypes = (
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_boltzwsapi_new.restype = (
     ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzwsapi_is_connected.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzwsapi_is_connected.restype = (
+    ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzwsapi_run_ws_loop.argtypes = (
     ctypes.c_void_p,
@@ -1330,6 +1553,60 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template.argt
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapmasterkey.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapmasterkey.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapmasterkey.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapmasterkey.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_swap_mnemonic.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_swap_mnemonic.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_wallet_mnemonic.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_preimage.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_preimage.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_swap_key.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_swap_key.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_master_xpub.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_master_xpub.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_swap_mnemonic.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_swap_mnemonic.restype = (
     _UniffiRustBuffer
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapscript.argtypes = (
@@ -1653,6 +1930,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.resty
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_accept_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_accept_quote.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_environment.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_api_key_id.argtypes = ()
@@ -1667,18 +1946,46 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_swa
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_create_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_chain_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_chain_pairs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_chain_txs.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_chain_txs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_fee_estimation.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_fee_estimation.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_height.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_height.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_mrh_bip21.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_mrh_bip21.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_nodes.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_nodes.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_quote.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_pairs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_tx.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_reverse_tx.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_pairs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_tx.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_submarine_tx.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_get_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_receive.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_receive.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_send.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_quote_lightning_send.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_rfq_status.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_rfq_status.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_swap_restore.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_swap_restore.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_swap_restore_index.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_swap_restore_index.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_ws.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzapiclientv2_ws.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzwsapi_is_connected.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzwsapi_is_connected.restype = (
     ctypes.c_uint16
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_boltzwsapi_run_ws_loop.argtypes = ()
@@ -1735,6 +2042,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finaliz
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_swap_key.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_swap_key.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_master_xpub.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_master_xpub.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_swap_mnemonic.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_swap_mnemonic.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_claim.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_claim.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_refund.argtypes = ()
@@ -1771,6 +2086,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new.argtypes 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_swap_mnemonic.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_swap_mnemonic.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse.argtypes = ()
@@ -1826,6 +2145,20 @@ class _UniffiConverterUInt64(_UniffiConverterPrimitiveInt):
     @staticmethod
     def write(value, buf):
         buf.write_u64(value)
+
+
+class _UniffiConverterInt64(_UniffiConverterPrimitiveInt):
+    CLASS_NAME = "i64"
+    VALUE_MIN = -(2**63)
+    VALUE_MAX = 2**63
+
+    @staticmethod
+    def read(buf):
+        return buf.read_i64()
+
+    @staticmethod
+    def write(value, buf):
+        buf.write_i64(value)
 
 
 class _UniffiConverterDouble(_UniffiConverterPrimitiveFloat):
@@ -2360,6 +2693,169 @@ class _UniffiConverterTypeChainSwapDetails(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
 
 
+class ChainSwapTx:
+    id: "str"
+    hex: "typing.Optional[str]"
+
+    def __init__(self, *, id: "str", hex: "typing.Optional[str]"):
+        self.id = id
+        self.hex = hex
+
+    def __str__(self):
+        return "ChainSwapTx(id={}, hex={})".format(self.id, self.hex)
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.hex != other.hex:
+            return False
+        return True
+
+
+class _UniffiConverterTypeChainSwapTx(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ChainSwapTx(
+            id=_UniffiConverterString.read(buf),
+            hex=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterOptionalString.check_lower(value.hex)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterOptionalString.write(value.hex, buf)
+
+
+class ChainSwapTxLock:
+    transaction: "ChainSwapTx"
+    timeout: "ChainSwapTxTimeout"
+
+    def __init__(self, *, transaction: "ChainSwapTx", timeout: "ChainSwapTxTimeout"):
+        self.transaction = transaction
+        self.timeout = timeout
+
+    def __str__(self):
+        return "ChainSwapTxLock(transaction={}, timeout={})".format(
+            self.transaction, self.timeout
+        )
+
+    def __eq__(self, other):
+        if self.transaction != other.transaction:
+            return False
+        if self.timeout != other.timeout:
+            return False
+        return True
+
+
+class _UniffiConverterTypeChainSwapTxLock(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ChainSwapTxLock(
+            transaction=_UniffiConverterTypeChainSwapTx.read(buf),
+            timeout=_UniffiConverterTypeChainSwapTxTimeout.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeChainSwapTx.check_lower(value.transaction)
+        _UniffiConverterTypeChainSwapTxTimeout.check_lower(value.timeout)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeChainSwapTx.write(value.transaction, buf)
+        _UniffiConverterTypeChainSwapTxTimeout.write(value.timeout, buf)
+
+
+class ChainSwapTxResp:
+    user_lock: "typing.Optional[ChainSwapTxLock]"
+    server_lock: "typing.Optional[ChainSwapTxLock]"
+
+    def __init__(
+        self,
+        *,
+        user_lock: "typing.Optional[ChainSwapTxLock]",
+        server_lock: "typing.Optional[ChainSwapTxLock]",
+    ):
+        self.user_lock = user_lock
+        self.server_lock = server_lock
+
+    def __str__(self):
+        return "ChainSwapTxResp(user_lock={}, server_lock={})".format(
+            self.user_lock, self.server_lock
+        )
+
+    def __eq__(self, other):
+        if self.user_lock != other.user_lock:
+            return False
+        if self.server_lock != other.server_lock:
+            return False
+        return True
+
+
+class _UniffiConverterTypeChainSwapTxResp(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ChainSwapTxResp(
+            user_lock=_UniffiConverterOptionalTypeChainSwapTxLock.read(buf),
+            server_lock=_UniffiConverterOptionalTypeChainSwapTxLock.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalTypeChainSwapTxLock.check_lower(value.user_lock)
+        _UniffiConverterOptionalTypeChainSwapTxLock.check_lower(value.server_lock)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalTypeChainSwapTxLock.write(value.user_lock, buf)
+        _UniffiConverterOptionalTypeChainSwapTxLock.write(value.server_lock, buf)
+
+
+class ChainSwapTxTimeout:
+    block_height: "int"
+    eta: "typing.Optional[int]"
+
+    def __init__(self, *, block_height: "int", eta: "typing.Optional[int]"):
+        self.block_height = block_height
+        self.eta = eta
+
+    def __str__(self):
+        return "ChainSwapTxTimeout(block_height={}, eta={})".format(
+            self.block_height, self.eta
+        )
+
+    def __eq__(self, other):
+        if self.block_height != other.block_height:
+            return False
+        if self.eta != other.eta:
+            return False
+        return True
+
+
+class _UniffiConverterTypeChainSwapTxTimeout(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ChainSwapTxTimeout(
+            block_height=_UniffiConverterUInt32.read(buf),
+            eta=_UniffiConverterOptionalUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt32.check_lower(value.block_height)
+        _UniffiConverterOptionalUInt32.check_lower(value.eta)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt32.write(value.block_height, buf)
+        _UniffiConverterOptionalUInt32.write(value.eta, buf)
+
+
 class ChannelInfo:
     funding_transaction_id: "str"
     funding_transaction_vout: "int"
@@ -2400,6 +2896,115 @@ class _UniffiConverterTypeChannelInfo(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterString.write(value.funding_transaction_id, buf)
         _UniffiConverterUInt64.write(value.funding_transaction_vout, buf)
+
+
+class ClaimDetails:
+    tree: "SwapTree"
+    amount: "typing.Optional[int]"
+    key_index: "int"
+    transaction: "typing.Optional[TransactionOut]"
+    lockup_address: "str"
+    server_public_key: "str"
+    timeout_block_height: "int"
+    blinding_key: "typing.Optional[str]"
+    preimage_hash: "str"
+
+    def __init__(
+        self,
+        *,
+        tree: "SwapTree",
+        amount: "typing.Optional[int]",
+        key_index: "int",
+        transaction: "typing.Optional[TransactionOut]",
+        lockup_address: "str",
+        server_public_key: "str",
+        timeout_block_height: "int",
+        blinding_key: "typing.Optional[str]",
+        preimage_hash: "str",
+    ):
+        self.tree = tree
+        self.amount = amount
+        self.key_index = key_index
+        self.transaction = transaction
+        self.lockup_address = lockup_address
+        self.server_public_key = server_public_key
+        self.timeout_block_height = timeout_block_height
+        self.blinding_key = blinding_key
+        self.preimage_hash = preimage_hash
+
+    def __str__(self):
+        return "ClaimDetails(tree={}, amount={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={}, preimage_hash={})".format(
+            self.tree,
+            self.amount,
+            self.key_index,
+            self.transaction,
+            self.lockup_address,
+            self.server_public_key,
+            self.timeout_block_height,
+            self.blinding_key,
+            self.preimage_hash,
+        )
+
+    def __eq__(self, other):
+        if self.tree != other.tree:
+            return False
+        if self.amount != other.amount:
+            return False
+        if self.key_index != other.key_index:
+            return False
+        if self.transaction != other.transaction:
+            return False
+        if self.lockup_address != other.lockup_address:
+            return False
+        if self.server_public_key != other.server_public_key:
+            return False
+        if self.timeout_block_height != other.timeout_block_height:
+            return False
+        if self.blinding_key != other.blinding_key:
+            return False
+        if self.preimage_hash != other.preimage_hash:
+            return False
+        return True
+
+
+class _UniffiConverterTypeClaimDetails(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ClaimDetails(
+            tree=_UniffiConverterTypeSwapTree.read(buf),
+            amount=_UniffiConverterOptionalUInt64.read(buf),
+            key_index=_UniffiConverterUInt32.read(buf),
+            transaction=_UniffiConverterOptionalTypeTransactionOut.read(buf),
+            lockup_address=_UniffiConverterString.read(buf),
+            server_public_key=_UniffiConverterString.read(buf),
+            timeout_block_height=_UniffiConverterUInt32.read(buf),
+            blinding_key=_UniffiConverterOptionalString.read(buf),
+            preimage_hash=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeSwapTree.check_lower(value.tree)
+        _UniffiConverterOptionalUInt64.check_lower(value.amount)
+        _UniffiConverterUInt32.check_lower(value.key_index)
+        _UniffiConverterOptionalTypeTransactionOut.check_lower(value.transaction)
+        _UniffiConverterString.check_lower(value.lockup_address)
+        _UniffiConverterString.check_lower(value.server_public_key)
+        _UniffiConverterUInt32.check_lower(value.timeout_block_height)
+        _UniffiConverterOptionalString.check_lower(value.blinding_key)
+        _UniffiConverterString.check_lower(value.preimage_hash)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeSwapTree.write(value.tree, buf)
+        _UniffiConverterOptionalUInt64.write(value.amount, buf)
+        _UniffiConverterUInt32.write(value.key_index, buf)
+        _UniffiConverterOptionalTypeTransactionOut.write(value.transaction, buf)
+        _UniffiConverterString.write(value.lockup_address, buf)
+        _UniffiConverterString.write(value.server_public_key, buf)
+        _UniffiConverterUInt32.write(value.timeout_block_height, buf)
+        _UniffiConverterOptionalString.write(value.blinding_key, buf)
+        _UniffiConverterString.write(value.preimage_hash, buf)
 
 
 class ClientConfig:
@@ -3453,6 +4058,109 @@ class _UniffiConverterTypeGetChainPairsResponse(_UniffiConverterRustBuffer):
         _UniffiConverterMapStringMapStringTypeChainPair.write(value.pairs, buf)
 
 
+class GetFeeEstimationResponse:
+    btc: "float"
+    lbtc: "float"
+
+    def __init__(self, *, btc: "float", lbtc: "float"):
+        self.btc = btc
+        self.lbtc = lbtc
+
+    def __str__(self):
+        return "GetFeeEstimationResponse(btc={}, lbtc={})".format(self.btc, self.lbtc)
+
+    def __eq__(self, other):
+        if self.btc != other.btc:
+            return False
+        if self.lbtc != other.lbtc:
+            return False
+        return True
+
+
+class _UniffiConverterTypeGetFeeEstimationResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return GetFeeEstimationResponse(
+            btc=_UniffiConverterDouble.read(buf),
+            lbtc=_UniffiConverterDouble.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterDouble.check_lower(value.btc)
+        _UniffiConverterDouble.check_lower(value.lbtc)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterDouble.write(value.btc, buf)
+        _UniffiConverterDouble.write(value.lbtc, buf)
+
+
+class GetNodesResponse:
+    btc: "dict[str, Node]"
+
+    def __init__(self, *, btc: "dict[str, Node]"):
+        self.btc = btc
+
+    def __str__(self):
+        return "GetNodesResponse(btc={})".format(self.btc)
+
+    def __eq__(self, other):
+        if self.btc != other.btc:
+            return False
+        return True
+
+
+class _UniffiConverterTypeGetNodesResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return GetNodesResponse(
+            btc=_UniffiConverterMapStringTypeNode.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterMapStringTypeNode.check_lower(value.btc)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterMapStringTypeNode.write(value.btc, buf)
+
+
+class GetQuoteResponse:
+    amount: "int"
+    """
+    Server lockup amount, in sat
+    """
+
+    def __init__(self, *, amount: "int"):
+        self.amount = amount
+
+    def __str__(self):
+        return "GetQuoteResponse(amount={})".format(self.amount)
+
+    def __eq__(self, other):
+        if self.amount != other.amount:
+            return False
+        return True
+
+
+class _UniffiConverterTypeGetQuoteResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return GetQuoteResponse(
+            amount=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt64.check_lower(value.amount)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt64.write(value.amount, buf)
+
+
 class GetReversePairsResponse:
     pairs: "dict[str, dict[str, ReversePair]]"
 
@@ -3513,6 +4221,156 @@ class _UniffiConverterTypeGetSubmarinePairsResponse(_UniffiConverterRustBuffer):
     @staticmethod
     def write(value, buf):
         _UniffiConverterMapStringMapStringTypeSubmarinePair.write(value.pairs, buf)
+
+
+class GetSwapResponse:
+    status: "str"
+    zero_conf_rejected: "typing.Optional[bool]"
+    transaction: "typing.Optional[TransactionResponse]"
+    id: "typing.Optional[str]"
+    swap_type: "typing.Optional[str]"
+    payment_status: "typing.Optional[str]"
+    failure_reason: "typing.Optional[str]"
+    failure_details: "typing.Optional[str]"
+    events: "typing.Optional[typing.List[SwapEvent]]"
+    """
+    The swap's history, oldest first.
+    """
+
+    def __init__(
+        self,
+        *,
+        status: "str",
+        zero_conf_rejected: "typing.Optional[bool]",
+        transaction: "typing.Optional[TransactionResponse]",
+        id: "typing.Optional[str]",
+        swap_type: "typing.Optional[str]",
+        payment_status: "typing.Optional[str]",
+        failure_reason: "typing.Optional[str]",
+        failure_details: "typing.Optional[str]",
+        events: "typing.Optional[typing.List[SwapEvent]]",
+    ):
+        self.status = status
+        self.zero_conf_rejected = zero_conf_rejected
+        self.transaction = transaction
+        self.id = id
+        self.swap_type = swap_type
+        self.payment_status = payment_status
+        self.failure_reason = failure_reason
+        self.failure_details = failure_details
+        self.events = events
+
+    def __str__(self):
+        return "GetSwapResponse(status={}, zero_conf_rejected={}, transaction={}, id={}, swap_type={}, payment_status={}, failure_reason={}, failure_details={}, events={})".format(
+            self.status,
+            self.zero_conf_rejected,
+            self.transaction,
+            self.id,
+            self.swap_type,
+            self.payment_status,
+            self.failure_reason,
+            self.failure_details,
+            self.events,
+        )
+
+    def __eq__(self, other):
+        if self.status != other.status:
+            return False
+        if self.zero_conf_rejected != other.zero_conf_rejected:
+            return False
+        if self.transaction != other.transaction:
+            return False
+        if self.id != other.id:
+            return False
+        if self.swap_type != other.swap_type:
+            return False
+        if self.payment_status != other.payment_status:
+            return False
+        if self.failure_reason != other.failure_reason:
+            return False
+        if self.failure_details != other.failure_details:
+            return False
+        if self.events != other.events:
+            return False
+        return True
+
+
+class _UniffiConverterTypeGetSwapResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return GetSwapResponse(
+            status=_UniffiConverterString.read(buf),
+            zero_conf_rejected=_UniffiConverterOptionalBool.read(buf),
+            transaction=_UniffiConverterOptionalTypeTransactionResponse.read(buf),
+            id=_UniffiConverterOptionalString.read(buf),
+            swap_type=_UniffiConverterOptionalString.read(buf),
+            payment_status=_UniffiConverterOptionalString.read(buf),
+            failure_reason=_UniffiConverterOptionalString.read(buf),
+            failure_details=_UniffiConverterOptionalString.read(buf),
+            events=_UniffiConverterOptionalSequenceTypeSwapEvent.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterOptionalBool.check_lower(value.zero_conf_rejected)
+        _UniffiConverterOptionalTypeTransactionResponse.check_lower(value.transaction)
+        _UniffiConverterOptionalString.check_lower(value.id)
+        _UniffiConverterOptionalString.check_lower(value.swap_type)
+        _UniffiConverterOptionalString.check_lower(value.payment_status)
+        _UniffiConverterOptionalString.check_lower(value.failure_reason)
+        _UniffiConverterOptionalString.check_lower(value.failure_details)
+        _UniffiConverterOptionalSequenceTypeSwapEvent.check_lower(value.events)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterOptionalBool.write(value.zero_conf_rejected, buf)
+        _UniffiConverterOptionalTypeTransactionResponse.write(value.transaction, buf)
+        _UniffiConverterOptionalString.write(value.id, buf)
+        _UniffiConverterOptionalString.write(value.swap_type, buf)
+        _UniffiConverterOptionalString.write(value.payment_status, buf)
+        _UniffiConverterOptionalString.write(value.failure_reason, buf)
+        _UniffiConverterOptionalString.write(value.failure_details, buf)
+        _UniffiConverterOptionalSequenceTypeSwapEvent.write(value.events, buf)
+
+
+class HeightResponse:
+    btc: "int"
+    lbtc: "int"
+
+    def __init__(self, *, btc: "int", lbtc: "int"):
+        self.btc = btc
+        self.lbtc = lbtc
+
+    def __str__(self):
+        return "HeightResponse(btc={}, lbtc={})".format(self.btc, self.lbtc)
+
+    def __eq__(self, other):
+        if self.btc != other.btc:
+            return False
+        if self.lbtc != other.lbtc:
+            return False
+        return True
+
+
+class _UniffiConverterTypeHeightResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return HeightResponse(
+            btc=_UniffiConverterUInt32.read(buf),
+            lbtc=_UniffiConverterUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt32.check_lower(value.btc)
+        _UniffiConverterUInt32.check_lower(value.lbtc)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt32.write(value.btc, buf)
+        _UniffiConverterUInt32.write(value.lbtc, buf)
 
 
 class Leaf:
@@ -3972,6 +4830,89 @@ class _UniffiConverterTypeLiquidPsetTemplate(_UniffiConverterRustBuffer):
         _UniffiConverterBool.write(value.payment_requires_blinding, buf)
 
 
+class MrhResponse:
+    bip21: "str"
+    signature: "str"
+
+    def __init__(self, *, bip21: "str", signature: "str"):
+        self.bip21 = bip21
+        self.signature = signature
+
+    def __str__(self):
+        return "MrhResponse(bip21={}, signature={})".format(self.bip21, self.signature)
+
+    def __eq__(self, other):
+        if self.bip21 != other.bip21:
+            return False
+        if self.signature != other.signature:
+            return False
+        return True
+
+
+class _UniffiConverterTypeMrhResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return MrhResponse(
+            bip21=_UniffiConverterString.read(buf),
+            signature=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.bip21)
+        _UniffiConverterString.check_lower(value.signature)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.bip21, buf)
+        _UniffiConverterString.write(value.signature, buf)
+
+
+class Node:
+    public_key: "Secp256k1PublicKey"
+    """
+    The public key
+    """
+
+    uris: "typing.List[str]"
+    """
+    The public URIs
+    """
+
+    def __init__(self, *, public_key: "Secp256k1PublicKey", uris: "typing.List[str]"):
+        self.public_key = public_key
+        self.uris = uris
+
+    def __str__(self):
+        return "Node(public_key={}, uris={})".format(self.public_key, self.uris)
+
+    def __eq__(self, other):
+        if self.public_key != other.public_key:
+            return False
+        if self.uris != other.uris:
+            return False
+        return True
+
+
+class _UniffiConverterTypeNode(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return Node(
+            public_key=_UniffiConverterTypeSecp256k1PublicKey.read(buf),
+            uris=_UniffiConverterSequenceString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeSecp256k1PublicKey.check_lower(value.public_key)
+        _UniffiConverterSequenceString.check_lower(value.uris)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeSecp256k1PublicKey.write(value.public_key, buf)
+        _UniffiConverterSequenceString.write(value.uris, buf)
+
+
 class PairLimits:
     """
     Various limits of swap parameters
@@ -4143,6 +5084,97 @@ class _UniffiConverterTypeQuoteProfile(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.invoice, buf)
         _UniffiConverterOptionalString.write(value.receiver_pk_script, buf)
         _UniffiConverterOptionalString.write(value.solver_refund_pk_script, buf)
+
+
+class RefundDetails:
+    tree: "SwapTree"
+    key_index: "int"
+    transaction: "typing.Optional[TransactionOut]"
+    lockup_address: "str"
+    server_public_key: "str"
+    timeout_block_height: "int"
+    blinding_key: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        tree: "SwapTree",
+        key_index: "int",
+        transaction: "typing.Optional[TransactionOut]",
+        lockup_address: "str",
+        server_public_key: "str",
+        timeout_block_height: "int",
+        blinding_key: "typing.Optional[str]",
+    ):
+        self.tree = tree
+        self.key_index = key_index
+        self.transaction = transaction
+        self.lockup_address = lockup_address
+        self.server_public_key = server_public_key
+        self.timeout_block_height = timeout_block_height
+        self.blinding_key = blinding_key
+
+    def __str__(self):
+        return "RefundDetails(tree={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={})".format(
+            self.tree,
+            self.key_index,
+            self.transaction,
+            self.lockup_address,
+            self.server_public_key,
+            self.timeout_block_height,
+            self.blinding_key,
+        )
+
+    def __eq__(self, other):
+        if self.tree != other.tree:
+            return False
+        if self.key_index != other.key_index:
+            return False
+        if self.transaction != other.transaction:
+            return False
+        if self.lockup_address != other.lockup_address:
+            return False
+        if self.server_public_key != other.server_public_key:
+            return False
+        if self.timeout_block_height != other.timeout_block_height:
+            return False
+        if self.blinding_key != other.blinding_key:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RefundDetails(
+            tree=_UniffiConverterTypeSwapTree.read(buf),
+            key_index=_UniffiConverterUInt32.read(buf),
+            transaction=_UniffiConverterOptionalTypeTransactionOut.read(buf),
+            lockup_address=_UniffiConverterString.read(buf),
+            server_public_key=_UniffiConverterString.read(buf),
+            timeout_block_height=_UniffiConverterUInt32.read(buf),
+            blinding_key=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeSwapTree.check_lower(value.tree)
+        _UniffiConverterUInt32.check_lower(value.key_index)
+        _UniffiConverterOptionalTypeTransactionOut.check_lower(value.transaction)
+        _UniffiConverterString.check_lower(value.lockup_address)
+        _UniffiConverterString.check_lower(value.server_public_key)
+        _UniffiConverterUInt32.check_lower(value.timeout_block_height)
+        _UniffiConverterOptionalString.check_lower(value.blinding_key)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeSwapTree.write(value.tree, buf)
+        _UniffiConverterUInt32.write(value.key_index, buf)
+        _UniffiConverterOptionalTypeTransactionOut.write(value.transaction, buf)
+        _UniffiConverterString.write(value.lockup_address, buf)
+        _UniffiConverterString.write(value.server_public_key, buf)
+        _UniffiConverterUInt32.write(value.timeout_block_height, buf)
+        _UniffiConverterOptionalString.write(value.blinding_key, buf)
 
 
 class ReverseFees:
@@ -4337,6 +5369,55 @@ class _UniffiConverterTypeReversePair(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.from_asset_id, buf)
         _UniffiConverterOptionalString.write(value.to_asset_id, buf)
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
+
+
+class ReverseSwapTxResp:
+    id: "str"
+    hex: "typing.Optional[str]"
+    timeout_block_height: "int"
+
+    def __init__(
+        self, *, id: "str", hex: "typing.Optional[str]", timeout_block_height: "int"
+    ):
+        self.id = id
+        self.hex = hex
+        self.timeout_block_height = timeout_block_height
+
+    def __str__(self):
+        return "ReverseSwapTxResp(id={}, hex={}, timeout_block_height={})".format(
+            self.id, self.hex, self.timeout_block_height
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.hex != other.hex:
+            return False
+        if self.timeout_block_height != other.timeout_block_height:
+            return False
+        return True
+
+
+class _UniffiConverterTypeReverseSwapTxResp(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ReverseSwapTxResp(
+            id=_UniffiConverterString.read(buf),
+            hex=_UniffiConverterOptionalString.read(buf),
+            timeout_block_height=_UniffiConverterUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterOptionalString.check_lower(value.hex)
+        _UniffiConverterUInt32.check_lower(value.timeout_block_height)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterOptionalString.write(value.hex, buf)
+        _UniffiConverterUInt32.write(value.timeout_block_height, buf)
 
 
 class RfqAnswer:
@@ -4854,6 +5935,287 @@ class _UniffiConverterTypeSubmarinePairLimits(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.write(value.minimal_batched, buf)
 
 
+class SubmarineSwapPreimageResp:
+    preimage: "str"
+
+    def __init__(self, *, preimage: "str"):
+        self.preimage = preimage
+
+    def __str__(self):
+        return "SubmarineSwapPreimageResp(preimage={})".format(self.preimage)
+
+    def __eq__(self, other):
+        if self.preimage != other.preimage:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSubmarineSwapPreimageResp(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SubmarineSwapPreimageResp(
+            preimage=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.preimage)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.preimage, buf)
+
+
+class SubmarineSwapTxResp:
+    id: "str"
+    hex: "typing.Optional[str]"
+    timeout_block_height: "typing.Optional[int]"
+    timeout_eta: "typing.Optional[int]"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        hex: "typing.Optional[str]",
+        timeout_block_height: "typing.Optional[int]",
+        timeout_eta: "typing.Optional[int]",
+    ):
+        self.id = id
+        self.hex = hex
+        self.timeout_block_height = timeout_block_height
+        self.timeout_eta = timeout_eta
+
+    def __str__(self):
+        return "SubmarineSwapTxResp(id={}, hex={}, timeout_block_height={}, timeout_eta={})".format(
+            self.id, self.hex, self.timeout_block_height, self.timeout_eta
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.hex != other.hex:
+            return False
+        if self.timeout_block_height != other.timeout_block_height:
+            return False
+        if self.timeout_eta != other.timeout_eta:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSubmarineSwapTxResp(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SubmarineSwapTxResp(
+            id=_UniffiConverterString.read(buf),
+            hex=_UniffiConverterOptionalString.read(buf),
+            timeout_block_height=_UniffiConverterOptionalUInt32.read(buf),
+            timeout_eta=_UniffiConverterOptionalUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterOptionalString.check_lower(value.hex)
+        _UniffiConverterOptionalUInt32.check_lower(value.timeout_block_height)
+        _UniffiConverterOptionalUInt32.check_lower(value.timeout_eta)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterOptionalString.write(value.hex, buf)
+        _UniffiConverterOptionalUInt32.write(value.timeout_block_height, buf)
+        _UniffiConverterOptionalUInt32.write(value.timeout_eta, buf)
+
+
+class SwapEvent:
+    kind: "str"
+    """
+    What happened, e.g. `invoice_issued`, `expired`.
+    """
+
+    ts: "int"
+    """
+    Unix seconds.
+    """
+
+    def __init__(self, *, kind: "str", ts: "int"):
+        self.kind = kind
+        self.ts = ts
+
+    def __str__(self):
+        return "SwapEvent(kind={}, ts={})".format(self.kind, self.ts)
+
+    def __eq__(self, other):
+        if self.kind != other.kind:
+            return False
+        if self.ts != other.ts:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSwapEvent(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SwapEvent(
+            kind=_UniffiConverterString.read(buf),
+            ts=_UniffiConverterInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.kind)
+        _UniffiConverterInt64.check_lower(value.ts)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.kind, buf)
+        _UniffiConverterInt64.write(value.ts, buf)
+
+
+class SwapRestoreIndexResponse:
+    index: "int"
+
+    def __init__(self, *, index: "int"):
+        self.index = index
+
+    def __str__(self):
+        return "SwapRestoreIndexResponse(index={})".format(self.index)
+
+    def __eq__(self, other):
+        if self.index != other.index:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSwapRestoreIndexResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SwapRestoreIndexResponse(
+            index=_UniffiConverterInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterInt64.check_lower(value.index)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterInt64.write(value.index, buf)
+
+
+class SwapRestoreResponse:
+    id: "str"
+    swap_type: "SwapRestoreType"
+    status: "str"
+    created_at: "int"
+    _from: "str"
+    to: "str"
+    invoice: "typing.Optional[str]"
+    """
+    Lightning invoice; boltz only returns it for submarine/reverse swaps.
+    """
+
+    claim_details: "typing.Optional[ClaimDetails]"
+    refund_details: "typing.Optional[RefundDetails]"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        swap_type: "SwapRestoreType",
+        status: "str",
+        created_at: "int",
+        _from: "str",
+        to: "str",
+        invoice: "typing.Optional[str]",
+        claim_details: "typing.Optional[ClaimDetails]",
+        refund_details: "typing.Optional[RefundDetails]",
+    ):
+        self.id = id
+        self.swap_type = swap_type
+        self.status = status
+        self.created_at = created_at
+        self._from = _from
+        self.to = to
+        self.invoice = invoice
+        self.claim_details = claim_details
+        self.refund_details = refund_details
+
+    def __str__(self):
+        return "SwapRestoreResponse(id={}, swap_type={}, status={}, created_at={}, _from={}, to={}, invoice={}, claim_details={}, refund_details={})".format(
+            self.id,
+            self.swap_type,
+            self.status,
+            self.created_at,
+            self._from,
+            self.to,
+            self.invoice,
+            self.claim_details,
+            self.refund_details,
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.swap_type != other.swap_type:
+            return False
+        if self.status != other.status:
+            return False
+        if self.created_at != other.created_at:
+            return False
+        if self._from != other._from:
+            return False
+        if self.to != other.to:
+            return False
+        if self.invoice != other.invoice:
+            return False
+        if self.claim_details != other.claim_details:
+            return False
+        if self.refund_details != other.refund_details:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SwapRestoreResponse(
+            id=_UniffiConverterString.read(buf),
+            swap_type=_UniffiConverterTypeSwapRestoreType.read(buf),
+            status=_UniffiConverterString.read(buf),
+            created_at=_UniffiConverterUInt64.read(buf),
+            _from=_UniffiConverterString.read(buf),
+            to=_UniffiConverterString.read(buf),
+            invoice=_UniffiConverterOptionalString.read(buf),
+            claim_details=_UniffiConverterOptionalTypeClaimDetails.read(buf),
+            refund_details=_UniffiConverterOptionalTypeRefundDetails.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterTypeSwapRestoreType.check_lower(value.swap_type)
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterUInt64.check_lower(value.created_at)
+        _UniffiConverterString.check_lower(value._from)
+        _UniffiConverterString.check_lower(value.to)
+        _UniffiConverterOptionalString.check_lower(value.invoice)
+        _UniffiConverterOptionalTypeClaimDetails.check_lower(value.claim_details)
+        _UniffiConverterOptionalTypeRefundDetails.check_lower(value.refund_details)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterTypeSwapRestoreType.write(value.swap_type, buf)
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterUInt64.write(value.created_at, buf)
+        _UniffiConverterString.write(value._from, buf)
+        _UniffiConverterString.write(value.to, buf)
+        _UniffiConverterOptionalString.write(value.invoice, buf)
+        _UniffiConverterOptionalTypeClaimDetails.write(value.claim_details, buf)
+        _UniffiConverterOptionalTypeRefundDetails.write(value.refund_details, buf)
+
+
 class SwapStatus:
     id: "str"
     status: "str"
@@ -5183,6 +6545,82 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterBool.write(value.cooperative, buf)
         _UniffiConverterOptionalTypeChainClaim.write(value.chain_claim, buf)
+
+
+class TransactionOut:
+    id: "str"
+    vout: "int"
+
+    def __init__(self, *, id: "str", vout: "int"):
+        self.id = id
+        self.vout = vout
+
+    def __str__(self):
+        return "TransactionOut(id={}, vout={})".format(self.id, self.vout)
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.vout != other.vout:
+            return False
+        return True
+
+
+class _UniffiConverterTypeTransactionOut(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return TransactionOut(
+            id=_UniffiConverterString.read(buf),
+            vout=_UniffiConverterUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterUInt32.check_lower(value.vout)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterUInt32.write(value.vout, buf)
+
+
+class TransactionResponse:
+    id: "str"
+    hex: "str"
+
+    def __init__(self, *, id: "str", hex: "str"):
+        self.id = id
+        self.hex = hex
+
+    def __str__(self):
+        return "TransactionResponse(id={}, hex={})".format(self.id, self.hex)
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.hex != other.hex:
+            return False
+        return True
+
+
+class _UniffiConverterTypeTransactionResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return TransactionResponse(
+            id=_UniffiConverterString.read(buf),
+            hex=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.hex)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.hex, buf)
 
 
 class AmountSide(enum.Enum):
@@ -6129,6 +7567,72 @@ class _UniffiConverterTypeSubSwapStates(_UniffiConverterRustBuffer):
             buf.write_i32(11)
 
 
+class SwapRestoreType(enum.Enum):
+    REVERSE = 0
+
+    SUBMARINE = 1
+
+    CHAIN = 2
+
+
+class _UniffiConverterTypeSwapRestoreType(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return SwapRestoreType.REVERSE
+        if variant == 2:
+            return SwapRestoreType.SUBMARINE
+        if variant == 3:
+            return SwapRestoreType.CHAIN
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == SwapRestoreType.REVERSE:
+            return
+        if value == SwapRestoreType.SUBMARINE:
+            return
+        if value == SwapRestoreType.CHAIN:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == SwapRestoreType.REVERSE:
+            buf.write_i32(1)
+        if value == SwapRestoreType.SUBMARINE:
+            buf.write_i32(2)
+        if value == SwapRestoreType.CHAIN:
+            buf.write_i32(3)
+
+
+class _UniffiConverterOptionalUInt32(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterUInt32.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterUInt32.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterUInt32.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalUInt64(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -6285,6 +7789,32 @@ class _UniffiConverterOptionalTypeChainClaim(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeChainSwapTxLock(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeChainSwapTxLock.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeChainSwapTxLock.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeChainSwapTxLock.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeChannelInfo(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -6307,6 +7837,32 @@ class _UniffiConverterOptionalTypeChannelInfo(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeChannelInfo.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeClaimDetails(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeClaimDetails.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeClaimDetails.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeClaimDetails.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -6335,6 +7891,32 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             return None
         elif flag == 1:
             return _UniffiConverterTypeFailureReasonIncorrectAmounts.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRefundDetails(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRefundDetails.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRefundDetails.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRefundDetails.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -6469,6 +8051,58 @@ class _UniffiConverterOptionalTypeTransactionOptions(_UniffiConverterRustBuffer)
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeTransactionOut(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeTransactionOut.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeTransactionOut.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeTransactionOut.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeTransactionResponse(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeTransactionResponse.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeTransactionResponse.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeTransactionResponse.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeClientConnection(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -6547,6 +8181,32 @@ class _UniffiConverterOptionalSequenceString(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalSequenceTypeSwapEvent(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterSequenceTypeSwapEvent.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterSequenceTypeSwapEvent.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterSequenceTypeSwapEvent.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterSequenceString(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -6567,6 +8227,50 @@ class _UniffiConverterSequenceString(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected negative sequence length")
 
         return [_UniffiConverterString.read(buf) for i in range(count)]
+
+
+class _UniffiConverterSequenceTypeSwapEvent(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeSwapEvent.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeSwapEvent.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeSwapEvent.read(buf) for i in range(count)]
+
+
+class _UniffiConverterSequenceTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeSwapRestoreResponse.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeSwapRestoreResponse.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeSwapRestoreResponse.read(buf) for i in range(count)]
 
 
 class _UniffiConverterMapStringTypeChainPair(_UniffiConverterRustBuffer):
@@ -6597,6 +8301,38 @@ class _UniffiConverterMapStringTypeChainPair(_UniffiConverterRustBuffer):
         for i in range(count):
             key = _UniffiConverterString.read(buf)
             val = _UniffiConverterTypeChainPair.read(buf)
+            d[key] = val
+        return d
+
+
+class _UniffiConverterMapStringTypeNode(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, items):
+        for key, value in items.items():
+            _UniffiConverterString.check_lower(key)
+            _UniffiConverterTypeNode.check_lower(value)
+
+    @classmethod
+    def write(cls, items, buf):
+        buf.write_i32(len(items))
+        for key, value in items.items():
+            _UniffiConverterString.write(key, buf)
+            _UniffiConverterTypeNode.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative map size")
+
+        # It would be nice to use a dict comprehension,
+        # but in Python 3.7 and before the evaluation order is not according to spec,
+        # so we we're reading the value before the key.
+        # This loop makes the order explicit: first reading the key, then the value.
+        d = {}
+        for i in range(count):
+            key = _UniffiConverterString.read(buf)
+            val = _UniffiConverterTypeNode.read(buf)
             d[key] = val
         return d
 
@@ -6783,6 +8519,28 @@ class _UniffiConverterTypePublicKey:
         return _UniffiConverterString.lower(value)
 
 
+class _UniffiConverterTypeSecp256k1PublicKey:
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value, buf)
+
+    @staticmethod
+    def read(buf):
+        return _UniffiConverterString.read(buf)
+
+    @staticmethod
+    def lift(value):
+        return _UniffiConverterString.lift(value)
+
+    @staticmethod
+    def check_lower(value):
+        return _UniffiConverterString.check_lower(value)
+
+    @staticmethod
+    def lower(value):
+        return _UniffiConverterString.lower(value)
+
+
 class _UniffiConverterTypeSecretKey:
     @staticmethod
     def write(value, buf):
@@ -6807,6 +8565,27 @@ class _UniffiConverterTypeSecretKey:
 
 # objects.
 class BoltzApiClientV2Protocol(typing.Protocol):
+    def accept_quote(
+        self, swap_id: "str", amount_sat: "int", swap_auth: "typing.Optional[str]"
+    ):
+        """
+        Accept a chain-swap re-quote at `amount_sat`.
+
+        `swap_auth` is the per-swap credential the KaleidoSwap maker returned
+        as `swapAuth` on the create response. Accepting commits the maker's
+        payout, so the maker authorizes it with that credential rather than
+        with the swap id — which is not a secret. Omit it only for a maker that
+        issues none (upstream Boltz); against KaleidoSwap the call is rejected
+        with `401 invalid_swap_auth` and no other route resolves the re-quote,
+        so the swap runs out its refund path instead.
+
+        Persist `swap_auth` with the swap when you create it. Nothing re-issues
+        it — [`Self::swap_restore`] authenticates with an XPUB alone and does
+        not return it.
+        """
+
+        raise NotImplementedError
+
     def api_key_environment(
         self,
     ):
@@ -6856,14 +8635,69 @@ class BoltzApiClientV2Protocol(typing.Protocol):
     ):
         raise NotImplementedError
 
+    def get_chain_txs(self, id: "str"):
+        raise NotImplementedError
+
+    def get_fee_estimation(
+        self,
+    ):
+        raise NotImplementedError
+
+    def get_height(
+        self,
+    ):
+        raise NotImplementedError
+
+    def get_mrh_bip21(self, invoice: "str"):
+        """
+        The BIP21 magic-routing hint an invoice carries, if any. Paying it
+        settles on-chain and skips the swap entirely.
+        """
+
+        raise NotImplementedError
+
+    def get_nodes(
+        self,
+    ):
+        """
+        The maker's Lightning nodes, keyed by implementation (`LND`, `CLN`).
+        """
+
+        raise NotImplementedError
+
+    def get_quote(self, swap_id: "str"):
+        """
+        The re-quoted server lockup amount for a chain swap whose user lockup
+        arrived for a different amount than agreed.
+        """
+
+        raise NotImplementedError
+
     def get_reverse_pairs(
         self,
     ):
         raise NotImplementedError
 
+    def get_reverse_tx(self, id: "str"):
+        raise NotImplementedError
+
     def get_submarine_pairs(
         self,
     ):
+        raise NotImplementedError
+
+    def get_submarine_preimage(self, id: "str"):
+        raise NotImplementedError
+
+    def get_submarine_tx(self, id: "str"):
+        raise NotImplementedError
+
+    def get_swap(self, swap_id: "str"):
+        """
+        The swap's current state, and — against the KaleidoSwap maker — its
+        event history and failure detail.
+        """
+
         raise NotImplementedError
 
     def quote_lightning_receive(self, request: "LightningReceiveRequest"):
@@ -6886,6 +8720,33 @@ class BoltzApiClientV2Protocol(typing.Protocol):
         """
         `GET /v1/rfq/{rfq_id}`. `None` for an id the maker never issued. Poll
         until the state is terminal.
+        """
+
+        raise NotImplementedError
+
+    def swap_restore(
+        self,
+        xpub: "str",
+        derivation_path: "typing.Optional[str]",
+        gap_limit: "typing.Optional[int]",
+    ):
+        """
+        Every swap the maker has seen for `xpub` — the recovery entry point
+        after a reinstall, and what a mobile client calls on launch to find
+        swaps it still owes a claim or a refund.
+        """
+
+        raise NotImplementedError
+
+    def swap_restore_index(
+        self,
+        xpub: "str",
+        derivation_path: "typing.Optional[str]",
+        gap_limit: "typing.Optional[int]",
+    ):
+        """
+        Highest swap-key derivation index the maker has seen for `xpub`
+        (`-1` if none), so a restored wallet knows where to resume deriving.
         """
 
         raise NotImplementedError
@@ -7004,6 +8865,47 @@ class BoltzApiClientV2:
             _UniffiConverterOptionalUInt64.lower(timeout),
         )
         return cls._make_instance_(pointer)
+
+    async def accept_quote(
+        self, swap_id: "str", amount_sat: "int", swap_auth: "typing.Optional[str]"
+    ) -> None:
+        """
+        Accept a chain-swap re-quote at `amount_sat`.
+
+        `swap_auth` is the per-swap credential the KaleidoSwap maker returned
+        as `swapAuth` on the create response. Accepting commits the maker's
+        payout, so the maker authorizes it with that credential rather than
+        with the swap id — which is not a secret. Omit it only for a maker that
+        issues none (upstream Boltz); against KaleidoSwap the call is rejected
+        with `401 invalid_swap_auth` and no other route resolves the re-quote,
+        so the swap runs out its refund path instead.
+
+        Persist `swap_auth` with the swap when you create it. Nothing re-issues
+        it — [`Self::swap_restore`] authenticates with an XPUB alone and does
+        not return it.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterUInt64.check_lower(amount_sat)
+
+        _UniffiConverterOptionalString.check_lower(swap_auth)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_accept_quote(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterUInt64.lower(amount_sat),
+                _UniffiConverterOptionalString.lower(swap_auth),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            # lift function
+            lambda val: None,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
 
     def api_key_environment(
         self,
@@ -7129,6 +9031,116 @@ class BoltzApiClientV2:
             _UniffiConverterTypeError,
         )
 
+    async def get_chain_txs(self, id: "str") -> "ChainSwapTxResp":
+        _UniffiConverterString.check_lower(id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_chain_txs(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeChainSwapTxResp.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_fee_estimation(
+        self,
+    ) -> "GetFeeEstimationResponse":
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_fee_estimation(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeGetFeeEstimationResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_height(
+        self,
+    ) -> "HeightResponse":
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_height(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeHeightResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_mrh_bip21(self, invoice: "str") -> "MrhResponse":
+        """
+        The BIP21 magic-routing hint an invoice carries, if any. Paying it
+        settles on-chain and skips the swap entirely.
+        """
+
+        _UniffiConverterString.check_lower(invoice)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_mrh_bip21(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(invoice)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeMrhResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_nodes(
+        self,
+    ) -> "GetNodesResponse":
+        """
+        The maker's Lightning nodes, keyed by implementation (`LND`, `CLN`).
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_nodes(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeGetNodesResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_quote(self, swap_id: "str") -> "GetQuoteResponse":
+        """
+        The re-quoted server lockup amount for a chain swap whose user lockup
+        arrived for a different amount than agreed.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_quote(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeGetQuoteResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def get_reverse_pairs(
         self,
     ) -> "GetReversePairsResponse":
@@ -7145,6 +9157,22 @@ class BoltzApiClientV2:
             _UniffiConverterTypeError,
         )
 
+    async def get_reverse_tx(self, id: "str") -> "ReverseSwapTxResp":
+        _UniffiConverterString.check_lower(id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_reverse_tx(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeReverseSwapTxResp.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def get_submarine_pairs(
         self,
     ) -> "GetSubmarinePairsResponse":
@@ -7157,6 +9185,59 @@ class BoltzApiClientV2:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetSubmarinePairsResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_submarine_preimage(self, id: "str") -> "SubmarineSwapPreimageResp":
+        _UniffiConverterString.check_lower(id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_preimage(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSubmarineSwapPreimageResp.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_submarine_tx(self, id: "str") -> "SubmarineSwapTxResp":
+        _UniffiConverterString.check_lower(id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_submarine_tx(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSubmarineSwapTxResp.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_swap(self, swap_id: "str") -> "GetSwapResponse":
+        """
+        The swap's current state, and — against the KaleidoSwap maker — its
+        event history and failure detail.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_get_swap(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeGetSwapResponse.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -7230,6 +9311,73 @@ class BoltzApiClientV2:
             _UniffiConverterTypeError,
         )
 
+    async def swap_restore(
+        self,
+        xpub: "str",
+        derivation_path: "typing.Optional[str]",
+        gap_limit: "typing.Optional[int]",
+    ) -> "typing.List[SwapRestoreResponse]":
+        """
+        Every swap the maker has seen for `xpub` — the recovery entry point
+        after a reinstall, and what a mobile client calls on launch to find
+        swaps it still owes a claim or a refund.
+        """
+
+        _UniffiConverterString.check_lower(xpub)
+
+        _UniffiConverterOptionalString.check_lower(derivation_path)
+
+        _UniffiConverterOptionalUInt32.check_lower(gap_limit)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_swap_restore(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(xpub),
+                _UniffiConverterOptionalString.lower(derivation_path),
+                _UniffiConverterOptionalUInt32.lower(gap_limit),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterSequenceTypeSwapRestoreResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def swap_restore_index(
+        self,
+        xpub: "str",
+        derivation_path: "typing.Optional[str]",
+        gap_limit: "typing.Optional[int]",
+    ) -> "SwapRestoreIndexResponse":
+        """
+        Highest swap-key derivation index the maker has seen for `xpub`
+        (`-1` if none), so a restored wallet knows where to resume deriving.
+        """
+
+        _UniffiConverterString.check_lower(xpub)
+
+        _UniffiConverterOptionalString.check_lower(derivation_path)
+
+        _UniffiConverterOptionalUInt32.check_lower(gap_limit)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzapiclientv2_swap_restore_index(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(xpub),
+                _UniffiConverterOptionalString.lower(derivation_path),
+                _UniffiConverterOptionalUInt32.lower(gap_limit),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSwapRestoreIndexResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     def ws(
         self,
     ) -> "BoltzWsApi":
@@ -7278,6 +9426,18 @@ class _UniffiConverterTypeBoltzApiClientV2:
 
 
 class BoltzWsApiProtocol(typing.Protocol):
+    def is_connected(
+        self,
+    ):
+        """
+        Whether the socket is currently up. A mobile client that was
+        backgrounded comes back to a dead socket with no error on it; poll this
+        on resume and fall back to `get_swap` rather than waiting on updates
+        that will never arrive.
+        """
+
+        raise NotImplementedError
+
     def run_ws_loop(
         self,
     ):
@@ -7325,6 +9485,29 @@ class BoltzWsApi:
         inst = cls.__new__(cls)
         inst._pointer = pointer
         return inst
+
+    async def is_connected(
+        self,
+    ) -> "bool":
+        """
+        Whether the socket is currently up. A mobile client that was
+        backgrounded comes back to a dead socket with no error on it; poll this
+        on resume and fall back to `get_swap` rather than waiting on updates
+        that will never arrive.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_boltzwsapi_is_connected(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i8,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i8,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i8,
+            # lift function
+            _UniffiConverterBool.lift,
+            # Error FFI converter
+            None,
+        )
 
     async def run_ws_loop(
         self,
@@ -8058,6 +10241,241 @@ class _UniffiConverterTypePreparedLiquidSpend:
         buf.write_u64(cls.lower(value))
 
 
+class SwapMasterKeyProtocol(typing.Protocol):
+    """
+    BIP85-derived swap keys from a wallet mnemonic.
+
+    One of these per wallet; derive a fresh key and preimage per swap by
+    incrementing `index`. The caller owns the index — nothing here tracks it —
+    and [`Self::master_xpub`] is what the maker's `swap/restore` route needs to
+    hand a reinstalled wallet its outstanding swaps back.
+    """
+
+    def derive_preimage(self, index: "int"):
+        """
+        The deterministic preimage for the swap at `index` (`sha256` of the
+        derived private key).
+        """
+
+        raise NotImplementedError
+
+    def derive_swap_key(self, index: "int"):
+        """
+        The swap keypair at `index`.
+
+        The wasm binding returns hex here because JS has no handle for a
+        keypair; this returns the bound [`KeyPair`] instead, which is what the
+        swap-script constructors already take.
+        """
+
+        raise NotImplementedError
+
+    def master_xpub(
+        self,
+    ):
+        """
+        The master xpub to hand to the swap-restore API.
+        """
+
+        raise NotImplementedError
+
+    def swap_mnemonic(
+        self,
+    ):
+        """
+        The BIP85-derived swap (rescue) mnemonic.
+        """
+
+        raise NotImplementedError
+
+
+# SwapMasterKey is a Rust-only trait - it's a wrapper around a Rust implementation.
+class SwapMasterKey:
+    """
+    BIP85-derived swap keys from a wallet mnemonic.
+
+    One of these per wallet; derive a fresh key and preimage per swap by
+    incrementing `index`. The caller owns the index — nothing here tracks it —
+    and [`Self::master_xpub`] is what the maker's `swap/restore` route needs to
+    hand a reinstalled wallet its outstanding swaps back.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapmasterkey, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapmasterkey, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    @classmethod
+    def from_swap_mnemonic(
+        cls, mnemonic: "str", passphrase: "typing.Optional[str]", network: "Network"
+    ):
+        """
+        Reconstruct from the swap (rescue) mnemonic directly.
+        """
+
+        _UniffiConverterString.check_lower(mnemonic)
+
+        _UniffiConverterOptionalString.check_lower(passphrase)
+
+        _UniffiConverterTypeNetwork.check_lower(network)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_swap_mnemonic,
+            _UniffiConverterString.lower(mnemonic),
+            _UniffiConverterOptionalString.lower(passphrase),
+            _UniffiConverterTypeNetwork.lower(network),
+        )
+        return cls._make_instance_(pointer)
+
+    @classmethod
+    def from_wallet_mnemonic(
+        cls,
+        wallet_mnemonic: "str",
+        passphrase: "typing.Optional[str]",
+        network: "Network",
+    ):
+        """
+        Derive the swap master key from a wallet mnemonic (BIP85 index 26589).
+        """
+
+        _UniffiConverterString.check_lower(wallet_mnemonic)
+
+        _UniffiConverterOptionalString.check_lower(passphrase)
+
+        _UniffiConverterTypeNetwork.check_lower(network)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_wallet_mnemonic,
+            _UniffiConverterString.lower(wallet_mnemonic),
+            _UniffiConverterOptionalString.lower(passphrase),
+            _UniffiConverterTypeNetwork.lower(network),
+        )
+        return cls._make_instance_(pointer)
+
+    def derive_preimage(self, index: "int") -> "Preimage":
+        """
+        The deterministic preimage for the swap at `index` (`sha256` of the
+        derived private key).
+        """
+
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterTypePreimage.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_preimage,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+    def derive_swap_key(self, index: "int") -> "KeyPair":
+        """
+        The swap keypair at `index`.
+
+        The wasm binding returns hex here because JS has no handle for a
+        keypair; this returns the bound [`KeyPair`] instead, which is what the
+        swap-script constructors already take.
+        """
+
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterTypeKeyPair.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_swap_key,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+    def master_xpub(
+        self,
+    ) -> "str":
+        """
+        The master xpub to hand to the swap-restore API.
+        """
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_master_xpub,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def swap_mnemonic(
+        self,
+    ) -> "str":
+        """
+        The BIP85-derived swap (rescue) mnemonic.
+        """
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_swap_mnemonic,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+
+class _UniffiConverterTypeSwapMasterKey:
+    @staticmethod
+    def lift(value: int):
+        return SwapMasterKey._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: SwapMasterKey):
+        if not isinstance(value, SwapMasterKey):
+            raise TypeError(
+                "Expected SwapMasterKey instance, {} found".format(type(value).__name__)
+            )
+
+    @staticmethod
+    def lower(value: SwapMasterKeyProtocol):
+        if not isinstance(value, SwapMasterKey):
+            raise TypeError(
+                "Expected SwapMasterKey instance, {} found".format(type(value).__name__)
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: SwapMasterKeyProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
 class SwapScriptProtocol(typing.Protocol):
     def construct_claim(self, preimage: "Preimage", params: "SwapTransactionParams"):
         raise NotImplementedError
@@ -8328,6 +10746,7 @@ class _UniffiConverterTypeSwapScript:
 
 
 PublicKey = str
+Secp256k1PublicKey = str
 SecretKey = str
 
 # Async support# RustFuturePoll values
@@ -8453,13 +10872,19 @@ __all__ = [
     "RfqState",
     "Side",
     "SubSwapStates",
+    "SwapRestoreType",
     "BoltzWsConfig",
     "ChainClaim",
     "ChainFees",
     "ChainMinerFees",
     "ChainPair",
     "ChainSwapDetails",
+    "ChainSwapTx",
+    "ChainSwapTxLock",
+    "ChainSwapTxResp",
+    "ChainSwapTxTimeout",
     "ChannelInfo",
+    "ClaimDetails",
     "ClientConfig",
     "CreateChainRequest",
     "CreateChainResponse",
@@ -8472,20 +10897,29 @@ __all__ = [
     "FailureReasonIncorrectAmounts",
     "FundedLiquidPset",
     "GetChainPairsResponse",
+    "GetFeeEstimationResponse",
+    "GetNodesResponse",
+    "GetQuoteResponse",
     "GetReversePairsResponse",
     "GetSubmarinePairsResponse",
+    "GetSwapResponse",
+    "HeightResponse",
     "Leaf",
     "LightningReceiveRequest",
     "LightningSendRequest",
     "LiquidOutputSecrets",
     "LiquidPsetParams",
     "LiquidPsetTemplate",
+    "MrhResponse",
+    "Node",
     "PairLimits",
     "PairMinerFees",
     "QuoteProfile",
+    "RefundDetails",
     "ReverseFees",
     "ReverseLimits",
     "ReversePair",
+    "ReverseSwapTxResp",
     "RfqAnswer",
     "RfqQuote",
     "RfqRefusal",
@@ -8493,11 +10927,18 @@ __all__ = [
     "SubmarineFees",
     "SubmarinePair",
     "SubmarinePairLimits",
+    "SubmarineSwapPreimageResp",
+    "SubmarineSwapTxResp",
+    "SwapEvent",
+    "SwapRestoreIndexResponse",
+    "SwapRestoreResponse",
     "SwapStatus",
     "SwapTransactionParams",
     "SwapTree",
     "TransactionInfo",
     "TransactionOptions",
+    "TransactionOut",
+    "TransactionResponse",
     "btc_chain_from_network",
     "lbtc_chain_from_network",
     "new_rfq_id",
@@ -8509,5 +10950,6 @@ __all__ = [
     "KeyPair",
     "Preimage",
     "PreparedLiquidSpend",
+    "SwapMasterKey",
     "SwapScript",
 ]
