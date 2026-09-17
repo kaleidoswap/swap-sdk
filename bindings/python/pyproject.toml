@@ -1,6 +1,6 @@
 [project]
 name = "kaleidorg_swap_sdk"
-version = "0.7.1"
+version = "0.7.2"
 description = "KaleidoSwap swap SDK — client-side atomic swaps (Boltz protocol)"
 readme = "README.md"
 requires-python = ">=3.10"
