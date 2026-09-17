@@ -947,6 +947,7 @@ pub struct GetQuoteResponse {
 // `bitcoin::key::PublicKey` the swap records use — the custom type registered
 // in `swap.rs` does not cover it, so it gets its own lowering here.
 uniffi::custom_type!(Secp256k1PublicKey, String, {
+    remote,
     lower: |key| key.to_string(),
     try_lift: |val| match Secp256k1PublicKey::from_str(val.as_str()) {
         Ok(key) => Ok(key),
