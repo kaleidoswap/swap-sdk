@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.7.2] - 2026-09-17
 
 ### Fixed — a wallet learns before it funds that it has to blind
 
