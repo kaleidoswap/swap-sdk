@@ -83,10 +83,18 @@ test("download retries a connection that never answers", async () => {
   const destination = join(tmpdir(), `download-timeout-${process.pid}`);
   let calls = 0;
   const fetch = (_url, { signal }) =>
-    new Promise((_resolve, reject) => {
+    new Promise((resolve, reject) => {
       calls += 1;
-      if (calls > 1) return _resolve(new Response("archive", { status: 200 }));
-      signal.addEventListener("abort", () => reject(signal.reason));
+      if (calls > 1) return resolve(new Response("archive", { status: 200 }));
+      // A real fetch holds a socket open while it waits; this fake holds a
+      // timer instead. Without one, the deadline's own timer is unref'd and
+      // the event loop drains before it fires — on Node 22 the runner then
+      // cancels the test as a promise that can never settle.
+      const socket = setTimeout(() => {}, 10_000);
+      signal.addEventListener("abort", () => {
+        clearTimeout(socket);
+        reject(signal.reason);
+      });
     });
   await download("https://example.invalid/a.zip", destination, {
     fetch,
