@@ -1,5 +1,8 @@
-# Generated sources are intentionally shipped even though .gitignore excludes
-# them. The package.json `files` allowlist defines the published inventory.
+# The package.json `files` allowlist is the published inventory, and it already
+# wins over .gitignore — the generated sources ship because `files` names them,
+# not because of anything here. This only guards the day `files` is removed:
+# without it npm would fall back to .gitignore and drop every generated source,
+# while nothing would stop the native archives or the tests going out.
 *.zip
 node_modules/
 test/
