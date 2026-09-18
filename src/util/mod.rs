@@ -5,6 +5,11 @@ pub mod bolt12;
 pub mod ec;
 pub mod fees;
 pub mod invoice;
+/// The skip-or-fail decision every live third-party test shares. Native-only:
+/// the tests that use it are native-only for the reasons given in
+/// `swaps::boltz`'s test module.
+#[cfg(all(test, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+pub(crate) mod live_test;
 #[cfg(feature = "lnurl")]
 pub mod lnurl;
 pub mod secrets;
