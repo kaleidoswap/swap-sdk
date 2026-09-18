@@ -78,3 +78,37 @@ export async function download(
   }
   throw lastError;
 }
+
+/**
+ * What each archive must unpack to, from `ubrn.config.yaml`'s target lists.
+ * `postinstall` checks the layout after extracting so a drift in the generator
+ * fails the install with a filename, not the app build with a linker error;
+ * the release pipeline checks the same lists before sealing the archives.
+ */
+export const ANDROID_ABIS = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
+export const ANDROID_LIBRARIES = ANDROID_ABIS.map(
+  (abi) => `android/src/main/jniLibs/${abi}/libkaleidorg_swap_sdk.so`,
+);
+export const IOS_FRAMEWORK = "build/KaleidoSwapSdk.xcframework";
+export const IOS_LIBRARIES = [
+  `${IOS_FRAMEWORK}/Info.plist`,
+  `${IOS_FRAMEWORK}/ios-arm64/libkaleidorg_swap_sdk.a`,
+  `${IOS_FRAMEWORK}/ios-arm64_x86_64-simulator/libkaleidorg_swap_sdk.a`,
+];
+export const NATIVE_LIBRARIES = [...ANDROID_LIBRARIES, ...IOS_LIBRARIES];
+
+/** Every compiled library is on disk under `root`, and none of them is empty. */
+export async function assertNativeLibraries(root, stat) {
+  const missing = [];
+  for (const relative of NATIVE_LIBRARIES) {
+    try {
+      const info = await stat(`${root}/${relative}`);
+      if (info.size === 0) missing.push(`${relative} (empty)`);
+    } catch {
+      missing.push(relative);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(`native libraries missing after extraction: ${missing.join(", ")}`);
+  }
+}

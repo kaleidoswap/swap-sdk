@@ -12,11 +12,17 @@ import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+from react_native_release import inspect_native_archives, verify_native_binding
 from release_metadata import (
+    NATIVE_ARCHIVES,
+    NATIVE_MANIFEST,
+    NPM_PACKAGE_COUNT,
     PLATFORM_MARKERS,
     PYTHON_DISTRIBUTION,
     WHEEL_COUNT,
     npm_package,
+    npm_tarball_name,
+    react_native_npm_tarball_name,
 )
 
 NPM_REQUIRED = {
@@ -62,12 +68,28 @@ def collect_artifacts(directory: Path, version: str) -> list[Path]:
     wheels = [path for path in artifacts if path.suffix == ".whl"]
     sdists = [path for path in artifacts if path.name.endswith(".tar.gz")]
     npm = [path for path in artifacts if path.suffix == ".tgz"]
+    native = [directory / name for name in (*NATIVE_ARCHIVES, NATIVE_MANIFEST)]
     require(
         len(wheels) == WHEEL_COUNT,
         f"expected {WHEEL_COUNT} wheels, found {len(wheels)}",
     )
     require(len(sdists) == 1, f"expected one sdist, found {len(sdists)}")
-    require(len(npm) == 1, f"expected one npm tarball, found {len(npm)}")
+    require(
+        len(npm) == NPM_PACKAGE_COUNT,
+        f"expected {NPM_PACKAGE_COUNT} npm tarballs, found {len(npm)}",
+    )
+    # By name, not by count: two tarballs of the same package would pass a count.
+    require(
+        {path.name for path in npm}
+        == {npm_tarball_name(version), react_native_npm_tarball_name(version)},
+        "npm tarball names do not match the packages this release publishes",
+    )
+    missing = sorted(path.name for path in native if not path.is_file())
+    require(not missing, f"release bundle is missing native artifacts: {missing}")
+    unexpected = sorted(
+        path.name for path in artifacts if path not in wheels + sdists + npm + native
+    )
+    require(not unexpected, f"release-artifacts contains unexpected files: {unexpected}")
     expected_prefix = f"{PYTHON_DISTRIBUTION}-{version}"
     require(
         all(path.name.startswith(expected_prefix) for path in wheels + sdists),
@@ -78,8 +100,10 @@ def collect_artifacts(directory: Path, version: str) -> list[Path]:
             sum(bool(marker.search(path.name)) for path in wheels) == 1,
             f"expected exactly one {label} wheel",
         )
-    inspect_npm(npm[0], version)
-    return wheels + sdists + npm
+    inspect_npm(directory / npm_tarball_name(version), version)
+    inspect_native_archives(directory)
+    verify_native_binding(directory, version)
+    return wheels + sdists + npm + native
 
 
 def inspect_npm(path: Path, version: str) -> None:

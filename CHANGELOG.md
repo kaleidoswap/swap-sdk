@@ -32,6 +32,18 @@ exposes everything the wasm binding does.
 the UniFFI binding does not. Intentional differences are recorded with their
 reason rather than left to be rediscovered.
 
+### Added — the React Native package ships with every release
+
+`@kaleidorg/swap-sdk-react-native` is published beside `@kaleidorg/swap-sdk`
+from the same sealed bundle, and the compiled iOS and Android archives are
+attached to the GitHub release, where the package's `postinstall` fetches them
+and accepts each only at the SHA-256 recorded in a manifest that shipped inside
+the tarball. The assembler establishes that binding before the bundle is
+sealed, the GitHub-release step re-checks it from the sealed bytes, and once
+the release exists a clean consumer installs the published version with
+lifecycle scripts enabled — so the pipeline ends with the same `npm install` a
+partner will run, and is not green until it has produced the libraries.
+
 ## [0.7.2] - 2026-09-17
 
 ### Fixed — a wallet learns before it funds that it has to blind

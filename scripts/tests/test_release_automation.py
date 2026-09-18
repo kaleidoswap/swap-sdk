@@ -11,6 +11,7 @@ import tarfile
 import tempfile
 import unittest
 import urllib.error
+import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -32,6 +33,7 @@ def load_script(name: str):
 
 assemble_release = load_script("assemble_release")
 published = load_script("download_published_artifacts")
+react_native = load_script("react_native_release")
 registry = load_script("check_registry_availability")
 release_notes = load_script("release_notes")
 release_ref = load_script("validate_release_ref")
@@ -43,6 +45,8 @@ import release_metadata  # noqa: E402  (needs the sys.path set up above)
 
 NPM_PACKAGE = release_metadata.npm_package()
 NPM_TARBALL_0_1_0 = release_metadata.npm_tarball_name("0.1.0")
+RN_NPM_PACKAGE = release_metadata.react_native_npm_package()
+RN_NPM_TARBALL_0_1_0 = release_metadata.react_native_npm_tarball_name("0.1.0")
 
 
 class RegistryAvailabilityTests(unittest.TestCase):
@@ -141,7 +145,8 @@ class RegistryAvailabilityTests(unittest.TestCase):
             ),
         ):
             self.assertEqual(registry.main(), 0)
-        self.assertEqual(require_available.call_count, 2)
+        # Both npm packages, then PyPI.
+        self.assertEqual(require_available.call_count, 3)
 
 
 class ReleaseNotesTests(unittest.TestCase):
@@ -219,6 +224,39 @@ class PublishedArtifactTests(unittest.TestCase):
                     delay=0,
                 )
         self.assertEqual(path.name, NPM_TARBALL_0_1_0)
+
+    def test_react_native_npm_download_uses_its_own_identity(self) -> None:
+        contents = b"exact react native tarball"
+        entries = {RN_NPM_TARBALL_0_1_0: self.entry(contents)}
+        with tempfile.TemporaryDirectory() as temp:
+            with (
+                mock.patch.object(
+                    published,
+                    "request_json",
+                    return_value={
+                        "name": RN_NPM_PACKAGE,
+                        "version": "0.1.0",
+                        "dist": {"tarball": "https://registry.example/rn.tgz"},
+                    },
+                ),
+                mock.patch.object(
+                    published,
+                    "download",
+                    side_effect=lambda _url, destination: destination.write_bytes(
+                        contents
+                    ),
+                ),
+            ):
+                path = published.download_npm(
+                    entries,
+                    Path(temp),
+                    "0.1.0",
+                    registry="https://registry.example",
+                    attempts=1,
+                    delay=0,
+                    package=RN_NPM_PACKAGE,
+                )
+        self.assertEqual(path.name, RN_NPM_TARBALL_0_1_0)
 
     def test_npm_download_rejects_changed_bytes(self) -> None:
         entries = {NPM_TARBALL_0_1_0: self.entry(b"expected")}
@@ -325,21 +363,68 @@ class PublishedArtifactTests(unittest.TestCase):
 
 
 class ReleaseArtifactTests(unittest.TestCase):
-    def make_npm_tarball(self, directory: Path, version: str) -> Path:
-        path = directory / release_metadata.npm_tarball_name(version)
-        package = {"name": NPM_PACKAGE, "version": version}
-        members = {
-            name: b"placeholder"
-            for name in assemble_release.NPM_REQUIRED
-            if name != "package/package.json"
-        }
-        members["package/package.json"] = json.dumps(package).encode()
+    @staticmethod
+    def write_tarball(path: Path, members: dict[str, bytes]) -> Path:
         with tarfile.open(path, "w:gz") as archive:
             for name, contents in members.items():
                 info = tarfile.TarInfo(name)
                 info.size = len(contents)
                 archive.addfile(info, io.BytesIO(contents))
         return path
+
+    def make_npm_tarball(self, directory: Path, version: str) -> Path:
+        package = {"name": NPM_PACKAGE, "version": version}
+        members = {name: b"placeholder" for name in assemble_release.NPM_REQUIRED}
+        members["package/package.json"] = json.dumps(package).encode()
+        return self.write_tarball(
+            directory / release_metadata.npm_tarball_name(version), members
+        )
+
+    def make_native_archives(
+        self,
+        directory: Path,
+        version: str,
+        *,
+        omit: str | None = None,
+        contents: bytes = b"compiled",
+    ) -> bytes:
+        """Write both archives with their full inventories; return the manifest."""
+        for name, members in react_native.ARCHIVE_INVENTORY.items():
+            with zipfile.ZipFile(directory / name, "w") as archive:
+                for member in sorted(members - {omit}):
+                    archive.writestr(member, contents)
+        manifest = {
+            "schema": 1,
+            "version": version,
+            "artifacts": {
+                name: {"sha256": hashlib.sha256((directory / name).read_bytes()).hexdigest()}
+                for name in release_metadata.NATIVE_ARCHIVES
+            },
+        }
+        data = (json.dumps(manifest, indent=2) + "\n").encode()
+        (directory / release_metadata.NATIVE_MANIFEST).write_bytes(data)
+        return data
+
+    def make_react_native_tarball(
+        self,
+        directory: Path,
+        version: str,
+        manifest: bytes,
+        extra: dict[str, bytes] | None = None,
+    ) -> Path:
+        package = {
+            "name": RN_NPM_PACKAGE,
+            "version": version,
+            "scripts": {"postinstall": react_native.POSTINSTALL},
+        }
+        members = {name: b"placeholder" for name in react_native.NPM_REQUIRED}
+        members["package/package.json"] = json.dumps(package).encode()
+        members[f"package/{release_metadata.NATIVE_MANIFEST}"] = manifest
+        members.update(extra or {})
+        return self.write_tarball(
+            directory / release_metadata.react_native_npm_tarball_name(version),
+            members,
+        )
 
     def make_inventory(self, directory: Path, version: str) -> None:
         wheel_tags = (
@@ -353,13 +438,57 @@ class ReleaseArtifactTests(unittest.TestCase):
             (directory / f"kaleidorg_swap_sdk-{version}-{tag}").write_bytes(b"wheel")
         (directory / f"kaleidorg_swap_sdk-{version}.tar.gz").write_bytes(b"sdist")
         self.make_npm_tarball(directory, version)
+        manifest = self.make_native_archives(directory, version)
+        self.make_react_native_tarball(directory, version, manifest)
 
     def test_exact_cross_platform_inventory_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             self.make_inventory(directory, "0.1.0")
             artifacts = assemble_release.collect_artifacts(directory, "0.1.0")
-            self.assertEqual(len(artifacts), 7)
+            self.assertEqual(len(artifacts), release_metadata.PACKAGE_COUNT)
+
+    def test_react_native_tarball_must_match_the_archives_beside_it(self) -> None:
+        # The digests inside the tarball are what postinstall will trust. An
+        # archive that does not match them must never reach the release page.
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_inventory(directory, "0.1.0")
+            self.make_native_archives(directory, "0.1.0", contents=b"rebuilt")
+            # The loose manifest was rewritten for the new archives; the copy
+            # inside the tarball still names the old digests.
+            (directory / release_metadata.NATIVE_MANIFEST).write_bytes(
+                self.make_native_archives(directory, "0.1.0", contents=b"rebuilt")
+            )
+            with self.assertRaisesRegex(ValueError, "does not match the digest|differs"):
+                assemble_release.collect_artifacts(directory, "0.1.0")
+
+    def test_react_native_tarball_must_not_carry_compiled_code(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_inventory(directory, "0.1.0")
+            manifest = (directory / release_metadata.NATIVE_MANIFEST).read_bytes()
+            self.make_react_native_tarball(
+                directory,
+                "0.1.0",
+                manifest,
+                extra={
+                    "package/android/src/main/jniLibs/arm64-v8a/libkaleidorg_swap_sdk.so": b"\x7fELF"
+                },
+            )
+            with self.assertRaisesRegex(ValueError, "compiled code"):
+                assemble_release.collect_artifacts(directory, "0.1.0")
+
+    def test_native_archive_missing_a_slice_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_inventory(directory, "0.1.0")
+            manifest = self.make_native_archives(
+                directory, "0.1.0", omit=next(iter(sorted(react_native.IOS_LIBRARIES)))
+            )
+            self.make_react_native_tarball(directory, "0.1.0", manifest)
+            with self.assertRaisesRegex(ValueError, "inventory does not match"):
+                assemble_release.collect_artifacts(directory, "0.1.0")
 
     def test_missing_platform_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -373,7 +502,7 @@ class ReleaseArtifactTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
             self.make_inventory(directory, "0.1.0")
-            npm = next(directory.glob("*.tgz"))
+            npm = directory / NPM_TARBALL_0_1_0
             with tarfile.open(npm, "w:gz") as archive:
                 package = json.dumps({"name": NPM_PACKAGE, "version": "0.1.0"}).encode()
                 info = tarfile.TarInfo("package/package.json")
@@ -404,6 +533,21 @@ class ReleaseArtifactTests(unittest.TestCase):
                 commit="HEAD",
             )
 
+    def test_sealed_bundle_rechecks_the_native_binding(self) -> None:
+        # Checksums prove the bytes; the binding proves they install together.
+        # The verifier must do both from the sealed bundle.
+        with tempfile.TemporaryDirectory() as temp:
+            directory = Path(temp)
+            self.make_release_bundle(directory)
+            with mock.patch.object(verify_bundle, "verify_native_binding") as binding:
+                verify_bundle.verify(
+                    directory,
+                    version="0.1.0",
+                    tag="v0.1.0",
+                    commit="HEAD",
+                )
+        binding.assert_called_once_with(directory, "0.1.0")
+
     def test_tampered_release_bundle_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             directory = Path(temp)
@@ -422,7 +566,10 @@ class ReleaseArtifactTests(unittest.TestCase):
             directory = Path(temp)
             self.make_release_bundle(directory)
             (directory / "unexpected.txt").write_text("unexpected")
-            with self.assertRaisesRegex(ValueError, "expected 10 release assets"):
+            with self.assertRaisesRegex(
+                ValueError,
+                f"expected {release_metadata.RELEASE_ASSET_COUNT} release assets",
+            ):
                 verify_bundle.verify(
                     directory,
                     version="0.1.0",
@@ -569,6 +716,19 @@ class WorkflowInvariantTests(unittest.TestCase):
         finally:
             manifest.write_text(original, encoding="utf-8")
 
+    def test_react_native_manifest_must_also_claim_provenance(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        manifest = ROOT / "packages/react-native/package.json"
+        original = manifest.read_text(encoding="utf-8")
+        payload = json.loads(original)
+        payload["publishConfig"].pop("provenance", None)
+        try:
+            manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "packages/react-native/package.json"):
+                workflow.validate(contents)
+        finally:
+            manifest.write_text(original, encoding="utf-8")
+
     def test_basic_auth_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         with self.assertRaisesRegex(ValueError, "not basic auth"):
@@ -581,8 +741,8 @@ class WorkflowInvariantTests(unittest.TestCase):
         # rehearsal cannot catch it — it has no publish step at all.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         regressed = contents.replace(
-            "npm publish ./release-artifacts/*.tgz",
-            "npm publish release-artifacts/*.tgz",
+            "npm publish ./release-artifacts/kaleidorg-swap-sdk-${VERSION}.tgz",
+            "npm publish release-artifacts/kaleidorg-swap-sdk-${VERSION}.tgz",
             1,
         )
         self.assertNotEqual(regressed, contents)
@@ -591,6 +751,55 @@ class WorkflowInvariantTests(unittest.TestCase):
 
     def test_npm_publish_path_is_accepted(self) -> None:
         workflow.validate((ROOT / ".github/workflows/release.yaml").read_text())
+
+    def test_both_npm_tarballs_must_be_published(self) -> None:
+        # One bundle, two packages. Dropping the second line ships the browser
+        # package and leaves the release page pointing at archives no tarball
+        # can fetch.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        line = (
+            "          npm publish ./release-artifacts/"
+            "kaleidorg-swap-sdk-react-native-${VERSION}.tgz --access public\n"
+        )
+        self.assertIn(line, contents)
+        with self.assertRaisesRegex(ValueError, "both npm tarballs"):
+            workflow.validate(contents.replace(line, "", 1))
+
+    def test_react_native_install_must_follow_the_github_release(self) -> None:
+        # postinstall fetches from the release, so the proof that a partner's
+        # install works can only run once the release exists.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "    needs:\n      - release-ready\n      - publish-github-release\n",
+            "    needs:\n      - release-ready\n",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "after the GitHub release"):
+            workflow.validate(changed)
+
+    def test_react_native_install_must_run_postinstall(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "smoke-react-native-install.mjs\n",
+            "smoke-react-native-install.mjs --ignore-scripts\n",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "must not disable the postinstall"):
+            workflow.validate(changed)
+
+    def test_composite_action_is_held_to_build_rules(self) -> None:
+        # The build workflow calls the action with its own authority, so a
+        # mutable ref or a publish step inside it is as bad as one in the
+        # workflow file.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "mutable"):
+            workflow.validate(
+                contents, actions_contents="\n      uses: actions/cache@v4\n"
+            )
+        with self.assertRaisesRegex(ValueError, "release authority"):
+            workflow.validate(contents, actions_contents="\n      run: npm publish .\n")
 
     def test_extra_oidc_permission_is_rejected(self) -> None:
         # A real permission key, not a comment: the count is anchored to YAML

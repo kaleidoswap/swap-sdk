@@ -3,6 +3,7 @@ name: release rehearsal
 on:
   pull_request:
     paths:
+      - ".github/actions/react-native-build/**"
       - ".github/workflows/release-build.yaml"
       - ".github/workflows/release.yaml"
       - ".github/workflows/release-rehearsal.yaml"
@@ -11,9 +12,12 @@ on:
       - "Cargo.lock"
       - "Cargo.toml"
       - "Makefile"
+      - "packages/react-native/**"
       - "scripts/assemble_release.py"
       - "scripts/check_registry_availability.py"
       - "scripts/download_published_artifacts.py"
+      - "scripts/react_native_release.py"
+      - "scripts/release_metadata.py"
       - "scripts/release_version.py"
       - "scripts/release_notes.py"
       - "scripts/validate_release_ref.py"

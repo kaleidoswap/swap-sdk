@@ -11,7 +11,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from release_metadata import npm_package
+from release_metadata import npm_package, react_native_npm_package
 
 
 def version_url(
@@ -81,6 +81,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("version")
     parser.add_argument("--npm-package", default=npm_package())
+    parser.add_argument(
+        "--react-native-npm-package", default=react_native_npm_package()
+    )
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
     parser.add_argument("--python-package", default="kaleidorg_swap_sdk")
     parser.add_argument("--pypi-registry", default="https://pypi.org/pypi")
@@ -103,12 +106,16 @@ def main() -> int:
         if args.flags_only:
             print("Validated publisher configuration without a registry check")
             return 0
-        require_version_available(
-            args.npm_registry,
-            args.npm_package,
-            args.version,
-            "npm",
-        )
+        # Both npm packages publish from one bundle under one version, so both
+        # must be unclaimed: a release that lands the first and is refused the
+        # second cannot be retried at the same version.
+        for package in (args.npm_package, args.react_native_npm_package):
+            require_version_available(
+                args.npm_registry,
+                package,
+                args.version,
+                "npm",
+            )
         if pypi_enabled or args.check_pypi:
             require_version_available(
                 args.pypi_registry,

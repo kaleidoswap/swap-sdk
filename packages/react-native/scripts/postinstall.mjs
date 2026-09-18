@@ -1,11 +1,17 @@
 #!/usr/bin/env node
-import { access, readFile, rename, rm } from "node:fs/promises";
+import { access, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import extract from "extract-zip";
 
-import { ARCHIVES, download, sha256, validateManifest } from "./native-artifacts.mjs";
+import {
+  ARCHIVES,
+  assertNativeLibraries,
+  download,
+  sha256,
+  validateManifest,
+} from "./native-artifacts.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(packageRoot, "../..");
@@ -54,6 +60,7 @@ try {
   for (const { destination } of archives) {
     await extract(destination, { dir: packageRoot });
   }
+  await assertNativeLibraries(packageRoot, stat);
 } finally {
   await Promise.all(
     archives.flatMap(({ destination }) => [

@@ -12,6 +12,16 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/release.yaml"
 BUILD_WORKFLOW = ROOT / ".github/workflows/release-build.yaml"
 REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
+# Composite actions the build workflow calls run inside it with its authority,
+# so they are held to the read-only build's rules.
+ACTIONS_DIR = ROOT / ".github/actions"
+
+# Both npm packages publish under one OIDC grant, and that grant is justified
+# only by provenance — so every manifest it publishes must claim it.
+NPM_MANIFESTS = (
+    "typescript-sdk/package.json",
+    "packages/react-native/package.json",
+)
 
 # Structural invariants only. Anything that encodes *today's* policy — which
 # registries are enabled, which publisher action is used, whether a registry has a
@@ -36,6 +46,7 @@ PRODUCTION_REQUIRED = (
     "verify-npm:",
     "registry-publish-complete:",
     "publish-github-release:",
+    "verify-react-native-install:",
     # Publishing must consume the sealed bundle, never a fresh build.
     "release-bundle-${{ needs.release-ready.outputs.release_id }}",
 )
@@ -46,6 +57,9 @@ BUILD_REQUIRED = (
     "release-ready:",
     "rehearsal-complete:",
     "release-build-python-wheel-${{ matrix.name }}",
+    "react-native-package:",
+    "release-build-react-native-package",
+    "release-build-react-native-archives",
     "release-bundle-${{ env.RELEASE_ID }}",
     "scripts/assemble_release.py",
     "scripts/verify_release_bundle.py",
@@ -98,15 +112,27 @@ def require_snippets(contents: str, snippets: tuple[str, ...], label: str) -> No
         raise ValueError(f"{label} workflow is missing invariants: {missing}")
 
 
+def composite_actions() -> str:
+    if not ACTIONS_DIR.is_dir():
+        return ""
+    return "".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(ACTIONS_DIR.glob("*/action.yml"))
+    )
+
+
 def validate(
     contents: str,
     rehearsal_contents: str | None = None,
     build_contents: str | None = None,
+    actions_contents: str | None = None,
 ) -> None:
     if rehearsal_contents is None:
         rehearsal_contents = REHEARSAL_WORKFLOW.read_text(encoding="utf-8")
     if build_contents is None:
         build_contents = BUILD_WORKFLOW.read_text(encoding="utf-8")
+    if actions_contents is None:
+        actions_contents = composite_actions()
 
     require_snippets(contents, PRODUCTION_REQUIRED, "production release")
     require_snippets(build_contents, BUILD_REQUIRED, "release build")
@@ -138,7 +164,7 @@ def validate(
                 f"{label} workflow reads publisher flags from the environment "
                 f"but does not declare them: {undeclared}"
             )
-    combined = contents + build_contents + rehearsal_contents
+    combined = contents + build_contents + rehearsal_contents + actions_contents
     # Both spellings. The CLI flag is what twine/npm take, but the PyPA action
     # is configured through a YAML input — and `skip-existing: true` is exactly
     # the edit someone reaches for after a half-failed release, which would
@@ -155,12 +181,22 @@ def validate(
     # dependency and exits 128 having uploaded nothing. Nothing else here
     # catches that: the rehearsal never publishes, so only a real tag can
     # discover it — and by then PyPI has already gone out.
-    for argument in re.findall(r"npm publish\s+(\S+)", contents):
+    publishes = re.findall(r"npm publish\s+(\S+)", contents)
+    for argument in publishes:
         if not re.match(r"\./|\.\./|~/|/|[a-zA-Z]:", argument):
             raise ValueError(
                 "npm publish must be given an explicit file path, or npm reads "
                 f"it as a git shorthand (found {argument!r}; prefix it with ./)"
             )
+    # Two packages, one bundle, one publish job. A glob would hand npm both
+    # tarballs in one argument list, and a single line would ship one package
+    # while the other's version stays unclaimed and the release page points at
+    # archives no tarball can fetch.
+    if len(publishes) != 2 or not any("react-native" in path for path in publishes):
+        raise ValueError(
+            "publish-npm must publish both npm tarballs by explicit path, the "
+            f"browser package and the React Native package (found {publishes})"
+        )
 
     mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
     invalid = [ref for ref in mutable_actions if not re.fullmatch(r"[0-9a-f]{40}", ref)]
@@ -188,7 +224,9 @@ def validate(
     found_read_only_authority = [
         authority
         for authority in read_only_authority
-        if authority in build_contents or authority in rehearsal_contents
+        if authority in build_contents
+        or authority in rehearsal_contents
+        or authority in actions_contents
     ]
     if found_read_only_authority:
         raise ValueError(
@@ -247,18 +285,17 @@ def validate(
             raise ValueError("npm publisher must have job-scoped OIDC for provenance")
         if name == "npm":
             # The npm job's OIDC scope is justified *only* by provenance. If that
-            # field is dropped from package.json the scope becomes exactly the
+            # field is dropped from a package.json the scope becomes exactly the
             # unused privilege the PyPI job's comment condemns, and nothing else
             # would notice.
-            manifest = json.loads(
-                (ROOT / "typescript-sdk/package.json").read_text(encoding="utf-8")
-            )
-            if manifest.get("publishConfig", {}).get("provenance") is not True:
-                raise ValueError(
-                    "npm publisher holds id-token: write, but package.json does "
-                    "not set publishConfig.provenance — either restore it or drop "
-                    "the unused OIDC scope"
-                )
+            for manifest_path in NPM_MANIFESTS:
+                manifest = json.loads((ROOT / manifest_path).read_text(encoding="utf-8"))
+                if manifest.get("publishConfig", {}).get("provenance") is not True:
+                    raise ValueError(
+                        f"npm publisher holds id-token: write, but {manifest_path} "
+                        "does not set publishConfig.provenance — either restore it "
+                        "or drop the unused OIDC scope"
+                    )
         if name != "npm" and re.search(r"^\s*id-token: write\s*$", job, re.MULTILINE):
             raise ValueError(f"{name} publisher must not request unused OIDC scope")
         if "sha256sum --check --strict SHA256SUMS" not in job:
@@ -285,13 +322,41 @@ def validate(
             raise ValueError(f"{name} verifier must download registry artifacts")
         if smoke not in job:
             raise ValueError(f"{name} verifier must run a clean-consumer smoke test")
+    if "smoke-react-native-package.mjs" not in jobs["verify-npm"]:
+        raise ValueError(
+            "npm verifier must smoke-test the published React Native tarball"
+        )
+
+    # The one job that runs the React Native package's postinstall for real:
+    # after the GitHub release exists, a clean consumer installs the published
+    # version with lifecycle scripts on, and the archives must arrive. Every
+    # earlier check proves bytes; this one proves a partner's `npm install`.
+    install_job = jobs["verify-react-native-install"]
+    if "- publish-github-release" not in install_job or "- release-ready" not in install_job:
+        raise ValueError(
+            "React Native install verification must run after the GitHub release "
+            "exists and consume the build workflow outputs"
+        )
+    if "smoke-react-native-install.mjs" not in install_job:
+        raise ValueError(
+            "React Native install verification must install the published "
+            "package from the registry"
+        )
+    if "--ignore-scripts" in install_job:
+        raise ValueError(
+            "React Native install verification must not disable the postinstall "
+            "it exists to prove"
+        )
 
     release_job = jobs["publish-github-release"]
     if "- registry-publish-complete" not in release_job:
         raise ValueError("GitHub release must depend on registry completion")
     if "- release-ready" not in release_job:
         raise ValueError("GitHub release must consume build workflow outputs")
-    if "--draft" in release_job:
+    # Anywhere in the file, not just this job: a draft flag has no legitimate
+    # home in a production release workflow, and a job-scoped check silently
+    # stops watching the moment a job is added after this one.
+    if "--draft" in contents:
         raise ValueError("production GitHub release must not remain a draft")
     if "--notes-file release-notes.md" not in release_job:
         raise ValueError("GitHub release must use the finalized changelog")
@@ -307,6 +372,20 @@ def validate(
     ):
         if f"- {dependency}" not in registry_job:
             raise ValueError(f"registry completion gate must depend on {dependency}")
+
+    react_native_job = job_section(
+        build_contents, "react-native-package", "typescript-package"
+    )
+    if "uses: ./.github/actions/react-native-build" not in react_native_job:
+        raise ValueError(
+            "React Native release build must use the shared composite action, so "
+            "it cannot drift from the pull-request build"
+        )
+    if (
+        "node scripts/smoke-react-native-package.mjs release-dist/*.tgz"
+        not in react_native_job
+    ):
+        raise ValueError("React Native package must pass its clean-consumer smoke test")
 
     typescript_job = job_section(build_contents, "typescript-package", "release-ready")
     if "node scripts/smoke-package.mjs release-dist/*.tgz" not in typescript_job:
@@ -325,8 +404,9 @@ def validate(
     if (
         "needs:" not in release_ready_job
         or "- typescript-package" not in release_ready_job
+        or "- react-native-package" not in release_ready_job
     ):
-        raise ValueError("release-ready must depend on the npm smoke-tested package")
+        raise ValueError("release-ready must depend on both npm smoke-tested packages")
     if (
         "inputs.rehearsal && inputs.failure_case == 'missing-wheel'"
         not in release_ready_job

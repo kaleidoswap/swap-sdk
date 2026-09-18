@@ -9,6 +9,7 @@ import json
 import sys
 from pathlib import Path
 
+from react_native_release import verify_native_binding
 from release_metadata import METADATA_FILES, PACKAGE_COUNT, RELEASE_ASSET_COUNT
 
 
@@ -146,6 +147,12 @@ def verify(
         require(name not in sbom_checksums, f"duplicate release SBOM file: {name}")
         sbom_checksums[name] = value
     require(sbom_checksums == checksums, "release SBOM checksums do not match")
+
+    # The bytes are proven; now prove they install together. The React Native
+    # tarball's postinstall will request the archives from this release by name
+    # and accept them only at the digests inside the tarball, so the binding is
+    # checked again here, from the sealed bytes about to be attached.
+    verify_native_binding(directory, version)
 
 
 def main() -> int:

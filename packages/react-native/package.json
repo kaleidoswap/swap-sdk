@@ -40,7 +40,8 @@
     "*.podspec",
     "react-native.config.js",
     "native-artifacts.json",
-    "scripts",
+    "scripts/postinstall.mjs",
+    "scripts/native-artifacts.mjs",
     "!ios/build",
     "!android/build",
     "!android/gradle",
@@ -77,7 +78,8 @@
     "ubrn:android": "ubrn build android --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
     "ubrn:fixup": "node scripts/fix-generated-modifiers.mjs src/generated/kaleidorg_swap_sdk.ts",
     "ubrn:build": "npm run ubrn:ios && npm run ubrn:android",
-    "native:manifest": "node scripts/create-native-manifest.mjs android-artifacts.zip ios-artifacts.zip"
+    "native:manifest": "node scripts/create-native-manifest.mjs android-artifacts.zip ios-artifacts.zip",
+    "smoke:package": "node scripts/smoke-react-native-package.mjs"
   },
   "dependencies": {
     "extract-zip": "2.0.1",

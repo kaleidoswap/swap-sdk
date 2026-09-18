@@ -241,6 +241,56 @@ jobs:
           path: bindings/python/dist/*.tar.gz
           retention-days: 7
 
+  react-native-package:
+    name: Release React Native package
+    needs: preflight
+    # macOS: the iOS half needs Xcode, and both halves build on one runner so
+    # the generated glue is consistent between them. The steps are the shared
+    # composite action, so this job builds exactly what the pull-request check
+    # built.
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the native archives and generate the turbo module
+        uses: ./.github/actions/react-native-build
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          rust-toolchain: ${{ env.RUST_VERSION }}
+      # `prepack` refuses to pack a module that is missing generated files or
+      # whose archives do not match native-artifacts.json; `prepare` builds
+      # `lib/`. Both run inside this command.
+      - name: Build exact npm tarball
+        working-directory: packages/react-native
+        run: |
+          mkdir release-dist
+          npm pack --json --pack-destination release-dist
+      - name: Install exact npm tarball in a clean consumer
+        working-directory: packages/react-native
+        run: node scripts/smoke-react-native-package.mjs release-dist/*.tgz
+      - name: Upload exact npm tarball
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: release-build-react-native-package
+          path: packages/react-native/release-dist/*.tgz
+          retention-days: 7
+      # The archives and the manifest that binds them travel with the tarball
+      # into the sealed bundle: the assembler checks the digests inside the
+      # tarball against these exact bytes, and the GitHub release attaches
+      # them under the names the tarball's postinstall will request.
+      - name: Upload exact native archives and their manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          if-no-files-found: error
+          name: release-build-react-native-archives
+          path: |
+            packages/react-native/android-artifacts.zip
+            packages/react-native/ios-artifacts.zip
+            packages/react-native/native-artifacts.json
+          retention-days: 7
+
   typescript-package:
     name: Release npm package
     needs: preflight
@@ -308,6 +358,7 @@ jobs:
       - python-wheel
       - python-sdist
       - typescript-package
+      - react-native-package
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -354,9 +405,18 @@ jobs:
           mkdir sdist-smoke
           cp release-artifacts/*.tar.gz sdist-smoke/
           python3 bindings/python/scripts/smoke_artifact.py sdist --dist sdist-smoke
+      # By name: the bundle holds two npm tarballs and each smoke test takes
+      # exactly one.
       - name: Clean-install exact npm tarball
         working-directory: typescript-sdk
-        run: node scripts/smoke-package.mjs ../release-artifacts/*.tgz
+        run: >-
+          node scripts/smoke-package.mjs
+          "../release-artifacts/kaleidorg-swap-sdk-${{ needs.preflight.outputs.version }}.tgz"
+      - name: Clean-install exact React Native npm tarball
+        working-directory: packages/react-native
+        run: >-
+          node scripts/smoke-react-native-package.mjs
+          "../../release-artifacts/kaleidorg-swap-sdk-react-native-${{ needs.preflight.outputs.version }}.tgz"
       - name: Upload validated release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
