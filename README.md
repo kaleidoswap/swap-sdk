@@ -204,11 +204,13 @@ repository-pinned tool inputs and rejects any drift.
   turbo module. The Arkade corridor is not part of the native module — it stays
   TypeScript and is re-exported from `@kaleidorg/swap-sdk/arkade`.
 
-  Not published yet: the package builds and the binaries are produced in CI,
-  but the release pipeline seals one npm tarball and does not yet carry the
-  second one or attach the native archives to the release. Until it does,
-  `npm install @kaleidorg/swap-sdk-react-native` has nothing to fetch — build
-  from a checkout.
+  Published with every release beside the browser package: the release
+  pipeline seals both npm tarballs in one bundle and attaches the compiled
+  iOS and Android archives to the GitHub release, where the package's
+  `postinstall` fetches them and accepts each only at the SHA-256 recorded in
+  the manifest that shipped inside the tarball. The pipeline ends by
+  installing the published version into a clean project with scripts enabled,
+  so a release is not green until that install has produced the libraries.
 
 `make check-binding-parity` fails when the wasm binding exposes a capability
 the UniFFI binding does not, so the native surface cannot fall behind the

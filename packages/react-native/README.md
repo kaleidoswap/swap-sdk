@@ -19,6 +19,16 @@ Prebuilt native binaries are fetched from this version's GitHub release on
 install and verified against the SHA-256 manifest carried by the npm package;
 no Rust toolchain, NDK or Xcode is needed. iOS then needs a `pod install`.
 
+With pnpm 10 or later, dependencies' lifecycle scripts do not run unless the
+package is allow-listed — the install succeeds and the binaries are simply
+never fetched, which surfaces as a missing native module at first import.
+Allow it in `pnpm-workspace.yaml`:
+
+```yaml
+onlyBuiltDependencies:
+  - "@kaleidorg/swap-sdk-react-native"
+```
+
 New architecture only, and a bare or prebuilt app — the module is native code,
 so it does not run in Expo Go. With Expo, use `expo prebuild` and a development
 build.

@@ -15,9 +15,12 @@ from pathlib import Path
 
 from release_metadata import (
     LINUX_X86_64_WHEEL,
+    NATIVE_ARCHIVES,
+    NPM_PACKAGE_COUNT,
     PACKAGE_COUNT,
     npm_package,
     npm_tarball_name,
+    react_native_npm_package,
 )
 
 NPM_REGISTRY = "https://registry.npmjs.org"
@@ -99,15 +102,17 @@ def download_npm(
     registry: str,
     attempts: int,
     delay: float,
+    package: str | None = None,
 ) -> Path:
-    expected_name = npm_tarball_name(version)
+    package = npm_package() if package is None else package
+    expected_name = npm_tarball_name(version, package)
     expected = entries.get(expected_name)
     if expected is None:
         raise ValueError(f"release manifest has no npm artifact: {expected_name}")
     metadata = request_json(
-        npm_metadata_url(registry, npm_package(), version), attempts, delay
+        npm_metadata_url(registry, package, version), attempts, delay
     )
-    if metadata.get("name") != npm_package() or metadata.get("version") != version:
+    if metadata.get("name") != package or metadata.get("version") != version:
         raise ValueError("npm registry package identity mismatch")
     tarball_url = metadata.get("dist", {}).get("tarball")
     if not isinstance(tarball_url, str):
@@ -169,9 +174,10 @@ def download_python_index(
         verify_download(destination, expected[name])
         destinations.append(destination)
         print(f"Verified published PyPI artifact: {destination.name}")
-    if len(destinations) != PACKAGE_COUNT - 1:
+    python_count = PACKAGE_COUNT - NPM_PACKAGE_COUNT - len(NATIVE_ARCHIVES) - 1
+    if len(destinations) != python_count:
         raise ValueError(
-            f"expected {PACKAGE_COUNT - 1} Python artifacts, "
+            f"expected {python_count} Python artifacts, "
             f"byte-verified {len(destinations)}"
         )
 
@@ -206,14 +212,16 @@ def main() -> int:
         args.output.mkdir(parents=True, exist_ok=False)
         entries = load_manifest(args.bundle, args.version)
         if args.npm:
-            download_npm(
-                entries,
-                args.output,
-                args.version,
-                registry=args.npm_registry,
-                attempts=args.attempts,
-                delay=args.delay,
-            )
+            for package in (npm_package(), react_native_npm_package()):
+                download_npm(
+                    entries,
+                    args.output,
+                    args.version,
+                    registry=args.npm_registry,
+                    attempts=args.attempts,
+                    delay=args.delay,
+                    package=package,
+                )
         else:
             download_python_index(
                 entries,

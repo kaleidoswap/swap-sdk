@@ -90,10 +90,18 @@ jobs:
       # it npm never uploads anything — it shells out to
       # `git ls-remote ssh://git@github.com/release-artifacts/<tarball>.git`
       # and dies with code 128, after PyPI has already published.
-      - name: Publish the exact validated npm tarball
+      #
+      # Two packages, named rather than globbed: `npm publish` takes one
+      # tarball, and the names are the ones scripts/release_metadata.py derives
+      # from each package.json. The browser package goes first; the React Native
+      # package's install path depends on the GitHub release, not on it.
+      - name: Publish the exact validated npm tarballs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish ./release-artifacts/*.tgz --access public
+          VERSION: ${{ needs.release-ready.outputs.version }}
+        run: |
+          npm publish ./release-artifacts/kaleidorg-swap-sdk-${VERSION}.tgz --access public
+          npm publish ./release-artifacts/kaleidorg-swap-sdk-react-native-${VERSION}.tgz --access public
 
   publish-pypi:
     name: Publish exact Python artifacts to PyPI
@@ -161,7 +169,7 @@ jobs:
         with:
           name: release-bundle-${{ needs.release-ready.outputs.release_id }}
           path: release-artifacts
-      - name: Download and hash-match the published npm tarball
+      - name: Download and hash-match both published npm tarballs
         run: >-
           python3 scripts/download_published_artifacts.py
           release-artifacts registry-npm
@@ -169,10 +177,22 @@ jobs:
           --npm
       - name: Clean-install the registry npm tarball in Node
         working-directory: typescript-sdk
-        run: node scripts/smoke-package.mjs ../registry-npm/*.tgz
+        run: >-
+          node scripts/smoke-package.mjs
+          "../registry-npm/kaleidorg-swap-sdk-${{ needs.release-ready.outputs.version }}.tgz"
       - name: Clean-install the registry npm tarball in Firefox
         working-directory: typescript-sdk
-        run: node scripts/smoke-browser-package.mjs ../registry-npm/*.tgz
+        run: >-
+          node scripts/smoke-browser-package.mjs
+          "../registry-npm/kaleidorg-swap-sdk-${{ needs.release-ready.outputs.version }}.tgz"
+      # Scripts stay off here: the GitHub release this tarball's postinstall
+      # fetches from does not exist yet. verify-react-native-install, below, is
+      # where it runs for real.
+      - name: Clean-install the registry React Native tarball
+        working-directory: packages/react-native
+        run: >-
+          node scripts/smoke-react-native-package.mjs
+          "../../registry-npm/kaleidorg-swap-sdk-react-native-${{ needs.release-ready.outputs.version }}.tgz"
 
   verify-pypi:
     name: Verify published PyPI package
@@ -305,3 +325,35 @@ jobs:
             --verify-tag \
             --latest \
             --notes-file release-notes.md
+
+  verify-react-native-install:
+    name: Verify the React Native package installs from the registry and the release
+    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
+    needs:
+      - release-ready
+      - publish-github-release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - name: Checkout tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      # The only step in the pipeline that runs the package's postinstall for
+      # real. Everything before it proved bytes: the tarball's manifest matched
+      # the archives, the registry served the sealed tarball, the release got
+      # the sealed archives. This proves the thing a partner will actually do —
+      # a clean `npm install` of the published version, lifecycle scripts on,
+      # ending with the compiled libraries on disk. It runs after the release
+      # exists because that is where postinstall fetches from; a failure here
+      # cannot be undone, but it is the difference between the pipeline knowing
+      # and every partner finding out.
+      - name: Install from the registry with lifecycle scripts enabled
+        run: >-
+          node packages/react-native/scripts/smoke-react-native-install.mjs
+          --version "${{ needs.release-ready.outputs.version }}"

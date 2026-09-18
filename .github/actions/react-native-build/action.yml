@@ -1,0 +1,99 @@
+name: Build the React Native bindings
+description: >-
+  Cross-compile the UniFFI bindings crate for iOS and Android, generate the
+  turbo module around it, run the package's tests and typecheck, and zip the
+  compiled archives with their SHA-256 manifest. One definition for the
+  pull-request build and the release build, so the two cannot drift.
+
+inputs:
+  node-version:
+    description: Node.js version for the package scripts and ubrn
+    required: true
+  rust-toolchain:
+    description: Rust toolchain the bindings crate is compiled with
+    required: true
+  cargo-ndk-version:
+    description: cargo-ndk release
+    required: false
+    default: "3.5.4"
+  ndk-version:
+    description: Android NDK release
+    required: false
+    default: r27c
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Cache cargo and target
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: rn-bindings-${{ runner.os }}-${{ inputs.rust-toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+        # A lockfile change should cost an incremental build, not a cold one.
+        restore-keys: rn-bindings-${{ runner.os }}-${{ inputs.rust-toolchain }}-
+
+    # cargo-ndk is a build tool, not part of the artifact, so it is built with
+    # the runner's own toolchain before the default is switched to the pinned
+    # one below: the pin is for the crate, and cargo-ndk's supported Rust range
+    # is its own business.
+    - name: Install cargo-ndk
+      shell: bash
+      run: cargo install cargo-ndk --version "${{ inputs.cargo-ndk-version }}" --locked
+
+    - name: Set up pinned Rust with every mobile target
+      shell: bash
+      run: |
+        rustup toolchain install "${{ inputs.rust-toolchain }}" --profile minimal
+        rustup target add --toolchain "${{ inputs.rust-toolchain }}" \
+          aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios \
+          aarch64-linux-android armv7-linux-androideabi \
+          i686-linux-android x86_64-linux-android
+        rustup default "${{ inputs.rust-toolchain }}"
+
+    - name: Set up the NDK
+      uses: nttld/setup-ndk@afb4c9964b521afb97c864b7d40b11e6911bd410 # v1.5.0
+      id: ndk
+      with:
+        ndk-version: ${{ inputs.ndk-version }}
+
+    - name: Install locked dependencies
+      shell: bash
+      working-directory: packages/react-native
+      run: npm ci --ignore-scripts --no-audit --no-fund
+
+    - name: Build and generate the turbo module
+      shell: bash
+      working-directory: packages/react-native
+      env:
+        ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+      run: npm run ubrn:build
+
+    - name: Test the packaging scripts
+      shell: bash
+      working-directory: packages/react-native
+      run: npm test
+
+    - name: Type-check the generated TypeScript
+      shell: bash
+      working-directory: packages/react-native
+      run: npm run typecheck
+
+    - name: Compress the native archives
+      shell: bash
+      working-directory: packages/react-native
+      run: |
+        zip -9 -r android-artifacts.zip android/src/main/jniLibs
+        zip -9 -r ios-artifacts.zip build
+
+    - name: Bind the archives to the package
+      shell: bash
+      working-directory: packages/react-native
+      run: npm run native:manifest
