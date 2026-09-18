@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-18
+
 ### Added — the UniFFI binding catches up with the browser one
 
 The two bindings wrap the same core crate but are written by hand, and the wasm
