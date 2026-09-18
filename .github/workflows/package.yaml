@@ -43,6 +43,16 @@ jobs:
       # fallback; regenerating it needs Rust + uv, not Node or cargo-typify.
       - name: Verify generated sources
         run: make check-generated
+      # Regenerating this file needs a working local Rust build. When a change
+      # to the bindings makes it drift, uploading the regenerated copy is what
+      # lets it be committed from a machine that cannot build the crate.
+      - name: Upload the regenerated glue when it drifts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: regenerated-python-glue
+          path: bindings/python/kaleidorg_swap_sdk/_generated_uniffi.py
+          retention-days: 5
 
   python-wheel:
     name: Python wheel (${{ matrix.name }})

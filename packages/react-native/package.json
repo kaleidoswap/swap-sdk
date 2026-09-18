@@ -1,0 +1,145 @@
+{
+  "name": "@kaleidorg/swap-sdk-react-native",
+  "version": "0.7.2",
+  "description": "KaleidoSwap swap SDK for React Native — Boltz-protocol atomic swaps (submarine/reverse/chain) over a native UniFFI module",
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/typescript/commonjs/index.d.ts",
+  "react-native": "./src/index.tsx",
+  "exports": {
+    ".": {
+      "source": "./src/index.tsx",
+      "import": {
+        "types": "./lib/typescript/module/index.d.ts",
+        "default": "./lib/module/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/index.d.ts",
+        "default": "./lib/commonjs/index.js"
+      }
+    },
+    "./arkade": {
+      "source": "./src/arkade.ts",
+      "import": {
+        "types": "./lib/typescript/module/arkade.d.ts",
+        "default": "./lib/module/arkade.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/arkade.d.ts",
+        "default": "./lib/commonjs/arkade.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "android",
+    "ios",
+    "cpp",
+    "*.podspec",
+    "react-native.config.js",
+    "native-artifacts.json",
+    "scripts",
+    "!ios/build",
+    "!android/build",
+    "!android/gradle",
+    "!android/gradlew",
+    "!android/gradlew.bat",
+    "!android/local.properties",
+    "!android/src/main/jniLibs",
+    "!**/__tests__",
+    "!**/.*"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaleidoswap/swap-sdk.git",
+    "directory": "packages/react-native"
+  },
+  "homepage": "https://github.com/kaleidoswap/swap-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/kaleidoswap/swap-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
+    "prepack": "node scripts/validate-package.mjs",
+    "prepare": "bob build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "clean": "del-cli android/generated ios/generated lib",
+    "ubrn:clean": "rm -rf cpp/ android/CMakeLists.txt android/src/main/java android/*.cpp ios/ src/Native* src/index.ts src/index.tsx src/generated/",
+    "ubrn:ios": "IPHONEOS_DEPLOYMENT_TARGET=15.1 ubrn build ios --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
+    "ubrn:android": "ubrn build android --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
+    "ubrn:fixup": "node scripts/fix-generated-modifiers.mjs src/generated/kaleidorg_swap_sdk.ts",
+    "ubrn:build": "npm run ubrn:ios && npm run ubrn:android",
+    "native:manifest": "node scripts/create-native-manifest.mjs android-artifacts.zip ios-artifacts.zip"
+  },
+  "dependencies": {
+    "extract-zip": "2.0.1",
+    "uniffi-bindgen-react-native": "0.29.3-1"
+  },
+  "peerDependencies": {
+    "@arkade-os/sdk": ">=0.4.71 <0.5.0",
+    "@arkade-os/swap": "^0.0.14",
+    "@kaleidorg/swap-sdk": "^0.7.0",
+    "react": "*",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "@arkade-os/sdk": {
+      "optional": true
+    },
+    "@arkade-os/swap": {
+      "optional": true
+    },
+    "@kaleidorg/swap-sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arkade-os/sdk": "0.4.71",
+    "@arkade-os/swap": "0.0.14",
+    "@kaleidorg/swap-sdk": "0.7.2",
+    "@types/react": "^19.0.0",
+    "del-cli": "^6.0.0",
+    "react": "19.0.0",
+    "react-native": "0.78.0",
+    "react-native-builder-bob": "^0.40.3",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "codegenConfig": {
+    "name": "RNKaleidoSwapSdkSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.kaleidorg.swapsdk"
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json"
+        }
+      ]
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 use bitcoin::hashes::sha256;
 use bitcoin::key::PublicKey;
+use bitcoin::secp256k1::PublicKey as Secp256k1PublicKey;
 use kaleidorg_swap_sdk::boltz::{
     self, BoltzWsConfig, ChainSwapDetails, CreateChainResponse, CreateReverseResponse, Side,
 };
@@ -13,6 +14,7 @@ use kaleidorg_swap_sdk::swaps::boltz::*;
 use kaleidorg_swap_sdk::util::secrets::Preimage;
 use kaleidorg_swap_sdk::LiquidAssetContext;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
@@ -321,6 +323,123 @@ impl BoltzApiClientV2 {
     }
 
     #[uniffi::method]
+    pub async fn get_height(&self) -> Result<HeightResponse, Error> {
+        Ok(self.inner.get_height().await?)
+    }
+
+    #[uniffi::method]
+    pub async fn get_fee_estimation(&self) -> Result<GetFeeEstimationResponse, Error> {
+        Ok(self.inner.get_fee_estimation().await?)
+    }
+
+    /// The BIP21 magic-routing hint an invoice carries, if any. Paying it
+    /// settles on-chain and skips the swap entirely.
+    #[uniffi::method]
+    pub async fn get_mrh_bip21(&self, invoice: &str) -> Result<MrhResponse, Error> {
+        Ok(self.inner.get_mrh_bip21(invoice).await?)
+    }
+
+    #[uniffi::method]
+    pub async fn get_submarine_tx(&self, id: &str) -> Result<SubmarineSwapTxResp, Error> {
+        Ok(self.inner.get_submarine_tx(id).await?)
+    }
+
+    #[uniffi::method]
+    pub async fn get_submarine_preimage(
+        &self,
+        id: &str,
+    ) -> Result<SubmarineSwapPreimageResp, Error> {
+        Ok(self.inner.get_submarine_preimage(id).await?)
+    }
+
+    #[uniffi::method]
+    pub async fn get_reverse_tx(&self, id: &str) -> Result<ReverseSwapTxResp, Error> {
+        Ok(self.inner.get_reverse_tx(id).await?)
+    }
+
+    #[uniffi::method]
+    pub async fn get_chain_txs(&self, id: &str) -> Result<ChainSwapTxResp, Error> {
+        Ok(self.inner.get_chain_txs(id).await?)
+    }
+
+    /// The swap's current state, and — against the KaleidoSwap maker — its
+    /// event history and failure detail.
+    #[uniffi::method]
+    pub async fn get_swap(&self, swap_id: &str) -> Result<GetSwapResponse, Error> {
+        Ok(self.inner.get_swap(swap_id).await?)
+    }
+
+    /// The re-quoted server lockup amount for a chain swap whose user lockup
+    /// arrived for a different amount than agreed.
+    #[uniffi::method]
+    pub async fn get_quote(&self, swap_id: &str) -> Result<GetQuoteResponse, Error> {
+        Ok(self.inner.get_quote(swap_id).await?)
+    }
+
+    /// Accept a chain-swap re-quote at `amount_sat`.
+    ///
+    /// `swap_auth` is the per-swap credential the KaleidoSwap maker returned
+    /// as `swapAuth` on the create response. Accepting commits the maker's
+    /// payout, so the maker authorizes it with that credential rather than
+    /// with the swap id — which is not a secret. Omit it only for a maker that
+    /// issues none (upstream Boltz); against KaleidoSwap the call is rejected
+    /// with `401 invalid_swap_auth` and no other route resolves the re-quote,
+    /// so the swap runs out its refund path instead.
+    ///
+    /// Persist `swap_auth` with the swap when you create it. Nothing re-issues
+    /// it — [`Self::swap_restore`] authenticates with an XPUB alone and does
+    /// not return it.
+    #[uniffi::method]
+    pub async fn accept_quote(
+        &self,
+        swap_id: &str,
+        amount_sat: u64,
+        swap_auth: Option<String>,
+    ) -> Result<(), Error> {
+        Ok(self
+            .inner
+            .accept_quote(swap_id, amount_sat, swap_auth.as_deref())
+            .await?)
+    }
+
+    /// The maker's Lightning nodes, keyed by implementation (`LND`, `CLN`).
+    #[uniffi::method]
+    pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
+        Ok(self.inner.get_nodes().await?)
+    }
+
+    /// Every swap the maker has seen for `xpub` — the recovery entry point
+    /// after a reinstall, and what a mobile client calls on launch to find
+    /// swaps it still owes a claim or a refund.
+    #[uniffi::method]
+    pub async fn swap_restore(
+        &self,
+        xpub: String,
+        derivation_path: Option<String>,
+        gap_limit: Option<u32>,
+    ) -> Result<Vec<SwapRestoreResponse>, Error> {
+        Ok(self
+            .inner
+            .post_swap_restore(&xpub, derivation_path, gap_limit)
+            .await?)
+    }
+
+    /// Highest swap-key derivation index the maker has seen for `xpub`
+    /// (`-1` if none), so a restored wallet knows where to resume deriving.
+    #[uniffi::method]
+    pub async fn swap_restore_index(
+        &self,
+        xpub: String,
+        derivation_path: Option<String>,
+        gap_limit: Option<u32>,
+    ) -> Result<SwapRestoreIndexResponse, Error> {
+        Ok(self
+            .inner
+            .post_swap_restore_index(&xpub, derivation_path, gap_limit)
+            .await?)
+    }
+
+    #[uniffi::method]
     pub fn ws(&self) -> BoltzWsApi {
         BoltzWsApi(Arc::new(self.inner.ws(BoltzWsConfig::default())))
     }
@@ -396,6 +515,15 @@ impl BoltzWsApi {
     #[uniffi::method]
     pub fn updates(&self) -> BoltzWsUpdates {
         BoltzWsUpdates(Mutex::new(self.0.updates()))
+    }
+
+    /// Whether the socket is currently up. A mobile client that was
+    /// backgrounded comes back to a dead socket with no error on it; poll this
+    /// on resume and fall back to `get_swap` rather than waiting on updates
+    /// that will never arrive.
+    #[uniffi::method]
+    pub async fn is_connected(&self) -> bool {
+        self.0.is_connected().await
     }
 
     #[uniffi::method]
@@ -689,4 +817,211 @@ pub struct GetReversePairsResponse {
 #[uniffi::remote(Record)]
 pub struct GetChainPairsResponse {
     pub pairs: HashMap<String, HashMap<String, ChainPair>>,
+}
+
+// ---------------------------------------------------------------------------
+// Chain tip, fees, and per-swap lookups
+// ---------------------------------------------------------------------------
+
+#[uniffi::remote(Record)]
+pub struct HeightResponse {
+    #[serde(rename = "BTC")]
+    pub btc: u32,
+    #[serde(rename = "L-BTC")]
+    pub lbtc: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct GetFeeEstimationResponse {
+    #[serde(rename = "BTC")]
+    pub btc: f64,
+    #[serde(rename = "L-BTC")]
+    pub lbtc: f64,
+}
+
+#[uniffi::remote(Record)]
+pub struct MrhResponse {
+    pub bip21: String,
+    pub signature: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct SubmarineSwapTxResp {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_block_height: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timeout_eta: Option<u32>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SubmarineSwapPreimageResp {
+    pub preimage: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct ReverseSwapTxResp {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hex: Option<String>,
+    pub timeout_block_height: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct ChainSwapTx {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hex: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ChainSwapTxTimeout {
+    pub block_height: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eta: Option<u32>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ChainSwapTxLock {
+    pub transaction: ChainSwapTx,
+    pub timeout: ChainSwapTxTimeout,
+}
+
+#[uniffi::remote(Record)]
+pub struct ChainSwapTxResp {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_lock: Option<ChainSwapTxLock>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_lock: Option<ChainSwapTxLock>,
+}
+
+#[uniffi::remote(Record)]
+pub struct TransactionResponse {
+    pub id: String,
+    pub hex: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct TransactionOut {
+    pub id: String,
+    pub vout: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct SwapEvent {
+    /// What happened, e.g. `invoice_issued`, `expired`.
+    pub kind: String,
+    /// Unix seconds.
+    pub ts: i64,
+}
+
+#[uniffi::remote(Record)]
+pub struct GetSwapResponse {
+    pub status: String,
+    pub zero_conf_rejected: Option<bool>,
+    pub transaction: Option<TransactionResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub swap_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payment_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_details: Option<String>,
+    /// The swap's history, oldest first.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<SwapEvent>>,
+}
+
+#[uniffi::remote(Record)]
+pub struct GetQuoteResponse {
+    /// Server lockup amount, in sat
+    pub amount: u64,
+}
+
+// `Node` carries a `secp256k1::PublicKey`, which is a different type from the
+// `bitcoin::key::PublicKey` the swap records use — the custom type registered
+// in `swap.rs` does not cover it, so it gets its own lowering here.
+uniffi::custom_type!(Secp256k1PublicKey, String, {
+    remote,
+    lower: |key| key.to_string(),
+    try_lift: |val| match Secp256k1PublicKey::from_str(val.as_str()) {
+        Ok(key) => Ok(key),
+        Err(e) => Err(Error::Generic(e.to_string()).into()),
+    },
+});
+
+#[uniffi::remote(Record)]
+pub struct Node {
+    /// The public key
+    pub public_key: Secp256k1PublicKey,
+    /// The public URIs
+    pub uris: Vec<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct GetNodesResponse {
+    #[serde(rename = "BTC")]
+    pub btc: HashMap<String, Node>,
+}
+
+// ---------------------------------------------------------------------------
+// Recovery (`swap/restore`)
+// ---------------------------------------------------------------------------
+
+// Variant order is the FFI wire order — new variants go at the END. See the
+// note on `Network` in `network.rs`.
+#[uniffi::remote(Enum)]
+pub enum SwapRestoreType {
+    Reverse,
+    Submarine,
+    Chain,
+}
+
+#[uniffi::remote(Record)]
+pub struct ClaimDetails {
+    pub tree: SwapTree,
+    pub amount: Option<u64>,
+    pub key_index: u32,
+    pub transaction: Option<TransactionOut>,
+    pub lockup_address: String,
+    pub server_public_key: String,
+    pub timeout_block_height: u32,
+    pub blinding_key: Option<String>,
+    pub preimage_hash: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct RefundDetails {
+    pub tree: SwapTree,
+    pub key_index: u32,
+    pub transaction: Option<TransactionOut>,
+    pub lockup_address: String,
+    pub server_public_key: String,
+    pub timeout_block_height: u32,
+    pub blinding_key: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SwapRestoreResponse {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub swap_type: SwapRestoreType,
+    pub status: String,
+    pub created_at: u64,
+    pub from: String,
+    pub to: String,
+    /// Lightning invoice; boltz only returns it for submarine/reverse swaps.
+    pub invoice: Option<String>,
+    pub claim_details: Option<ClaimDetails>,
+    pub refund_details: Option<RefundDetails>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SwapRestoreIndexResponse {
+    pub index: i64,
 }

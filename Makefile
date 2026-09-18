@@ -33,6 +33,11 @@ validate-release-readiness: validate-release-version
 	@python3 scripts/release_notes.py "$(patsubst v%,%,$(TAG))" >/dev/null
 	@echo "Validated local release readiness for $(TAG)"
 
+# Fail when the wasm binding exposes a capability the UniFFI binding does not,
+# so the mobile/native surface cannot silently fall behind the browser one.
+check-binding-parity:
+	@python3 scripts/check_binding_parity.py
+
 check-release-workflow:
 	@python3 scripts/check_release_workflow.py
 
@@ -57,6 +62,16 @@ generate-python-bindings:
 # then fail if the checked-in outputs drift.
 check-generated: generate-python-bindings
 	git diff --exit-code -- bindings/python/kaleidorg_swap_sdk/_generated_uniffi.py
+
+# --- React Native binding ----------------------------------------------------
+# Cross-compiles the `bindings` crate for iOS and Android and regenerates the
+# turbo module around it. Needs the Android NDK, cargo-ndk, Xcode, and the Rust
+# targets for both platforms — CI does this on macOS.
+rn-build:
+	cd packages/react-native && npm install --ignore-scripts && npm run ubrn:build
+
+rn-typecheck:
+	cd packages/react-native && npm run typecheck
 
 # --- wasm / TypeScript binding ----------------------------------------------
 # Builds the wasm-bindgen package (bindings-wasm/pkg) for the browser/TS SDK.

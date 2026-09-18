@@ -35,6 +35,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Validate public SDK versions
         run: make validate-versions
+      - name: Check binding parity
+        run: make check-binding-parity
       - name: Validate release automation
         run: |
           make check-release-workflow
