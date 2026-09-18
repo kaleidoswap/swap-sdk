@@ -16,8 +16,8 @@ npm install @kaleidorg/swap-sdk-react-native
 ```
 
 Prebuilt native binaries are fetched from this version's GitHub release on
-install; no Rust toolchain, NDK or Xcode is needed. iOS then needs a
-`pod install`.
+install and verified against the SHA-256 manifest carried by the npm package;
+no Rust toolchain, NDK or Xcode is needed. iOS then needs a `pod install`.
 
 New architecture only, and a bare or prebuilt app — the module is native code,
 so it does not run in Expo Go. With Expo, use `expo prebuild` and a development

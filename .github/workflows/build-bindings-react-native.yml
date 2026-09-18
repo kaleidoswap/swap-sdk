@@ -100,6 +100,12 @@ jobs:
         working-directory: packages/react-native
         run: zip -9 -r ios-artifacts.zip build
 
+      - name: Bind the native archives to the npm package
+        working-directory: packages/react-native
+        run: |
+          npm run native:manifest
+          npm pack --dry-run
+
       - name: Upload Android binaries
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -122,4 +128,5 @@ jobs:
             packages/react-native/cpp/generated
             packages/react-native/src/generated
             packages/react-native/android/generated
+            packages/react-native/native-artifacts.json
           retention-days: 5

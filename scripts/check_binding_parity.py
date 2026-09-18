@@ -8,7 +8,9 @@ drift is invisible until someone builds a mobile SDK and finds half the API
 missing, which is the expensive moment to find it.
 
 Direction is deliberate: wasm is the reference surface, and a UniFFI-only export
-is fine (it has real objects where JS has hex strings). Naming differs by
+is fine (it has real objects where JS has hex strings). This compares exported
+capability names, not parameter or return signatures; compilation and binding
+tests cover type compatibility. Naming differs by
 convention — JS drops the `get` prefix — so ALIASES records every intentional
 rename, and DIVERGENCES records every capability that is intentionally absent,
 with the reason. A new entry in either is a decision; growing them silently is
@@ -22,7 +24,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-WASM = ROOT / "bindings-wasm/src/lib.rs"
+WASM_DIR = ROOT / "bindings-wasm/src"
 UNIFFI_DIR = ROOT / "bindings/src"
 
 # wasm type name -> UniFFI type name, where they differ.
@@ -96,6 +98,11 @@ def validate(wasm_text: str, uniffi_text: str) -> None:
     wasm = exports(wasm_text, "#[wasm_bindgen]")
     uniffi = exports(uniffi_text, "#[uniffi::export")
 
+    if not wasm:
+        raise ValueError("found no wasm exports; the parity parser or source layout changed")
+    if not uniffi:
+        raise ValueError("found no UniFFI exports; the parity parser or source layout changed")
+
     missing: list[str] = []
     for wasm_type, methods in wasm.items():
         target_type = TYPES.get(wasm_type, wasm_type)
@@ -135,11 +142,16 @@ def validate(wasm_text: str, uniffi_text: str) -> None:
 
 
 def main() -> int:
-    uniffi_text = "\n".join(
-        path.read_text(encoding="utf-8") for path in sorted(UNIFFI_DIR.glob("*.rs"))
-    )
     try:
-        validate(WASM.read_text(encoding="utf-8"), uniffi_text)
+        wasm_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(WASM_DIR.rglob("*.rs"))
+        )
+        uniffi_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(UNIFFI_DIR.rglob("*.rs"))
+        )
+        validate(wasm_text, uniffi_text)
     except (OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

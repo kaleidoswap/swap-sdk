@@ -26,6 +26,7 @@
     "cpp",
     "*.podspec",
     "react-native.config.js",
+    "native-artifacts.json",
     "scripts",
     "!ios/build",
     "!android/build",
@@ -33,6 +34,7 @@
     "!android/gradlew",
     "!android/gradlew.bat",
     "!android/local.properties",
+    "!android/src/main/jniLibs",
     "!**/__tests__",
     "!**/.*"
   ],
@@ -51,7 +53,8 @@
     "provenance": true
   },
   "scripts": {
-    "postinstall": "./scripts/postinstall.sh",
+    "postinstall": "node scripts/postinstall.mjs",
+    "prepack": "node scripts/validate-package.mjs",
     "prepare": "bob build",
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.mjs",
@@ -60,15 +63,17 @@
     "ubrn:ios": "IPHONEOS_DEPLOYMENT_TARGET=15.1 ubrn build ios --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
     "ubrn:android": "ubrn build android --release --config ubrn.config.yaml --and-generate && npm run ubrn:fixup",
     "ubrn:fixup": "node scripts/fix-generated-modifiers.mjs src/generated/kaleidorg_swap_sdk.ts",
-    "ubrn:build": "npm run ubrn:ios && npm run ubrn:android"
+    "ubrn:build": "npm run ubrn:ios && npm run ubrn:android",
+    "native:manifest": "node scripts/create-native-manifest.mjs android-artifacts.zip ios-artifacts.zip"
   },
   "dependencies": {
+    "extract-zip": "2.0.1",
     "uniffi-bindgen-react-native": "0.29.3-1"
   },
   "peerDependencies": {
     "@arkade-os/sdk": ">=0.4.71 <0.5.0",
     "@arkade-os/swap": "^0.0.14",
-    "@kaleidorg/swap-sdk": ">=0.7.0",
+    "@kaleidorg/swap-sdk": "^0.7.0",
     "react": "*",
     "react-native": "*"
   },
@@ -86,7 +91,7 @@
   "devDependencies": {
     "@arkade-os/sdk": "0.4.71",
     "@arkade-os/swap": "0.0.14",
-    "@kaleidorg/swap-sdk": "0.7.1",
+    "@kaleidorg/swap-sdk": "0.7.2",
     "@types/react": "^19.0.0",
     "del-cli": "^6.0.0",
     "react": "19.0.0",
