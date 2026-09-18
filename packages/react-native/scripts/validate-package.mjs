@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 import { ARCHIVES, sha256, validateManifest } from "./native-artifacts.mjs";
 
 const required = [
-  "src/index.ts",
+  "src/index.tsx",
   "react-native.config.js",
   "KaleidoswapSwapSdk.podspec",
   "android/CMakeLists.txt",

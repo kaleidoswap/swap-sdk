@@ -1,0 +1,5 @@
+# Generated sources are intentionally shipped even though .gitignore excludes
+# them. The package.json `files` allowlist defines the published inventory.
+*.zip
+node_modules/
+test/

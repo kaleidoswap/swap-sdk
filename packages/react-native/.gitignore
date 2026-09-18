@@ -10,6 +10,6 @@ node_modules/
 src/generated/
 src/Native*
 src/index.ts
-react-native.config.js
+src/index.tsx
 *.podspec
 *.zip
