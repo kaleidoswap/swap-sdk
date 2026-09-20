@@ -27,6 +27,43 @@ NPM_REGISTRY = "https://registry.npmjs.org"
 PYTHON_PACKAGE = "kaleidorg_swap_sdk"
 PYPI_REGISTRY = "https://pypi.org/pypi"
 
+# npm answers a freshly published version with 404 until it has finished
+# processing the upload -- `npm publish` says so itself ("may take a few minutes
+# to become available"), and how long it takes scales with the tarball. The
+# 0.8.0 release was verified with a flat 12 x 10s budget, gave up 113s after a
+# publish that was otherwise perfect, and took the GitHub release down with it,
+# so this budget is set well past any propagation delay seen so far: eleven
+# attempts backing off 10s -> 60s, about eight minutes in total.
+NPM_ATTEMPTS = 11
+NPM_DELAY = 10.0
+NPM_MAX_DELAY = 60.0
+# PyPI serves its JSON API from the upload transaction, so a version that just
+# published reads back immediately. This budget covers a transient fault on the
+# way to the registry, not propagation.
+PYPI_ATTEMPTS = 8
+PYPI_DELAY = 5.0
+PYPI_MAX_DELAY = 20.0
+
+# 404 is the propagation case above. The rest are the registry asking to be
+# tried again rather than reporting anything about this release; every other
+# status (401, 403, 451 ...) describes a problem that will still be true in
+# eight minutes, so waiting out the budget on one only hides it.
+RETRYABLE_STATUSES = frozenset({404, 408, 429})
+
+
+def retryable_status(code: int) -> bool:
+    return code in RETRYABLE_STATUSES or 500 <= code < 600
+
+
+def backoff(delay: float, max_delay: float, attempts: int) -> list[float]:
+    """The pause before each retry: `delay`, doubling, capped at `max_delay`."""
+    pauses: list[float] = []
+    pause = delay
+    for _ in range(max(attempts - 1, 0)):
+        pauses.append(pause)
+        pause = min(pause * 2, max_delay)
+    return pauses
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -36,7 +73,23 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def request_json(url: str, attempts: int, delay: float) -> dict:
+def request_json(
+    url: str,
+    attempts: int,
+    delay: float,
+    *,
+    max_delay: float | None = None,
+) -> dict:
+    """Read registry JSON, waiting out a version that has yet to propagate.
+
+    Every attempt reports what it got. The failure this replaces said only that
+    metadata "was unavailable", which reads the same whether the version had not
+    propagated yet, the registry was down, or the credential was wrong -- and
+    diagnosing the 0.8.0 release meant going to the publisher's log to tell them
+    apart.
+    """
+    pauses = backoff(delay, delay if max_delay is None else max_delay, attempts)
+    waited = 0.0
     for attempt in range(1, attempts + 1):
         request = urllib.request.Request(
             url,
@@ -50,13 +103,35 @@ def request_json(url: str, attempts: int, delay: float) -> dict:
                 payload = json.load(response)
             if not isinstance(payload, dict):
                 raise ValueError(f"registry response is not an object: {url}")
+            if attempt > 1:
+                print(
+                    f"Registry metadata arrived after {waited:.0f}s of backoff: {url}",
+                    file=sys.stderr,
+                )
             return payload
+        except urllib.error.HTTPError as error:
+            reason = f"HTTP {error.code}"
+            fatal = not retryable_status(error.code)
+            failure: Exception = error
         except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
-            if attempt == attempts:
-                raise ValueError(
-                    f"registry metadata was unavailable after {attempts} attempts: {url}"
-                ) from error
-            time.sleep(delay)
+            reason = str(error)
+            fatal = False
+            failure = error
+        if fatal:
+            raise ValueError(f"registry returned {reason} for {url}") from failure
+        if attempt == attempts:
+            raise ValueError(
+                f"registry metadata was unavailable after {attempts} attempts "
+                f"over {waited:.0f}s of backoff, last {reason}: {url}"
+            ) from failure
+        pause = pauses[attempt - 1]
+        print(
+            f"Waiting for registry metadata ({reason}, attempt {attempt}/{attempts}), "
+            f"retrying in {pause:.0f}s: {url}",
+            file=sys.stderr,
+        )
+        time.sleep(pause)
+        waited += pause
     raise AssertionError("unreachable")
 
 
@@ -102,6 +177,7 @@ def download_npm(
     registry: str,
     attempts: int,
     delay: float,
+    max_delay: float | None = None,
     package: str | None = None,
 ) -> Path:
     package = npm_package() if package is None else package
@@ -110,7 +186,10 @@ def download_npm(
     if expected is None:
         raise ValueError(f"release manifest has no npm artifact: {expected_name}")
     metadata = request_json(
-        npm_metadata_url(registry, package, version), attempts, delay
+        npm_metadata_url(registry, package, version),
+        attempts,
+        delay,
+        max_delay=max_delay,
     )
     if metadata.get("name") != package or metadata.get("version") != version:
         raise ValueError("npm registry package identity mismatch")
@@ -137,6 +216,7 @@ def download_python_index(
     registry: str,
     attempts: int,
     delay: float,
+    max_delay: float | None = None,
 ) -> tuple[Path, Path]:
     expected = {
         name: entry
@@ -144,7 +224,10 @@ def download_python_index(
         if name.endswith(".whl") or name.endswith(".tar.gz")
     }
     metadata = request_json(
-        pypi_metadata_url(registry, PYTHON_PACKAGE, version), attempts, delay
+        pypi_metadata_url(registry, PYTHON_PACKAGE, version),
+        attempts,
+        delay,
+        max_delay=max_delay,
     )
     info = metadata.get("info", {})
     if info.get("version") != version:
@@ -199,16 +282,28 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--npm", action="store_true")
     parser.add_argument("--pypi", action="store_true")
-    parser.add_argument("--attempts", type=int, default=12)
-    parser.add_argument("--delay", type=float, default=10)
+    # The two registries propagate on different scales, so neither default is
+    # shared. Left unset, each side gets the budget its own registry needs.
+    parser.add_argument("--attempts", type=int)
+    parser.add_argument("--delay", type=float)
+    parser.add_argument("--max-delay", type=float)
     parser.add_argument("--npm-registry", default=NPM_REGISTRY)
     parser.add_argument("--pypi-registry", default=PYPI_REGISTRY)
     args = parser.parse_args()
     try:
         if args.npm == args.pypi:
             raise ValueError("select exactly one of --npm or --pypi")
-        if args.attempts < 1 or args.delay < 0:
+        if args.npm:
+            attempts, delay, max_delay = NPM_ATTEMPTS, NPM_DELAY, NPM_MAX_DELAY
+        else:
+            attempts, delay, max_delay = PYPI_ATTEMPTS, PYPI_DELAY, PYPI_MAX_DELAY
+        attempts = attempts if args.attempts is None else args.attempts
+        delay = delay if args.delay is None else args.delay
+        max_delay = max_delay if args.max_delay is None else args.max_delay
+        if attempts < 1 or delay < 0:
             raise ValueError("attempts must be positive and delay cannot be negative")
+        if max_delay < delay:
+            raise ValueError("max delay cannot be shorter than the first delay")
         args.output.mkdir(parents=True, exist_ok=False)
         entries = load_manifest(args.bundle, args.version)
         if args.npm:
@@ -218,8 +313,9 @@ def main() -> int:
                     args.output,
                     args.version,
                     registry=args.npm_registry,
-                    attempts=args.attempts,
-                    delay=args.delay,
+                    attempts=attempts,
+                    delay=delay,
+                    max_delay=max_delay,
                     package=package,
                 )
         else:
@@ -228,8 +324,9 @@ def main() -> int:
                 args.output,
                 args.version,
                 registry=args.pypi_registry,
-                attempts=args.attempts,
-                delay=args.delay,
+                attempts=attempts,
+                delay=delay,
+                max_delay=max_delay,
             )
     except (
         OSError,

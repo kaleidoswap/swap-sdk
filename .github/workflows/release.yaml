@@ -154,7 +154,13 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    timeout-minutes: 10
+    # Long enough that npm propagation never decides the outcome. The verifier
+    # spends about eight minutes per package waiting out a 404; both are
+    # published seconds apart, so in practice only the first one ever waits and
+    # this is a backstop for a registry that has stopped answering, not a
+    # schedule. It must stay well above the script's own budget: the two drifting
+    # apart is what took the 0.8.0 release down.
+    timeout-minutes: 30
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
