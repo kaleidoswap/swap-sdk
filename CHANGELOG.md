@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### BREAKING — the TypeScript names stop saying Boltz
+### BREAKING — the binding surfaces stop saying Boltz
 
 The client a partner writes was called `BoltzClient`. It speaks the Boltz
 protocol and can be pointed at Boltz's own API, which is where the name came
@@ -35,7 +35,16 @@ the TypeScript layer, which is the layer that can be typechecked — and without
 that check the binding answers `invalid type: unit value, expected a string`,
 which names no field and reads like an SDK bug.
 
-Unchanged: the Rust and wasm-internal names, including `BoltzApiClientV2`.
+The Python and mobile surfaces are renamed the same way: the UniFFI types
+`BoltzApiClientV2`, `BoltzWsApi` and `BoltzWsUpdates` are now `SwapClient`,
+`SwapWsApi` and `SwapWsUpdates`. In Python that is
+`kaleidorg_swap_sdk.SwapClient.default(network)`.
+
+Unchanged: the core crate. `kaleidorg_swap_sdk::swaps::boltz::BoltzApiClientV2`
+keeps its name — it lives in a module called `boltz` and is the Boltz API v2
+client, which is what it is. The rename covers the surfaces a partner types,
+not the protocol implementation behind them. The wasm-internal symbol is
+likewise untouched: TypeScript maps it in one line and no consumer sees it.
 
 ## [0.8.0] - 2026-09-18
 

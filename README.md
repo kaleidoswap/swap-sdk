@@ -71,7 +71,7 @@ match answer {
 ```
 
 A refusal is the maker's answer, not an error — it comes back as a value. The
-same surface is `BoltzApiClientV2.quote_lightning_send(...)` in Python and
+same surface is `SwapClient.quote_lightning_send(...)` in Python and
 `new IntentsCorridor(client).quoteLightningSend(...)` in TypeScript.
 
 What this half does **not** do is touch Arkade: funding a send lockup or
@@ -105,7 +105,7 @@ let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
 ```
 
 ```python
-client = kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
     "https://maker.signet.kaleidoswap.com/v2", os.environ["KALEIDOSWAP_API_KEY"], None
 )
 ```
