@@ -770,12 +770,53 @@ class WorkflowInvariantTests(unittest.TestCase):
         # install works can only run once the release exists.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         changed = contents.replace(
-            "    needs:\n      - release-ready\n      - publish-github-release\n",
-            "    needs:\n      - release-ready\n",
+            "  verify-react-native-install:\n"
+            "    name: Verify the React Native package installs from the registry and the release\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - publish-github-release\n"
+            "      - registry-publish-complete\n",
+            "  verify-react-native-install:\n"
+            "    name: Verify the React Native package installs from the registry and the release\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - registry-publish-complete\n",
             1,
         )
         self.assertNotEqual(changed, contents)
         with self.assertRaisesRegex(ValueError, "after the GitHub release"):
+            workflow.validate(changed)
+
+    def test_npm_publish_must_follow_the_github_release(self) -> None:
+        # postinstall fetches native archives from the matching GitHub release.
+        # Publishing npm first creates an unfixable broken-version window.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "      - publish-github-release\n",
+            "",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "after the GitHub release"):
+            workflow.validate(changed)
+
+    def test_github_release_must_not_wait_for_registry_completion(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "  publish-github-release:\n"
+            "    name: Publish final GitHub release\n"
+            "    needs: release-ready\n",
+            "  publish-github-release:\n"
+            "    name: Publish final GitHub release\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - registry-publish-complete\n",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "must precede registry publication"):
             workflow.validate(changed)
 
     def test_react_native_install_must_run_postinstall(self) -> None:
