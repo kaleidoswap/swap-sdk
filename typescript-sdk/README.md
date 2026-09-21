@@ -25,7 +25,14 @@ const pairs = await boltz.submarinePairs();
 ```
 
 `"signet"` reaches the live KaleidoSwap maker, so the snippet above runs as
-written. `"regtest"` resolves to `http://localhost:9001/v2` and needs this
+written. [`examples/`](examples/README.md) carries that further: four runnable
+programs, two of which need nothing but Node.
+
+```sh
+cd examples && npm install && node 01-pairs.ts
+```
+
+`"regtest"` resolves to `http://localhost:9001/v2` and needs this
 repository's local harness.
 
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced

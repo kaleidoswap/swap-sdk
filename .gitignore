@@ -12,4 +12,6 @@ bindings-wasm/pkg/
 typescript-sdk/dist/
 node_modules/
 typescript-sdk/vendor/
+# Swap state the examples persist before funding — real refund material.
+typescript-sdk/examples/swaps/
 .DS_Store
