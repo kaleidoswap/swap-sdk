@@ -1,7 +1,7 @@
 /** Glue the examples share. None of it is part of the SDK. */
 import {
   isKaleidoSwapError,
-  type BoltzClient,
+  type SwapClient,
   type Network,
 } from "@kaleidorg/swap-sdk";
 
@@ -61,9 +61,9 @@ const FAILURE_STATES = new Set([
   "transaction.refunded",
 ]);
 
-/** Polls so the examples need no cleanup; production wants `BoltzWsApi`. */
+/** Polls so the examples need no cleanup; production wants `SwapWsApi`. */
 export async function waitForStatus(
-  client: BoltzClient,
+  client: SwapClient,
   swapId: string,
   target: string,
 ): Promise<void> {

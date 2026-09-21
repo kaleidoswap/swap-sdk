@@ -11,7 +11,7 @@
 import { randomBytes } from "node:crypto";
 
 import {
-  BoltzClient,
+  SwapClient,
   IntentsCorridor,
   init,
   isRfqQuote,
@@ -24,7 +24,7 @@ try {
   await init();
 
   const net = network();
-  const client = BoltzClient.forNetwork(net);
+  const client = SwapClient.forNetwork(net);
   const corridor = new IntentsCorridor(client);
   console.log(`corridor: ${client.corridorUrl}\n`);
 
