@@ -195,6 +195,14 @@ jobs:
       - name: Build
         working-directory: typescript-sdk
         run: npm run build
+      # The examples import the package by name, so this typechecks them the
+      # way a consumer compiles them — and fails when the public surface drifts
+      # away from the code we tell partners to copy.
+      - name: Typecheck the examples
+        working-directory: typescript-sdk/examples
+        run: |
+          npm install --no-audit --no-fund
+          npm run typecheck
       - name: Pack and install in a clean consumer
         working-directory: typescript-sdk
         run: npm run smoke:package
