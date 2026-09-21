@@ -48,7 +48,9 @@ jobs:
   publish-npm:
     name: Publish exact npm tarball
     if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
-    needs: release-ready
+    needs:
+      - release-ready
+      - publish-github-release
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -106,7 +108,9 @@ jobs:
   publish-pypi:
     name: Publish exact Python artifacts to PyPI
     if: ${{ vars.PYPI_PUBLISH_ENABLED == 'true' }}
-    needs: release-ready
+    needs:
+      - release-ready
+      - publish-github-release
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -193,9 +197,9 @@ jobs:
         run: >-
           node scripts/smoke-browser-package.mjs
           "../registry-npm/kaleidorg-swap-sdk-${{ needs.release-ready.outputs.version }}.tgz"
-      # Scripts stay off here: the GitHub release this tarball's postinstall
-      # fetches from does not exist yet. verify-react-native-install, below, is
-      # where it runs for real.
+      # This is the package-structure smoke test and deliberately keeps lifecycle
+      # scripts off. verify-react-native-install, below, is where postinstall runs
+      # for real against both public distribution channels.
       - name: Clean-install the registry React Native tarball
         working-directory: packages/react-native
         run: >-
@@ -288,9 +292,7 @@ jobs:
 
   publish-github-release:
     name: Publish final GitHub release
-    needs:
-      - release-ready
-      - registry-publish-complete
+    needs: release-ready
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -340,6 +342,7 @@ jobs:
     needs:
       - release-ready
       - publish-github-release
+      - registry-publish-complete
     runs-on: ubuntu-24.04
     permissions:
       contents: read
