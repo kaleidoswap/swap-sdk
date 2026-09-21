@@ -5,7 +5,7 @@
 // domain types with hand-written interfaces.
 
 import initWasm, {
-  BoltzClient as WasmBoltzClient,
+  BoltzClient as WasmSwapClient,
   BtcLikeTransaction,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
   SwapScript as WasmSwapScript,
@@ -18,13 +18,18 @@ export const wasmUrl = new URL(
   import.meta.url,
 );
 
-// Boltz swap API client. Re-exported from the wasm module as-is: its request/
-// response payloads are currently untyped (`any`) because the Boltz swap DTOs are
+// The swap API client. Re-exported from the wasm module as-is: its request/
+// response payloads are currently untyped (`any`) because the swap DTOs are
 // Rust-defined and have no OpenAPI spec to generate TS types from. A typed
 // surface would need a schema-generation step (schemars) or hand-written types.
 // NOTE: 64-bit integer fields in its responses arrive as `bigint` — the wasm
 // boundary serializes Rust i64/u64 losslessly rather than through an f64.
-export { BoltzClient } from "../vendor/bindings_wasm.js";
+//
+// It speaks the Boltz protocol and can be pointed at Boltz's own API, which is
+// where the old name came from. But the name a partner writes should say whose
+// SDK this is, not whose wire format it inherited — that provenance belongs in
+// the README and the LICENSE, where it is recorded in full.
+export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
 export { BtcLikeTransaction };
 
@@ -48,7 +53,7 @@ export interface KaleidoMakerClientOptions {
 }
 
 /**
- * A {@link BoltzClient} that attributes the swaps it creates to a partner
+ * A {@link SwapClient} that attributes the swaps it creates to a partner
  * organization.
  *
  * The key answers *"which partner organization created this swap?"* and nothing
@@ -83,7 +88,7 @@ export interface KaleidoMakerClientOptions {
  * theirs. Nothing in the bundle can prevent that; a publishable attribution key
  * with allowed origins and per-key limits is a separate, later concept. Put the
  * key in server-side configuration, talk to the maker from there, and leave the
- * browser bundle on the unauthenticated `BoltzClient` constructor.
+ * browser bundle on the unauthenticated `SwapClient` constructor.
  *
  * One protection is also weaker under `fetch` than on a server: `fetch` owns
  * redirect handling and the SDK can set no policy on it, so a `3xx` away from
@@ -104,14 +109,17 @@ export interface KaleidoMakerClientOptions {
  */
 export function createKaleidoMakerClient(
   options: KaleidoMakerClientOptions,
-): WasmBoltzClient {
-  return WasmBoltzClient.forKaleidoMaker(options);
+): WasmSwapClient {
+  return WasmSwapClient.forKaleidoMaker(options);
 }
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.
-// `next()` resolves with a Boltz `SwapStatus` (untyped `any` — Boltz-defined).
-export { BoltzWsApi, BoltzWsUpdates } from "../vendor/bindings_wasm.js";
+// `next()` resolves with a `SwapStatus` (untyped `any` — Boltz-protocol-defined).
+export {
+  BoltzWsApi as SwapWsApi,
+  BoltzWsUpdates as SwapWsUpdates,
+} from "../vendor/bindings_wasm.js";
 
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {
@@ -120,8 +128,8 @@ export interface TxParams {
   swapId: string;
   /** Per-swap key secret (hex), e.g. `deriveSwapKey(index).secretKey`. */
   keysSecretHex: string;
-  boltzBaseUrl: string;
-  boltzTimeoutSecs?: number;
+  makerBaseUrl: string;
+  makerTimeoutSecs?: number;
   network: Network;
   bitcoinEsploraUrl?: string;
   liquidEsploraUrl?: string;
@@ -151,8 +159,8 @@ export interface LiquidPsetParams {
   maxFee: bigint;
   /** Fee ceiling from the accepted quote. The lower ceiling is pinned. */
   quotedFeeCap: bigint;
-  boltzBaseUrl: string;
-  boltzTimeoutSecs?: number;
+  makerBaseUrl: string;
+  makerTimeoutSecs?: number;
   network: Network;
   liquidEsploraUrl: string;
   esploraTimeoutSecs?: number;
@@ -248,6 +256,35 @@ export class PreparedLiquidSpend {
 }
 
 /** Typed façade over swap reconstruction and transaction construction. */
+/**
+ * The wasm boundary still deserializes these by their original field names.
+ * Renaming them for callers means mapping them back here rather than editing
+ * the binding, which keeps the rename in the layer that can be typechecked.
+ */
+function toWasmParams<T extends TxParams | LiquidPsetParams>(
+  params: T,
+): Record<string, unknown> {
+  const { makerBaseUrl, makerTimeoutSecs, ...rest } = params;
+  if (typeof makerBaseUrl !== "string") {
+    // Without this the binding rejects the mapped object with "invalid type:
+    // unit value, expected a string", which names no field and reads like a
+    // bug in the SDK rather than a renamed key in the caller's object.
+    const error = new Error(
+      "`makerBaseUrl` is required. It was named `boltzBaseUrl` before 0.9.0 — " +
+        "rename the field; the old one is ignored.",
+    ) as Error & { code: string };
+    error.code = "InvalidArgument";
+    throw error;
+  }
+  return {
+    ...rest,
+    boltzBaseUrl: makerBaseUrl,
+    ...(makerTimeoutSecs === undefined
+      ? {}
+      : { boltzTimeoutSecs: makerTimeoutSecs }),
+  };
+}
+
 export class SwapScript {
   private constructor(private readonly inner: WasmSwapScript) {}
 
@@ -289,7 +326,7 @@ export class SwapScript {
     preimageHex: string,
     params: TxParams,
   ): Promise<BtcLikeTransaction> {
-    return this.inner.constructClaim(preimageHex, params);
+    return this.inner.constructClaim(preimageHex, toWasmParams(params));
   }
 
   /**
@@ -324,21 +361,21 @@ export class SwapScript {
   ): Promise<BtcLikeTransaction> {
     return this.inner.constructCooperativeClaim(
       preimageHex,
-      params,
+      toWasmParams(params),
       lockupScript.inner,
       refundKeysSecretHex,
     );
   }
 
   constructRefund(params: TxParams): Promise<BtcLikeTransaction> {
-    return this.inner.constructRefund(params);
+    return this.inner.constructRefund(toWasmParams(params));
   }
 
   async prepareLiquidClaim(
     params: LiquidPsetParams,
   ): Promise<PreparedLiquidSpend> {
     return PreparedLiquidSpend.wrap(
-      await this.inner.prepareLiquidClaim(params),
+      await this.inner.prepareLiquidClaim(toWasmParams(params)),
     );
   }
 
@@ -346,7 +383,7 @@ export class SwapScript {
     params: LiquidPsetParams,
   ): Promise<PreparedLiquidSpend> {
     return PreparedLiquidSpend.wrap(
-      await this.inner.prepareLiquidRefund(params),
+      await this.inner.prepareLiquidRefund(toWasmParams(params)),
     );
   }
 
@@ -523,10 +560,10 @@ export interface RfqStatus {
 }
 
 /**
- * Typed façade over a {@link BoltzClient}'s corridor methods.
+ * Typed façade over a {@link SwapClient}'s corridor methods.
  *
  * ```ts
- * const corridor = new IntentsCorridor(BoltzClient.forNetwork("signet"));
+ * const corridor = new IntentsCorridor(SwapClient.forNetwork("signet"));
  * const answer = await corridor.quoteLightningSend({
  *   rfq_id: newRfqId(), invoice, refund_address, client_refund_pubkey,
  * });
@@ -536,7 +573,7 @@ export interface RfqStatus {
  * ```
  */
 export class IntentsCorridor {
-  constructor(private readonly client: WasmBoltzClient) {}
+  constructor(private readonly client: WasmSwapClient) {}
 
   /** The origin the corridor hangs off — the client's `/v2` base minus the
    * suffix. Same rule as {@link corridorRootFromMakerUrl}. */
@@ -636,7 +673,7 @@ export interface DerivedPreimage {
  * testnet3 endpoint: signet and testnet3 encode addresses identically, so the
  * mismatch raises no error — swaps are simply created on one chain and funded
  * or watched on another. `"testnet"` is testnet3, usable as a chain identity but
- * rejected by `BoltzClient.forNetwork` — KaleidoSwap runs no testnet3 maker, and
+ * rejected by `SwapClient.forNetwork` — KaleidoSwap runs no testnet3 maker, and
  * defaults never fall back to a third-party one.
  */
 export type Network = "mainnet" | "testnet" | "signet" | "regtest";

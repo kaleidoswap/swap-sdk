@@ -6,8 +6,8 @@ import { isKaleidoSwapError, toJson } from "../dist/index.js";
 // packaged binary from disk — the browser entry's loader `fetch`es it and Node's
 // `fetch` refuses `file:` URLs.
 import {
-  BoltzClient,
-  BoltzWsApi,
+  SwapClient,
+  SwapWsApi,
   createKaleidoMakerClient,
   init,
   SwapMasterKey,
@@ -105,7 +105,7 @@ const CLAIM_PARAMS = {
     "bcrt1p2jln4540qcxyrq024mhnnuc84ye8mra5dyl5fcnql2yl0vukfyesvq7lsr",
   swapId: "swapid",
   keysSecretHex: "11".repeat(32),
-  boltzBaseUrl: "https://example.invalid",
+  makerBaseUrl: "https://example.invalid",
   network: "regtest",
   bitcoinEsploraUrl: "https://example.invalid",
   feeAbsoluteSat: 100n,
@@ -137,7 +137,7 @@ async function assertInvalidArgument(fn, message) {
 }
 
 test("a malformed request object names the missing field", async () => {
-  const client = BoltzClient.forNetwork("signet");
+  const client = SwapClient.forNetwork("signet");
 
   await assertInvalidArgument(
     () => client.createReverseSwap("signet", { onchainAmount: 100000 }),
@@ -173,7 +173,7 @@ test("a mistyped request field names the type it expected", async () => {
     /invalid type: string "x", expected u64/,
   );
 
-  const client = BoltzClient.forNetwork("signet");
+  const client = SwapClient.forNetwork("signet");
   await assertInvalidArgument(
     () => client.createReverseSwap("signet", null),
     /expected struct CreateReverseRequest/,
@@ -186,7 +186,7 @@ test("a mistyped request field names the type it expected", async () => {
 // argument nor the call. Passing arguments in the wrong order is the usual way to
 // hit it, and TypeScript cannot catch it for a plain-JS caller.
 test("a non-string where a string is required names the argument", async () => {
-  const client = BoltzClient.forNetwork("signet");
+  const client = SwapClient.forNetwork("signet");
 
   await assertInvalidArgument(
     () => client.createReverseSwap({ onchainAmount: 100000 }, "signet"),
@@ -201,15 +201,15 @@ test("a non-string where a string is required names the argument", async () => {
     /argument `swapId` must be a string/,
   );
   await assertInvalidArgument(
-    () => BoltzClient.forNetwork({}),
+    () => SwapClient.forNetwork({}),
     /argument `network` must be a string/,
   );
   await assertInvalidArgument(
-    () => new BoltzClient({}),
+    () => new SwapClient({}),
     /argument `baseUrl` must be a string/,
   );
   await assertInvalidArgument(
-    () => new BoltzWsApi({}),
+    () => new SwapWsApi({}),
     /argument `wsUrl` must be a string/,
   );
   await assertInvalidArgument(
@@ -279,7 +279,7 @@ test("an omitted optional string argument stays absent", () => {
 });
 
 test("the wasm instance stays usable after a rejected call", async () => {
-  const client = BoltzClient.forNetwork("signet");
+  const client = SwapClient.forNetwork("signet");
   await assert.rejects(() =>
     client.createReverseSwap({ onchainAmount: 100000 }, "signet"),
   );
@@ -291,7 +291,7 @@ test("the wasm instance stays usable after a rejected call", async () => {
       .publicKey,
     PUBKEY,
   );
-  assert.ok(BoltzClient.forNetwork("signet") instanceof BoltzClient);
+  assert.ok(SwapClient.forNetwork("signet") instanceof SwapClient);
 });
 
 // ---------------------------------------------------------------------------
@@ -307,7 +307,7 @@ test("a Kaleido maker client exposes the key's public half and not its secret", 
     apiKey: API_KEY,
   });
 
-  assert.ok(client instanceof BoltzClient);
+  assert.ok(client instanceof SwapClient);
   assert.equal(client.apiKeyEnvironment, "test");
   assert.equal(client.apiKeyId, "01KZZYB138E7C3HZX7Q1YBGAQG");
 
@@ -342,7 +342,7 @@ test("a Kaleido maker client exposes the key's public half and not its secret", 
 
   // The plain constructor authenticates nothing — that is what keeps the client
   // usable against a Boltz maker, which has no notion of an organization key.
-  const generic = BoltzClient.forNetwork("signet");
+  const generic = SwapClient.forNetwork("signet");
   assert.equal(generic.apiKeyEnvironment, undefined);
   assert.equal(generic.apiKeyId, undefined);
 });
@@ -380,7 +380,7 @@ test("an organization key is refused a maker it must not be sent to", () => {
     createKaleidoMakerClient({
       makerUrl: "http://127.0.0.1:9001/v2",
       apiKey: API_KEY,
-    }) instanceof BoltzClient,
+    }) instanceof SwapClient,
   );
 });
 
@@ -395,7 +395,7 @@ test("the options object names the field that is wrong", () => {
   // caller believes is bounded running with no timeout at all.
   assert.throws(
     () =>
-      BoltzClient.forKaleidoMaker({
+      SwapClient.forKaleidoMaker({
         makerUrl: MAKER_URL,
         apiKey: API_KEY,
         timeout: 30,
@@ -411,26 +411,26 @@ test("the options object names the field that is wrong", () => {
   try {
     assert.throws(
       () =>
-        BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
+        SwapClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
       (error) => isKaleidoSwapError(error) && /browser/.test(error.message),
     );
     // The error must not quote the key it just refused.
     assert.throws(
       () =>
-        BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
+        SwapClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
       (error) => !error.message.includes(API_KEY),
     );
     // Deliberate exceptions stay possible, and have to be written down.
     assert.ok(
-      BoltzClient.forKaleidoMaker({
+      SwapClient.forKaleidoMaker({
         makerUrl: MAKER_URL,
         apiKey: API_KEY,
         allowBrowser: true,
-      }) instanceof BoltzClient,
+      }) instanceof SwapClient,
     );
     assert.throws(
       () =>
-        BoltzClient.forKaleidoMaker({
+        SwapClient.forKaleidoMaker({
           makerUrl: MAKER_URL,
           apiKey: API_KEY,
           allowBrowser: "yes",
@@ -446,18 +446,18 @@ test("the options object names the field that is wrong", () => {
 
   // `timeoutSecs` itself takes a number or a bigint, and nothing else.
   assert.ok(
-    BoltzClient.forKaleidoMaker({
+    SwapClient.forKaleidoMaker({
       makerUrl: MAKER_URL,
       apiKey: API_KEY,
       timeoutSecs: 30,
-    }) instanceof BoltzClient,
+    }) instanceof SwapClient,
   );
   assert.ok(
-    BoltzClient.forKaleidoMaker({
+    SwapClient.forKaleidoMaker({
       makerUrl: MAKER_URL,
       apiKey: API_KEY,
       timeoutSecs: 30n,
-    }) instanceof BoltzClient,
+    }) instanceof SwapClient,
   );
   for (const timeoutSecs of [
     -1,
@@ -472,7 +472,7 @@ test("the options object names the field that is wrong", () => {
   ]) {
     assert.throws(
       () =>
-        BoltzClient.forKaleidoMaker({
+        SwapClient.forKaleidoMaker({
           makerUrl: MAKER_URL,
           apiKey: API_KEY,
           timeoutSecs,
@@ -493,17 +493,17 @@ test("the options object names the field that is wrong", () => {
 test("a mistyped options argument never quotes the key back", () => {
   const mistakes = [
     // The whole key where the options object belongs.
-    () => BoltzClient.forKaleidoMaker(API_KEY),
+    () => SwapClient.forKaleidoMaker(API_KEY),
     // A wrapped key, the shape a config object would produce.
     () =>
-      BoltzClient.forKaleidoMaker({
+      SwapClient.forKaleidoMaker({
         makerUrl: MAKER_URL,
         apiKey: { key: API_KEY },
       }),
     () =>
-      BoltzClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: [API_KEY] }),
+      SwapClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: [API_KEY] }),
     // Arguments the other way round.
-    () => BoltzClient.forKaleidoMaker({ makerUrl: API_KEY, apiKey: MAKER_URL }),
+    () => SwapClient.forKaleidoMaker({ makerUrl: API_KEY, apiKey: MAKER_URL }),
   ];
 
   for (const attempt of mistakes) {
@@ -548,8 +548,8 @@ test("the corridor root is the origin the /v2 base hangs off, in TS and in wasm 
     ["https://host/prefix/v2", "https://host/prefix"],
   ]) {
     assert.equal(corridorRootFromMakerUrl(base), root, base);
-    assert.equal(new BoltzClient(base).corridorUrl, root, `wasm: ${base}`);
-    assert.equal(new IntentsCorridor(new BoltzClient(base)).url, root);
+    assert.equal(new SwapClient(base).corridorUrl, root, `wasm: ${base}`);
+    assert.equal(new IntentsCorridor(new SwapClient(base)).url, root);
   }
   for (const bad of [
     "https://maker.example",
@@ -558,14 +558,14 @@ test("the corridor root is the origin the /v2 base hangs off, in TS and in wasm 
     "https://maker.example/v2#frag",
   ]) {
     assert.throws(() => corridorRootFromMakerUrl(bad), bad);
-    assert.throws(() => new BoltzClient(bad).corridorUrl, `wasm: ${bad}`);
+    assert.throws(() => new SwapClient(bad).corridorUrl, `wasm: ${bad}`);
   }
 });
 
 // `ARKD` is a symbol the maker publishes, so a caller reading the catalogue
 // arrives with a route it was shown. The refusal has to say where it lives.
 test("ARKD on a Boltz-shaped create is refused before any I/O, pointing at the corridor", async () => {
-  const client = BoltzClient.forNetwork("signet");
+  const client = SwapClient.forNetwork("signet");
   await assert.rejects(
     client.createReverseSwap("signet", {
       from: "BTC",
@@ -616,4 +616,59 @@ test("isRfqQuote narrows on the wire type, and the terminal set matches the SDK'
     "settled",
     "stuck",
   ]);
+});
+
+// A clean break rather than an alias: nothing external consumes this SDK, and
+// every internal consumer sits on ^0.7.0, which a 0.x caret range never carries
+// across a minor. Leaving the old names exported would have kept the vocabulary
+// we are removing alive in new code for no one's benefit.
+test("the Boltz-derived names are gone from the public surface", async () => {
+  const surface = await import("../dist/index.node.js");
+  assert.equal(typeof surface.SwapClient, "function");
+  assert.equal(typeof surface.SwapWsApi, "function");
+  assert.equal(typeof surface.SwapWsUpdates, "function");
+  for (const removed of ["BoltzClient", "BoltzWsApi", "BoltzWsUpdates"]) {
+    assert.equal(surface[removed], undefined, `${removed} is still exported`);
+  }
+});
+
+test("the renamed client carries the static constructors", () => {
+  assert.equal(typeof SwapClient.forNetwork, "function");
+  assert.equal(typeof SwapClient.forKaleidoMaker, "function");
+  assert.equal(
+    SwapClient.forNetwork("signet").corridorUrl,
+    "https://maker.signet.kaleidoswap.com",
+  );
+});
+
+// `makerBaseUrl` is renamed in this layer only — the wasm boundary still
+// deserializes `boltzBaseUrl`, so the mapping is load-bearing and silent when
+// wrong: a dropped field would surface as a confusing error from a later step.
+test("makerBaseUrl reaches the binding under the name it deserializes", async () => {
+  const script = SwapScript.fromSubmarine(
+    "bitcoin",
+    "regtest",
+    SUBMARINE_RESPONSE,
+    PUBKEY,
+  );
+
+  // Reaching the preimage check proves the params object deserialized, which
+  // it cannot do without the URL field under its wasm-side name.
+  await assertInvalidArgument(
+    () => script.constructClaim("zz", CLAIM_PARAMS),
+    /argument `preimageHex` is not a hex preimage/,
+  );
+
+  // The old spelling is ignored, and saying so is the point: the binding's own
+  // answer is "invalid type: unit value, expected a string", which names no
+  // field and reads like an SDK bug rather than a renamed key.
+  const { makerBaseUrl, ...withoutUrl } = CLAIM_PARAMS;
+  await assertInvalidArgument(
+    () =>
+      script.constructClaim("11".repeat(32), {
+        ...withoutUrl,
+        boltzBaseUrl: makerBaseUrl,
+      }),
+    /`makerBaseUrl` is required.*named `boltzBaseUrl` before 0\.9\.0/s,
+  );
 });
