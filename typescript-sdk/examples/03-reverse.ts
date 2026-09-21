@@ -9,7 +9,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 
 import {
-  BoltzClient,
+  SwapClient,
   init,
   SwapMasterKey,
   SwapScript,
@@ -33,7 +33,7 @@ try {
   await init();
 
   const net = network();
-  const client = BoltzClient.forNetwork(net);
+  const client = SwapClient.forNetwork(net);
   const index = swapIndex();
   const claimAddress = required(
     "LIQUID_CLAIM_ADDRESS",
@@ -113,7 +113,7 @@ try {
     outputAddress: claimAddress,
     swapId: response.id,
     keysSecretHex: claimKey.secretKey,
-    boltzBaseUrl: makerUrl(net),
+    makerBaseUrl: makerUrl(net),
     network: net,
     liquidEsploraUrl: liquidEsplora,
   });

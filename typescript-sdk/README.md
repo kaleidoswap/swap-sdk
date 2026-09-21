@@ -17,11 +17,11 @@ from disk via the `"node"` export condition. Await it once before constructing
 any client.
 
 ```ts
-import { BoltzClient, init } from "@kaleidorg/swap-sdk";
+import { SwapClient, init } from "@kaleidorg/swap-sdk";
 
 await init();
-const boltz = BoltzClient.forNetwork("signet");
-const pairs = await boltz.submarinePairs();
+const client = SwapClient.forNetwork("signet");
+const pairs = await client.submarinePairs();
 ```
 
 `"signet"` reaches the live KaleidoSwap maker, so the snippet above runs as
@@ -38,10 +38,10 @@ repository's local harness.
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.
 
-`BoltzClient.forNetwork` resolves the default **KaleidoSwap maker**, which today
+`SwapClient.forNetwork` resolves the default **KaleidoSwap maker**, which today
 serves `"signet"` and `"regtest"` only. `"mainnet"` and `"testnet"` are rejected
 rather than silently falling back to a third-party maker — reach one of those by
-passing an explicit base URL to `new BoltzClient(baseUrl, timeoutSecs?)`. Signet
+passing an explicit base URL to `new SwapClient(baseUrl, timeoutSecs?)`. Signet
 settles on Mutinynet, so pair it with Mutinynet chain access
 (`https://esplora.signet.kaleidoswap.com`), never a testnet3 endpoint: the two
 encode addresses identically, so a mismatch raises no error and simply creates
@@ -56,13 +56,13 @@ that wire over the same client:
 
 ```ts
 import {
-  BoltzClient,
+  SwapClient,
   IntentsCorridor,
   isRfqQuote,
   newRfqId,
 } from "@kaleidorg/swap-sdk";
 
-const corridor = new IntentsCorridor(BoltzClient.forNetwork("signet"));
+const corridor = new IntentsCorridor(SwapClient.forNetwork("signet"));
 const answer = await corridor.quoteLightningReceive({
   rfq_id: newRfqId(),
   amount_side: "to",
@@ -122,9 +122,21 @@ const { publicKey, secretKey } = master.deriveSwapKey(0n);
 
 ## Typed surface
 
-- `BoltzClient` — Boltz swap API (create submarine/reverse/chain swaps, pairs,
+**Renamed in 0.9.0.** `BoltzClient`, `BoltzWsApi` and `BoltzWsUpdates` are now
+`SwapClient`, `SwapWsApi` and `SwapWsUpdates`, and `TxParams` /
+`LiquidPsetParams` take `makerBaseUrl` and `makerTimeoutSecs` in place of
+`boltzBaseUrl` and `boltzTimeoutSecs`. The old names are gone rather than
+deprecated — see [`VERSIONING.md`](../VERSIONING.md). Passing the old field
+name fails naming both spellings.
+
+The client speaks the Boltz protocol and can be pointed at Boltz's own API;
+that provenance is recorded in the
+[root README](../README.md#the-swap-engine-boltz-protocol) and the LICENSE,
+which is where it belongs rather than in a symbol an integrator types.
+
+- `SwapClient` — the swap API (create submarine/reverse/chain swaps, pairs,
   fees, quotes, restore).
-- `BoltzWsApi` / `BoltzWsUpdates` — WebSocket swap-status stream.
+- `SwapWsApi` / `SwapWsUpdates` — WebSocket swap-status stream.
 - `SwapScript` — reconstruct a swap from its creation response, then build
   claim/refund transactions (`constructClaim`, `constructRefund`) or
   caller-funded Liquid PSETs (`prepareLiquidClaim`, `prepareLiquidRefund`).
@@ -155,7 +167,7 @@ required throws `TypeError` before Rust can attach a code.
 A partner organization can have the swaps it originates attributed to it. That
 needs an **organization API key** from the KaleidoSwap partner panel — a
 `kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
-production. Without one, `BoltzClient` behaves exactly as before and creates
+production. Without one, `SwapClient` behaves exactly as before and creates
 unattributed swaps.
 
 ```ts
@@ -171,7 +183,7 @@ client.apiKeyEnvironment; // "test"
 client.apiKeyId; // the key id the partner panel shows
 ```
 
-The result is an ordinary `BoltzClient` — every route works the same way — that
+The result is an ordinary `SwapClient` — every route works the same way — that
 sends the key as `Authorization: Bearer …` on requests to `makerUrl`, and only
 to `makerUrl`. The key answers _which partner organization created this swap?_
 and nothing else: it authorizes no claim, no refund, no fund movement and no
@@ -192,7 +204,7 @@ read as a suspended organization. There is no accessor for the secret half:
 > artifact serves both runtimes the check is a runtime one: a document context
 > is refused unless you pass `allowBrowser: true`. Call this from Node, keep the
 > key in server-side configuration, and leave browser code on the plain
-> `BoltzClient` constructor.
+> `SwapClient` constructor.
 
 > **Scrub the key in error reporters that capture locals.** It crosses the wasm
 > boundary as a plain `string`, so it is a function argument on a stack frame
@@ -273,7 +285,7 @@ master.deriveSwapKey(0); // TypeError: Cannot convert 0 to a BigInt
 ```
 
 `tsc` rejects the plain-number form ahead of that throw. The same applies to any
-other `bigint` argument, such as the `BoltzClient` constructor's `timeoutSecs`.
+other `bigint` argument, such as the `SwapClient` constructor's `timeoutSecs`.
 
 Fields inside request objects are declared `number` even where the Rust type
 behind them is 64-bit, because those objects are deserialized rather than passed

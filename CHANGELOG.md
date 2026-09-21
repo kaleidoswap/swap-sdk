@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — the TypeScript names stop saying Boltz
+
+The client a partner writes was called `BoltzClient`. It speaks the Boltz
+protocol and can be pointed at Boltz's own API, which is where the name came
+from — but the name in an integrator's code should say whose SDK this is, not
+whose wire format it inherited. That provenance is recorded in the README and
+the LICENSE, in full, and it stays there.
+
+| Was | Now |
+|---|---|
+| `BoltzClient` | `SwapClient` |
+| `BoltzWsApi` | `SwapWsApi` |
+| `BoltzWsUpdates` | `SwapWsUpdates` |
+| `TxParams.boltzBaseUrl`, `LiquidPsetParams.boltzBaseUrl` | `makerBaseUrl` |
+| `TxParams.boltzTimeoutSecs`, `LiquidPsetParams.boltzTimeoutSecs` | `makerTimeoutSecs` |
+
+**Migration:** rename the symbols and the two fields. There is no alias — the
+old names are gone.
+
+A deprecation window would have bought nothing here. Nothing outside this
+organization consumes the SDK, and every internal consumer pins `^0.7.0`,
+which a `0.x` caret range never carries across a minor: no build breaks on this
+release, and each repository pays a small edit when it chooses to bump. Keeping
+the old vocabulary exported would only have kept it alive in new code.
+
+Passing the old `boltzBaseUrl` fails with a message naming both spellings. The
+wasm boundary still deserializes the original field names — the rename lives in
+the TypeScript layer, which is the layer that can be typechecked — and without
+that check the binding answers `invalid type: unit value, expected a string`,
+which names no field and reads like an SDK bug.
+
+Unchanged: the Rust and wasm-internal names, including `BoltzApiClientV2`.
+
 ### Fixed — a confidential lockup's blind proofs are re-checked after funding
 
 A confidential lockup is described to the funding wallet with

@@ -4,7 +4,7 @@
  *
  *   node examples/01-pairs.ts
  */
-import { BoltzClient, init } from "@kaleidorg/swap-sdk";
+import { SwapClient, init } from "@kaleidorg/swap-sdk";
 
 import { die, network } from "./common.ts";
 
@@ -58,7 +58,7 @@ function print(title: string, catalogue: Catalogue): void {
 try {
   await init();
 
-  const client = BoltzClient.forNetwork(network());
+  const client = SwapClient.forNetwork(network());
 
   const [submarine, reverse] = await Promise.all([
     client.submarinePairs() as Promise<Catalogue>,

@@ -9,7 +9,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
 import {
-  BoltzClient,
+  SwapClient,
   init,
   SwapMasterKey,
   SwapScript,
@@ -39,7 +39,7 @@ try {
   await init();
 
   const net = network();
-  const client = BoltzClient.forNetwork(net);
+  const client = SwapClient.forNetwork(net);
   const index = swapIndex();
   const master = SwapMasterKey.fromSwapMnemonic(
     required(
@@ -68,7 +68,7 @@ try {
       ),
       swapId,
       keysSecretHex: refundKey.secretKey,
-      boltzBaseUrl: saved.makerUrl,
+      makerBaseUrl: saved.makerUrl,
       network: net,
       bitcoinEsploraUrl: SIGNET_BITCOIN_ESPLORA,
       feeSatPerVb: 2,
