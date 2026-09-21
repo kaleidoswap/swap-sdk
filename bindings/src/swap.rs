@@ -1,4 +1,4 @@
-use crate::boltz::BoltzApiClientV2;
+use crate::boltz::SwapClient;
 use crate::boltz::Error;
 use crate::network::ChainClient;
 use crate::util::Preimage;
