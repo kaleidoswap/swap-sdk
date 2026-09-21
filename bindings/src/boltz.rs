@@ -49,7 +49,7 @@ impl From<CoreError> for Error {
 }
 
 #[derive(Debug, uniffi::Object)]
-pub struct BoltzApiClientV2 {
+pub struct SwapClient {
     pub(crate) inner: boltz::BoltzApiClientV2,
 }
 
@@ -62,7 +62,7 @@ pub struct BoltzWsConfig {
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-impl BoltzApiClientV2 {
+impl SwapClient {
     #[uniffi::constructor]
     pub fn new(base_url: &str, timeout: Option<u64>) -> Self {
         Self {
@@ -440,8 +440,8 @@ impl BoltzApiClientV2 {
     }
 
     #[uniffi::method]
-    pub fn ws(&self) -> BoltzWsApi {
-        BoltzWsApi(Arc::new(self.inner.ws(BoltzWsConfig::default())))
+    pub fn ws(&self) -> SwapWsApi {
+        SwapWsApi(Arc::new(self.inner.ws(BoltzWsConfig::default())))
     }
 }
 
@@ -480,10 +480,10 @@ pub struct SwapStatus {
 }
 
 #[derive(Debug, uniffi::Object)]
-pub struct BoltzWsUpdates(Mutex<Receiver<SwapStatus>>);
+pub struct SwapWsUpdates(Mutex<Receiver<SwapStatus>>);
 
 #[uniffi::export(async_runtime = "tokio")]
-impl BoltzWsUpdates {
+impl SwapWsUpdates {
     #[uniffi::method]
     pub async fn next(self: Arc<Self>) -> Result<SwapStatus, Error> {
         let mut receiver = self.0.lock().await;
@@ -495,10 +495,10 @@ impl BoltzWsUpdates {
 }
 
 #[derive(uniffi::Object)]
-pub struct BoltzWsApi(Arc<boltz::BoltzWsApi>);
+pub struct SwapWsApi(Arc<boltz::BoltzWsApi>);
 
 #[uniffi::export(async_runtime = "tokio")]
-impl BoltzWsApi {
+impl SwapWsApi {
     #[uniffi::constructor]
     pub fn new(ws_url: String) -> Self {
         Self(Arc::new(boltz::BoltzWsApi::new(
@@ -513,8 +513,8 @@ impl BoltzWsApi {
     }
 
     #[uniffi::method]
-    pub fn updates(&self) -> BoltzWsUpdates {
-        BoltzWsUpdates(Mutex::new(self.0.updates()))
+    pub fn updates(&self) -> SwapWsUpdates {
+        SwapWsUpdates(Mutex::new(self.0.updates()))
     }
 
     /// Whether the socket is currently up. A mobile client that was

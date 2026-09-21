@@ -8,7 +8,7 @@ use kaleidorg_swap_sdk::corridor::{
     RfqQuote, RfqRefusal, RfqState, RfqStatus,
 };
 
-use crate::boltz::{BoltzApiClientV2, Error};
+use crate::boltz::{SwapClient, Error};
 
 #[uniffi::remote(Enum)]
 pub enum AmountSide {
@@ -134,7 +134,7 @@ pub fn new_rfq_id() -> String {
 }
 
 #[uniffi::export(async_runtime = "tokio")]
-impl BoltzApiClientV2 {
+impl SwapClient {
     /// The origin the corridor hangs off — this client's `/v2` base with the
     /// suffix removed. Errors for a base that does not end in `/v2`.
     #[uniffi::method]

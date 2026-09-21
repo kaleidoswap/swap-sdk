@@ -51,7 +51,7 @@ def describe(answer: sdk.RfqAnswer) -> None:
 
 
 async def main() -> None:
-    client = sdk.BoltzApiClientV2.default(sdk.Network.SIGNET)
+    client = sdk.SwapClient.default(sdk.Network.SIGNET)
     print("corridor:", client.corridor_url())
 
     # ---- receive: pay a hold invoice over Lightning, receive on Arkade ---------

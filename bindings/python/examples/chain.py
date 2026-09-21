@@ -18,7 +18,7 @@ chain_client = kaleidorg_swap_sdk.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 
     btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
     lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)

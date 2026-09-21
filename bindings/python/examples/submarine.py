@@ -20,7 +20,7 @@ async def main():
     # Initialize the Boltz API client
     network = kaleidorg_swap_sdk.Network.REGTEST
     btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
