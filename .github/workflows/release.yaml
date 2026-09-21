@@ -157,12 +157,14 @@ jobs:
     # Long enough that npm propagation never decides the outcome. Waiting out a
     # 404 costs about eight minutes per package, and a registry that hangs
     # instead adds a read timeout per attempt: roughly eleven minutes per
-    # package, so about 22 for both, which is what this has to clear with room
-    # for the smoke installs. Both packages publish seconds apart, so in
-    # practice only the first ever waits and the rest is a backstop. It must
-    # stay above the script's own worst case -- the two drifting apart is what
-    # took the 0.8.0 release down, and a test holds them together.
-    timeout-minutes: 30
+    # package. Downloading the tarball has its own bounded budget on top of
+    # that, about five minutes per package, for about 31 minutes over both --
+    # which is what this has to clear with room for the smoke installs. Both
+    # packages publish seconds apart, so in practice only the first ever waits
+    # and the rest is a backstop. It must stay above the script's own worst
+    # case -- the two drifting apart is what took the 0.8.0 release down, and a
+    # test holds them together.
+    timeout-minutes: 40
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -211,7 +213,12 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    timeout-minutes: 20
+    # PyPI answers its metadata read straight away, but every one of the six
+    # published artifacts is downloaded and re-hashed, and each of those
+    # downloads now carries the same bounded retry budget as npm's: about 31
+    # minutes in the worst case, which this has to clear with room for the two
+    # clean installs. The same test holds this and the script's budget together.
+    timeout-minutes: 40
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
