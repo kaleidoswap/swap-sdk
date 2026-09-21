@@ -330,35 +330,189 @@ class RegistryPropagationTests(unittest.TestCase):
         self.assertGreaterEqual(budget, 300)
 
     @staticmethod
-    def npm_worst_case() -> float:
-        """The longest verify-npm can spend on registry metadata.
+    def budget(attempts: int, delay: float, max_delay: float, timeout: int) -> float:
+        """One read's worst case: every backoff plus every attempt hanging.
 
         Sleeping is not the whole cost. A registry that hangs rather than 404s
-        also burns REQUEST_TIMEOUT on every attempt -- which is exactly the
-        case the job timeout is a backstop for -- and the job reads metadata
-        once per npm package, not once.
+        also burns the read timeout on every attempt -- which is exactly the
+        case the job timeout is a backstop for.
         """
-        sleeping = sum(
-            published.backoff(
-                published.NPM_DELAY, published.NPM_MAX_DELAY, published.NPM_ATTEMPTS
-            )
+        return sum(published.backoff(delay, max_delay, attempts)) + attempts * timeout
+
+    @classmethod
+    def download_worst_case(cls) -> float:
+        """The longest one artifact download may take before it gives up."""
+        return cls.budget(
+            published.DOWNLOAD_ATTEMPTS,
+            published.DOWNLOAD_DELAY,
+            published.DOWNLOAD_MAX_DELAY,
+            published.DOWNLOAD_TIMEOUT,
         )
-        hanging = published.NPM_ATTEMPTS * published.REQUEST_TIMEOUT
-        return (sleeping + hanging) * release_metadata.NPM_PACKAGE_COUNT
+
+    @classmethod
+    def npm_worst_case(cls) -> float:
+        """The longest verify-npm can spend waiting on the registry.
+
+        Per npm package the job reads metadata once and then downloads the
+        tarball, and both waits are bounded and budgeted -- the download used
+        to be a single unguarded fetch, so it cost nothing here and could fail
+        the whole release on one bad response.
+        """
+        metadata = cls.budget(
+            published.NPM_ATTEMPTS,
+            published.NPM_DELAY,
+            published.NPM_MAX_DELAY,
+            published.REQUEST_TIMEOUT,
+        )
+        return (metadata + cls.download_worst_case()) * (
+            release_metadata.NPM_PACKAGE_COUNT
+        )
+
+    @classmethod
+    def pypi_worst_case(cls) -> float:
+        """The same for verify-pypi: one metadata read, then every artifact."""
+        metadata = cls.budget(
+            published.PYPI_ATTEMPTS,
+            published.PYPI_DELAY,
+            published.PYPI_MAX_DELAY,
+            published.REQUEST_TIMEOUT,
+        )
+        downloads = cls.download_worst_case() * published.PYTHON_ARTIFACT_COUNT
+        return metadata + downloads
+
+    @staticmethod
+    def job_timeout(name: str) -> int:
+        job = workflow.production_jobs(
+            (ROOT / ".github/workflows/release.yaml").read_text()
+        )[name]
+        timeout = re.search(r"timeout-minutes:\s*(\d+)", job)
+        assert timeout is not None
+        return int(timeout.group(1)) * 60
 
     def test_npm_verifier_outlives_its_own_propagation_budget(self) -> None:
         """The job timeout and the script budget must not drift apart again.
 
         Headroom on top of the worst case is for the job's own work: checkout,
         Node, the bundle download, and three clean-install smoke tests, one of
-        which fetches Firefox.
+        which fetches Firefox. Every wait the script may spend is counted here,
+        so adding an unbudgeted one underneath reopens the 0.8.0 gap.
         """
-        job = workflow.production_jobs(
-            (ROOT / ".github/workflows/release.yaml").read_text()
-        )["verify-npm"]
-        timeout = re.search(r"timeout-minutes:\s*(\d+)", job)
-        assert timeout is not None
-        self.assertGreater(int(timeout.group(1)) * 60, self.npm_worst_case() + 5 * 60)
+        self.assertGreater(
+            self.job_timeout("verify-npm"), self.npm_worst_case() + 5 * 60
+        )
+
+    def test_pypi_verifier_outlives_its_own_download_budget(self) -> None:
+        """Six artifacts, each with a retry budget, under one job timeout."""
+        self.assertGreater(
+            self.job_timeout("verify-pypi"), self.pypi_worst_case() + 5 * 60
+        )
+
+
+class ArtifactDownloadTests(unittest.TestCase):
+    """The body download must survive what the metadata read already survives.
+
+    The propagation budget stops at the metadata read; the fetch immediately
+    after it used to be a single unguarded attempt. A CDN that 503s or drops
+    the connection mid-body fails the registry gate and skips the GitHub
+    release -- the 0.8.0 failure one step later, with the React Native package
+    published and its native archives nowhere to fetch.
+    """
+
+    URL = "https://cdn.example/kaleidorg-swap-sdk-0.1.0.tgz"
+    BODY = b"exact published bytes"
+
+    class Response(io.BytesIO):
+        """A body that reports a Content-Length, truthfully or not."""
+
+        def __init__(self, body: bytes, declared: int | None = None) -> None:
+            super().__init__(body)
+            length = len(body) if declared is None else declared
+            self.headers = {"Content-Length": str(length)}
+
+    @classmethod
+    def http_error(cls, code: int) -> urllib.error.HTTPError:
+        return urllib.error.HTTPError(cls.URL, code, "nope", {}, None)
+
+    def responses(self, *results):
+        remaining = list(results)
+
+        def urlopen(_request, timeout=None):  # noqa: ARG001
+            result = remaining.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        return urlopen
+
+    def run_download(self, *results, attempts: int = 3):
+        """Download into a fresh directory; return the destination and sleeps."""
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        destination = Path(temp.name) / "kaleidorg-swap-sdk-0.1.0.tgz"
+        with (
+            mock.patch.object(
+                published.urllib.request, "urlopen", self.responses(*results)
+            ),
+            mock.patch.object(published.time, "sleep") as sleep,
+        ):
+            try:
+                published.download(
+                    self.URL,
+                    destination,
+                    attempts=attempts,
+                    delay=1.0,
+                    max_delay=1.0,
+                )
+            finally:
+                self.leftovers = sorted(
+                    path.name for path in Path(temp.name).iterdir()
+                )
+        return destination, sleep
+
+    def test_transient_registry_answer_is_waited_out(self) -> None:
+        destination, sleep = self.run_download(
+            self.http_error(503),
+            self.http_error(404),
+            self.Response(self.BODY),
+        )
+        self.assertEqual(destination.read_bytes(), self.BODY)
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(self.leftovers, [destination.name])
+
+    def test_status_that_will_not_fix_itself_fails_at_once(self) -> None:
+        with self.assertRaisesRegex(ValueError, "registry returned HTTP 403"):
+            _, sleep = self.run_download(self.http_error(403))
+        # Nothing on disk to mistake for a download, not even a partial file.
+        self.assertEqual(self.leftovers, [])
+
+    def test_truncated_body_is_retried_rather_than_kept(self) -> None:
+        """A dropped connection must not read as a checksum mismatch.
+
+        The caller hashes whatever is on disk, so a short body kept under the
+        final name surfaces as tampering rather than as the network fault it
+        is.
+        """
+        destination, _ = self.run_download(
+            self.Response(self.BODY[:5], len(self.BODY)),
+            self.Response(self.BODY),
+        )
+        self.assertEqual(destination.read_bytes(), self.BODY)
+        self.assertEqual(self.leftovers, [destination.name])
+
+    def test_exhausted_budget_names_the_status_and_leaves_nothing(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            r"published artifact was unavailable after 3 attempts.*last HTTP 503",
+        ):
+            self.run_download(*[self.http_error(503)] * 3)
+        self.assertEqual(self.leftovers, [])
+
+    def test_a_body_that_never_completes_is_not_left_behind(self) -> None:
+        with self.assertRaisesRegex(ValueError, "body ended after 5 of 21 bytes"):
+            self.run_download(
+                *(self.Response(self.BODY[:5], len(self.BODY)) for _ in range(3)),
+            )
+        self.assertEqual(self.leftovers, [])
 
 
 class PublishedArtifactTests(unittest.TestCase):
@@ -947,12 +1101,53 @@ class WorkflowInvariantTests(unittest.TestCase):
         # install works can only run once the release exists.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         changed = contents.replace(
-            "    needs:\n      - release-ready\n      - publish-github-release\n",
-            "    needs:\n      - release-ready\n",
+            "  verify-react-native-install:\n"
+            "    name: Verify the React Native package installs from the registry and the release\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - publish-github-release\n"
+            "      - registry-publish-complete\n",
+            "  verify-react-native-install:\n"
+            "    name: Verify the React Native package installs from the registry and the release\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - registry-publish-complete\n",
             1,
         )
         self.assertNotEqual(changed, contents)
         with self.assertRaisesRegex(ValueError, "after the GitHub release"):
+            workflow.validate(changed)
+
+    def test_npm_publish_must_follow_the_github_release(self) -> None:
+        # postinstall fetches native archives from the matching GitHub release.
+        # Publishing npm first creates an unfixable broken-version window.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "      - publish-github-release\n",
+            "",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "after the GitHub release"):
+            workflow.validate(changed)
+
+    def test_github_release_must_not_wait_for_registry_completion(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "  publish-github-release:\n"
+            "    name: Publish final GitHub release\n"
+            "    needs: release-ready\n",
+            "  publish-github-release:\n"
+            "    name: Publish final GitHub release\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - registry-publish-complete\n",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "must precede registry publication"):
             workflow.validate(changed)
 
     def test_react_native_install_must_run_postinstall(self) -> None:

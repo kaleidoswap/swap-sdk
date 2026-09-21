@@ -37,6 +37,27 @@ which names no field and reads like an SDK bug.
 
 Unchanged: the Rust and wasm-internal names, including `BoltzApiClientV2`.
 
+### Fixed — a confidential lockup's blind proofs are re-checked after funding
+
+A confidential lockup is described to the funding wallet with
+`PSET_IN_EXPLICIT_ASSET`/`PSET_IN_EXPLICIT_VALUE` and the blind asset and value
+proofs that tie them to the prevout's commitments. Validating the funded PSET
+only required the explicit asset and amount to come back unchanged, so a wallet
+that dropped a proof returned a PSET that passed every check here and that no
+Elements parser will accept — the failure class 0.7.1 fixed, found one step
+later and with a worse error message. The returned swap input now goes through
+the same `verify_input_metadata` check the wallet's own inputs do, and a missing
+or mismatched proof is named as such.
+
+The same path also compared the returned `witness_utxo` against the lockup as it
+was fetched, including the funding transaction's range and surjection proofs.
+`PSET_IN_WITNESS_UTXO` carries a prevout's asset, value, nonce and script only,
+so those proofs could never come back and every confidential lockup was rejected
+as a changed swap input. The comparison now uses the form a PSET can carry.
+
+Nothing changes for an explicit lockup, which is what the KaleidoSwap maker
+mints today.
+
 ## [0.8.0] - 2026-09-18
 
 ### Added — the UniFFI binding catches up with the browser one

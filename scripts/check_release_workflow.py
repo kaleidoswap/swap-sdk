@@ -98,6 +98,28 @@ def production_jobs(contents: str) -> dict[str, str]:
     return jobs
 
 
+def job_dependencies(job: str) -> set[str]:
+    """Return the direct dependencies from a scalar or list-style needs key."""
+    lines = job.splitlines()
+    for index, line in enumerate(lines):
+        match = re.fullmatch(r"    needs:\s*([a-z][a-z0-9-]*)?", line)
+        if match is None:
+            continue
+        if match.group(1) is not None:
+            return {match.group(1)}
+
+        dependencies: set[str] = set()
+        for dependency_line in lines[index + 1 :]:
+            dependency = re.fullmatch(
+                r"      - ([a-z][a-z0-9-]*)", dependency_line
+            )
+            if dependency is None:
+                break
+            dependencies.add(dependency.group(1))
+        return dependencies
+    return set()
+
+
 def job_section(contents: str, name: str, next_name: str) -> str:
     start = f"  {name}:"
     end = f"  {next_name}:"
@@ -277,8 +299,14 @@ def validate(
         ("npm", jobs["publish-npm"]),
         ("PyPI", jobs["publish-pypi"]),
     ):
-        if "needs: release-ready" not in job:
+        dependencies = job_dependencies(job)
+        if "release-ready" not in dependencies:
             raise ValueError(f"{name} publisher must depend on release-ready")
+        if "publish-github-release" not in dependencies:
+            raise ValueError(
+                f"{name} publisher must run after the GitHub release, so native "
+                "archives exist before a registry package can be installed"
+            )
         if "environment: release" not in job:
             raise ValueError(f"{name} publisher must use the release environment")
         if name == "npm" and "id-token: write" not in job:
@@ -332,10 +360,16 @@ def validate(
     # version with lifecycle scripts on, and the archives must arrive. Every
     # earlier check proves bytes; this one proves a partner's `npm install`.
     install_job = jobs["verify-react-native-install"]
-    if "- publish-github-release" not in install_job or "- release-ready" not in install_job:
+    install_dependencies = job_dependencies(install_job)
+    if (
+        "publish-github-release" not in install_dependencies
+        or "registry-publish-complete" not in install_dependencies
+        or "release-ready" not in install_dependencies
+    ):
         raise ValueError(
             "React Native install verification must run after the GitHub release "
-            "exists and consume the build workflow outputs"
+            "and registry publication both complete, and consume the build "
+            "workflow outputs"
         )
     if "smoke-react-native-install.mjs" not in install_job:
         raise ValueError(
@@ -349,10 +383,14 @@ def validate(
         )
 
     release_job = jobs["publish-github-release"]
-    if "- registry-publish-complete" not in release_job:
-        raise ValueError("GitHub release must depend on registry completion")
-    if "- release-ready" not in release_job:
+    release_dependencies = job_dependencies(release_job)
+    if "release-ready" not in release_dependencies:
         raise ValueError("GitHub release must consume build workflow outputs")
+    if "registry-publish-complete" in release_dependencies:
+        raise ValueError(
+            "GitHub release must precede registry publication, so the React "
+            "Native package cannot be published before its native archives exist"
+        )
     # Anywhere in the file, not just this job: a draft flag has no legitimate
     # home in a production release workflow, and a job-scoped check silently
     # stops watching the moment a job is added after this one.

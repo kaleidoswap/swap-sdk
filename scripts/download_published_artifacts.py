@@ -11,7 +11,9 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar
 
 from release_metadata import (
     LINUX_X86_64_WHEEL,
@@ -26,6 +28,10 @@ from release_metadata import (
 NPM_REGISTRY = "https://registry.npmjs.org"
 PYTHON_PACKAGE = "kaleidorg_swap_sdk"
 PYPI_REGISTRY = "https://pypi.org/pypi"
+USER_AGENT = "kaleidoswap-release-verifier"
+
+# Everything PyPI publishes: every wheel plus the sdist.
+PYTHON_ARTIFACT_COUNT = PACKAGE_COUNT - NPM_PACKAGE_COUNT - len(NATIVE_ARCHIVES) - 1
 
 # npm answers a freshly published version with 404 until it has finished
 # processing the upload -- `npm publish` says so itself ("may take a few minutes
@@ -44,18 +50,42 @@ PYPI_ATTEMPTS = 8
 PYPI_DELAY = 5.0
 PYPI_MAX_DELAY = 20.0
 
+# Fetching the artifact itself is the step right after the metadata read, and
+# it used to be a single unguarded attempt: metadata propagates, the CDN
+# serving the tarball 503s or drops the connection mid-body, and the whole
+# release gate fails the same way the 0.8.0 outage did, one step later. The
+# tarball URL came out of metadata that has already resolved, so a fault here
+# is a CDN catching up rather than a version waiting to appear -- a shorter
+# budget than propagation needs, but no longer a single attempt. It is spent
+# once per npm package and once per PyPI artifact, so it is counted into both
+# verifiers' job timeouts.
+DOWNLOAD_ATTEMPTS = 4
+DOWNLOAD_DELAY = 5.0
+DOWNLOAD_MAX_DELAY = 20.0
+
 # How long one metadata read may hang before it counts as a failed attempt.
 # This is not incidental: a registry that stops answering costs the job
 # `attempts x REQUEST_TIMEOUT` on top of the backoff above, for each package,
 # and that total is what has to fit inside verify-npm's timeout. Metadata is a
 # few kB, so a read that has not landed in 15s is not going to.
 REQUEST_TIMEOUT = 15
+# The same bound for a body read. Artifacts are megabytes rather than
+# kilobytes, and this caps a single stalled read rather than the transfer, so
+# it is more generous -- but it is still bounded, and counted the same way.
+DOWNLOAD_TIMEOUT = 60
 
-# 404 is the propagation case above. The rest are the registry asking to be
-# tried again rather than reporting anything about this release; every other
-# status (401, 403, 451 ...) describes a problem that will still be true in
-# eight minutes, so waiting out the budget on one only hides it.
+# 404 is the propagation case above -- and on an artifact URL the same answer
+# means the CDN edge has not picked the file up yet. The rest are the registry
+# asking to be tried again rather than reporting anything about this release;
+# every other status (401, 403, 451 ...) describes a problem that will still be
+# true in eight minutes, so waiting out the budget on one only hides it.
 RETRYABLE_STATUSES = frozenset({404, 408, 429})
+
+T = TypeVar("T")
+
+
+class TruncatedBody(Exception):
+    """A body that ended before the bytes Content-Length promised."""
 
 
 def retryable_status(code: int) -> bool:
@@ -80,47 +110,50 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def request_json(
+def fetch(
     url: str,
+    consume: Callable[[Any], T],
+    *,
+    what: str,
+    headers: dict[str, str],
+    timeout: int,
     attempts: int,
     delay: float,
-    *,
     max_delay: float | None = None,
-) -> dict:
-    """Read registry JSON, waiting out a version that has yet to propagate.
+) -> T:
+    """Read `url`, waiting out an answer that only says "not yet".
 
-    Every attempt reports what it got. The failure this replaces said only that
-    metadata "was unavailable", which reads the same whether the version had not
-    propagated yet, the registry was down, or the credential was wrong -- and
-    diagnosing the 0.8.0 release meant going to the publisher's log to tell them
-    apart.
+    One helper for both registry reads: the metadata that tells us where the
+    artifact is, and the artifact itself. Every attempt reports what it got.
+    The failure this replaces said only that metadata "was unavailable", which
+    reads the same whether the version had not propagated yet, the registry was
+    down, or the credential was wrong -- and diagnosing the 0.8.0 release meant
+    going to the publisher's log to tell them apart.
     """
     pauses = backoff(delay, delay if max_delay is None else max_delay, attempts)
     waited = 0.0
     for attempt in range(1, attempts + 1):
-        request = urllib.request.Request(
-            url,
-            headers={
-                "Accept": "application/json",
-                "User-Agent": "kaleidoswap-release-verifier",
-            },
-        )
+        request = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
-                payload = json.load(response)
-            if not isinstance(payload, dict):
-                raise ValueError(f"registry response is not an object: {url}")
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                value = consume(response)
             if attempt > 1:
                 print(
-                    f"Registry metadata arrived after {waited:.0f}s of backoff: {url}",
+                    f"{what.capitalize()} arrived after {waited:.0f}s "
+                    f"of backoff: {url}",
                     file=sys.stderr,
                 )
-            return payload
+            return value
         except urllib.error.HTTPError as error:
             reason = f"HTTP {error.code}"
             fatal = not retryable_status(error.code)
             failure: Exception = error
-        except (OSError, urllib.error.URLError, json.JSONDecodeError) as error:
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            TruncatedBody,
+        ) as error:
             reason = str(error)
             fatal = False
             failure = error
@@ -128,12 +161,12 @@ def request_json(
             raise ValueError(f"registry returned {reason} for {url}") from failure
         if attempt == attempts:
             raise ValueError(
-                f"registry metadata was unavailable after {attempts} attempts "
+                f"{what} was unavailable after {attempts} attempts "
                 f"over {waited:.0f}s of backoff, last {reason}: {url}"
             ) from failure
         pause = pauses[attempt - 1]
         print(
-            f"Waiting for registry metadata ({reason}, attempt {attempt}/{attempts}), "
+            f"Waiting for {what} ({reason}, attempt {attempt}/{attempts}), "
             f"retrying in {pause:.0f}s: {url}",
             file=sys.stderr,
         )
@@ -142,12 +175,76 @@ def request_json(
     raise AssertionError("unreachable")
 
 
-def download(url: str, destination: Path) -> None:
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "kaleidoswap-release-verifier"}
+def request_json(
+    url: str,
+    attempts: int,
+    delay: float,
+    *,
+    max_delay: float | None = None,
+) -> dict:
+    """Read registry JSON, waiting out a version that has yet to propagate."""
+
+    def read(response: Any) -> dict:
+        payload = json.load(response)
+        if not isinstance(payload, dict):
+            raise ValueError(f"registry response is not an object: {url}")
+        return payload
+
+    return fetch(
+        url,
+        read,
+        what="registry metadata",
+        headers={"Accept": "application/json", "User-Agent": USER_AGENT},
+        timeout=REQUEST_TIMEOUT,
+        attempts=attempts,
+        delay=delay,
+        max_delay=max_delay,
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        destination.write_bytes(response.read())
+
+
+def download(
+    url: str,
+    destination: Path,
+    *,
+    attempts: int = DOWNLOAD_ATTEMPTS,
+    delay: float = DOWNLOAD_DELAY,
+    max_delay: float = DOWNLOAD_MAX_DELAY,
+) -> None:
+    """Fetch a published artifact, waiting out a transient registry answer.
+
+    The bytes land on a temporary path and are renamed only once the whole body
+    has arrived, and a body that stops short of its Content-Length counts as a
+    failed attempt rather than a file. The caller hashes whatever is on disk, so
+    a half-written artifact would otherwise surface as a checksum mismatch --
+    which reads like tampering rather than a dropped connection -- and a stale
+    partial file must never be left behind for a later step to pick up.
+    """
+    partial = destination.with_name(f"{destination.name}.part")
+
+    def save(response: Any) -> None:
+        declared = response.headers.get("Content-Length")
+        expected = int(declared) if declared and declared.strip().isdigit() else None
+        written = 0
+        with partial.open("wb") as file:
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                written += file.write(chunk)
+        if expected is not None and written != expected:
+            raise TruncatedBody(f"body ended after {written} of {expected} bytes")
+
+    try:
+        fetch(
+            url,
+            save,
+            what="published artifact",
+            headers={"User-Agent": USER_AGENT},
+            timeout=DOWNLOAD_TIMEOUT,
+            attempts=attempts,
+            delay=delay,
+            max_delay=max_delay,
+        )
+        partial.replace(destination)
+    finally:
+        partial.unlink(missing_ok=True)
 
 
 def load_manifest(bundle: Path, version: str) -> dict[str, dict]:
@@ -264,10 +361,9 @@ def download_python_index(
         verify_download(destination, expected[name])
         destinations.append(destination)
         print(f"Verified published PyPI artifact: {destination.name}")
-    python_count = PACKAGE_COUNT - NPM_PACKAGE_COUNT - len(NATIVE_ARCHIVES) - 1
-    if len(destinations) != python_count:
+    if len(destinations) != PYTHON_ARTIFACT_COUNT:
         raise ValueError(
-            f"expected {python_count} Python artifacts, "
+            f"expected {PYTHON_ARTIFACT_COUNT} Python artifacts, "
             f"byte-verified {len(destinations)}"
         )
 
