@@ -154,12 +154,14 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    # Long enough that npm propagation never decides the outcome. The verifier
-    # spends about eight minutes per package waiting out a 404; both are
-    # published seconds apart, so in practice only the first one ever waits and
-    # this is a backstop for a registry that has stopped answering, not a
-    # schedule. It must stay well above the script's own budget: the two drifting
-    # apart is what took the 0.8.0 release down.
+    # Long enough that npm propagation never decides the outcome. Waiting out a
+    # 404 costs about eight minutes per package, and a registry that hangs
+    # instead adds a read timeout per attempt: roughly eleven minutes per
+    # package, so about 22 for both, which is what this has to clear with room
+    # for the smoke installs. Both packages publish seconds apart, so in
+    # practice only the first ever waits and the rest is a backstop. It must
+    # stay above the script's own worst case -- the two drifting apart is what
+    # took the 0.8.0 release down, and a test holds them together.
     timeout-minutes: 30
     steps:
       - name: Checkout tagged source

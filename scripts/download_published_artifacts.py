@@ -44,6 +44,13 @@ PYPI_ATTEMPTS = 8
 PYPI_DELAY = 5.0
 PYPI_MAX_DELAY = 20.0
 
+# How long one metadata read may hang before it counts as a failed attempt.
+# This is not incidental: a registry that stops answering costs the job
+# `attempts x REQUEST_TIMEOUT` on top of the backoff above, for each package,
+# and that total is what has to fit inside verify-npm's timeout. Metadata is a
+# few kB, so a read that has not landed in 15s is not going to.
+REQUEST_TIMEOUT = 15
+
 # 404 is the propagation case above. The rest are the registry asking to be
 # tried again rather than reporting anything about this release; every other
 # status (401, 403, 451 ...) describes a problem that will still be true in
@@ -99,7 +106,7 @@ def request_json(
             },
         )
         try:
-            with urllib.request.urlopen(request, timeout=30) as response:
+            with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
                 payload = json.load(response)
             if not isinstance(payload, dict):
                 raise ValueError(f"registry response is not an object: {url}")
@@ -299,11 +306,16 @@ def main() -> int:
             attempts, delay, max_delay = PYPI_ATTEMPTS, PYPI_DELAY, PYPI_MAX_DELAY
         attempts = attempts if args.attempts is None else args.attempts
         delay = delay if args.delay is None else args.delay
-        max_delay = max_delay if args.max_delay is None else args.max_delay
         if attempts < 1 or delay < 0:
             raise ValueError("attempts must be positive and delay cannot be negative")
-        if max_delay < delay:
-            raise ValueError("max delay cannot be shorter than the first delay")
+        if args.max_delay is None:
+            # Raising --delay past the default cap asks for a longer first
+            # pause, not for a cap the caller never mentioned to reject it.
+            max_delay = max(max_delay, delay)
+        else:
+            max_delay = args.max_delay
+            if max_delay < delay:
+                raise ValueError("max delay cannot be shorter than the first delay")
         args.output.mkdir(parents=True, exist_ok=False)
         entries = load_manifest(args.bundle, args.version)
         if args.npm:

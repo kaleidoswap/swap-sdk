@@ -276,6 +276,50 @@ class RegistryPropagationTests(unittest.TestCase):
         # A single attempt never sleeps: there is no retry to pause before.
         self.assertEqual(published.backoff(10.0, 60.0, 1), [])
 
+    def run_main(self, *flags: str) -> tuple[int, dict]:
+        """Drive the CLI over a minimal bundle, capturing the resolved budget."""
+        captured: dict = {}
+
+        def download_npm(*_args, **kwargs):
+            captured.update(kwargs)
+            return Path("unused")
+
+        with tempfile.TemporaryDirectory() as temp:
+            bundle = Path(temp) / "bundle"
+            bundle.mkdir()
+            (bundle / "release-manifest.json").write_text(
+                json.dumps({"version": "0.1.0", "artifacts": []}), encoding="utf-8"
+            )
+            argv = [
+                "download_published_artifacts.py",
+                str(bundle),
+                str(Path(temp) / "out"),
+                "--version",
+                "0.1.0",
+                "--npm",
+                *flags,
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(published, "download_npm", download_npm),
+            ):
+                return published.main(), captured
+
+    def test_raising_the_first_delay_alone_is_accepted(self) -> None:
+        """--delay stood on its own before the cap existed; it still must.
+
+        The default cap is not a floor the caller agreed to, so validating a
+        supplied --delay against it turned a working invocation into an error.
+        """
+        status, captured = self.run_main("--delay", "120")
+        self.assertEqual(status, 0)
+        self.assertEqual(captured["delay"], 120)
+        self.assertGreaterEqual(captured["max_delay"], captured["delay"])
+
+    def test_an_explicitly_inverted_pair_is_still_rejected(self) -> None:
+        status, _ = self.run_main("--delay", "120", "--max-delay", "60")
+        self.assertEqual(status, 1)
+
     def test_npm_budget_covers_the_delay_that_broke_0_8_0(self) -> None:
         """113s of patience is what failed. Keep the budget far past it."""
         budget = sum(
@@ -285,19 +329,36 @@ class RegistryPropagationTests(unittest.TestCase):
         )
         self.assertGreaterEqual(budget, 300)
 
+    @staticmethod
+    def npm_worst_case() -> float:
+        """The longest verify-npm can spend on registry metadata.
+
+        Sleeping is not the whole cost. A registry that hangs rather than 404s
+        also burns REQUEST_TIMEOUT on every attempt -- which is exactly the
+        case the job timeout is a backstop for -- and the job reads metadata
+        once per npm package, not once.
+        """
+        sleeping = sum(
+            published.backoff(
+                published.NPM_DELAY, published.NPM_MAX_DELAY, published.NPM_ATTEMPTS
+            )
+        )
+        hanging = published.NPM_ATTEMPTS * published.REQUEST_TIMEOUT
+        return (sleeping + hanging) * release_metadata.NPM_PACKAGE_COUNT
+
     def test_npm_verifier_outlives_its_own_propagation_budget(self) -> None:
-        """The job timeout and the script budget must not drift apart again."""
+        """The job timeout and the script budget must not drift apart again.
+
+        Headroom on top of the worst case is for the job's own work: checkout,
+        Node, the bundle download, and three clean-install smoke tests, one of
+        which fetches Firefox.
+        """
         job = workflow.production_jobs(
             (ROOT / ".github/workflows/release.yaml").read_text()
         )["verify-npm"]
         timeout = re.search(r"timeout-minutes:\s*(\d+)", job)
         assert timeout is not None
-        budget = sum(
-            published.backoff(
-                published.NPM_DELAY, published.NPM_MAX_DELAY, published.NPM_ATTEMPTS
-            )
-        )
-        self.assertGreater(int(timeout.group(1)) * 60, budget * 2)
+        self.assertGreater(int(timeout.group(1)) * 60, self.npm_worst_case() + 5 * 60)
 
 
 class PublishedArtifactTests(unittest.TestCase):
