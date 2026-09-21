@@ -2,7 +2,7 @@ import kaleidorg_swap_sdk
 import asyncio
 
 network = kaleidorg_swap_sdk.Network.REGTEST
-boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
 lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)
 
@@ -61,7 +61,7 @@ async def delay():
     await asyncio.sleep(5)
 
 
-async def next_status(updates: kaleidorg_swap_sdk.BoltzWsUpdates, status: str):
+async def next_status(updates: kaleidorg_swap_sdk.SwapWsUpdates, status: str):
     while True:
         try:
             update = await asyncio.wait_for(updates.next(), timeout=5)

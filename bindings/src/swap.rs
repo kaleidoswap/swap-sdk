@@ -1,5 +1,5 @@
-use crate::boltz::SwapClient;
 use crate::boltz::Error;
+use crate::boltz::SwapClient;
 use crate::network::ChainClient;
 use crate::util::Preimage;
 use bitcoin::hex::DisplayHex;

@@ -8,7 +8,7 @@ use kaleidorg_swap_sdk::corridor::{
     RfqQuote, RfqRefusal, RfqState, RfqStatus,
 };
 
-use crate::boltz::{SwapClient, Error};
+use crate::boltz::{Error, SwapClient};
 
 #[uniffi::remote(Enum)]
 pub enum AmountSide {
