@@ -154,7 +154,15 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    timeout-minutes: 10
+    # Long enough that npm propagation never decides the outcome. Waiting out a
+    # 404 costs about eight minutes per package, and a registry that hangs
+    # instead adds a read timeout per attempt: roughly eleven minutes per
+    # package, so about 22 for both, which is what this has to clear with room
+    # for the smoke installs. Both packages publish seconds apart, so in
+    # practice only the first ever waits and the rest is a backstop. It must
+    # stay above the script's own worst case -- the two drifting apart is what
+    # took the 0.8.0 release down, and a test holds them together.
+    timeout-minutes: 30
     steps:
       - name: Checkout tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

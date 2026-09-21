@@ -184,6 +184,183 @@ class ReleaseNotesTests(unittest.TestCase):
             )
 
 
+class RegistryPropagationTests(unittest.TestCase):
+    """A published version that has not propagated must cost a wait, not a release.
+
+    The 0.8.0 run published both npm packages cleanly and then failed its
+    verification 113s later, still reading 404. That failed the registry gate,
+    which skipped the GitHub release -- and the React Native package's
+    postinstall fetches its native archives from exactly that release, so a
+    registry delay of a couple of minutes broke every install of the published
+    package until the job was re-run by hand.
+    """
+
+    URL = "https://registry.example/%40scope%2Fpkg/0.1.0"
+
+    @staticmethod
+    def http_error(code: int) -> urllib.error.HTTPError:
+        return urllib.error.HTTPError(
+            RegistryPropagationTests.URL, code, "nope", {}, None
+        )
+
+    def responses(self, *results):
+        """Drive request_json through a scripted sequence of urlopen outcomes."""
+        remaining = list(results)
+
+        def urlopen(_request, timeout=None):  # noqa: ARG001
+            result = remaining.pop(0)
+            if isinstance(result, Exception):
+                raise result
+            return io.BytesIO(json.dumps(result).encode())
+
+        return urlopen
+
+    def test_version_that_propagates_late_is_still_verified(self) -> None:
+        payload = {"name": "@scope/pkg", "version": "0.1.0"}
+        urlopen = self.responses(
+            self.http_error(404),
+            self.http_error(404),
+            self.http_error(404),
+            payload,
+        )
+        with (
+            mock.patch.object(published.urllib.request, "urlopen", urlopen),
+            mock.patch.object(published.time, "sleep") as sleep,
+        ):
+            self.assertEqual(
+                published.request_json(self.URL, 11, 10.0, max_delay=60.0),
+                payload,
+            )
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [10, 20, 40])
+
+    def test_exhausted_budget_names_the_last_status_and_the_wait(self) -> None:
+        urlopen = self.responses(*[self.http_error(404)] * 3)
+        with (
+            mock.patch.object(published.urllib.request, "urlopen", urlopen),
+            mock.patch.object(published.time, "sleep"),
+            self.assertRaisesRegex(ValueError, r"over 30s of backoff, last HTTP 404"),
+        ):
+            published.request_json(self.URL, 3, 10.0, max_delay=20.0)
+
+    def test_status_that_will_not_fix_itself_fails_at_once(self) -> None:
+        urlopen = self.responses(self.http_error(403))
+        with (
+            mock.patch.object(published.urllib.request, "urlopen", urlopen),
+            mock.patch.object(published.time, "sleep") as sleep,
+            self.assertRaisesRegex(ValueError, "registry returned HTTP 403"),
+        ):
+            published.request_json(self.URL, 11, 10.0, max_delay=60.0)
+        sleep.assert_not_called()
+
+    def test_registry_fault_and_throttling_are_waited_out(self) -> None:
+        payload = {"name": "@scope/pkg", "version": "0.1.0"}
+        urlopen = self.responses(
+            self.http_error(503),
+            self.http_error(429),
+            OSError("connection reset"),
+            payload,
+        )
+        with (
+            mock.patch.object(published.urllib.request, "urlopen", urlopen),
+            mock.patch.object(published.time, "sleep"),
+        ):
+            self.assertEqual(
+                published.request_json(self.URL, 5, 1.0, max_delay=1.0), payload
+            )
+
+    def test_backoff_doubles_up_to_its_cap(self) -> None:
+        self.assertEqual(
+            published.backoff(10.0, 60.0, 8),
+            [10.0, 20.0, 40.0, 60.0, 60.0, 60.0, 60.0],
+        )
+        # A single attempt never sleeps: there is no retry to pause before.
+        self.assertEqual(published.backoff(10.0, 60.0, 1), [])
+
+    def run_main(self, *flags: str) -> tuple[int, dict]:
+        """Drive the CLI over a minimal bundle, capturing the resolved budget."""
+        captured: dict = {}
+
+        def download_npm(*_args, **kwargs):
+            captured.update(kwargs)
+            return Path("unused")
+
+        with tempfile.TemporaryDirectory() as temp:
+            bundle = Path(temp) / "bundle"
+            bundle.mkdir()
+            (bundle / "release-manifest.json").write_text(
+                json.dumps({"version": "0.1.0", "artifacts": []}), encoding="utf-8"
+            )
+            argv = [
+                "download_published_artifacts.py",
+                str(bundle),
+                str(Path(temp) / "out"),
+                "--version",
+                "0.1.0",
+                "--npm",
+                *flags,
+            ]
+            with (
+                mock.patch.object(sys, "argv", argv),
+                mock.patch.object(published, "download_npm", download_npm),
+            ):
+                return published.main(), captured
+
+    def test_raising_the_first_delay_alone_is_accepted(self) -> None:
+        """--delay stood on its own before the cap existed; it still must.
+
+        The default cap is not a floor the caller agreed to, so validating a
+        supplied --delay against it turned a working invocation into an error.
+        """
+        status, captured = self.run_main("--delay", "120")
+        self.assertEqual(status, 0)
+        self.assertEqual(captured["delay"], 120)
+        self.assertGreaterEqual(captured["max_delay"], captured["delay"])
+
+    def test_an_explicitly_inverted_pair_is_still_rejected(self) -> None:
+        status, _ = self.run_main("--delay", "120", "--max-delay", "60")
+        self.assertEqual(status, 1)
+
+    def test_npm_budget_covers_the_delay_that_broke_0_8_0(self) -> None:
+        """113s of patience is what failed. Keep the budget far past it."""
+        budget = sum(
+            published.backoff(
+                published.NPM_DELAY, published.NPM_MAX_DELAY, published.NPM_ATTEMPTS
+            )
+        )
+        self.assertGreaterEqual(budget, 300)
+
+    @staticmethod
+    def npm_worst_case() -> float:
+        """The longest verify-npm can spend on registry metadata.
+
+        Sleeping is not the whole cost. A registry that hangs rather than 404s
+        also burns REQUEST_TIMEOUT on every attempt -- which is exactly the
+        case the job timeout is a backstop for -- and the job reads metadata
+        once per npm package, not once.
+        """
+        sleeping = sum(
+            published.backoff(
+                published.NPM_DELAY, published.NPM_MAX_DELAY, published.NPM_ATTEMPTS
+            )
+        )
+        hanging = published.NPM_ATTEMPTS * published.REQUEST_TIMEOUT
+        return (sleeping + hanging) * release_metadata.NPM_PACKAGE_COUNT
+
+    def test_npm_verifier_outlives_its_own_propagation_budget(self) -> None:
+        """The job timeout and the script budget must not drift apart again.
+
+        Headroom on top of the worst case is for the job's own work: checkout,
+        Node, the bundle download, and three clean-install smoke tests, one of
+        which fetches Firefox.
+        """
+        job = workflow.production_jobs(
+            (ROOT / ".github/workflows/release.yaml").read_text()
+        )["verify-npm"]
+        timeout = re.search(r"timeout-minutes:\s*(\d+)", job)
+        assert timeout is not None
+        self.assertGreater(int(timeout.group(1)) * 60, self.npm_worst_case() + 5 * 60)
+
+
 class PublishedArtifactTests(unittest.TestCase):
     @staticmethod
     def entry(contents: bytes) -> dict:
