@@ -223,6 +223,10 @@ an isolated Node consumer.
 
 ## Releases
 
+[`VERSIONING.md`](VERSIONING.md) states what a consumer can rely on between
+releases — what `0.x` means here, how a breaking change is announced, and what
+`1.0` is gated on. This section is how a release is cut.
+
 All public SDK surfaces share one stable `X.Y.Z` version. A release candidate
 starts only when a strict `vX.Y.Z` tag points to a commit reachable from
 `trunk`, and the tag must match the Rust, Python, and TypeScript manifests and
