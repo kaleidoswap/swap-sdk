@@ -911,6 +911,15 @@ impl PreparedLiquidSpend {
             swap_script.blinding_secret(),
             asset_context.swap_asset,
         )?;
+        // A prevout travels through a PSET as its asset, value, nonce and
+        // script only — `PSET_IN_WITNESS_UTXO` has nowhere to carry the range
+        // and surjection proofs a confidential lockup is fetched with, so the
+        // wallet cannot hand them back. The secrets have been read out of them
+        // already; keep the form the funded PSET can be compared against.
+        let funding_utxo = TxOut {
+            witness: TxOutWitness::default(),
+            ..funding_utxo
+        };
         if swap_script
             .funding_addrs
             .as_ref()
@@ -1237,9 +1246,10 @@ impl PreparedLiquidSpend {
                 // lockup is confidential; for an explicit one `witness_utxo`
                 // already pins the asset and the amount in the clear, which is
                 // the stronger check of the two.
-                let (expected_asset, expected_amount) = match self.funding_utxo.asset {
-                    Asset::Explicit(_) => (None, None),
-                    _ => (Some(self.asset_context.swap_asset), Some(self.amount)),
+                let confidential_lockup = !matches!(self.funding_utxo.asset, Asset::Explicit(_));
+                let (expected_asset, expected_amount) = match confidential_lockup {
+                    false => (None, None),
+                    true => (Some(self.asset_context.swap_asset), Some(self.amount)),
                 };
                 if witness_utxo != self.funding_utxo
                     || input.asset != expected_asset
@@ -1257,6 +1267,14 @@ impl PreparedLiquidSpend {
                     return Err(Error::Protocol(
                         "Funded Liquid PSET changed the swap input".to_string(),
                     ));
+                }
+                // Those explicit fields are worth only the blind proofs that
+                // tie them to `witness_utxo`, and the checks above would still
+                // pass on a PSET that came back without them — one no Elements
+                // parser accepts. Re-verify the pair through the same check
+                // the wallet's own inputs go through.
+                if confidential_lockup {
+                    verify_input_metadata(&secp, input, &witness_utxo, index)?;
                 }
             } else {
                 if input
@@ -3637,6 +3655,216 @@ mod tests {
         assert!(tx.output[0].value.is_confidential());
         assert!(tx.output[1].asset.is_confidential());
         assert_eq!(tx.output[2].value, Value::Explicit(100));
+    }
+
+    /// A claim whose *lockup* is confidential: the branch that describes the
+    /// swap input with `PSET_IN_EXPLICIT_ASSET`/`_VALUE` plus the blind proofs
+    /// tying them to the prevout. The payout is confidential too, because a
+    /// blinded input has to have a blinded output to balance against.
+    fn prepared_confidential_lusdt_claim() -> (PreparedLiquidSpend, TxOutSecrets, Keypair, Preimage)
+    {
+        let network = LiquidChain::LiquidRegtest;
+        let policy_asset = network.bitcoin();
+        let swap_asset = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let secp = Secp256k1::new();
+        let keys = Keypair::new(&bitcoin::secp256k1::Secp256k1::new(), &mut OsRng);
+        let sender_keys = Keypair::new(&bitcoin::secp256k1::Secp256k1::new(), &mut OsRng);
+        let preimage = Preimage::random();
+        let lockup_blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let script = LiquidSwapScript {
+            swap_type: SwapType::ReverseSubmarine,
+            side: None,
+            funding_addrs: None,
+            hashlock: preimage.hash160,
+            receiver_pubkey: PublicKey::new(keys.public_key()),
+            locktime: LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey::new(sender_keys.public_key()),
+            blinding_key: Some(lockup_blinder),
+            asset_context: Some(LiquidAssetContext {
+                swap_asset,
+                policy_asset,
+            }),
+            expected_amount: 42,
+        };
+        let payment_blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let output_address = script
+            .to_address(network)
+            .unwrap()
+            .to_unconfidential()
+            .to_confidential(payment_blinder.public_key());
+        let funding_utxo = confidential_output(
+            &secp,
+            &mut OsRng,
+            Script::new(),
+            &lockup_blinder,
+            swap_asset,
+            42,
+        );
+        let lockup_secrets = funding_utxo
+            .unblind(&secp, lockup_blinder.secret_key())
+            .unwrap();
+        let prepared = PreparedLiquidSpend::new(
+            SwapTxKind::Claim,
+            script,
+            &output_address.to_string(),
+            OutPoint::new(elements::Txid::all_zeros(), 0),
+            funding_utxo,
+            BlockHash::all_zeros(),
+            1_000,
+        )
+        .unwrap();
+        (prepared, lockup_secrets, keys, preimage)
+    }
+
+    /// Fund a confidential-lockup template the way a blinding wallet would: an
+    /// explicit L-BTC input for the fee, a blinded payout and change, and the
+    /// explicit fee output. The swap input lands at index 1.
+    fn fund_confidential_pset(
+        prepared: &PreparedLiquidSpend,
+        lockup_secrets: &TxOutSecrets,
+        fee: u64,
+    ) -> (PartiallySignedTransaction, LiquidOutputSecrets) {
+        let secp = Secp256k1::new();
+        let policy_asset = prepared.asset_context.policy_asset;
+        let mut pset = PartiallySignedTransaction::from_str(&prepared.template().pset).unwrap();
+
+        let mut wallet_input = PsetInput::from_prevout(OutPoint::new(
+            elements::Txid::from_str(
+                "2222222222222222222222222222222222222222222222222222222222222222",
+            )
+            .unwrap(),
+            1,
+        ));
+        wallet_input.sequence = Some(Sequence::ZERO);
+        wallet_input.witness_utxo = Some(explicit_output(Script::new(), policy_asset, 1_000));
+        wallet_input.asset = Some(policy_asset);
+        wallet_input.amount = Some(1_000);
+        wallet_input.final_script_witness = Some(vec![vec![1]]);
+        pset.insert_input(wallet_input, 0);
+
+        pset.outputs_mut()[0].blinder_index = Some(0);
+        let change_blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let mut change = PsetOutput::new_explicit(
+            Script::from(vec![0x52]),
+            1_000 - fee,
+            policy_asset,
+            Some(PublicKey::new(change_blinder.public_key())),
+        );
+        change.blinder_index = Some(0);
+        pset.add_output(change);
+        pset.add_output(PsetOutput::new_explicit(
+            Script::new(),
+            fee,
+            policy_asset,
+            None,
+        ));
+
+        let mut input_secrets = std::collections::HashMap::new();
+        input_secrets.insert(
+            0,
+            TxOutSecrets {
+                asset: policy_asset,
+                asset_bf: AssetBlindingFactor::zero(),
+                value: 1_000,
+                value_bf: ValueBlindingFactor::zero(),
+            },
+        );
+        input_secrets.insert(1, *lockup_secrets);
+        let output_secrets = pset.blind_last(&mut OsRng, &secp, &input_secrets).unwrap();
+        // The payout is output 0, so it is the first blinded one.
+        let (payment_abf, payment_vbf, _) = output_secrets.values().next().unwrap();
+        (
+            pset,
+            LiquidOutputSecrets {
+                asset_id: prepared.asset_context.swap_asset.to_string(),
+                value: 42,
+                asset_blinding_factor: payment_abf.to_string(),
+                value_blinding_factor: payment_vbf.to_string(),
+            },
+        )
+    }
+
+    /// The blind proofs describing a confidential lockup must survive the trip
+    /// through the funding wallet.
+    ///
+    /// The explicit asset and amount come back on their own, so every other
+    /// check on the swap input still passes once a wallet drops a proof — and
+    /// what it handed back is a PSET no Elements parser will accept, the same
+    /// failure class as an unpaired explicit field, found at broadcast instead
+    /// of here.
+    #[macros::test_all]
+    fn caller_funded_pset_rechecks_the_confidential_lockup_blind_proofs() {
+        let (prepared, lockup_secrets, keys, preimage) = prepared_confidential_lusdt_claim();
+
+        // Intact, a confidential lockup claims like any other.
+        let (intact, payment_secrets) = fund_confidential_pset(&prepared, &lockup_secrets, 100);
+        let tx = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: intact.to_string(),
+                    payment_output_secrets: payment_secrets.clone(),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap();
+        assert_eq!(tx.input[1].previous_output, prepared.funding_outpoint);
+        assert_eq!(tx.input[1].witness.script_witness.len(), 4);
+
+        let (mut no_asset_proof, _) = fund_confidential_pset(&prepared, &lockup_secrets, 100);
+        no_asset_proof.inputs_mut()[1].blind_asset_proof = None;
+        let error = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: no_asset_proof.to_string(),
+                    payment_output_secrets: payment_secrets.clone(),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("missing blind asset proof"));
+
+        let (mut no_value_proof, _) = fund_confidential_pset(&prepared, &lockup_secrets, 100);
+        no_value_proof.inputs_mut()[1].blind_value_proof = None;
+        let error = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: no_value_proof.to_string(),
+                    payment_output_secrets: payment_secrets.clone(),
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("missing blind value proof"));
+
+        // A proof that is present but proves something else fails too: the
+        // asset it commits to is the fee asset, not the swap asset.
+        let (mut wrong_asset_proof, _) = fund_confidential_pset(&prepared, &lockup_secrets, 100);
+        wrong_asset_proof.inputs_mut()[1].blind_asset_proof = Some(Box::new(
+            SurjectionProof::blind_asset_proof(
+                &mut OsRng,
+                &Secp256k1::new(),
+                prepared.asset_context.policy_asset,
+                lockup_secrets.asset_bf,
+            )
+            .unwrap(),
+        ));
+        let error = prepared
+            .finalize_claim(
+                FundedLiquidPset {
+                    pset: wrong_asset_proof.to_string(),
+                    payment_output_secrets: payment_secrets,
+                },
+                &keys,
+                &preimage,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("blind proofs do not match"));
     }
 
     #[macros::test_all]
