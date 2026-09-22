@@ -28,8 +28,15 @@ WASM_DIR = ROOT / "bindings-wasm/src"
 UNIFFI_DIR = ROOT / "bindings/src"
 
 # wasm type name -> UniFFI type name, where they differ.
+#
+# The UniFFI side dropped the Boltz-derived names; the wasm side kept them,
+# since TypeScript re-exports it under the new name and no consumer sees the
+# internal one. That turns three names that used to match into three that
+# differ, which is what this table is for.
 TYPES = {
-    "BoltzClient": "BoltzApiClientV2",
+    "BoltzClient": "SwapClient",
+    "BoltzWsApi": "SwapWsApi",
+    "BoltzWsUpdates": "SwapWsUpdates",
     "WasmSwapMasterKey": "SwapMasterKey",
 }
 
