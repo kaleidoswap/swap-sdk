@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-22
+
 ### BREAKING — the binding surfaces stop saying Boltz
 
 The client a partner writes was called `BoltzClient`. It speaks the Boltz
