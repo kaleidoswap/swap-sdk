@@ -1,5 +1,5 @@
-use crate::boltz::BoltzApiClientV2;
 use crate::boltz::Error;
+use crate::boltz::SwapClient;
 use crate::network::ChainClient;
 use crate::util::Preimage;
 use bitcoin::hex::DisplayHex;
@@ -23,7 +23,7 @@ pub struct SwapTransactionParams {
     pub swap_id: String,
     pub keys: Arc<KeyPair>,
     pub chain_client: Arc<ChainClient>,
-    pub boltz_api: Arc<BoltzApiClientV2>,
+    pub boltz_api: Arc<SwapClient>,
     #[uniffi(default = None)]
     pub options: Option<TransactionOptions>,
 }
@@ -35,7 +35,7 @@ pub struct LiquidPsetParams {
     pub quoted_fee_cap: u64,
     pub swap_id: String,
     pub chain_client: Arc<ChainClient>,
-    pub boltz_api: Arc<BoltzApiClientV2>,
+    pub boltz_api: Arc<SwapClient>,
     /// Optional locally available Liquid lockup transaction. Supplying it
     /// avoids depending on API/indexer transaction discovery.
     #[uniffi(default = None)]
@@ -280,7 +280,7 @@ impl SwapScript {
         swap_id: &String,
         keys: &KeyPair,
         invoice: &str,
-        boltz_api: &BoltzApiClientV2,
+        boltz_api: &SwapClient,
     ) -> Result<(), Error> {
         self.0
             .submarine_cooperative_claim(swap_id, &keys.inner, invoice, &boltz_api.inner)

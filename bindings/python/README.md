@@ -23,7 +23,7 @@ import asyncio
 async def main():
     # Initialize for regtest (do NOT use this example in production)
     network = kaleidorg_swap_sdk.Network.REGTEST
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 
     # Example: Create a submarine swap (Lightning → Bitcoin)
     key_pair = kaleidorg_swap_sdk.KeyPair()
@@ -49,14 +49,14 @@ asyncio.run(main())
 A partner organization can have the swaps it originates attributed to it. That
 needs an **organization API key** from the KaleidoSwap partner panel — a
 `kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
-production. Without one, `BoltzApiClientV2` behaves exactly as before and
+production. Without one, `SwapClient` behaves exactly as before and
 creates unattributed swaps.
 
 ```python
 import os
 import kaleidorg_swap_sdk
 
-client = kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
     "https://maker.signet.kaleidoswap.com/v2",
     os.environ["KALEIDOSWAP_API_KEY"],
     None,  # timeout in seconds

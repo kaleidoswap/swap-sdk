@@ -19,7 +19,7 @@ def expect_error(description, build):
     raise AssertionError(f"{description} should have been rejected")
 
 
-client = kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(MAKER_URL, KEY, None)
+client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(MAKER_URL, KEY, None)
 
 # The public half of the key is readable, so a caller can assert at start-up
 # that they configured the environment they meant to.
@@ -54,7 +54,7 @@ assert any("01KZZYB138E7C3HZX7Q1YBGAQG" in value for value in readable), readabl
 
 # The generic client authenticates nothing: that is what keeps it usable against
 # a Boltz maker, which has no notion of an organization key.
-generic = kaleidorg_swap_sdk.BoltzApiClientV2(MAKER_URL, None)
+generic = kaleidorg_swap_sdk.SwapClient(MAKER_URL, None)
 assert generic.api_key_environment() is None
 assert generic.api_key_id() is None
 
@@ -70,7 +70,7 @@ for bad_key in [
 ]:
     expect_error(
         f"api key {bad_key!r}",
-        lambda bad_key=bad_key: kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+        lambda bad_key=bad_key: kaleidorg_swap_sdk.SwapClient.kaleido_maker(
             MAKER_URL, bad_key, None
         ),
     )
@@ -79,7 +79,7 @@ for bad_key in [
 # the key is permanent until revoked.
 expect_error(
     "a plain-HTTP maker",
-    lambda: kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+    lambda: kaleidorg_swap_sdk.SwapClient.kaleido_maker(
         "http://maker.signet.kaleidoswap.com/v2", KEY, None
     ),
 )
@@ -88,14 +88,14 @@ expect_error(
 # would displace the key and leave the swap unattributed.
 expect_error(
     "a maker URL carrying userinfo",
-    lambda: kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+    lambda: kaleidorg_swap_sdk.SwapClient.kaleido_maker(
         "https://ci:hunter2@maker.signet.kaleidoswap.com/v2", KEY, None
     ),
 )
 
 # Loopback is the regtest harness, where the "network" is a socket on this
 # machine.
-local = kaleidorg_swap_sdk.BoltzApiClientV2.kaleido_maker(
+local = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
     "http://127.0.0.1:9001/v2", KEY, None
 )
 assert local.api_key_environment() == "test"

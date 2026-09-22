@@ -95,7 +95,7 @@ fn every_async_export_runs_on_the_tokio_runtime() {
     // A parser that silently matched nothing would pass vacuously forever.
     assert!(
         checked >= 4,
-        "expected to find the async export blocks (BoltzApiClientV2, BoltzWsApi, \
-         BoltzWsUpdates, SwapScript, ChainClient); found {checked}"
+        "expected to find the async export blocks (SwapClient, SwapWsApi, \
+         SwapWsUpdates, SwapScript, ChainClient); found {checked}"
     );
 }

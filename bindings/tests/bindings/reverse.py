@@ -4,7 +4,7 @@ from common import *
 
 
 async def swap(to_chain: kaleidorg_swap_sdk.Chain):
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
 
