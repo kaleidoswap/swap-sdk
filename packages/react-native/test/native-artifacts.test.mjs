@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { ARCHIVES, download, validateManifest } from "../scripts/native-artifacts.mjs";
+import {
+  ARCHIVES,
+  download,
+  requiresNativeLibraries,
+  unreachableArchiveWarning,
+  validateManifest,
+} from "../scripts/native-artifacts.mjs";
 
 const digest = "a".repeat(64);
 const valid = {
@@ -31,6 +37,37 @@ test("rejects unlisted release files", () => {
   const extra = structuredClone(valid);
   extra.artifacts["surprise.zip"] = { sha256: digest };
   assert.throws(() => validateManifest(extra, "0.7.2"), /unexpected files/);
+});
+
+test("an unreachable archive is survivable unless the consumer says otherwise", () => {
+  assert.equal(requiresNativeLibraries({}), false);
+  for (const value of ["", "0", "false", "no", " FALSE "]) {
+    assert.equal(requiresNativeLibraries({ KALEIDO_SWAP_SDK_REQUIRE_NATIVE: value }), false, value);
+  }
+  for (const value of ["1", "true", "yes", "anything"]) {
+    assert.equal(requiresNativeLibraries({ KALEIDO_SWAP_SDK_REQUIRE_NATIVE: value }), true, value);
+  }
+});
+
+test("the degraded-install warning carries what the consumer needs to act", () => {
+  const warning = unreachableArchiveWarning({
+    archive: ARCHIVES[0],
+    url: `https://example.invalid/v0.7.2/${ARCHIVES[0]}`,
+    version: "0.7.2",
+    reason: "download failed: download returned HTTP 404",
+  });
+  // Whoever reads this is looking at a linker error in an app build and has no
+  // reason to connect it to an install that printed something days ago.
+  for (const fragment of [
+    ARCHIVES[0],
+    "0.7.2",
+    "HTTP 404",
+    "example.invalid",
+    "ubrn:build",
+    "KALEIDO_SWAP_SDK_REQUIRE_NATIVE=1",
+  ]) {
+    assert.ok(warning.includes(fragment), `warning omits ${fragment}`);
+  }
 });
 
 // A fetch that fails `failures` times before answering, so the retry policy can

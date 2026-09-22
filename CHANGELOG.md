@@ -67,6 +67,25 @@ as a changed swap input. The comparison now uses the form a PSET can carry.
 Nothing changes for an explicit lockup, which is what the KaleidoSwap maker
 mints today.
 
+### Fixed — an unreachable release archive no longer breaks `npm install`
+
+`@kaleidorg/swap-sdk-react-native` downloads its iOS and Android archives from
+the GitHub release for its own version, and its `postinstall` threw when it
+could not. The archives live outside the registry that served the package, so
+that failure has causes a consumer cannot do anything about while installing: a
+deleted release, a degraded GitHub download, or a network that reaches the npm
+registry but not `github.com`.
+
+The install now prints a warning naming the archive, the URL, the reason and the
+fix, and succeeds without the native libraries — the state a pnpm install
+without `onlyBuiltDependencies` already produced. The missing module surfaces at
+build or first import instead of stopping the whole dependency install.
+
+Only an unreachable archive degrades. An archive that arrives and does not match
+the SHA-256 manifest, a manifest that does not match the package, and a layout
+that does not match after extraction all remain hard failures. Set
+`KALEIDO_SWAP_SDK_REQUIRE_NATIVE=1` to fail on an unreachable archive too.
+
 ## [0.8.0] - 2026-09-18
 
 ### Added — the UniFFI binding catches up with the browser one

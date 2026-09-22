@@ -80,6 +80,49 @@ export async function download(
 }
 
 /**
+ * Whether an unreachable archive must fail the install.
+ *
+ * The default is no: the archives live on a GitHub release, not in the registry
+ * that served this package, so a consumer whose network reaches npm but not
+ * github.com — a proxy, an offline mirror, a deleted release — cannot install
+ * at all if a fetch failure is fatal, and there is nothing they can do about it
+ * at that moment. A build that wants the old guarantee asks for it.
+ */
+export function requiresNativeLibraries(env = process.env) {
+  const value = env.KALEIDO_SWAP_SDK_REQUIRE_NATIVE;
+  if (value === undefined) return false;
+  return !["", "0", "false", "no"].includes(value.trim().toLowerCase());
+}
+
+/**
+ * What a consumer sees when the archives could not be fetched. It has to carry
+ * the whole story, because the next thing that goes wrong is a linker error in
+ * their app build, which says nothing about this.
+ */
+export function unreachableArchiveWarning({ archive, url, version, reason }) {
+  return [
+    "",
+    "  ┌─ @kaleidorg/swap-sdk-react-native ─────────────────────────────────",
+    `  │ WARNING: installed WITHOUT its native libraries (${version}).`,
+    "  │",
+    `  │ ${archive} could not be downloaded from`,
+    `  │   ${url}`,
+    `  │ ${reason}`,
+    "  │",
+    "  │ The install was allowed to succeed, but this package cannot work",
+    "  │ until the libraries are present: an app built against it now will",
+    "  │ fail to link, or crash when the native module loads.",
+    "  │",
+    "  │ Fix it by reinstalling once the release is reachable, or build from",
+    "  │ source with 'npm run ubrn:build' in a swap-sdk checkout.",
+    "  │ To fail the install instead of warning, set",
+    "  │   KALEIDO_SWAP_SDK_REQUIRE_NATIVE=1",
+    "  └────────────────────────────────────────────────────────────────────",
+    "",
+  ].join("\n");
+}
+
+/**
  * What each archive must unpack to, from `ubrn.config.yaml`'s target lists.
  * `postinstall` checks the layout after extracting so a drift in the generator
  * fails the install with a filename, not the app build with a linker error;
