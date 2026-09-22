@@ -71,31 +71,46 @@ function runPostinstall(root, stub, env = {}) {
   return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }
 
-test("an unreachable archive warns and lets the install succeed", () => {
+test("an unreachable archive fails the install and names the ways forward", () => {
   const root = installedPackage();
   try {
-    // 404: the release is gone, or its assets were never uploaded. A consumer
-    // can do nothing about it mid-install, so it must not break the install.
+    // 404: the release is gone, or its assets were never uploaded. npm prints
+    // a failing script's output, so this is where the escape hatch is legible.
     const { status, output } = runPostinstall(root, stubFetch(root, { status: 404, body: null }));
-    assert.equal(status, 0);
-    assert.match(output, /WARNING: installed WITHOUT its native libraries/);
-    assert.match(output, /KALEIDO_SWAP_SDK_REQUIRE_NATIVE=1/);
-    assert.match(output, new RegExp(ARCHIVES[0]));
+    assert.notEqual(status, 0);
+    assert.match(output, new RegExp(`${ARCHIVES[0]} could not be downloaded`));
+    assert.match(output, /HTTP 404/);
+    assert.match(output, /KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE=1/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
-test("KALEIDO_SWAP_SDK_REQUIRE_NATIVE restores the hard failure", () => {
+test("KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE lets the install through", () => {
   const root = installedPackage();
   try {
     const { status, output } = runPostinstall(
       root,
       stubFetch(root, { status: 404, body: null }),
-      { KALEIDO_SWAP_SDK_REQUIRE_NATIVE: "1" },
+      { KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE: "1" },
+    );
+    assert.equal(status, 0);
+    assert.match(output, /WARNING: installed WITHOUT its native libraries/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("opting in does not excuse an archive that arrives corrupted", () => {
+  const root = installedPackage();
+  try {
+    const { status, output } = runPostinstall(
+      root,
+      stubFetch(root, { status: 200, body: "not-the-archive" }),
+      { KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE: "1" },
     );
     assert.notEqual(status, 0);
-    assert.match(output, /could not download/);
+    assert.match(output, /SHA-256 mismatch/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

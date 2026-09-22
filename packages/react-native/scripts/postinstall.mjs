@@ -9,8 +9,9 @@ import {
   ARCHIVES,
   assertNativeLibraries,
   download,
-  requiresNativeLibraries,
+  allowsMissingNativeLibraries,
   sha256,
+  unreachableArchiveError,
   unreachableArchiveWarning,
   validateManifest,
 } from "./native-artifacts.mjs";
@@ -41,10 +42,13 @@ const archives = ARCHIVES.map((archive) => ({
 // any is extracted, so a bad digest on the second cannot leave the first's
 // binaries on disk beside a failed install.
 //
-// Only an unreachable archive is survivable, and only because the consumer can
-// do nothing about it here. Everything the package itself controls — the
-// manifest, the digests, the extracted layout — stays fatal: an archive that
-// arrives and is wrong is a different problem from one that never arrives.
+// An unreachable archive is the one failure a consumer can do nothing about
+// here, so it is the one an install may be told to survive — but only when
+// asked, because npm hides this script's output on a successful install and a
+// warning nobody sees is worse than a failure that names the problem.
+// Everything the package itself controls — the manifest, the digests, the
+// extracted layout — is always fatal: an archive that arrives and is wrong is a
+// different problem from one that never arrives.
 try {
   let unreachable;
   for (const { archive, url, destination } of archives) {
@@ -63,18 +67,11 @@ try {
     }
   }
   if (unreachable) {
-    if (requiresNativeLibraries(process.env)) {
-      throw new Error(
-        `could not download ${unreachable.url}: ${unreachable.reason}. Build from ` +
-          "source with 'npm run ubrn:build' in a swap-sdk checkout, or unset " +
-          "KALEIDO_SWAP_SDK_REQUIRE_NATIVE to install without the native libraries.",
-        { cause: unreachable.cause },
-      );
+    const details = { ...unreachable, version: packageJson.version };
+    if (!allowsMissingNativeLibraries(process.env)) {
+      throw new Error(unreachableArchiveError(details), { cause: unreachable.cause });
     }
-    // stderr, not stdout: npm shows it without --loglevel, and nothing parses it.
-    console.error(
-      unreachableArchiveWarning({ ...unreachable, version: packageJson.version }),
-    );
+    console.error(unreachableArchiveWarning(details));
   } else {
     for (const { destination } of archives) {
       await extract(destination, { dir: packageRoot });

@@ -80,43 +80,61 @@ export async function download(
 }
 
 /**
- * Whether an unreachable archive must fail the install.
+ * Whether an install may finish without the native libraries.
  *
- * The default is no: the archives live on a GitHub release, not in the registry
- * that served this package, so a consumer whose network reaches npm but not
- * github.com — a proxy, an offline mirror, a deleted release — cannot install
- * at all if a fetch failure is fatal, and there is nothing they can do about it
- * at that moment. A build that wants the old guarantee asks for it.
+ * Off by default, and that default is set by how npm behaves rather than by
+ * what is convenient: a dependency's postinstall output is hidden unless the
+ * install runs with `--foreground-scripts`, so a warning here would not reach
+ * the consumer. Degrading silently trades a loud install failure that names the
+ * problem for a linker error in their app build that does not. A build that has
+ * its own reason to proceed — an offline mirror that compiles from source, a
+ * CI stage that never links the app — opts in, and accepts the warning it will
+ * not see.
  */
-export function requiresNativeLibraries(env = process.env) {
-  const value = env.KALEIDO_SWAP_SDK_REQUIRE_NATIVE;
+export function allowsMissingNativeLibraries(env = process.env) {
+  const value = env.KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE;
   if (value === undefined) return false;
   return !["", "0", "false", "no"].includes(value.trim().toLowerCase());
 }
 
 /**
- * What a consumer sees when the archives could not be fetched. It has to carry
- * the whole story, because the next thing that goes wrong is a linker error in
- * their app build, which says nothing about this.
+ * What a consumer sees when the archives could not be fetched: the archive, the
+ * URL, why it failed, and every way forward. npm prints this one, because the
+ * install fails with it — which is the argument for failing.
  */
+export function unreachableArchiveError({ archive, url, version, reason }) {
+  return [
+    `${archive} could not be downloaded for @kaleidorg/swap-sdk-react-native@${version}`,
+    `  from ${url}`,
+    `  ${reason}`,
+    "",
+    "The native libraries ship as GitHub release assets, not inside the npm",
+    "package, so this fails when the release is unreachable — a network that",
+    "allows the registry but not github.com, or a release whose assets are gone.",
+    "",
+    "Ways forward:",
+    "  - reinstall once the release is reachable;",
+    "  - build from source with 'npm run ubrn:build' in a swap-sdk checkout;",
+    "  - set KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE=1 to install without them,",
+    "    which leaves this package unable to load until they are present.",
+  ].join("\n");
+}
+
+/** The same story, for an install that asked to continue without them. */
 export function unreachableArchiveWarning({ archive, url, version, reason }) {
   return [
     "",
     "  ┌─ @kaleidorg/swap-sdk-react-native ─────────────────────────────────",
-    `  │ WARNING: installed WITHOUT its native libraries (${version}).`,
+    `  │ WARNING: installed WITHOUT its native libraries (${version}),`,
+    "  │ because KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE is set.",
     "  │",
     `  │ ${archive} could not be downloaded from`,
     `  │   ${url}`,
     `  │ ${reason}`,
     "  │",
-    "  │ The install was allowed to succeed, but this package cannot work",
-    "  │ until the libraries are present: an app built against it now will",
-    "  │ fail to link, or crash when the native module loads.",
-    "  │",
-    "  │ Fix it by reinstalling once the release is reachable, or build from",
-    "  │ source with 'npm run ubrn:build' in a swap-sdk checkout.",
-    "  │ To fail the install instead of warning, set",
-    "  │   KALEIDO_SWAP_SDK_REQUIRE_NATIVE=1",
+    "  │ An app built against this package now will fail to link, or crash",
+    "  │ when the native module loads. Reinstall once the release is",
+    "  │ reachable, or build from source with 'npm run ubrn:build'.",
     "  └────────────────────────────────────────────────────────────────────",
     "",
   ].join("\n");

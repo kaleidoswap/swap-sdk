@@ -7,7 +7,8 @@ import { test } from "node:test";
 import {
   ARCHIVES,
   download,
-  requiresNativeLibraries,
+  allowsMissingNativeLibraries,
+  unreachableArchiveError,
   unreachableArchiveWarning,
   validateManifest,
 } from "../scripts/native-artifacts.mjs";
@@ -39,32 +40,54 @@ test("rejects unlisted release files", () => {
   assert.throws(() => validateManifest(extra, "0.7.2"), /unexpected files/);
 });
 
-test("an unreachable archive is survivable unless the consumer says otherwise", () => {
-  assert.equal(requiresNativeLibraries({}), false);
+test("an install keeps the native libraries unless it asks not to", () => {
+  assert.equal(allowsMissingNativeLibraries({}), false);
   for (const value of ["", "0", "false", "no", " FALSE "]) {
-    assert.equal(requiresNativeLibraries({ KALEIDO_SWAP_SDK_REQUIRE_NATIVE: value }), false, value);
+    assert.equal(
+      allowsMissingNativeLibraries({ KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE: value }),
+      false,
+      value,
+    );
   }
   for (const value of ["1", "true", "yes", "anything"]) {
-    assert.equal(requiresNativeLibraries({ KALEIDO_SWAP_SDK_REQUIRE_NATIVE: value }), true, value);
+    assert.equal(
+      allowsMissingNativeLibraries({ KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE: value }),
+      true,
+      value,
+    );
   }
 });
 
-test("the degraded-install warning carries what the consumer needs to act", () => {
-  const warning = unreachableArchiveWarning({
-    archive: ARCHIVES[0],
-    url: `https://example.invalid/v0.7.2/${ARCHIVES[0]}`,
-    version: "0.7.2",
-    reason: "download failed: download returned HTTP 404",
-  });
-  // Whoever reads this is looking at a linker error in an app build and has no
-  // reason to connect it to an install that printed something days ago.
+const unreachable = {
+  archive: ARCHIVES[0],
+  url: `https://example.invalid/v0.7.2/${ARCHIVES[0]}`,
+  version: "0.7.2",
+  reason: "download returned HTTP 404",
+};
+
+test("the install failure carries every way forward", () => {
+  const message = unreachableArchiveError(unreachable);
+  // This is the text npm prints, and the only chance to explain both that the
+  // archives live outside the registry and that there is a way past it.
   for (const fragment of [
     ARCHIVES[0],
     "0.7.2",
     "HTTP 404",
     "example.invalid",
     "ubrn:build",
-    "KALEIDO_SWAP_SDK_REQUIRE_NATIVE=1",
+    "KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE=1",
+  ]) {
+    assert.ok(message.includes(fragment), `failure omits ${fragment}`);
+  }
+});
+
+test("the opted-in warning says what was installed and why", () => {
+  const warning = unreachableArchiveWarning(unreachable);
+  for (const fragment of [
+    "WARNING: installed WITHOUT its native libraries",
+    "KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE",
+    ARCHIVES[0],
+    "HTTP 404",
   ]) {
     assert.ok(warning.includes(fragment), `warning omits ${fragment}`);
   }
