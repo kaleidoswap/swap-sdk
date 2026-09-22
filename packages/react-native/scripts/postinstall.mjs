@@ -9,7 +9,10 @@ import {
   ARCHIVES,
   assertNativeLibraries,
   download,
+  allowsMissingNativeLibraries,
   sha256,
+  unreachableArchiveError,
+  unreachableArchiveWarning,
   validateManifest,
 } from "./native-artifacts.mjs";
 
@@ -38,18 +41,24 @@ const archives = ARCHIVES.map((archive) => ({
 // Two phases, not one loop: every archive is downloaded and verified before
 // any is extracted, so a bad digest on the second cannot leave the first's
 // binaries on disk beside a failed install.
+//
+// An unreachable archive is the one failure a consumer can do nothing about
+// here, so it is the one an install may be told to survive — but only when
+// asked, because npm hides this script's output on a successful install and a
+// warning nobody sees is worse than a failure that names the problem.
+// Everything the package itself controls — the manifest, the digests, the
+// extracted layout — is always fatal: an archive that arrives and is wrong is a
+// different problem from one that never arrives.
 try {
+  let unreachable;
   for (const { archive, url, destination } of archives) {
     const partial = `${destination}.part`;
     try {
       await download(url, partial);
       await rename(partial, destination);
     } catch (error) {
-      throw new Error(
-        `could not download ${url}: ${error.message}. Build from source with ` +
-          "'npm run ubrn:build' in a swap-sdk checkout.",
-        { cause: error },
-      );
+      unreachable = { archive, url, reason: error.message, cause: error };
+      break;
     }
     const actual = await sha256(destination);
     const expected = manifest.artifacts[archive].sha256;
@@ -57,10 +66,18 @@ try {
       throw new Error(`SHA-256 mismatch for ${archive}: expected ${expected}, got ${actual}`);
     }
   }
-  for (const { destination } of archives) {
-    await extract(destination, { dir: packageRoot });
+  if (unreachable) {
+    const details = { ...unreachable, version: packageJson.version };
+    if (!allowsMissingNativeLibraries(process.env)) {
+      throw new Error(unreachableArchiveError(details), { cause: unreachable.cause });
+    }
+    console.error(unreachableArchiveWarning(details));
+  } else {
+    for (const { destination } of archives) {
+      await extract(destination, { dir: packageRoot });
+    }
+    await assertNativeLibraries(packageRoot, stat);
   }
-  await assertNativeLibraries(packageRoot, stat);
 } finally {
   await Promise.all(
     archives.flatMap(({ destination }) => [

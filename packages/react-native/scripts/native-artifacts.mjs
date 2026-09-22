@@ -80,6 +80,67 @@ export async function download(
 }
 
 /**
+ * Whether an install may finish without the native libraries.
+ *
+ * Off by default, and that default is set by how npm behaves rather than by
+ * what is convenient: a dependency's postinstall output is hidden unless the
+ * install runs with `--foreground-scripts`, so a warning here would not reach
+ * the consumer. Degrading silently trades a loud install failure that names the
+ * problem for a linker error in their app build that does not. A build that has
+ * its own reason to proceed — an offline mirror that compiles from source, a
+ * CI stage that never links the app — opts in, and accepts the warning it will
+ * not see.
+ */
+export function allowsMissingNativeLibraries(env = process.env) {
+  const value = env.KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE;
+  if (value === undefined) return false;
+  return !["", "0", "false", "no"].includes(value.trim().toLowerCase());
+}
+
+/**
+ * What a consumer sees when the archives could not be fetched: the archive, the
+ * URL, why it failed, and every way forward. npm prints this one, because the
+ * install fails with it — which is the argument for failing.
+ */
+export function unreachableArchiveError({ archive, url, version, reason }) {
+  return [
+    `${archive} could not be downloaded for @kaleidorg/swap-sdk-react-native@${version}`,
+    `  from ${url}`,
+    `  ${reason}`,
+    "",
+    "The native libraries ship as GitHub release assets, not inside the npm",
+    "package, so this fails when the release is unreachable — a network that",
+    "allows the registry but not github.com, or a release whose assets are gone.",
+    "",
+    "Ways forward:",
+    "  - reinstall once the release is reachable;",
+    "  - build from source with 'npm run ubrn:build' in a swap-sdk checkout;",
+    "  - set KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE=1 to install without them,",
+    "    which leaves this package unable to load until they are present.",
+  ].join("\n");
+}
+
+/** The same story, for an install that asked to continue without them. */
+export function unreachableArchiveWarning({ archive, url, version, reason }) {
+  return [
+    "",
+    "  ┌─ @kaleidorg/swap-sdk-react-native ─────────────────────────────────",
+    `  │ WARNING: installed WITHOUT its native libraries (${version}),`,
+    "  │ because KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE is set.",
+    "  │",
+    `  │ ${archive} could not be downloaded from`,
+    `  │   ${url}`,
+    `  │ ${reason}`,
+    "  │",
+    "  │ An app built against this package now will fail to link, or crash",
+    "  │ when the native module loads. Reinstall once the release is",
+    "  │ reachable, or build from source with 'npm run ubrn:build'.",
+    "  └────────────────────────────────────────────────────────────────────",
+    "",
+  ].join("\n");
+}
+
+/**
  * What each archive must unpack to, from `ubrn.config.yaml`'s target lists.
  * `postinstall` checks the layout after extracting so a drift in the generator
  * fails the install with a filename, not the app build with a linker error;

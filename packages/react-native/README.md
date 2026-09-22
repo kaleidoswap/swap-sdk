@@ -19,6 +19,20 @@ Prebuilt native binaries are fetched from this version's GitHub release on
 install and verified against the SHA-256 manifest carried by the npm package;
 no Rust toolchain, NDK or Xcode is needed. iOS then needs a `pod install`.
 
+If the release cannot be reached — a network that allows the npm registry but
+not `github.com`, or a release whose assets are gone — the install fails with a
+message naming the archive, the URL and the reason. Reinstall once the release
+is reachable, or build from source with `npm run ubrn:build` in a checkout.
+
+An install that has its own reason to continue without the binaries — an
+offline mirror that compiles from source, a CI stage that never links the app —
+sets `KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE=1`. The install then warns and
+succeeds, leaving the same state as the pnpm case below: a missing native module
+at build or first import. Note that npm hides a dependency's install output
+unless you pass `--foreground-scripts`, so that warning is easy to miss — which
+is why it is opt-in. An archive that arrives and does not match the SHA-256
+manifest is always a hard failure, whatever this variable says.
+
 With pnpm 10 or later, dependencies' lifecycle scripts do not run unless the
 package is allow-listed — the install succeeds and the binaries are simply
 never fetched, which surfaces as a missing native module at first import.
