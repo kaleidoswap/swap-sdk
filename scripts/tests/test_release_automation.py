@@ -1123,14 +1123,24 @@ class WorkflowInvariantTests(unittest.TestCase):
     def test_npm_publish_must_follow_the_github_release(self) -> None:
         # postinstall fetches native archives from the matching GitHub release.
         # Publishing npm first creates an unfixable broken-version window.
+        # Anchored on the job header: an unanchored replace would silently move
+        # to another job's needs list if the workflow is ever reordered.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         changed = contents.replace(
+            "  publish-npm:\n"
+            "    name: Publish exact npm tarball\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs:\n"
+            "      - release-ready\n"
             "      - publish-github-release\n",
-            "",
+            "  publish-npm:\n"
+            "    name: Publish exact npm tarball\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs: release-ready\n",
             1,
         )
         self.assertNotEqual(changed, contents)
-        with self.assertRaisesRegex(ValueError, "after the GitHub release"):
+        with self.assertRaisesRegex(ValueError, "npm publisher must run after"):
             workflow.validate(changed)
 
     def test_github_release_must_not_wait_for_registry_completion(self) -> None:
@@ -1149,6 +1159,42 @@ class WorkflowInvariantTests(unittest.TestCase):
         self.assertNotEqual(changed, contents)
         with self.assertRaisesRegex(ValueError, "must precede registry publication"):
             workflow.validate(changed)
+
+    def test_runbook_publication_order_must_match_the_workflow(self) -> None:
+        # The runbook is read during an incident. Prose that outlives the job
+        # graph it describes is worse than no prose, because it is trusted.
+        runbook = (ROOT / "docs/releasing.md").read_text()
+        changed = runbook.replace(
+            "3. `publish-github-release`\n4. `publish-npm`",
+            "3. `publish-npm`\n4. `publish-github-release`",
+            1,
+        )
+        self.assertNotEqual(changed, runbook)
+        with self.assertRaisesRegex(ValueError, "contradicts the"):
+            workflow.validate(
+                (ROOT / ".github/workflows/release.yaml").read_text(),
+                runbook_contents=changed,
+            )
+
+    def test_runbook_must_list_every_production_job(self) -> None:
+        runbook = (ROOT / "docs/releasing.md").read_text()
+        changed = runbook.replace("9. `verify-react-native-install`\n", "", 1)
+        self.assertNotEqual(changed, runbook)
+        with self.assertRaisesRegex(ValueError, "must list every production job"):
+            workflow.validate(
+                (ROOT / ".github/workflows/release.yaml").read_text(),
+                runbook_contents=changed,
+            )
+
+    def test_runbook_must_carry_a_publication_order(self) -> None:
+        runbook = (ROOT / "docs/releasing.md").read_text()
+        changed = runbook.replace("## Publication order", "## Order", 1)
+        self.assertNotEqual(changed, runbook)
+        with self.assertRaisesRegex(ValueError, "'Publication order' section"):
+            workflow.validate(
+                (ROOT / ".github/workflows/release.yaml").read_text(),
+                runbook_contents=changed,
+            )
 
     def test_react_native_install_must_run_postinstall(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()

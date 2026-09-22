@@ -116,14 +116,39 @@ action to upload the exact wheels and sdist. It does **not** attach PEP 740
 attestations: those require Trusted Publishing, and the action silently ignores
 the `attestations` input when a password is set, so it is pinned to `false`.
 
-Production activation requires npm publishing to be enabled; a production tag
-cannot create a GitHub-only release. PyPI is independently gated. After each
+## Publication order
+
+The GitHub release is published from the sealed ten-file bundle and finalized
+changelog **before** either registry. `@kaleidorg/swap-sdk-react-native`'s
+`postinstall` downloads its iOS and Android archives from the GitHub release for
+its own version, so a package that reaches npm before that release exists
+resolves, installs, and then fails in `postinstall`. An npm publish cannot be
+undone, only superseded. Publishing the release first inverts the failure: a
+registry publish that fails after it leaves a release with no package, which is
+recoverable, rather than a package with no release, which is not.
+
+The production jobs run in this order, and `scripts/check_release_workflow.py`
+fails when this list and the workflow's `needs:` graph disagree:
+
+1. `release-activation`
+2. `release-ready`
+3. `publish-github-release`
+4. `publish-npm`
+5. `publish-pypi`
+6. `verify-npm`
+7. `verify-pypi`
+8. `registry-publish-complete`
+9. `verify-react-native-install`
+
+Production activation requires npm publishing to be enabled, but it enforces
+intent, not outcome: a publisher that fails after the release job leaves a
+GitHub-only release for that tag. PyPI is independently gated. After each
 enabled publisher succeeds, a separate read-only job downloads the registry
 package, matches its bytes and complete inventory against
-`release-manifest.json`, and repeats clean-consumer smoke tests. The final
-GitHub release is published from the sealed ten-file bundle and finalized
-changelog only after every enabled registry and post-publication verifier
-succeeds.
+`release-manifest.json`, and repeats clean-consumer smoke tests.
+`verify-react-native-install` runs last, after both the release and the registry
+gate, because it is the only step that runs `postinstall` for real against the
+published package.
 
 ## Non-publishing release rehearsal
 
@@ -341,9 +366,10 @@ TAG="v$VERSION"
 
 7. A required reviewer other than the tag pusher approves the `release`
    environment. Do not use administrator bypass.
-8. Monitor the tag workflow through artifact construction, OIDC publication,
-   registry download/hash verification, clean Node/Firefox and Python consumer
-   tests, and final GitHub release publication.
+8. Monitor the tag workflow through artifact construction, GitHub release
+   publication, OIDC registry publication, registry download/hash verification,
+   clean Node/Firefox and Python consumer tests, and the final React Native
+   install smoke test.
 9. Download and independently verify the ten GitHub release assets:
 
    ```sh
@@ -371,13 +397,14 @@ publisher succeeds and another fails:
 3. Check each registry and record which exact filenames and hashes were
    accepted.
 4. If the failed registry accepted no files, rerun failed jobs only. GitHub
-   leaves the successful publisher untouched and retries the failed publisher,
-   post-publication verifier, completion gate, and GitHub-release job. This
-   works because release artifact names are attempt-independent, so the retried
-   jobs download the same sealed bundle the first attempt validated. Never
-   rerun *all* jobs: the build jobs would try to re-upload artifact names that
-   already exist and fail, which is the intended protection against silently
-   rebuilding a published version.
+   leaves the successful publisher and the already-published GitHub release
+   untouched, and retries the failed publisher, its post-publication verifier,
+   the completion gate, and the React Native install check. This works because
+   release artifact names are attempt-independent, so the retried jobs download
+   the same sealed bundle the first attempt validated. Never rerun *all* jobs:
+   the build jobs would try to re-upload artifact names that already exist and
+   fail, which is the intended protection against silently rebuilding a
+   published version.
 5. If PyPI accepted only part of the Python file set, that version is spent:
    PyPI does not allow re-uploading a filename, and yanking does not free it.
    Prepare a coordinated patch version rather than attempting to complete the
@@ -385,13 +412,35 @@ publisher succeeds and another fails:
 6. If npm accepted the tarball, treat that version as immutable. Complete only
    the missing registry from the same validated bundle or prepare a coordinated
    patch release; never rebuild or overwrite the npm version.
-7. The GitHub release remains absent because its job depends on the registry
-   publication and verification gate. It is created automatically only after
-   all enabled registries are consistent.
-8. If rerunning failed jobs cannot succeed — for example npm already holds the
-   version, so a fresh preflight would correctly reject it — publish the GitHub
-   release by hand from the retained bundle. Verify before uploading, and never
-   assemble the assets from anything but that bundle:
+7. The GitHub release is already published, because its job runs before both
+   publishers. A partial registry failure therefore leaves a published release,
+   marked `--latest`, for a version one or both registries do not have. Do not
+   delete it to "undo" the release: its archives are what the React Native
+   package's `postinstall` fetches, so deleting them breaks every consumer who
+   already installed. Complete the missing registry from the same validated
+   bundle, or prepare a coordinated patch version.
+8. If `publish-github-release` itself fails, no registry job runs — both
+   publishers depend on it — so no version is spent and rerunning failed jobs is
+   safe. The exception is a cancellation part-way through asset upload:
+   `gh release create` publishes the release first and uploads assets one at a
+   time, so the tag can be left with a published release carrying an incomplete
+   asset set. The job's "Refuse to replace an existing release" guard then
+   blocks every rerun, deliberately. Recover by confirming that no registry
+   accepted files, deleting the incomplete release — the tag survives — and
+   rerunning the failed jobs:
+
+   ```sh
+   gh release delete "$TAG" --repo kaleidoswap/swap-sdk --yes
+   ```
+
+   A draft-then-publish release would make this atomic and is deliberately
+   unavailable: `check_release_workflow.py` rejects `--draft` anywhere in the
+   production workflow, so a release can never be left invisible.
+9. If the release is absent — deleted under step 8, or never created — and
+   rerunning failed jobs cannot succeed, for example because npm already holds
+   the version so a fresh preflight would correctly reject it, publish the
+   GitHub release by hand from the retained bundle. Verify before uploading, and
+   never assemble the assets from anything but that bundle:
 
    ```sh
    gh run download <run-id> \

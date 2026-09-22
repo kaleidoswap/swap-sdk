@@ -12,6 +12,10 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/release.yaml"
 BUILD_WORKFLOW = ROOT / ".github/workflows/release-build.yaml"
 REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
+# The runbook an operator reads mid-incident. Its publication order is an
+# invariant like any other: prose that outlives the job graph it describes is
+# worse than no prose, because it is trusted.
+RUNBOOK = ROOT / "docs/releasing.md"
 # Composite actions the build workflow calls run inside it with its authority,
 # so they are held to the read-only build's rules.
 ACTIONS_DIR = ROOT / ".github/actions"
@@ -120,6 +124,52 @@ def job_dependencies(job: str) -> set[str]:
     return set()
 
 
+def workflow_job_graph(contents: str) -> dict[str, set[str]]:
+    """Map each production job to its direct dependencies."""
+    # Split at `jobs:` first: `on:` carries two-space keys of its own, and those
+    # are not jobs.
+    body = "\n" + contents.split("\njobs:\n", 1)[-1].lstrip("\n")
+    return {
+        name: job_dependencies(job) for name, job in production_jobs(body).items()
+    }
+
+
+def documented_publication_order(runbook: str) -> list[str]:
+    """Return the job order the runbook's publication list claims."""
+    heading = "## Publication order"
+    if heading not in runbook:
+        raise ValueError(
+            "docs/releasing.md must carry a 'Publication order' section naming "
+            "every production job in the order it runs"
+        )
+    section = runbook.split(heading, 1)[1].split("\n## ", 1)[0]
+    return re.findall(r"^\d+\. `([a-z][a-z0-9-]*)`$", section, re.MULTILINE)
+
+
+def validate_runbook(runbook: str, contents: str) -> None:
+    graph = workflow_job_graph(contents)
+    documented = documented_publication_order(runbook)
+    if set(documented) != set(graph):
+        missing = sorted(set(graph) - set(documented))
+        unknown = sorted(set(documented) - set(graph))
+        raise ValueError(
+            "docs/releasing.md publication order must list every production job: "
+            f"missing {missing}, unknown {unknown}"
+        )
+    if len(documented) != len(set(documented)):
+        raise ValueError("docs/releasing.md publication order repeats a job")
+    published: set[str] = set()
+    for name in documented:
+        early = sorted(graph[name] - published)
+        if early:
+            raise ValueError(
+                f"docs/releasing.md lists {name!r} before its dependencies "
+                f"{early}; the runbook's publication order contradicts the "
+                "workflow's needs graph"
+            )
+        published.add(name)
+
+
 def job_section(contents: str, name: str, next_name: str) -> str:
     start = f"  {name}:"
     end = f"  {next_name}:"
@@ -148,6 +198,7 @@ def validate(
     rehearsal_contents: str | None = None,
     build_contents: str | None = None,
     actions_contents: str | None = None,
+    runbook_contents: str | None = None,
 ) -> None:
     if rehearsal_contents is None:
         rehearsal_contents = REHEARSAL_WORKFLOW.read_text(encoding="utf-8")
@@ -155,6 +206,8 @@ def validate(
         build_contents = BUILD_WORKFLOW.read_text(encoding="utf-8")
     if actions_contents is None:
         actions_contents = composite_actions()
+    if runbook_contents is None:
+        runbook_contents = RUNBOOK.read_text(encoding="utf-8")
 
     require_snippets(contents, PRODUCTION_REQUIRED, "production release")
     require_snippets(build_contents, BUILD_REQUIRED, "release build")
@@ -497,6 +550,10 @@ def validate(
             "rehearsal preflight must validate publisher flags without requiring "
             "the current version to still be unclaimed"
         )
+
+    # Last: a contradictory job graph should report its own failure first, not
+    # surface as a documentation complaint.
+    validate_runbook(runbook_contents, contents)
 
 
 def main() -> int:
