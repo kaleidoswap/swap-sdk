@@ -416,9 +416,11 @@ publisher succeeds and another fails:
    publishers. A partial registry failure therefore leaves a published release,
    marked `--latest`, for a version one or both registries do not have. Do not
    delete it to "undo" the release: its archives are what the React Native
-   package's `postinstall` fetches, so deleting them breaks every consumer who
-   already installed. Complete the missing registry from the same validated
-   bundle, or prepare a coordinated patch version.
+   package's `postinstall` fetches, so deleting them leaves every install of
+   that version without its native libraries — a failed `npm install`, or a
+   package that cannot load for anyone who set
+   `KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE`. Complete the missing registry from
+   the same validated bundle, or prepare a coordinated patch version.
 8. If `publish-github-release` itself fails, no registry job runs — both
    publishers depend on it — so no version is spent and rerunning failed jobs is
    safe. The exception is a cancellation part-way through asset upload:
