@@ -57,6 +57,8 @@ not verify. `@arkade-os/swap` 0.0.20 derives the solver's address again, and
 **Migration:** the peer ranges move to `^0.0.20` for `@arkade-os/swap` and
 `>=0.4.74 <0.5.0` for `@arkade-os/sdk`, the SDK line 0.0.20 pins. A 0.0.x caret
 admits one patch only, so a host still on 0.0.14 has to bump both.
+`@kaleidorg/swap-sdk-react-native` re-exports this venue and keeps the 0.0.14
+pins until it can depend on a published SDK release that carries this fix.
 
 Two behaviours come with 0.0.20:
 
