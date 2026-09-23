@@ -6,6 +6,21 @@ All notable changes to this project will be documented in this file.
 
 ## [0.9.1] - 2026-09-23
 
+### Fixed — the React Native package's Arkade entry gets the mainnet send fix
+
+`@kaleidorg/swap-sdk-react-native/arkade` re-exports `@kaleidorg/swap-sdk/arkade`,
+and its peer range still pinned that package to `^0.7.0`. That kept the venue
+on `@arkade-os/swap` 0.0.14, whose mainnet Lightning sends fail with
+`AddressMismatch`, and put `@kaleidorg/swap-sdk@0.9.0` outside the range. 0.9.0
+kept those pins because no published SDK carried the 0.0.20 bump yet. Now one
+does.
+
+**Migration:** the React Native package's peer ranges move to
+`@kaleidorg/swap-sdk ^0.9.0`, `@arkade-os/swap ^0.0.20` and
+`@arkade-os/sdk >=0.4.74 <0.5.0`, matching `@kaleidorg/swap-sdk` itself. A host
+that uses the `/arkade` entry bumps all three together. All three peers stay
+optional, so a host that does not use that entry installs nothing new.
+
 ### Fixed — release engineering: nothing is public before the release is approved
 
 The release review used to arrive only after the GitHub release was already
