@@ -84,12 +84,15 @@ gh api repos/kaleidoswap/swap-sdk/actions/variables \
 
 The only thing standing between a pushed tag and a permanent publish is the
 `release` environment's required reviewers, and an org admin can bypass those.
+The GitHub release sits behind the same review: nothing about a version is
+public until a reviewer approves it.
 An npm publish cannot be undone. Never use a tag to test the pipeline — use the
 non-publishing rehearsal below.
 
 Both publisher jobs:
 
-- depend on the common `release-ready` gate;
+- depend on the common `release-ready` gate, and on nothing else (see
+  "Publication order");
 - use the protected GitHub `release` environment;
 - for npm only, receive job-scoped `id-token: write` — required for provenance,
   and asserted against `publishConfig.provenance`. The PyPI job requests no OIDC
@@ -127,8 +130,28 @@ undone, only superseded. Publishing the release first inverts the failure: a
 registry publish that fails after it leaves a release with no package, which is
 recoverable, rather than a package with no release, which is not.
 
+**One approval releases everything.** `publish-github-release`, `publish-npm`
+and `publish-pypi` all use the `release` environment and all depend on
+`release-ready` alone. They reach the environment together and wait for one
+review, and approving it starts all three. That is why the release-first order
+is not a `needs:` edge. GitHub asks for a new approval on each job that reaches
+a protected environment, so a registry job that started only after the release
+job finished would ask again. The time between the two approvals would be a
+public release with no package behind it. That is how v0.9.0 sat for hours with
+its GitHub release public and its npm and PyPI jobs still waiting.
+
+Each registry job holds its publish in a **Wait for the complete GitHub release**
+step instead. It polls the release for its tag for up to ten minutes, and
+continues only once the release is public and carries every file in the sealed
+bundle. `gh release create` makes a release public before it uploads its assets,
+so a public release alone is not enough. If the release job fails, the registry
+jobs time out and publish nothing. `scripts/check_release_workflow.py` fails if
+either registry job loses that step, runs it after publishing, or gains a
+`needs:` edge that would split the approval.
+
 The production jobs run in this order, and `scripts/check_release_workflow.py`
-fails when this list and the workflow's `needs:` graph disagree:
+fails when this list and the workflow's `needs:` graph disagree. Steps 3 to 5
+start together once approved, and the wait step keeps 4 and 5 behind 3:
 
 1. `release-activation`
 2. `release-ready`
@@ -365,7 +388,9 @@ TAG="v$VERSION"
    ```
 
 7. A required reviewer other than the tag pusher approves the `release`
-   environment. Do not use administrator bypass.
+   environment. Do not use administrator bypass. The review appears once the
+   build and validation jobs pass. One approval releases the GitHub release,
+   npm and PyPI together, and nothing is public before it.
 8. Monitor the tag workflow through artifact construction, GitHub release
    publication, OIDC registry publication, registry download/hash verification,
    clean Node/Firefox and Python consumer tests, and the final React Native
@@ -412,8 +437,8 @@ publisher succeeds and another fails:
 6. If npm accepted the tarball, treat that version as immutable. Complete only
    the missing registry from the same validated bundle or prepare a coordinated
    patch release; never rebuild or overwrite the npm version.
-7. The GitHub release is already published, because its job runs before both
-   publishers. A partial registry failure therefore leaves a published release,
+7. The GitHub release is already published, because both publishers wait for
+   it before publishing. A partial registry failure therefore leaves a published release,
    marked `--latest`, for a version one or both registries do not have. Do not
    delete it to "undo" the release: its archives are what the React Native
    package's `postinstall` fetches, so deleting them leaves every install of
@@ -421,9 +446,9 @@ publisher succeeds and another fails:
    package that cannot load for anyone who set
    `KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE`. Complete the missing registry from
    the same validated bundle, or prepare a coordinated patch version.
-8. If `publish-github-release` itself fails, no registry job runs — both
-   publishers depend on it — so no version is spent and rerunning failed jobs is
-   safe. The exception is a cancellation part-way through asset upload:
+8. If `publish-github-release` itself fails, both publishers time out in their
+   wait step without publishing, so no version is spent and rerunning failed
+   jobs is safe. The rerun asks for one fresh approval covering all three. The exception is a cancellation part-way through asset upload:
    `gh release create` publishes the release first and uploads assets one at a
    time, so the tag can be left with a published release carrying an incomplete
    asset set. The job's "Refuse to replace an existing release" guard then

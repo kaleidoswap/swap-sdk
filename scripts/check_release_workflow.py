@@ -71,6 +71,17 @@ BUILD_REQUIRED = (
     "release.spdx.json",
 )
 
+# The step each registry publisher runs before it publishes. It holds the
+# publish until the GitHub release is public and carries every bundle file:
+# `gh release create` makes a release public before it uploads its assets.
+WAIT_FOR_RELEASE_STEP = "- name: Wait for the complete GitHub release"
+WAIT_FOR_RELEASE = (
+    'gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"',
+    "select(.draft | not)",
+    'select(.state == "uploaded")',
+    'expected="$(ls release-artifacts | sort)"',
+)
+
 # Read from the environment by scripts/check_registry_availability.py. Every
 # workflow that invokes it must declare all three.
 REGISTRY_FLAGS = (
@@ -348,17 +359,34 @@ def validate(
         if snippet not in build_call:
             raise ValueError(f"production build call is missing {snippet!r}")
 
-    for name, job in (
-        ("npm", jobs["publish-npm"]),
-        ("PyPI", jobs["publish-pypi"]),
+    for name, job, publish_command in (
+        ("npm", jobs["publish-npm"], "npm publish ./"),
+        ("PyPI", jobs["publish-pypi"], "uses: pypa/gh-action-pypi-publish@"),
     ):
         dependencies = job_dependencies(job)
         if "release-ready" not in dependencies:
             raise ValueError(f"{name} publisher must depend on release-ready")
-        if "publish-github-release" not in dependencies:
+        # A job that reaches the release environment after another publisher
+        # was approved asks for a second approval, and the time between the two
+        # is a public release with no package behind it. All three publishers
+        # therefore need only release-ready, so one approval releases them
+        # together, and the GitHub-release-first order is held by a wait step.
+        if dependencies != {"release-ready"}:
             raise ValueError(
-                f"{name} publisher must run after the GitHub release, so native "
-                "archives exist before a registry package can be installed"
+                f"{name} publisher must depend on release-ready alone, so it waits "
+                "for the same single approval as every other publisher (found "
+                f"{sorted(dependencies)})"
+            )
+        wait = job.find(WAIT_FOR_RELEASE_STEP)
+        if wait == -1 or any(snippet not in job[wait:] for snippet in WAIT_FOR_RELEASE):
+            raise ValueError(
+                f"{name} publisher must wait for the complete GitHub release, so "
+                "native archives exist before a registry package can be installed"
+            )
+        if job.find(publish_command) < wait:
+            raise ValueError(
+                f"{name} publisher must wait for the complete GitHub release "
+                "before it publishes"
             )
         if "environment: release" not in job:
             raise ValueError(f"{name} publisher must use the release environment")
@@ -439,10 +467,21 @@ def validate(
     release_dependencies = job_dependencies(release_job)
     if "release-ready" not in release_dependencies:
         raise ValueError("GitHub release must consume build workflow outputs")
+    if "environment: release" not in release_job:
+        raise ValueError(
+            "GitHub release must use the release environment, so nothing about "
+            "a version is public before a reviewer approves it"
+        )
     if "registry-publish-complete" in release_dependencies:
         raise ValueError(
             "GitHub release must precede registry publication, so the React "
             "Native package cannot be published before its native archives exist"
+        )
+    if release_dependencies != {"release-ready"}:
+        raise ValueError(
+            "GitHub release must depend on release-ready alone, so it waits for "
+            "the same single approval as the registry publishers (found "
+            f"{sorted(release_dependencies)})"
         )
     # Anywhere in the file, not just this job: a draft flag has no legitimate
     # home in a production release workflow, and a job-scoped check silently

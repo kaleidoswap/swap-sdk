@@ -48,15 +48,14 @@ jobs:
   publish-npm:
     name: Publish exact npm tarball
     if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}
-    needs:
-      - release-ready
-      - publish-github-release
+    needs: release-ready
     runs-on: ubuntu-24.04
     environment: release
     permissions:
       contents: read
       id-token: write
-    timeout-minutes: 10
+    # Ten minutes of waiting for the GitHub release, then the publish itself.
+    timeout-minutes: 20
     steps:
       - name: Set up Node without a package cache
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -86,6 +85,36 @@ jobs:
       - name: Re-verify the sealed bundle bytes before publishing
         working-directory: release-artifacts
         run: sha256sum --check --strict SHA256SUMS
+      # The GitHub release comes first (#75): the React Native package's
+      # postinstall downloads its native archives from it. That order cannot be
+      # a `needs:` edge on publish-github-release. A job that reaches the
+      # release environment after another has been approved asks for its own
+      # approval, and the time between the two approvals is a public release
+      # with no package behind it, which is how v0.9.0 sat for hours. So all
+      # three publishers wait on one approval together, and each registry job
+      # holds its publish here until the release for this tag is public and
+      # carries every file in the sealed bundle. `gh release create` makes the
+      # release public before it uploads, so a public release alone is not
+      # enough. If the release job fails, this times out and nothing is
+      # published.
+      - name: Wait for the complete GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-ready.outputs.tag }}
+        run: |
+          expected="$(ls release-artifacts | sort)"
+          for attempt in $(seq 1 40); do
+            uploaded="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+              --jq 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' \
+              2>/dev/null | sort || true)"
+            if [ "${uploaded}" = "${expected}" ]; then
+              echo "GitHub release ${RELEASE_TAG} carries all $(wc -l <<<"${expected}") bundle files."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "GitHub release ${RELEASE_TAG} is not complete after 10 minutes; publishing nothing." >&2
+          exit 1
       # The `./` is load-bearing. npm-package-arg only reads an argument as a
       # file when it starts with `./`, `../`, `~/`, `/` or a drive letter;
       # a bare `a/b` matches the GitHub `owner/repo` shorthand instead. Without
@@ -108,9 +137,7 @@ jobs:
   publish-pypi:
     name: Publish exact Python artifacts to PyPI
     if: ${{ vars.PYPI_PUBLISH_ENABLED == 'true' }}
-    needs:
-      - release-ready
-      - publish-github-release
+    needs: release-ready
     runs-on: ubuntu-24.04
     environment: release
     permissions:
@@ -119,7 +146,8 @@ jobs:
       # privilege. npm is different: its provenance is generated from the OIDC
       # token independently of how we authenticate, so publish-npm keeps it.
       contents: read
-    timeout-minutes: 10
+    # Ten minutes of waiting for the GitHub release, then the upload itself.
+    timeout-minutes: 20
     steps:
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
@@ -138,6 +166,26 @@ jobs:
         env:
           PYPI_API_TOKEN: ${{ secrets.PYPI_TOKEN }}
         run: test -n "${PYPI_API_TOKEN}"
+      # Held behind the complete GitHub release for the same reason, and with
+      # the same step, as publish-npm; see the comment there.
+      - name: Wait for the complete GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-ready.outputs.tag }}
+        run: |
+          expected="$(ls release-artifacts | sort)"
+          for attempt in $(seq 1 40); do
+            uploaded="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+              --jq 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' \
+              2>/dev/null | sort || true)"
+            if [ "${uploaded}" = "${expected}" ]; then
+              echo "GitHub release ${RELEASE_TAG} carries all $(wc -l <<<"${expected}") bundle files."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "GitHub release ${RELEASE_TAG} is not complete after 10 minutes; publishing nothing." >&2
+          exit 1
       # attestations is explicitly false, not omitted: the action defaults it to
       # true and then silently ignores it when a password is set, because PEP 740
       # requires Trusted Publishing. Requesting them here would be a claim we do
@@ -301,6 +349,11 @@ jobs:
     name: Publish final GitHub release
     needs: release-ready
     runs-on: ubuntu-24.04
+    # Behind the same review as the registries, and approved in the same
+    # action: all three publishers need only release-ready, so they reach the
+    # environment together and one approval releases them together. Nothing
+    # about a version is public until a reviewer has approved it.
+    environment: release
     permissions:
       contents: write
     steps:

@@ -6,6 +6,25 @@ All notable changes to this project will be documented in this file.
 
 ## [0.9.1] - 2026-09-23
 
+### Fixed — release engineering: nothing is public before the release is approved
+
+The release review used to arrive only after the GitHub release was already
+public. `publish-github-release` had no environment, and the npm and PyPI jobs
+were the only ones that asked for approval. v0.9.0 therefore sat for hours as a
+public GitHub release, marked latest, while both registries waited on a
+reviewer. For the React Native package that is the half-published state 0.8.0
+broke on, reached from the other side.
+
+The GitHub release now sits behind the same `release` environment review as
+the registries, and one approval releases all three. The order #75 set, with
+the release first, is held by a **Wait for the complete GitHub release** step in
+each registry job instead of a `needs:` edge. That edge would start the registry
+jobs only after the release job finished, and GitHub would then ask for a second
+approval. Each registry job publishes only once the release is public and
+carries every file in the sealed bundle. If the release job fails, both registry
+jobs time out and publish nothing. `scripts/check_release_workflow.py` enforces
+all of this, and `docs/releasing.md` describes it.
+
 ### Changed — documentation
 
 The root README named `BoltzClient` and `BoltzWsApi` as the TypeScript client
