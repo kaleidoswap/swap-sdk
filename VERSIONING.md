@@ -10,12 +10,25 @@ published; this covers what you can rely on between them.
 `0.8.0` — six and a half weeks — it changed eight times. That is what a
 `0.x` version means and we are not going to pretend otherwise.
 
-Pin an exact version. A caret range on a `0.x` package resolves across minors,
-and our minors move.
+Depend on the minor you have tested, with a range that takes its patches and
+nothing more. On a `0.x` version a caret range does exactly that. `^0.9.0` means
+`>=0.9.0 <0.10.0`: it picks up `0.9.1` and never crosses into `0.10.0`, where a
+breaking change can land. Python's compatible-release operator means the same
+thing.
 
 ```json
-"@kaleidorg/swap-sdk": "0.8.0"
+"@kaleidorg/swap-sdk": "^0.9.0"
 ```
+
+```text
+kaleidorg-swap-sdk~=0.9.0
+```
+
+Move to a new minor deliberately, after reading its changelog entry. Your
+lockfile already makes a build reproducible. An exact pin such as `"0.9.0"`
+would only keep you off the patch releases this document promises. The Rust
+crate is installed from a git tag, which always names one exact version (see
+the README).
 
 What already holds:
 

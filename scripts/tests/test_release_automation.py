@@ -1120,27 +1120,146 @@ class WorkflowInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "after the GitHub release"):
             workflow.validate(changed)
 
-    def test_npm_publish_must_follow_the_github_release(self) -> None:
+    def test_npm_publish_must_wait_for_the_complete_github_release(self) -> None:
         # postinstall fetches native archives from the matching GitHub release.
-        # Publishing npm first creates an unfixable broken-version window.
-        # Anchored on the job header: an unanchored replace would silently move
-        # to another job's needs list if the workflow is ever reordered.
+        # Publishing npm first creates an unfixable broken-version window, and
+        # the wait step is now the only thing that prevents it.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        npm_job = workflow.production_jobs(contents)["publish-npm"]
+        changed = contents.replace(
+            npm_job,
+            npm_job.replace(
+                "      - name: Wait for the complete GitHub release\n",
+                "      - name: Wait a moment\n",
+                1,
+            ),
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(
+            ValueError, "npm publisher must wait for the complete GitHub release"
+        ):
+            workflow.validate(changed)
+
+    def test_pypi_publish_must_wait_for_the_complete_github_release(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        pypi_job = workflow.production_jobs(contents)["publish-pypi"]
+        changed = contents.replace(
+            pypi_job,
+            pypi_job.replace('select(.state == "uploaded")', ".", 1),
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(
+            ValueError, "PyPI publisher must wait for the complete GitHub release"
+        ):
+            workflow.validate(changed)
+
+    def test_wait_steps_must_not_drift_apart(self) -> None:
+        # Registry jobs never check out source, so the wait is duplicated rather
+        # than shared, and the two copies are held identical.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        pypi_job = workflow.production_jobs(contents)["publish-pypi"]
+        changed = contents.replace(
+            pypi_job, pypi_job.replace("sleep 15", "sleep 30", 1), 1
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "copies have drifted apart"):
+            workflow.validate(changed)
+
+    def test_wait_must_fail_fast_on_a_token_problem(self) -> None:
+        # A 401 or 403 will not fix itself; waiting it out only hides the cause
+        # behind a ten-minute timeout.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         changed = contents.replace(
+            '*"(HTTP 401)"* | *"(HTTP 403)"*)', '*"(HTTP 418)"*)'
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(
+            ValueError, "must wait for the complete GitHub release"
+        ):
+            workflow.validate(changed)
+
+    def test_pypi_publisher_without_its_publish_step_is_named(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        pypi_job = workflow.production_jobs(contents)["publish-pypi"]
+        changed = contents.replace(
+            pypi_job,
+            pypi_job.replace(
+                "uses: pypa/gh-action-pypi-publish@", "uses: example/other-publish@", 1
+            ),
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "PyPI publisher must publish with"):
+            workflow.validate(changed)
+
+    def test_npm_publish_after_the_wait_is_required(self) -> None:
+        # A wait that runs after the publish holds nothing.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        npm_job = workflow.production_jobs(contents)["publish-npm"]
+        wait_start = npm_job.index("      - name: Wait for the complete GitHub release")
+        wait_end = npm_job.index("      # The `./` is load-bearing.")
+        wait_step = npm_job[wait_start:wait_end]
+        reordered = npm_job[:wait_start] + npm_job[wait_end:] + wait_step
+        changed = contents.replace(npm_job, reordered, 1)
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "before it publishes"):
+            workflow.validate(changed)
+
+    def test_publisher_needing_the_github_release_is_rejected(self) -> None:
+        # A job that reaches the release environment after another publisher
+        # was approved asks for a second approval, and the gap between the two
+        # is a public release with no package. Anchored on the job header.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "  publish-npm:\n"
+            "    name: Publish exact npm tarball\n"
+            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
+            "    needs: release-ready\n",
             "  publish-npm:\n"
             "    name: Publish exact npm tarball\n"
             "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
             "    needs:\n"
             "      - release-ready\n"
             "      - publish-github-release\n",
-            "  publish-npm:\n"
-            "    name: Publish exact npm tarball\n"
-            "    if: ${{ vars.NPM_PUBLISH_ENABLED == 'true' }}\n"
-            "    needs: release-ready\n",
             1,
         )
         self.assertNotEqual(changed, contents)
-        with self.assertRaisesRegex(ValueError, "npm publisher must run after"):
+        with self.assertRaisesRegex(ValueError, "same single approval"):
+            workflow.validate(changed)
+
+    def test_github_release_must_be_reviewed(self) -> None:
+        # The release is the first public trace of a version, so it sits behind
+        # the same review as the registries.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        release_job = workflow.production_jobs(contents)["publish-github-release"]
+        changed = contents.replace(
+            release_job,
+            release_job.replace("    environment: release\n", "", 1),
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(
+            ValueError, "GitHub release must use the release environment"
+        ):
+            workflow.validate(changed)
+
+    def test_github_release_must_not_wait_on_a_second_approval(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "  publish-github-release:\n"
+            "    name: Publish final GitHub release\n"
+            "    needs: release-ready\n",
+            "  publish-github-release:\n"
+            "    name: Publish final GitHub release\n"
+            "    needs:\n"
+            "      - release-ready\n"
+            "      - release-activation\n",
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "same single approval"):
             workflow.validate(changed)
 
     def test_github_release_must_not_wait_for_registry_completion(self) -> None:
@@ -1165,8 +1284,8 @@ class WorkflowInvariantTests(unittest.TestCase):
         # graph it describes is worse than no prose, because it is trusted.
         runbook = (ROOT / "docs/releasing.md").read_text()
         changed = runbook.replace(
-            "3. `publish-github-release`\n4. `publish-npm`",
-            "3. `publish-npm`\n4. `publish-github-release`",
+            "2. `release-ready`\n3. `publish-github-release`",
+            "2. `publish-github-release`\n3. `release-ready`",
             1,
         )
         self.assertNotEqual(changed, runbook)

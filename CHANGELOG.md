@@ -4,6 +4,63 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-23
+
+### Fixed — the React Native package's Arkade entry gets the mainnet send fix
+
+`@kaleidorg/swap-sdk-react-native/arkade` re-exports `@kaleidorg/swap-sdk/arkade`,
+and its peer range still pinned that package to `^0.7.0`. That kept the venue
+on `@arkade-os/swap` 0.0.14, whose mainnet Lightning sends fail with
+`AddressMismatch`, and put `@kaleidorg/swap-sdk@0.9.0` outside the range. 0.9.0
+kept those pins because no published SDK carried the 0.0.20 bump yet. Now one
+does.
+
+**Migration:** the React Native package's peer ranges move to
+`@kaleidorg/swap-sdk ^0.9.0`, `@arkade-os/swap ^0.0.20` and
+`@arkade-os/sdk >=0.4.74 <0.5.0`, matching `@kaleidorg/swap-sdk` itself. A host
+that uses the `/arkade` entry bumps all three together. All three peers stay
+optional, so a host that does not use that entry installs nothing new.
+
+### Fixed — release engineering: nothing is public before the release is approved
+
+The release review used to arrive only after the GitHub release was already
+public. `publish-github-release` had no environment, and the npm and PyPI jobs
+were the only ones that asked for approval. v0.9.0 therefore sat for half an hour as a
+public GitHub release, marked latest, while both registries waited on a
+reviewer. For the React Native package that is the half-published state 0.8.0
+broke on, reached from the other side.
+
+The GitHub release now sits behind the same `release` environment review as
+the registries, and one approval releases all three. The order #75 set, with
+the release first, is held by a **Wait for the complete GitHub release** step in
+each registry job instead of a `needs:` edge. That edge would start the registry
+jobs only after the release job finished, and GitHub would then ask for a second
+approval. Each registry job publishes only once the release is public and
+carries every file in the sealed bundle. Each attempt logs what it got, and a
+401 or 403 fails at once rather than waiting. If the release job fails, both
+registry jobs time out and publish nothing. `scripts/check_release_workflow.py` enforces
+all of this, and `docs/releasing.md` describes it.
+
+### Changed — documentation
+
+The root README named `BoltzClient` and `BoltzWsApi` as the TypeScript client
+surface, although 0.9.0 removed both names. It now names `SwapClient` and
+`SwapWsApi`.
+
+`VERSIONING.md` said a caret range on a `0.x` package crosses minors, and
+told consumers to pin an exact version for that reason. It does not cross
+them: `^0.9.0` means `>=0.9.0 <0.10.0`, and the 0.9.0 entry below relies on
+exactly that. The document now recommends `^0.9.0`, or `~=0.9.0` in Python.
+Those ranges take this release's patches and never take the next minor. An
+exact pin would have kept a consumer on 0.9.0 and off this release's React
+Native fix.
+
+The 0.9.0 entry below was completed after that release was tagged. It now
+covers the release-engineering fixes, the new versioning and security policies,
+the TypeScript examples, the Boltz-named spellings still on the UniFFI surface,
+and the React Native package's `@kaleidorg/swap-sdk` peer range. The GitHub
+release for v0.9.0 still carries the notes as tagged.
+
 ## [0.9.0] - 2026-09-23
 
 ### BREAKING — the binding surfaces stop saying Boltz
@@ -48,6 +105,16 @@ client, which is what it is. The rename covers the surfaces a partner types,
 not the protocol implementation behind them. The wasm-internal symbol is
 likewise untouched: TypeScript maps it in one line and no consumer sees it.
 
+Two Boltz-named spellings survive on the UniFFI surface. The field that
+carries the client in `SwapTransactionParams` and `LiquidPsetParams` is still
+`boltz_api`, so Python still writes `boltz_api=client`, although the TypeScript
+fields in the same position were renamed. `BoltzWsConfig` is also still
+exported as a record, though no exported function takes it.
+
+Also breaking, and described below: the `@arkade-os/swap` and `@arkade-os/sdk`
+peer ranges move up. A host still on `@arkade-os/swap` 0.0.14 has to bump both
+before `@kaleidorg/swap-sdk@0.9.0` will install beside them.
+
 ### Fixed — Arkade → Lightning quotes from the mainnet solver can be funded again
 
 Every `prepareLightningSend` against Ark Labs' mainnet solver failed with
@@ -60,7 +127,11 @@ not verify. `@arkade-os/swap` 0.0.20 derives the solver's address again, and
 `>=0.4.74 <0.5.0` for `@arkade-os/sdk`, the SDK line 0.0.20 pins. A 0.0.x caret
 admits one patch only, so a host still on 0.0.14 has to bump both.
 `@kaleidorg/swap-sdk-react-native` re-exports this venue and keeps the 0.0.14
-pins until it can depend on a published SDK release that carries this fix.
+pins until it can depend on a published SDK release that carries this fix. Its
+`@kaleidorg/swap-sdk` peer also stays `^0.7.0`, so
+`@kaleidorg/swap-sdk-react-native/arkade` still resolves the 0.7.x venue. It
+does not carry this fix, and `@kaleidorg/swap-sdk@0.9.0` falls outside that
+package's peer range. 0.9.1 moves those ranges.
 
 Two behaviours come with 0.0.20:
 
@@ -113,6 +184,42 @@ The failure message itself now names the archive, the URL, the reason, and every
 way forward. An archive that arrives and does not match the SHA-256 manifest, a
 manifest that does not match the package, and a layout that does not match after
 extraction remain hard failures whatever the variable says.
+
+### Fixed — release engineering: the GitHub release comes before the registries
+
+The 0.8.0 release pipeline published both npm packages and PyPI, then failed.
+The check that verifies the npm publish gave up after about two minutes, while
+npm was still returning 404, and that failure skipped the GitHub release. The
+React Native package's `postinstall` fetches its native archives from that
+release, so `@kaleidorg/swap-sdk-react-native@0.8.0` could be installed but did
+not work for about 40 hours, until the jobs were re-run. That is why the
+GitHub release for 0.8.0 is dated two days after this changelog entry.
+
+- **The GitHub release is published before either registry** (#75). An npm
+  version no longer exists without the release its `postinstall` downloads
+  from. `docs/releasing.md` now describes the new publication order, and lint
+  checks it against the workflow (#86, #89).
+- **npm propagation has a budget it can finish in** (#72): eleven attempts
+  that back off from 10 s to 60 s, about eight minutes, where it used to be
+  12 attempts at a flat 10 s. A 401, 403 or 451 fails at once. A 404, 408, 429
+  or 5xx is retried, and every attempt reports what it got.
+- **Artifact downloads are retried** (#77) under the same status handling. A
+  download that stops before its `Content-Length` is retried rather than kept,
+  and it is written to a `.part` file until complete. Before this, a dropped
+  connection showed up as a checksum mismatch.
+
+### Added — versioning policy, security policy, and TypeScript examples
+
+- [`VERSIONING.md`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/VERSIONING.md) states what a consumer can rely on between
+  releases: the `0.x` contract, how breaking changes are labelled, the
+  deprecation and fix-backport policy, what `1.0` waits on, and which networks
+  `forNetwork` resolves (#80).
+- [`SECURITY.md`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/SECURITY.md) gives a private reporting route and a threat
+  model specific to this SDK (#81).
+- `typescript-sdk/examples/` holds four runnable examples against the signet
+  maker: the pair catalogue, a submarine swap, a reverse swap, and an Arkade
+  Intents quote (#76). They import the package by name and CI typechecks them,
+  so they cannot drift from the public surface.
 
 ## [0.8.0] - 2026-09-18
 
