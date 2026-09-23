@@ -144,8 +144,10 @@ Each registry job holds its publish in a **Wait for the complete GitHub release*
 step instead. It polls the release for its tag for up to ten minutes, and
 continues only once the release is public and carries every file in the sealed
 bundle. `gh release create` makes a release public before it uploads its assets,
-so a public release alone is not enough. If the release job fails, the registry
-jobs time out and publish nothing. `scripts/check_release_workflow.py` fails if
+so a public release alone is not enough. Each attempt logs what it got: the
+HTTP error, or how many of the bundle files are uploaded. A 401 or 403 fails
+at once, because waiting will not fix a token or permission problem. If the
+release job fails, the registry jobs time out and publish nothing. `scripts/check_release_workflow.py` fails if
 either registry job loses that step, runs it after publishing, or gains a
 `needs:` edge that would split the approval.
 

@@ -36,8 +36,9 @@ the release first, is held by a **Wait for the complete GitHub release** step in
 each registry job instead of a `needs:` edge. That edge would start the registry
 jobs only after the release job finished, and GitHub would then ask for a second
 approval. Each registry job publishes only once the release is public and
-carries every file in the sealed bundle. If the release job fails, both registry
-jobs time out and publish nothing. `scripts/check_release_workflow.py` enforces
+carries every file in the sealed bundle. Each attempt logs what it got, and a
+401 or 403 fails at once rather than waiting. If the release job fails, both
+registry jobs time out and publish nothing. `scripts/check_release_workflow.py` enforces
 all of this, and `docs/releasing.md` describes it.
 
 ### Changed — documentation

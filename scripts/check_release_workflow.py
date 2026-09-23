@@ -80,6 +80,9 @@ WAIT_FOR_RELEASE = (
     "select(.draft | not)",
     'select(.state == "uploaded")',
     'expected="$(ls release-artifacts | sort)"',
+    # A token or permission problem fails at once instead of waiting out the
+    # budget, as scripts/download_published_artifacts.py does.
+    '*"(HTTP 401)"* | *"(HTTP 403)"*)',
 )
 
 # Read from the environment by scripts/check_registry_availability.py. Every
@@ -187,6 +190,15 @@ def job_section(contents: str, name: str, next_name: str) -> str:
     if start not in contents or end not in contents:
         raise ValueError(f"could not find workflow job boundary {name!r}")
     return contents.split(start, 1)[1].split(end, 1)[0]
+
+
+def step_block(job: str, name: str) -> str:
+    """Return one step of a job, from its `- name:` line to the next step or comment."""
+    start = job.find(name)
+    if start == -1:
+        return ""
+    end = re.search(r"\n      (?:- |# )", job[start + len(name) :])
+    return job[start : start + len(name) + end.start()] if end else job[start:]
 
 
 def require_snippets(contents: str, snippets: tuple[str, ...], label: str) -> None:
@@ -383,7 +395,10 @@ def validate(
                 f"{name} publisher must wait for the complete GitHub release, so "
                 "native archives exist before a registry package can be installed"
             )
-        if job.find(publish_command) < wait:
+        publish = job.find(publish_command)
+        if publish == -1:
+            raise ValueError(f"{name} publisher must publish with {publish_command!r}")
+        if publish < wait:
             raise ValueError(
                 f"{name} publisher must wait for the complete GitHub release "
                 "before it publishes"
@@ -409,6 +424,16 @@ def validate(
             raise ValueError(f"{name} publisher must not request unused OIDC scope")
         if "sha256sum --check --strict SHA256SUMS" not in job:
             raise ValueError(f"{name} publisher must re-verify the sealed bundle bytes")
+
+    # The registry jobs never check out source, so the wait cannot live in a
+    # script both call. It is duplicated instead, and the copies must match.
+    if step_block(jobs["publish-npm"], WAIT_FOR_RELEASE_STEP) != step_block(
+        jobs["publish-pypi"], WAIT_FOR_RELEASE_STEP
+    ):
+        raise ValueError(
+            "the npm and PyPI publishers must run the same 'Wait for the complete "
+            "GitHub release' step; the two copies have drifted apart"
+        )
 
     activation_job = jobs["release-activation"]
     for snippet in (

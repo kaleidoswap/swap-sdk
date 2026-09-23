@@ -1155,6 +1155,45 @@ class WorkflowInvariantTests(unittest.TestCase):
         ):
             workflow.validate(changed)
 
+    def test_wait_steps_must_not_drift_apart(self) -> None:
+        # Registry jobs never check out source, so the wait is duplicated rather
+        # than shared, and the two copies are held identical.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        pypi_job = workflow.production_jobs(contents)["publish-pypi"]
+        changed = contents.replace(
+            pypi_job, pypi_job.replace("sleep 15", "sleep 30", 1), 1
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "copies have drifted apart"):
+            workflow.validate(changed)
+
+    def test_wait_must_fail_fast_on_a_token_problem(self) -> None:
+        # A 401 or 403 will not fix itself; waiting it out only hides the cause
+        # behind a ten-minute timeout.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            '*"(HTTP 401)"* | *"(HTTP 403)"*)', '*"(HTTP 418)"*)'
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(
+            ValueError, "must wait for the complete GitHub release"
+        ):
+            workflow.validate(changed)
+
+    def test_pypi_publisher_without_its_publish_step_is_named(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        pypi_job = workflow.production_jobs(contents)["publish-pypi"]
+        changed = contents.replace(
+            pypi_job,
+            pypi_job.replace(
+                "uses: pypa/gh-action-pypi-publish@", "uses: example/other-publish@", 1
+            ),
+            1,
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "PyPI publisher must publish with"):
+            workflow.validate(changed)
+
     def test_npm_publish_after_the_wait_is_required(self) -> None:
         # A wait that runs after the publish holds nothing.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()

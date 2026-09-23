@@ -103,13 +103,32 @@ jobs:
           RELEASE_TAG: ${{ needs.release-ready.outputs.tag }}
         run: |
           expected="$(ls release-artifacts | sort)"
+          total="$(wc -l <<<"${expected}")"
           for attempt in $(seq 1 40); do
-            uploaded="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-              --jq 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' \
-              2>/dev/null | sort || true)"
-            if [ "${uploaded}" = "${expected}" ]; then
-              echo "GitHub release ${RELEASE_TAG} carries all $(wc -l <<<"${expected}") bundle files."
-              exit 0
+            # Each attempt says what it got, so a first real run that stalls
+            # shows why rather than only timing out.
+            # stderr goes to a file so a warning on a successful call cannot
+            # corrupt the JSON on stdout.
+            if response="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+              2>"${RUNNER_TEMP}/gh-api-error")"; then
+              uploaded="$(jq -r 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' \
+                <<<"${response}" | sort || true)"
+              if [ "${uploaded}" = "${expected}" ]; then
+                echo "GitHub release ${RELEASE_TAG} carries all ${total} bundle files."
+                exit 0
+              fi
+              echo "Attempt ${attempt}: $(grep -c . <<<"${uploaded}" || true) of ${total} bundle files uploaded."
+            else
+              error="$(cat "${RUNNER_TEMP}/gh-api-error")"
+              # A 404 is the release not existing yet. A 401 or 403 is a token
+              # or permission problem that waiting will not fix.
+              case "${error}" in
+                *"(HTTP 401)"* | *"(HTTP 403)"*)
+                  echo "Cannot read the GitHub release: ${error}" >&2
+                  exit 1
+                  ;;
+              esac
+              echo "Attempt ${attempt}: ${error}"
             fi
             sleep 15
           done
@@ -174,13 +193,32 @@ jobs:
           RELEASE_TAG: ${{ needs.release-ready.outputs.tag }}
         run: |
           expected="$(ls release-artifacts | sort)"
+          total="$(wc -l <<<"${expected}")"
           for attempt in $(seq 1 40); do
-            uploaded="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-              --jq 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' \
-              2>/dev/null | sort || true)"
-            if [ "${uploaded}" = "${expected}" ]; then
-              echo "GitHub release ${RELEASE_TAG} carries all $(wc -l <<<"${expected}") bundle files."
-              exit 0
+            # Each attempt says what it got, so a first real run that stalls
+            # shows why rather than only timing out.
+            # stderr goes to a file so a warning on a successful call cannot
+            # corrupt the JSON on stdout.
+            if response="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+              2>"${RUNNER_TEMP}/gh-api-error")"; then
+              uploaded="$(jq -r 'select(.draft | not) | .assets[] | select(.state == "uploaded") | .name' \
+                <<<"${response}" | sort || true)"
+              if [ "${uploaded}" = "${expected}" ]; then
+                echo "GitHub release ${RELEASE_TAG} carries all ${total} bundle files."
+                exit 0
+              fi
+              echo "Attempt ${attempt}: $(grep -c . <<<"${uploaded}" || true) of ${total} bundle files uploaded."
+            else
+              error="$(cat "${RUNNER_TEMP}/gh-api-error")"
+              # A 404 is the release not existing yet. A 401 or 403 is a token
+              # or permission problem that waiting will not fix.
+              case "${error}" in
+                *"(HTTP 401)"* | *"(HTTP 403)"*)
+                  echo "Cannot read the GitHub release: ${error}" >&2
+                  exit 1
+                  ;;
+              esac
+              echo "Attempt ${attempt}: ${error}"
             fi
             sleep 15
           done
