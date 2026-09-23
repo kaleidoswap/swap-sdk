@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-23
+
+### Changed — documentation
+
+The root README named `BoltzClient` and `BoltzWsApi` as the TypeScript client
+surface, although 0.9.0 removed both names. It now names `SwapClient` and
+`SwapWsApi`.
+
+The 0.9.0 entry below was completed after that release was tagged. It now
+covers the release-engineering fixes, the new versioning and security policies,
+the TypeScript examples, the Boltz-named spellings still on the UniFFI surface,
+and the React Native package's `@kaleidorg/swap-sdk` peer range. The GitHub
+release for v0.9.0 still carries the notes as tagged.
+
 ## [0.9.0] - 2026-09-23
 
 ### BREAKING — the binding surfaces stop saying Boltz
