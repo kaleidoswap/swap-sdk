@@ -46,6 +46,14 @@ The root README named `BoltzClient` and `BoltzWsApi` as the TypeScript client
 surface, although 0.9.0 removed both names. It now names `SwapClient` and
 `SwapWsApi`.
 
+`VERSIONING.md` said a caret range on a `0.x` package crosses minors, and
+told consumers to pin an exact version for that reason. It does not cross
+them: `^0.9.0` means `>=0.9.0 <0.10.0`, and the 0.9.0 entry below relies on
+exactly that. The document now recommends `^0.9.0`, or `~=0.9.0` in Python.
+Those ranges take this release's patches and never take the next minor. An
+exact pin would have kept a consumer on 0.9.0 and off this release's React
+Native fix.
+
 The 0.9.0 entry below was completed after that release was tagged. It now
 covers the release-engineering fixes, the new versioning and security policies,
 the TypeScript examples, the Boltz-named spellings still on the UniFFI surface,
