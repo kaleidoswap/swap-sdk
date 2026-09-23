@@ -46,6 +46,30 @@ client, which is what it is. The rename covers the surfaces a partner types,
 not the protocol implementation behind them. The wasm-internal symbol is
 likewise untouched: TypeScript maps it in one line and no consumer sees it.
 
+### Fixed — Arkade → Lightning quotes from the mainnet solver can be funded again
+
+Every `prepareLightningSend` against Ark Labs' mainnet solver failed with
+`AddressMismatch`: the solver quotes a lockup that `@arkade-os/swap` 0.0.14
+cannot derive, so the venue refused, correctly, to fund an address it could
+not verify. `@arkade-os/swap` 0.0.20 derives the solver's address again, and
+700- and 5,000-sat quotes now prepare end to end on mainnet.
+
+**Migration:** the peer ranges move to `^0.0.20` for `@arkade-os/swap` and
+`>=0.4.74 <0.5.0` for `@arkade-os/sdk`, the SDK line 0.0.20 pins. A 0.0.x caret
+admits one patch only, so a host still on 0.0.14 has to bump both.
+`@kaleidorg/swap-sdk-react-native` re-exports this venue and keeps the 0.0.14
+pins until it can depend on a published SDK release that carries this fix.
+
+Two behaviours come with 0.0.20:
+
+- Quote amounts are typed `number | string`, the string being an asset leg's
+  canonical decimal. Both venue routes are sats corridors, so a quote whose
+  amount is not a safe integer is now refused before a summary is built, where
+  it used to become `NaN`.
+- A send refund that pushes nothing is no longer resolved the moment
+  `refund_locktime` passes. The manager waits out its 2-hour median-time-past
+  lag first, so an empty lockup reports `cancelled` that much later.
+
 ### Fixed — a confidential lockup's blind proofs are re-checked after funding
 
 A confidential lockup is described to the funding wallet with

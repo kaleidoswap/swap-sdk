@@ -93,7 +93,6 @@ function sendResponse(overrides = {}) {
   const script = new VHTLC.ScriptV2(vhtlcOptions());
   return {
     rfqId: overrides.rfqId ?? "rfq-1",
-    quote: quote({ rfq_id: overrides.rfqId ?? "rfq-1", ...overrides.quote }),
     address: "ark1qexample",
     fundAmount: 1_050,
     swapPkScript: new Uint8Array(34).fill(3),
@@ -108,6 +107,9 @@ function sendResponse(overrides = {}) {
     },
     treeParams: {},
     ...overrides,
+    // After the spread, so a partial `overrides.quote` merges into the base
+    // quote instead of replacing it wholesale.
+    quote: quote({ rfq_id: overrides.rfqId ?? "rfq-1", ...overrides.quote }),
   };
 }
 
@@ -531,13 +533,19 @@ test("a matured send stays pending (unpushed) before its refund window opens", a
 });
 
 test("the solo refund of an empty (never actually funded) lockup reports cancelled, not refunded", async () => {
+  // Past refund_locktime (NOW+3600) AND the manager's 2h MTP lag: before the
+  // lag, a refund that pushed nothing may just be one the chain cannot spend
+  // yet, so @arkade-os/swap >=0.0.20 keeps the swap pending until then.
+  let now = NOW + 3601;
   const { venue, store } = makeVenue({
-    now: () => NOW + 3601,
+    now: () => now,
     indexerProvider: fakeIndexer({ vtxos: [] }), // chain never saw the lockup
     flows: { refundArkade: async () => null },
   });
   await venue.prepareLightningSend({ invoice: {} });
   await venue.notifyFunded("rfq-1", "tx");
+  assert.deepEqual((await venue.reconcile()).pending, ["rfq-1"]);
+  now = NOW + 3600 + 2 * 60 * 60;
   const report = await venue.reconcile();
   assert.deepEqual(report.cancelled, ["rfq-1"]);
   assert.equal((await store.get("rfq-1")).resolvedTxid, undefined);
