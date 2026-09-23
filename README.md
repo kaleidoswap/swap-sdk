@@ -196,8 +196,8 @@ repository-pinned tool inputs and rejects any drift.
   `cd bindings && make build-debug`; examples in `bindings/python/examples/`.
 - **Browser/TypeScript (wasm):** `make wasm-pack-build` builds the wasm package
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
-  the typed surface (`BoltzClient`, `SwapScript`, `SwapMasterKey`,
-  `BoltzWsApi`).
+  the typed surface (`SwapClient`, `SwapScript`, `SwapMasterKey`,
+  `SwapWsApi`).
 - **React Native (UniFFI):** see
   [`packages/react-native/`](packages/react-native/README.md). `make rn-build`
   cross-compiles the bindings crate for iOS and Android and regenerates the
