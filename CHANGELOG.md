@@ -25,7 +25,7 @@ optional, so a host that does not use that entry installs nothing new.
 
 The release review used to arrive only after the GitHub release was already
 public. `publish-github-release` had no environment, and the npm and PyPI jobs
-were the only ones that asked for approval. v0.9.0 therefore sat for hours as a
+were the only ones that asked for approval. v0.9.0 therefore sat for half an hour as a
 public GitHub release, marked latest, while both registries waited on a
 reviewer. For the React Native package that is the half-published state 0.8.0
 broke on, reached from the other side.

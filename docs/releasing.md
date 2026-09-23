@@ -137,7 +137,7 @@ review, and approving it starts all three. That is why the release-first order
 is not a `needs:` edge. GitHub asks for a new approval on each job that reaches
 a protected environment, so a registry job that started only after the release
 job finished would ask again. The time between the two approvals would be a
-public release with no package behind it. That is how v0.9.0 sat for hours with
+public release with no package behind it. That is how v0.9.0 sat for half an hour with
 its GitHub release public and its npm and PyPI jobs still waiting.
 
 Each registry job holds its publish in a **Wait for the complete GitHub release**

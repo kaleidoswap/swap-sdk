@@ -90,7 +90,7 @@ jobs:
       # a `needs:` edge on publish-github-release. A job that reaches the
       # release environment after another has been approved asks for its own
       # approval, and the time between the two approvals is a public release
-      # with no package behind it, which is how v0.9.0 sat for hours. So all
+      # with no package behind it, which is how v0.9.0 sat for half an hour. So all
       # three publishers wait on one approval together, and each registry job
       # holds its publish here until the release for this tag is public and
       # carries every file in the sealed bundle. `gh release create` makes the
