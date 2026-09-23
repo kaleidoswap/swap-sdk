@@ -38,7 +38,7 @@
  *
  * `@arkade-os/swap` hard-pins its own `@arkade-os/sdk`; the `wallet` object
  * crossing this boundary must come from that same SDK line. The peer ranges
- * encode it: `>=0.4.71 <0.5.0` for the SDK and `^0.0.14` for `@arkade-os/swap`
+ * encode it: `>=0.4.74 <0.5.0` for the SDK and `^0.0.20` for `@arkade-os/swap`
  * — both pre-1.0, so the caret pins the exact minor/patch line this module
  * was written against. The host app owns the pins.
  */
@@ -551,16 +551,34 @@ export function deserializeVhtlcOptions(
   };
 }
 
+/**
+ * `@arkade-os/swap` 0.0.20 widened quote amounts to `number | string`: the
+ * string form is the canonical decimal of an asset leg. Both routes here are
+ * sats corridors, so a string is a malformed quote — refuse it rather than
+ * coerce a value nobody should fund.
+ */
+function quoteSats(
+  quote: RfqQuote,
+  field: "from_amount" | "to_amount",
+): number {
+  const value = quote[field];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`quote ${field} is not a sats amount: ${String(value)}`);
+  }
+  return value;
+}
+
 function quoteSummary(route: ArkadeRoute, quote: RfqQuote): ArkadeQuoteSummary {
-  const spread = quote.from_amount - quote.to_amount;
+  const fromAmountSats = quoteSats(quote, "from_amount");
+  const toAmountSats = quoteSats(quote, "to_amount");
   return {
     venue: "arkade-intents",
     route,
     pair: quote.pair,
     rfqId: quote.rfq_id,
-    fromAmountSats: quote.from_amount,
-    toAmountSats: quote.to_amount,
-    feeSats: spread,
+    fromAmountSats,
+    toAmountSats,
+    feeSats: fromAmountSats - toAmountSats,
     validUntil: quote.valid_until,
     refundLocktime: quote.refund_locktime,
     solverPubkey: quote.solver_pubkey,

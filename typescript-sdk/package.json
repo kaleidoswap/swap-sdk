@@ -65,8 +65,8 @@
     "smoke:browser-package": "node scripts/smoke-browser-package.mjs"
   },
   "peerDependencies": {
-    "@arkade-os/sdk": ">=0.4.71 <0.5.0",
-    "@arkade-os/swap": "^0.0.14"
+    "@arkade-os/sdk": ">=0.4.74 <0.5.0",
+    "@arkade-os/swap": "^0.0.20"
   },
   "peerDependenciesMeta": {
     "@arkade-os/sdk": {
@@ -77,8 +77,8 @@
     }
   },
   "devDependencies": {
-    "@arkade-os/sdk": "0.4.71",
-    "@arkade-os/swap": "0.0.14",
+    "@arkade-os/sdk": "0.4.74",
+    "@arkade-os/swap": "0.0.20",
     "@eslint/js": "10.0.1",
     "@types/node": "^22.20.1",
     "eslint": "10.8.0",
