@@ -1,6 +1,6 @@
 {
   "name": "@kaleidorg/swap-sdk-react-native",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "KaleidoSwap swap SDK for React Native — Boltz-protocol atomic swaps (submarine/reverse/chain) over a native UniFFI module",
   "main": "./lib/commonjs/index.js",
   "module": "./lib/module/index.js",
