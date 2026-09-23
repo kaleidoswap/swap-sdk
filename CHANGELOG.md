@@ -122,7 +122,7 @@ pins until it can depend on a published SDK release that carries this fix. Its
 `@kaleidorg/swap-sdk` peer also stays `^0.7.0`, so
 `@kaleidorg/swap-sdk-react-native/arkade` still resolves the 0.7.x venue. It
 does not carry this fix, and `@kaleidorg/swap-sdk@0.9.0` falls outside that
-package's peer range.
+package's peer range. 0.9.1 moves those ranges.
 
 Two behaviours come with 0.0.20:
 
@@ -176,7 +176,7 @@ way forward. An archive that arrives and does not match the SHA-256 manifest, a
 manifest that does not match the package, and a layout that does not match after
 extraction remain hard failures whatever the variable says.
 
-### Fixed — release engineering: a release is not half-published for days
+### Fixed — release engineering: the GitHub release comes before the registries
 
 The 0.8.0 release pipeline published both npm packages and PyPI, then failed.
 The check that verifies the npm publish gave up after about two minutes, while
@@ -201,11 +201,11 @@ GitHub release for 0.8.0 is dated two days after this changelog entry.
 
 ### Added — versioning policy, security policy, and TypeScript examples
 
-- [`VERSIONING.md`](VERSIONING.md) states what a consumer can rely on between
+- [`VERSIONING.md`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/VERSIONING.md) states what a consumer can rely on between
   releases: the `0.x` contract, how breaking changes are labelled, the
   deprecation and fix-backport policy, what `1.0` waits on, and which networks
   `forNetwork` resolves (#80).
-- [`SECURITY.md`](SECURITY.md) gives a private reporting route and a threat
+- [`SECURITY.md`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/SECURITY.md) gives a private reporting route and a threat
   model specific to this SDK (#81).
 - `typescript-sdk/examples/` holds four runnable examples against the signet
   maker: the pair catalogue, a submarine swap, a reverse swap, and an Arkade
