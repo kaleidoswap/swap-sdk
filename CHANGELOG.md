@@ -13,6 +13,26 @@ amount or payment hash differs from the terms. Requests time out (30 s by
 default) and take an abort signal. The API has no idempotency key, so a lost
 create response must not be retried blindly.
 
+### Fixed — test suite: the regtest submarine tests no longer race Boltz's batch sweep
+
+`liquid_v2_submarine_esplora` once failed in CI (#59) with
+`400 swap not eligible for a cooperative claim broadcast`. The regtest Boltz
+backend batch-claims the swaps it has deferred every quarter hour, on the
+minute. That run reached its cooperative claim at 11:00:00 UTC, so the sweep
+claimed the swap between our request for the claim details and our partial
+signature. Boltz's refusal was correct, and the swap still completed. The test
+failed because the cooperative path it asserts never ran.
+
+A submarine swap headed for a cooperative claim now starts only when no sweep
+can fire in the next 45 seconds, allowing 5 seconds of clock skew either side.
+Otherwise it waits, which happens for about one swap in fifteen and lasts at
+most 50 seconds. The claim is still asserted on every run, not tolerated when
+it fails. Chain swaps are not exposed to this race, and nothing outside
+`tests/` changes.
+
+The `BorrowMutError` panics reported in the same run came from the LND test
+helper and were fixed separately in #79. They never failed a test.
+
 ## [0.9.1] - 2026-09-23
 
 ### Fixed — the React Native package's Arkade entry gets the mainnet send fix
