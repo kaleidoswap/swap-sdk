@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — Rust core: chain-swap validation takes the preimage hash, and the upstream merge's API changes
+
+Only the Rust crate and the UniFFI records change. The TypeScript and Python
+call sites are unchanged, because the bindings already hold the preimage hash
+and pass it through.
+
+| Was | Now | Migration |
+|---|---|---|
+| `CreateChainResponse::validate(claim, refund, from, to)` | `validate(claim, refund, from, to, &preimage_hash)` | pass the `preimage_hash` you created the swap with; the same applies to `validate_with_currency` and `validate_with_currency_and_asset_context`, after `to_chain` |
+| `BtcSwapTx { .. }`, `LiquidSwapTx { .. }` struct literals | new public field `additional_outputs` | add `additional_outputs: Vec::new()`; the constructors already set it |
+| `SwapScriptCommon` | new required method `receiver_pubkey` | implement it on any external implementor (both in-crate types do) |
+| `swaps::bitcoin::bytes_to_u32_little_endian` | removed | timelocks are decoded by the strict script-number parser inside the script constructors |
+| `From<Chain> for Network` returned `Mainnet` for every chain | returns the chain's own network | callers relying on `Mainnet` for testnet, signet or regtest must match on the chain instead |
+| UniFFI `RefundDetails` record | gains `amount: Option<u64>` | Kotlin, Swift and Python constructors take the new field |
+
+There is no deprecation window, for the reason 0.9.0 gave: nothing outside
+this organization consumes the SDK, and a `0.x` caret pin never crosses a
+minor. For the `validate` change there is a second reason. The old signature
+cannot check the chain-swap hashlock, so keeping it alive would keep the gap
+this release closes.
+
 ### Security — swap responses are checked on every route, merged from upstream boltz-rust
 
 This merges `SatoshiPortal/boltz-rust` trunk as of 2026-09-09 (fork point
@@ -20,11 +41,14 @@ This merges `SatoshiPortal/boltz-rust` trunk as of 2026-09-09 (fork point
 - A claim refuses a preimage that does not hash to the script's hashlock.
 - Cooperative signing refuses a counterparty key that is not the script's.
 - Liquid claim and refund addresses are parsed against the client's network.
-- Bitcoin claims and refunds reject any output below the dust limit for its
-  script type, the computed remainder included. Such a transaction cannot
-  relay, and a cooperative claim has already revealed the preimage.
+- Explicit outputs below the dust limit for their script type are rejected on
+  Bitcoin and Liquid, the computed remainder included. Such a transaction
+  cannot relay, and a cooperative claim has already revealed the preimage.
 - `Debug` on `SwapMasterKey`, `Preimage` and `LiquidSwapScript` no longer
   prints the mnemonic, xprv, preimage or blinding key.
+
+The KaleidoSwap signet maker passes every new check: all five advertised
+routes validate, and funded reverse BTC→L-BTC and chain BTC→L-USDT settled.
 
 ### Added — multi-output claims and refunds
 
@@ -33,26 +57,10 @@ and `TransactionOptions::with_additional_outputs` pay fixed amounts to extra
 addresses. The primary output receives the remainder. Liquid claims order
 outputs `[primary, additions.., fee]` and refunds `[fee, primary, additions..]`.
 A blinded Liquid spend needs confidential additional addresses, and an explicit
-one needs explicit addresses. Explicit outputs below the dust threshold are
-rejected on Liquid as on Bitcoin. The caller-funded L-USDT PSET flow does not take
+one needs explicit addresses. The caller-funded L-USDT PSET flow refuses
 additional outputs. `RefundDetails` gains `amount`, and
 `SwapScript::from_bitcoin` / `from_liquid` rebuild a swap script restored from
 storage.
-
-**Migration (breaking):**
-
-- `CreateChainResponse::validate`, `validate_with_currency` and
-  `validate_with_currency_and_asset_context` take the requested preimage hash
-  after `to_chain`. The bindings already hold it and pass it through.
-- `BtcSwapTx` and `LiquidSwapTx` gained a public `additional_outputs` field,
-  so struct literals must set it; the constructors set it to empty.
-- `SwapScriptCommon` gained a required `receiver_pubkey` method.
-- `swaps::bitcoin::bytes_to_u32_little_endian` is removed; timelocks are
-  decoded by the strict script-number parser.
-- `From<Chain> for Network` returned `Mainnet` for every chain. It now
-  returns the chain's own network (testnet, signet or regtest).
-- The UniFFI `RefundDetails` record gained `amount`, which changes its
-  Kotlin, Swift and Python constructors.
 
 ### Fixed — test suite: the regtest submarine tests no longer race Boltz's batch sweep
 
