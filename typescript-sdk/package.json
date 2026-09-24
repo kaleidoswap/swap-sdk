@@ -26,6 +26,11 @@
       "import": "./dist/arkade/index.js",
       "default": "./dist/arkade/index.js"
     },
+    "./pay-through": {
+      "types": "./dist/pay-through.d.ts",
+      "import": "./dist/pay-through.js",
+      "default": "./dist/pay-through.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

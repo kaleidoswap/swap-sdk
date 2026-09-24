@@ -47,6 +47,45 @@ settles on Mutinynet, so pair it with Mutinynet chain access
 encode addresses identically, so a mismatch raises no error and simply creates
 swaps on one chain while funding or watching another.
 
+## Pay-through
+
+`@kaleidorg/swap-sdk/pay-through` is a small HTTP client for the maker's
+`POST /v2/swap/pay` and `GET /v2/swap/{id}`. It needs no WASM initialization.
+The maker must enable `swap.pay_through_enabled` (off by default), and the
+caller still pays the returned Lightning invoice with its own wallet.
+
+```ts
+import { PayThroughClient } from "@kaleidorg/swap-sdk/pay-through";
+
+const pay = new PayThroughClient({
+  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+});
+const order = await pay.create({
+  destination: recipientAddress,
+  invoiceAmount: 100_000,
+});
+// Show order.invoice, order.payoutAsset, and order.payoutAmount for approval.
+// After the wallet explicitly pays order.invoice:
+const status = await pay.status(order.id);
+```
+
+The payer's Lightning payment remains held until the maker broadcasts the
+address payout. The address payout has no hash lock: the maker controls that
+leg. `transaction.mempool` reports broadcast, and `invoice.settled` reports
+settlement of the hold. Store `id` and `swapAuth` privately before paying the
+invoice.
+
+`create` refuses terms that differ from the request: another destination, a
+different `invoiceAmount`, less than the requested `payoutAmount`, or another
+`asset`. It also decodes the invoice and refuses one whose amount or payment
+hash differs from `invoiceAmount` and `paymentHash`. Amounts use safe JS
+integers, and a larger response is rejected rather than rounded.
+
+Requests time out after `timeoutMs` (30 s by default) and take an optional
+`signal`. A `PayThroughApiError` with a 4xx status means nothing was created;
+a 5xx, a timeout or a network error leaves the outcome unknown. There is no
+idempotency key, so do not blindly retry creation or pay a second invoice.
+
 ## Arkade Intents corridor
 
 `ARKD` in the maker's catalogue is bitcoin on Arkade, and it is not a
