@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-24
+
 ### BREAKING — Rust core: chain-swap validation takes the preimage hash, and the upstream merge's API changes
 
 Only the Rust crate and the UniFFI records change. The TypeScript and Python
@@ -91,22 +93,23 @@ it fails. Chain swaps are not exposed to this race, and nothing outside
 The `BorrowMutError` panics reported in the same run came from the LND test
 helper and were fixed separately in #79. They never failed a test.
 
-## [0.9.1] - 2026-09-23
+0.9.1 was prepared but never tagged, so its changes ship here. They are the
+last three entries of this section.
 
 ### Fixed — the React Native package's Arkade entry gets the mainnet send fix
 
-`@kaleidorg/swap-sdk-react-native/arkade` re-exports `@kaleidorg/swap-sdk/arkade`,
-and its peer range still pinned that package to `^0.7.0`. That kept the venue
-on `@arkade-os/swap` 0.0.14, whose mainnet Lightning sends fail with
-`AddressMismatch`, and put `@kaleidorg/swap-sdk@0.9.0` outside the range. 0.9.0
-kept those pins because no published SDK carried the 0.0.20 bump yet. Now one
-does.
+`@kaleidorg/swap-sdk-react-native/arkade` re-exports `@kaleidorg/swap-sdk/arkade`.
+In 0.9.0 its peer range still pinned that package to `^0.7.0`. That kept the
+venue on `@arkade-os/swap` 0.0.14, whose mainnet Lightning sends fail with
+`AddressMismatch`, and put `@kaleidorg/swap-sdk@0.9.0` outside the range.
 
 **Migration:** the React Native package's peer ranges move to
-`@kaleidorg/swap-sdk ^0.9.0`, `@arkade-os/swap ^0.0.20` and
-`@arkade-os/sdk >=0.4.74 <0.5.0`, matching `@kaleidorg/swap-sdk` itself. A host
-that uses the `/arkade` entry bumps all three together. All three peers stay
-optional, so a host that does not use that entry installs nothing new.
+`@kaleidorg/swap-sdk >=0.9.0 <0.11.0`, `@arkade-os/swap ^0.0.20` and
+`@arkade-os/sdk >=0.4.74 <0.5.0`. A host that uses the `/arkade` entry bumps all
+three together. The `@kaleidorg/swap-sdk` range spans two minors because the
+Arkade entry is identical in 0.9 and 0.10, and a `0.x` caret range would have
+refused 0.10.0. All three peers stay optional, so a host that does not use that
+entry installs nothing new.
 
 ### Fixed — release engineering: nothing is public before the release is approved
 
