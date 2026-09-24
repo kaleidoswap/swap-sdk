@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security — swap responses are checked on every route, merged from upstream boltz-rust
+
+This merges `SatoshiPortal/boltz-rust` trunk as of 2026-09-09 (fork point
+`f30dfe2`). Its validation hardening closes gaps the fork still had:
+
+- A create response is rejected unless its script's hashlock is
+  `HASH160` of the requested preimage hash. Before, only the Liquid submarine
+  route checked this. Bitcoin submarine, both reverse routes and both legs of
+  a chain swap took the maker's hashlock on trust.
+- Timelocks are decoded as minimal, non-negative script numbers and must be
+  block heights equal to the response's `timeoutBlockHeight`.
+- A lockup transaction fetched from the maker must hash to the transaction id
+  the maker names for it.
+- A claim refuses a preimage that does not hash to the script's hashlock.
+- Cooperative signing refuses a counterparty key that is not the script's.
+- Liquid claim and refund addresses are parsed against the client's network.
+- Bitcoin claims and refunds reject any output below the dust limit for its
+  script type, the computed remainder included. Such a transaction cannot
+  relay, and a cooperative claim has already revealed the preimage.
+- `Debug` on `SwapMasterKey`, `Preimage` and `LiquidSwapScript` no longer
+  prints the mnemonic, xprv, preimage or blinding key.
+
+### Added — multi-output claims and refunds
+
+`BtcSwapTx::with_additional_outputs`, `LiquidSwapTx::with_additional_outputs`
+and `TransactionOptions::with_additional_outputs` pay fixed amounts to extra
+addresses. The primary output receives the remainder. Liquid claims order
+outputs `[primary, additions.., fee]` and refunds `[fee, primary, additions..]`.
+A blinded Liquid spend needs confidential additional addresses, and an explicit
+one needs explicit addresses. The caller-funded L-USDT PSET flow does not take
+additional outputs. `RefundDetails` gains `amount`, and
+`SwapScript::from_bitcoin` / `from_liquid` rebuild a swap script restored from
+storage.
+
+**Migration (breaking):** `CreateChainResponse::validate`,
+`validate_with_currency` and `validate_with_currency_and_asset_context` take
+the requested preimage hash after `to_chain`. The bindings already hold it and
+pass it through. `BtcSwapTx` and `LiquidSwapTx` gained a public
+`additional_outputs` field, so struct literals must set it; the constructors
+set it to empty.
+
 ## [0.9.1] - 2026-09-23
 
 ### Fixed — the React Native package's Arkade entry gets the mainnet send fix

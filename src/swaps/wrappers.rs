@@ -1,8 +1,7 @@
+use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use bitcoin::hashes::{sha256, Hash};
-use bitcoin::hex::FromHex;
 use bitcoin::key::Secp256k1;
 use bitcoin::secp256k1::Keypair;
 use bitcoin::{consensus, Amount, Transaction as BtcTransaction};
@@ -26,15 +25,23 @@ use crate::util::fees::Fee;
 use crate::util::invoice::LightningInvoice;
 use crate::util::secrets::Preimage;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ChainClaim {
     refund_keys: Keypair,
     lockup_script: SwapScript,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct DirectTxOptions {
     blinding_key: Option<bitcoin::secp256k1::SecretKey>,
+}
+
+impl fmt::Debug for DirectTxOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DirectTxOptions")
+            .field("has_blinding_key", &self.blinding_key.is_some())
+            .finish()
+    }
 }
 
 impl DirectTxOptions {
@@ -48,11 +55,22 @@ impl DirectTxOptions {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TransactionOptions {
     cooperative: bool,
     chain_claim: Option<ChainClaim>,
     lockup_tx: Option<BtcLikeTransaction>,
+    additional_outputs: Vec<(String, u64)>,
+}
+
+impl fmt::Debug for TransactionOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TransactionOptions")
+            .field("cooperative", &self.cooperative)
+            .field("has_chain_claim", &self.chain_claim.is_some())
+            .field("lockup_tx", &self.lockup_tx)
+            .finish()
+    }
 }
 
 impl Default for TransactionOptions {
@@ -61,6 +79,7 @@ impl Default for TransactionOptions {
             cooperative: true,
             chain_claim: None,
             lockup_tx: None,
+            additional_outputs: Vec::new(),
         }
     }
 }
@@ -85,6 +104,25 @@ impl TransactionOptions {
 
     pub fn with_lockup_tx(mut self, lockup_tx: BtcLikeTransaction) -> Self {
         self.lockup_tx = Some(lockup_tx);
+        self
+    }
+
+    /// Extra fixed-amount outputs (in satoshis) paid in addition to the primary
+    /// output address. The primary output receives the remainder
+    /// (input - fee - sum of these) and remains the first payment output, with
+    /// the additional outputs following in the given order. On Bitcoin the
+    /// primary stays at output index 0; on Liquid claims order outputs
+    /// [primary, additions.., fee] and refunds [fee, primary, additions..].
+    ///
+    /// Calling this again replaces the previously set list. Addresses must be
+    /// valid for the chain client's network. On Liquid all addresses must be
+    /// confidential and all amounts positive; on Bitcoin zero-valued outputs
+    /// below the dust threshold for their script type are rejected at
+    /// construction.
+    /// Cooperative signing commits to every output, including the additional
+    /// ones.
+    pub fn with_additional_outputs(mut self, additional_outputs: Vec<(String, u64)>) -> Self {
+        self.additional_outputs = additional_outputs;
         self
     }
 }
@@ -218,6 +256,8 @@ impl ChainClient {
 pub trait SwapScriptCommon {
     fn swap_type(&self) -> SwapType;
 
+    fn receiver_pubkey(&self) -> bitcoin::PublicKey;
+
     fn partial_sign(
         &self,
         keys: &Keypair,
@@ -293,6 +333,20 @@ impl SwapScript {
             boltz_lockup,
             mrh_amount,
         }
+    }
+
+    /// Build from an already-reconstructed Bitcoin swap script (a swap
+    /// restored from storage rather than freshly created), so the validated
+    /// helpers — notably `submarine_cooperative_claim`, which verifies the
+    /// preimage against the invoice before partial-signing — are reachable
+    /// without the original swap response.
+    pub fn from_bitcoin(script: BtcSwapScript) -> Self {
+        Self::new(SwapScriptImpl::bitcoin(script), None, None)
+    }
+
+    /// Liquid counterpart of [`SwapScript::from_bitcoin`].
+    pub fn from_liquid(script: LiquidSwapScript) -> Self {
+        Self::new(SwapScriptImpl::liquid(script), None, None)
     }
 
     pub fn submarine_from_swap_resp(
@@ -395,18 +449,10 @@ impl SwapScript {
         // Get claim tx details from Boltz
         let claim_tx_response = boltz_api.get_submarine_claim_tx_details(swap_id).await?;
 
-        log::debug!("Received claim tx details : {claim_tx_response:?}");
-
-        let preimage = Vec::from_hex(&claim_tx_response.preimage)?;
-
         // Verify preimage matches invoice payment hash
-        let preimage_hash = sha256::Hash::hash(&preimage);
-        let invoice = LightningInvoice::from_str(invoice)?;
-        if invoice.payment_hash() != preimage_hash.to_string() {
-            return Err(Error::Protocol(
-                "Preimage does not match invoice payment hash".to_string(),
-            ));
-        }
+        verify_submarine_preimage(invoice, &claim_tx_response.preimage)?;
+
+        self.validate_cooperative_counterparty(&claim_tx_response.public_key)?;
 
         // Generate partial signature
         let (partial_sig, pub_nonce) = self.script.common().partial_sign(
@@ -437,6 +483,7 @@ impl SwapScript {
         {
             Ok(claim_tx_response) => {
                 if let Some(claim_tx_response) = claim_tx_response {
+                    self.validate_cooperative_counterparty(&claim_tx_response.public_key)?;
                     Some(self.script.common().partial_sign(
                         our_refund_keys,
                         &claim_tx_response.pub_nonce,
@@ -460,6 +507,19 @@ impl SwapScript {
             swap_id: swap_id.clone(),
             signature,
         })
+    }
+
+    fn validate_cooperative_counterparty(
+        &self,
+        public_key: &bitcoin::PublicKey,
+    ) -> Result<(), Error> {
+        let expected = self.script.common().receiver_pubkey();
+        if *public_key != expected {
+            return Err(Error::Protocol(format!(
+                "Cooperative counterparty public key mismatch: {public_key},{expected}"
+            )));
+        }
+        Ok(())
     }
 
     async fn get_cooperative<'a>(
@@ -600,6 +660,40 @@ impl SwapScript {
         Ok(())
     }
 
+    fn additional_outputs_bitcoin(
+        additional_outputs: &[(String, u64)],
+        network: bitcoin::Network,
+    ) -> Result<Vec<(bitcoin::Address, u64)>, Error> {
+        additional_outputs
+            .iter()
+            .map(|(address, amount)| {
+                let address = bitcoin::Address::from_str(address)?;
+                if !address.is_valid_for_network(network) {
+                    return Err(Error::Address("Address validation failed".to_string()));
+                }
+                Ok((address.assume_checked(), *amount))
+            })
+            .collect()
+    }
+
+    fn additional_outputs_liquid(
+        additional_outputs: &[(String, u64)],
+        params: &'static elements::AddressParams,
+    ) -> Result<Vec<(elements::Address, u64)>, Error> {
+        additional_outputs
+            .iter()
+            .map(|(address, amount)| {
+                let address = elements::Address::parse_with_params(address, params)?;
+                if address.blinding_pubkey.is_none() {
+                    return Err(Error::Protocol(
+                        "Additional output addresses must be confidential on Liquid.".to_string(),
+                    ));
+                }
+                Ok((address, *amount))
+            })
+            .collect()
+    }
+
     pub async fn construct_claim(
         &self,
         preimage: &Preimage,
@@ -613,6 +707,11 @@ impl SwapScript {
             }
         }
 
+        let additional_outputs = params
+            .options
+            .as_ref()
+            .map(|options| options.additional_outputs.clone())
+            .unwrap_or_default();
         let cooperative = self
             .get_cooperative(
                 SwapTxKind::Claim,
@@ -653,7 +752,11 @@ impl SwapScript {
                     params.output_address.clone(),
                     chain_client,
                     utxo,
-                )?;
+                )?
+                .with_additional_outputs(Self::additional_outputs_bitcoin(
+                    &additional_outputs,
+                    chain_client.network().into(),
+                )?);
 
                 tx.sign_claim(&params.keys, preimage, params.fee, cooperative)
                     .await
@@ -692,7 +795,11 @@ impl SwapScript {
                     chain_client,
                     utxo,
                 )
-                .await?;
+                .await?
+                .with_additional_outputs(Self::additional_outputs_liquid(
+                    &additional_outputs,
+                    chain_client.network().into(),
+                )?);
 
                 tx.sign_claim(&params.keys, preimage, params.fee, cooperative, true)
                     .await
@@ -807,6 +914,11 @@ impl SwapScript {
             }
         }
 
+        let additional_outputs = params
+            .options
+            .as_ref()
+            .map(|options| options.additional_outputs.clone())
+            .unwrap_or_default();
         let cooperative = self
             .get_cooperative(
                 SwapTxKind::Refund,
@@ -818,27 +930,37 @@ impl SwapScript {
 
         match self.script.clone() {
             SwapScriptImpl::Bitcoin(script) => {
+                let chain_client = params.chain_client.require_bitcoin_client()?;
                 let tx = BtcSwapTx::new_refund(
                     script.as_ref().clone(),
                     &params.output_address,
-                    params.chain_client.require_bitcoin_client()?,
+                    chain_client,
                     params.boltz_api,
                     params.swap_id.clone(),
                 )
-                .await?;
+                .await?
+                .with_additional_outputs(Self::additional_outputs_bitcoin(
+                    &additional_outputs,
+                    chain_client.network().into(),
+                )?);
                 tx.sign_refund(&params.keys, params.fee, cooperative)
                     .await
                     .map(BtcLikeTransaction::bitcoin)
             }
             SwapScriptImpl::Liquid(script) => {
+                let chain_client = params.chain_client.require_liquid_client()?;
                 let tx = LiquidSwapTx::new_refund(
                     script.as_ref().clone(),
                     &params.output_address,
-                    params.chain_client.require_liquid_client()?,
+                    chain_client,
                     params.boltz_api,
                     params.swap_id.clone(),
                 )
-                .await?;
+                .await?
+                .with_additional_outputs(Self::additional_outputs_liquid(
+                    &additional_outputs,
+                    chain_client.network().into(),
+                )?);
                 tx.sign_refund(&params.keys, params.fee, cooperative, true)
                     .await
                     .map(BtcLikeTransaction::liquid)
@@ -847,9 +969,30 @@ impl SwapScript {
     }
 }
 
+/// Proof-of-payment gate for cooperative submarine claims: the preimage the
+/// server returns must hash to the payment hash committed in the invoice.
+/// Partial-signing without this check would let the server key-path-sweep
+/// the lockup without ever paying the invoice.
+pub fn verify_submarine_preimage(invoice: &str, preimage_hex: &str) -> Result<(), Error> {
+    let preimage = Preimage::from_str(preimage_hex)?;
+    let invoice = LightningInvoice::from_str(invoice)?;
+    if invoice.payment_hash() != preimage.sha256.to_string() {
+        return Err(Error::Protocol(
+            "Preimage does not match invoice payment hash".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::hashes::sha256;
+    use bitcoin::{
+        absolute::LockTime,
+        hashes::{hash160, Hash},
+        PublicKey,
+    };
     use elements::{
         confidential::Value, OutPoint, Script, Sequence, Transaction, TxIn, TxInWitness, TxOut,
         TxOutWitness,
@@ -1008,6 +1151,38 @@ mod tests {
                 .contains("Liquid payout address is not valid for"),
             "a same-network address must pass the address check: {error}"
         );
+    }
+
+    #[test]
+    fn cooperative_counterparty_rejects_unexpected_key() {
+        use bitcoin::key::rand::thread_rng;
+
+        let secp = Secp256k1::new();
+        let receiver_keys = Keypair::new(&secp, &mut thread_rng());
+        let sender_keys = Keypair::new(&secp, &mut thread_rng());
+        let unexpected_keys = Keypair::new(&secp, &mut thread_rng());
+        let public_key = |keys: &Keypair| PublicKey {
+            compressed: true,
+            inner: keys.public_key(),
+        };
+        let script = SwapScript::new(
+            SwapScriptImpl::bitcoin(BtcSwapScript {
+                swap_type: SwapType::Submarine,
+                side: None,
+                funding_addrs: None,
+                hashlock: hash160::Hash::hash(&[0; 32]),
+                receiver_pubkey: public_key(&receiver_keys),
+                locktime: LockTime::from_consensus(200),
+                sender_pubkey: public_key(&sender_keys),
+                expected_amount: 0,
+            }),
+            None,
+            None,
+        );
+
+        assert!(script
+            .validate_cooperative_counterparty(&public_key(&unexpected_keys))
+            .is_err());
     }
 
     #[test]
@@ -1192,5 +1367,56 @@ mod tests {
         );
 
         assert!(result.is_ok());
+    }
+
+    fn signed_test_invoice(payment_hash: sha256::Hash) -> String {
+        use lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
+
+        let secp = Secp256k1::new();
+        let key = bitcoin::secp256k1::SecretKey::from_slice(&[41u8; 32]).unwrap();
+        InvoiceBuilder::new(Currency::Bitcoin)
+            .description("verify_submarine_preimage test".to_string())
+            .payment_hash(payment_hash)
+            .payment_secret(PaymentSecret([7u8; 32]))
+            .duration_since_epoch(std::time::Duration::from_secs(1_726_000_000))
+            .min_final_cltv_expiry_delta(144)
+            .build_signed(|hash| secp.sign_ecdsa_recoverable(hash, &key))
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn submarine_preimage_matching_invoice_is_accepted() {
+        let preimage = [42u8; 32];
+        let invoice = signed_test_invoice(sha256::Hash::hash(&preimage));
+        let preimage_hex = preimage
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+
+        assert!(verify_submarine_preimage(&invoice, &preimage_hex).is_ok());
+    }
+
+    #[test]
+    fn submarine_preimage_mismatch_is_rejected() {
+        let preimage = [42u8; 32];
+        let invoice = signed_test_invoice(sha256::Hash::hash(&preimage));
+        let wrong = [43u8; 32]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+
+        assert!(matches!(
+            verify_submarine_preimage(&invoice, &wrong),
+            Err(Error::Protocol(_))
+        ));
+    }
+
+    #[test]
+    fn submarine_preimage_bad_hex_is_rejected() {
+        let preimage = [42u8; 32];
+        let invoice = signed_test_invoice(sha256::Hash::hash(&preimage));
+
+        assert!(verify_submarine_preimage(&invoice, "not-hex").is_err());
     }
 }

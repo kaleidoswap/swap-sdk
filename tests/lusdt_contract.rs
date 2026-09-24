@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use bitcoin::hashes::{ripemd160, Hash};
+use bitcoin::hashes::{ripemd160, sha256, Hash};
 use bitcoin::taproot::{
     LeafVersion as BitcoinLeafVersion, TaprootBuilder as BitcoinTaprootBuilder,
 };
@@ -433,6 +433,11 @@ fn sdk_constructs_explicit_lusdt_scripts_from_frozen_responses() {
             &chain_refund_key,
             Chain::Bitcoin(BitcoinChain::BitcoinRegtest),
             Chain::Liquid(LiquidChain::LiquidRegtest),
+            &sha256::Hash::from_str(string_at(
+                &fixture,
+                "/create/chain/userAmountRequest/preimageHash",
+            ))
+            .unwrap(),
             Some(Currency::Btc),
             Some(Currency::LUsdt),
             None,

@@ -842,12 +842,14 @@ impl BoltzClient {
             (_, kaleidorg_swap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
             _ => (None, None),
         };
+        let preimage_hash = req.preimage_hash;
         let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
         resp.validate_with_currency_and_asset_context(
             &claim_pk,
             &refund_pk,
             from_chain,
             to_chain,
+            &preimage_hash,
             Some(from_currency),
             Some(to_currency),
             from_asset_context,

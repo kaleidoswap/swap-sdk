@@ -24,13 +24,13 @@ const MAX_CALLER_FUNDED_OUTPUTS: usize = 128;
 const LIQUID_MIN_RELAY_FEE_DENOMINATOR: usize = 10;
 use secp256k1_musig::{musig, Scalar};
 use std::collections::HashSet;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use elements::encode::serialize;
 use elements::secp256k1_zkp::Message;
 
 use crate::util::{
-    hex_to_bytes32,
+    hex_to_bytes32, script_num_to_u32,
     secrets::{rng_32b, Preimage},
 };
 
@@ -151,8 +151,12 @@ pub fn decode_swap_output(
     Ok(secrets)
 }
 
+fn parse_output_address(address: &str, network: LiquidChain) -> Result<Address, Error> {
+    Ok(Address::parse_with_params(address, network.into())?)
+}
+
 /// Liquid v2 swap script helper.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LiquidSwapScript {
     pub swap_type: SwapType,
     pub side: Option<Side>,
@@ -222,6 +226,23 @@ pub struct FundedLiquidPset {
     pub payment_output_secrets: LiquidOutputSecrets,
 }
 
+impl fmt::Debug for LiquidSwapScript {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LiquidSwapScript")
+            .field("swap_type", &self.swap_type)
+            .field("side", &self.side)
+            .field("funding_addrs", &self.funding_addrs)
+            .field("hashlock", &self.hashlock)
+            .field("receiver_pubkey", &self.receiver_pubkey)
+            .field("locktime", &self.locktime)
+            .field("sender_pubkey", &self.sender_pubkey)
+            .field("blinding_key", &"[REDACTED]")
+            .field("asset_context", &self.asset_context)
+            .field("expected_amount", &self.expected_amount)
+            .finish()
+    }
+}
+
 impl LiquidSwapScript {
     /// Create the struct for a submarine swap from boltz create response.
     pub fn submarine_from_swap_resp(
@@ -256,8 +277,7 @@ impl LiquidSwapScript {
                 Ok(Instruction::Op(opcode)) => last_op = opcode,
                 Ok(Instruction::PushBytes(bytes)) => {
                     if last_op == OP_CHECKSIGVERIFY {
-                        locktime =
-                            Some(LockTime::from_consensus(bytes_to_u32_little_endian(bytes)));
+                        locktime = Some(LockTime::from_height(script_num_to_u32(bytes)?)?);
                     } else {
                         continue;
                     }
@@ -271,6 +291,13 @@ impl LiquidSwapScript {
 
         let locktime =
             locktime.ok_or_else(|| Error::Protocol("No timelock provided".to_string()))?;
+        if u64::from(locktime.to_consensus_u32()) != create_swap_response.timeout_block_height {
+            return Err(Error::Protocol(format!(
+                "Timelock mismatch: {},{}",
+                locktime.to_consensus_u32(),
+                create_swap_response.timeout_block_height
+            )));
+        }
 
         let funding_addrs = Address::from_str(&create_swap_response.address)?;
 
@@ -333,8 +360,7 @@ impl LiquidSwapScript {
                 Ok(Instruction::Op(opcode)) => last_op = opcode,
                 Ok(Instruction::PushBytes(bytes)) => {
                     if last_op == OP_CHECKSIGVERIFY {
-                        locktime =
-                            Some(LockTime::from_consensus(bytes_to_u32_little_endian(bytes)));
+                        locktime = Some(LockTime::from_height(script_num_to_u32(bytes)?)?);
                     } else {
                         continue;
                     }
@@ -348,6 +374,13 @@ impl LiquidSwapScript {
 
         let locktime =
             locktime.ok_or_else(|| Error::Protocol("No timelock provided".to_string()))?;
+        if locktime.to_consensus_u32() != reverse_response.timeout_block_height {
+            return Err(Error::Protocol(format!(
+                "Timelock mismatch: {},{}",
+                locktime.to_consensus_u32(),
+                reverse_response.timeout_block_height
+            )));
+        }
 
         let funding_addrs = Address::from_str(&reverse_response.lockup_address)?;
 
@@ -412,8 +445,7 @@ impl LiquidSwapScript {
                 Ok(Instruction::Op(opcode)) => last_op = opcode,
                 Ok(Instruction::PushBytes(bytes)) => {
                     if last_op == OP_CHECKSIGVERIFY {
-                        locktime =
-                            Some(LockTime::from_consensus(bytes_to_u32_little_endian(bytes)));
+                        locktime = Some(LockTime::from_height(script_num_to_u32(bytes)?)?);
                     } else {
                         continue;
                     }
@@ -427,6 +459,13 @@ impl LiquidSwapScript {
 
         let locktime =
             locktime.ok_or_else(|| Error::Protocol("No timelock provided".to_string()))?;
+        if locktime.to_consensus_u32() != chain_swap_details.timeout_block_height {
+            return Err(Error::Protocol(format!(
+                "Timelock mismatch: {},{}",
+                locktime.to_consensus_u32(),
+                chain_swap_details.timeout_block_height
+            )));
+        }
 
         let funding_addrs = Address::from_str(&chain_swap_details.lockup_address)?;
 
@@ -800,40 +839,52 @@ impl LiquidSwapScript {
         swap_id: &str,
         tx_kind: SwapTxKind,
     ) -> Result<(OutPoint, TxOut), Error> {
-        let hex = match self.swap_type {
+        let (expected_txid, hex) = match self.swap_type {
             SwapType::Chain => match tx_kind {
                 SwapTxKind::Claim => {
-                    kaleidorg_swap_sdk
+                    let transaction = kaleidorg_swap_sdk
                         .get_chain_txs(swap_id)
                         .await?
                         .server_lock
                         .ok_or(Error::Protocol(
                             "No server_lock transaction for Chain Swap available".to_string(),
                         ))?
-                        .transaction
-                        .hex
+                        .transaction;
+                    (transaction.id, transaction.hex)
                 }
                 SwapTxKind::Refund => {
-                    kaleidorg_swap_sdk
+                    let transaction = kaleidorg_swap_sdk
                         .get_chain_txs(swap_id)
                         .await?
                         .user_lock
                         .ok_or(Error::Protocol(
                             "No user_lock transaction for Chain Swap available".to_string(),
                         ))?
-                        .transaction
-                        .hex
+                        .transaction;
+                    (transaction.id, transaction.hex)
                 }
             },
-            SwapType::ReverseSubmarine => kaleidorg_swap_sdk.get_reverse_tx(swap_id).await?.hex,
-            SwapType::Submarine => kaleidorg_swap_sdk.get_submarine_tx(swap_id).await?.hex,
+            SwapType::ReverseSubmarine => {
+                let transaction = kaleidorg_swap_sdk.get_reverse_tx(swap_id).await?;
+                (transaction.id, transaction.hex)
+            }
+            SwapType::Submarine => {
+                let transaction = kaleidorg_swap_sdk.get_submarine_tx(swap_id).await?;
+                (transaction.id, transaction.hex)
+            }
         };
-        if hex.is_none() {
-            return Err(Error::Hex(
-                "No transaction hex found in boltz response".to_string(),
-            ));
+        let hex = hex.ok_or(Error::Hex(
+            "No transaction hex found in boltz response".to_string(),
+        ))?;
+        let expected_txid = elements::Txid::from_str(&expected_txid)
+            .map_err(|e| Error::Protocol(format!("Invalid lockup transaction ID: {e}")))?;
+        let tx: Transaction = elements::encode::deserialize(&hex::decode(hex)?)?;
+        let actual_txid = tx.txid();
+        if actual_txid != expected_txid {
+            return Err(Error::Protocol(format!(
+                "Lockup transaction ID mismatch: {actual_txid},{expected_txid}"
+            )));
         }
-        let tx: Transaction = elements::encode::deserialize(&hex::decode(hex.unwrap())?)?;
         self.find_utxo(&tx, network, tx_kind).await
     }
 
@@ -844,14 +895,6 @@ impl LiquidSwapScript {
     ) -> Result<BlockHash, Error> {
         liquid_client.get_genesis_hash().await
     }
-}
-
-fn bytes_to_u32_little_endian(bytes: &[u8]) -> u32 {
-    let mut result = 0u32;
-    for (i, &byte) in bytes.iter().enumerate() {
-        result |= (byte as u32) << (8 * i);
-    }
-    result
 }
 
 /// Immutable swap intent used to validate and finalize a caller-funded PSET.
@@ -1617,6 +1660,10 @@ pub struct LiquidSwapTx {
     pub kind: SwapTxKind,
     pub swap_script: LiquidSwapScript,
     pub output_address: Address,
+    /// Extra fixed-amount outputs paid in addition to `output_address`.
+    /// `output_address` receives the remainder (input - fee - sum of these)
+    /// and remains the first payment output.
+    pub additional_outputs: Vec<(Address, u64)>,
     pub funding_outpoint: OutPoint,
     pub funding_utxo: TxOut, // there should only ever be one outpoint in a swap
     pub genesis_hash: BlockHash, // Required to calculate sighash
@@ -1644,16 +1691,47 @@ impl LiquidSwapTx {
             ));
         }
 
+        let output_address = parse_output_address(&output_address, liquid_client.network())?;
         let genesis_hash = liquid_client.get_genesis_hash().await?;
 
         Ok(LiquidSwapTx {
             kind: SwapTxKind::Claim,
             swap_script,
-            output_address: Address::from_str(&output_address)?,
+            output_address,
+            additional_outputs: Vec::new(),
             funding_outpoint: utxo.0,
             funding_utxo: utxo.1,
             genesis_hash,
         })
+    }
+
+    pub fn validate_lockup_amount(&self, expected_amount: u64) -> Result<(), Error> {
+        let secrets = unblind_swap_output(&self.funding_utxo, self.swap_script.blinding_secret())?;
+        if secrets.value != expected_amount {
+            return Err(Error::Protocol(format!(
+                "Lockup amount mismatch: {} BTC != {} BTC",
+                Amount::from_sat(secrets.value),
+                Amount::from_sat(expected_amount)
+            )));
+        }
+        Ok(())
+    }
+
+    /// Add fixed-amount outputs (in satoshis) paid in addition to the primary
+    /// output address. The primary output receives the remainder
+    /// (input - fee - sum of additional outputs) and remains the first payment
+    /// output, with the additional outputs following in the given order:
+    /// claims order outputs [primary, additions.., fee], refunds
+    /// [fee, primary, additions..].
+    ///
+    /// Calling this again replaces the previously set list. Amounts must be
+    /// positive, and the additional outputs must match the primary output's
+    /// encoding: confidential for a blinded spend, explicit for an explicit
+    /// one. Violations error when the transaction is built. Cooperative
+    /// signing commits to every output, including the additional ones.
+    pub fn with_additional_outputs(mut self, additional_outputs: Vec<(Address, u64)>) -> Self {
+        self.additional_outputs = additional_outputs;
+        self
     }
 
     /// Craft a new ClaimTx. Only works for Reverse and Chain Swaps.
@@ -1701,7 +1779,7 @@ impl LiquidSwapTx {
             ));
         }
 
-        let address = Address::from_str(output_address)?;
+        let address = parse_output_address(output_address, liquid_client.network())?;
         let (funding_outpoint, funding_utxo) = swap_script
             .fetch_swap_utxo(
                 None,
@@ -1718,6 +1796,7 @@ impl LiquidSwapTx {
             kind: SwapTxKind::Refund,
             swap_script,
             output_address: address,
+            additional_outputs: Vec::new(),
             funding_outpoint,
             funding_utxo,
             genesis_hash,
@@ -1768,6 +1847,17 @@ impl LiquidSwapTx {
             return Err(Error::Protocol(
                 "Cannot sign claim with refund-type LiquidSwapTx".to_string(),
             ));
+        }
+
+        let preimage_bytes = preimage
+            .bytes
+            .ok_or(Error::Protocol("No preimage provided".to_string()))?;
+        let actual_hashlock = hash160::Hash::hash(&preimage_bytes);
+        if actual_hashlock != self.swap_script.hashlock {
+            return Err(Error::Protocol(format!(
+                "Preimage hashlock mismatch: {},{}",
+                actual_hashlock, self.swap_script.hashlock
+            )));
         }
 
         let mut claim_tx = create_tx_with_fee(
@@ -1916,13 +2006,16 @@ impl LiquidSwapTx {
     /// a confidential HTLC swept to an explicit destination: the input's
     /// blinding factors would have no blinded output to balance against, so the
     /// Pedersen commitments could not sum to zero.
+    /// Build the payment outputs (the primary output, which receives the
+    /// remainder, first, then any additional fixed-amount outputs) and the
+    /// explicit fee output. In a blinded spend the last payment output
+    /// balances the blinding against the input and the fee output.
     fn build_payout_outputs(
         &self,
         secp: &Secp256k1<elements::secp256k1_zkp::All>,
         rng: &mut OsRng,
         absolute_fees: u64,
-    ) -> Result<(TxOut, TxOut), Error> {
-        let script_pubkey = self.output_address.script_pubkey();
+    ) -> Result<(Vec<TxOut>, TxOut), Error> {
         let blinding_pubkey = self.output_address.blinding_pubkey;
         if blinding_pubkey.is_none() && self.swap_script.blinding_key.is_some() {
             return Err(Error::Protocol(
@@ -1933,69 +2026,127 @@ impl LiquidSwapTx {
         let funding_secrets =
             unblind_swap_output(&self.funding_utxo, self.swap_script.blinding_secret())?;
         let asset_id = funding_secrets.asset;
-        let output_value = Amount::from_sat(funding_secrets.value)
+
+        let total_additional =
+            self.additional_outputs
+                .iter()
+                .try_fold(0u64, |sum, (_, amount)| {
+                    if *amount == 0 {
+                        return Err(Error::Protocol(
+                            "Additional output amount must be greater than zero.".to_string(),
+                        ));
+                    }
+                    sum.checked_add(*amount).ok_or(Error::Protocol(
+                        "Additional output amounts overflow.".to_string(),
+                    ))
+                })?;
+        let primary_value = Amount::from_sat(funding_secrets.value)
             .checked_sub(Amount::from_sat(absolute_fees))
+            .and_then(|value| value.checked_sub(Amount::from_sat(total_additional)))
             .ok_or(Error::Protocol(format!(
-                "Output value {} is less than fees {}",
-                funding_secrets.value, absolute_fees
+                "Output value {} is less than fees {} plus additional outputs {}",
+                funding_secrets.value, absolute_fees, total_additional
             )))?;
         let fee_output = TxOut::new_fee(absolute_fees, asset_id);
+        let destinations: Vec<(&Address, u64)> =
+            std::iter::once((&self.output_address, primary_value.to_sat()))
+                .chain(self.additional_outputs.iter().map(|(a, v)| (a, *v)))
+                .collect();
 
-        let Some(blinding_pubkey) = blinding_pubkey else {
+        if blinding_pubkey.is_none() {
             // Explicit HTLC to an explicit destination: every blinding factor in
             // the transaction is zero, so the outputs carry no proofs.
-            let payment_output = TxOut {
-                script_pubkey,
-                value: Value::Explicit(output_value.to_sat()),
-                asset: Asset::Explicit(asset_id),
-                nonce: elements::confidential::Nonce::Null,
-                witness: TxOutWitness::default(),
-            };
-            return Ok((payment_output, fee_output));
-        };
+            if destinations
+                .iter()
+                .any(|(address, _)| address.blinding_pubkey.is_some())
+            {
+                return Err(Error::Protocol(
+                    "Additional outputs of an explicit Liquid spend must be explicit".to_string(),
+                ));
+            }
+            let payment_outputs = destinations
+                .iter()
+                .map(|(address, value)| TxOut {
+                    script_pubkey: address.script_pubkey(),
+                    value: Value::Explicit(*value),
+                    asset: Asset::Explicit(asset_id),
+                    nonce: elements::confidential::Nonce::Null,
+                    witness: TxOutWitness::default(),
+                })
+                .collect();
+            return Ok((payment_outputs, fee_output));
+        }
 
-        let out_abf = AssetBlindingFactor::new(&mut *rng);
-        let (blinded_asset, asset_surjection_proof) =
-            Asset::Explicit(asset_id).blind(&mut *rng, secp, out_abf, &[funding_secrets])?;
+        // The rangeproof cannot prove a zero value.
+        if primary_value == Amount::ZERO {
+            return Err(Error::Protocol(
+                "Primary output value is zero after fees and additional outputs".to_string(),
+            ));
+        }
 
-        let final_vbf = ValueBlindingFactor::last(
-            secp,
-            output_value.to_sat(),
-            out_abf,
-            &[(
-                funding_secrets.value,
-                funding_secrets.asset_bf,
-                funding_secrets.value_bf,
-            )],
-            &[(
+        let input_blinding_factors = [(
+            funding_secrets.value,
+            funding_secrets.asset_bf,
+            funding_secrets.value_bf,
+        )];
+        let mut output_blinding_factors: Vec<(u64, AssetBlindingFactor, ValueBlindingFactor)> =
+            vec![(
                 absolute_fees,
                 AssetBlindingFactor::zero(),
                 ValueBlindingFactor::zero(),
-            )],
-        );
-        let (blinded_value, nonce, rangeproof) = Value::Explicit(output_value.to_sat()).blind(
-            secp,
-            final_vbf,
-            blinding_pubkey,
-            SecretKey::new(&mut *rng),
-            &script_pubkey,
-            &elements::RangeProofMessage {
-                asset: asset_id,
-                bf: out_abf,
-            },
-        )?;
+            )];
+        let last_index = destinations.len() - 1;
+        let mut payment_outputs = Vec::with_capacity(destinations.len());
 
-        let payment_output = TxOut {
-            script_pubkey,
-            value: blinded_value,
-            asset: blinded_asset,
-            nonce,
-            witness: TxOutWitness {
-                surjection_proof: Some(Box::new(asset_surjection_proof)), // from asset blinding
-                rangeproof: Some(Box::new(rangeproof)),                   // from value blinding
-            },
-        };
-        Ok((payment_output, fee_output))
+        for (i, (address, value)) in destinations.into_iter().enumerate() {
+            let blinding_pubkey = address.blinding_pubkey.ok_or(Error::Protocol(
+                "Additional outputs of a confidential Liquid spend must be confidential"
+                    .to_string(),
+            ))?;
+            let script_pubkey = address.script_pubkey();
+            let out_abf = AssetBlindingFactor::new(&mut *rng);
+            let (blinded_asset, asset_surjection_proof) =
+                Asset::Explicit(asset_id).blind(&mut *rng, secp, out_abf, &[funding_secrets])?;
+
+            let out_vbf = if i == last_index {
+                ValueBlindingFactor::last(
+                    secp,
+                    value,
+                    out_abf,
+                    &input_blinding_factors,
+                    &output_blinding_factors,
+                )
+            } else {
+                ValueBlindingFactor::new(&mut *rng)
+            };
+            let (blinded_value, nonce, rangeproof) = Value::Explicit(value).blind(
+                secp,
+                out_vbf,
+                blinding_pubkey,
+                SecretKey::new(&mut *rng),
+                &script_pubkey,
+                &elements::RangeProofMessage {
+                    asset: asset_id,
+                    bf: out_abf,
+                },
+            )?;
+            if i != last_index {
+                output_blinding_factors.push((value, out_abf, out_vbf));
+            }
+
+            payment_outputs.push(TxOut {
+                script_pubkey,
+                value: blinded_value,
+                asset: blinded_asset,
+                nonce,
+                witness: TxOutWitness {
+                    surjection_proof: Some(Box::new(asset_surjection_proof)), // from asset blinding
+                    rangeproof: Some(Box::new(rangeproof)),                   // from value blinding
+                },
+            });
+        }
+
+        Ok((payment_outputs, fee_output))
     }
 
     fn create_claim(
@@ -2021,14 +2172,14 @@ impl LiquidSwapTx {
         let secp = Secp256k1::new();
         let mut rng = OsRng;
 
-        let (payment_output, fee_output) =
-            self.build_payout_outputs(&secp, &mut rng, absolute_fees)?;
+        let (mut output, fee_output) = self.build_payout_outputs(&secp, &mut rng, absolute_fees)?;
+        output.push(fee_output);
 
         let mut claim_tx = Transaction {
             version: 2,
             lock_time: LockTime::ZERO,
             input: vec![claim_txin],
-            output: vec![payment_output, fee_output],
+            output,
         };
 
         if is_cooperative {
@@ -2255,40 +2406,18 @@ impl LiquidSwapTx {
         let secp = Secp256k1::new();
         let mut rng = OsRng;
 
-        let (payment_output, fee_output) =
+        let (payment_outputs, fee_output) =
             self.build_payout_outputs(&secp, &mut rng, absolute_fees)?;
+        let mut output = vec![fee_output];
+        output.extend(payment_outputs);
 
         let refund_script = self.swap_script.refund_script();
 
-        let lock_time = match refund_script
-            .instructions()
-            .filter_map(|i| {
-                let ins = i.ok()?;
-                if let Instruction::PushBytes(bytes) = ins {
-                    if bytes.len() < 5_usize {
-                        Some(LockTime::from_consensus(bytes_to_u32_little_endian(bytes)))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .next()
-        {
-            Some(r) => r,
-            None => {
-                return Err(Error::Protocol(
-                    "Error getting timelock from refund script".to_string(),
-                ))
-            }
-        };
-
         let mut refund_tx = Transaction {
             version: 2,
-            lock_time,
+            lock_time: self.swap_script.locktime,
             input: vec![refund_txin],
-            output: vec![fee_output, payment_output],
+            output,
         };
 
         if is_cooperative {
@@ -2413,6 +2542,10 @@ fn convert_public_key(key: elements::secp256k1_zkp::PublicKey) -> secp256k1_musi
 impl SwapScriptCommon for LiquidSwapScript {
     fn swap_type(&self) -> SwapType {
         self.swap_type
+    }
+
+    fn receiver_pubkey(&self) -> PublicKey {
+        self.receiver_pubkey
     }
 
     /// Compute the Musig partial signature.
@@ -2743,6 +2876,7 @@ mod tests {
             kind: SwapTxKind::Claim,
             swap_script,
             output_address,
+            additional_outputs: Vec::new(),
             funding_outpoint: OutPoint::new(elements::Txid::all_zeros(), 0),
             funding_utxo,
             genesis_hash: BlockHash::all_zeros(),
@@ -2818,6 +2952,7 @@ mod tests {
         let tx = legacy_swap_tx(script, htlc_address, funding_utxo.clone());
 
         let (payment, fee) = tx.build_payout_outputs(&secp, &mut rng, 1_000).unwrap();
+        let payment = &payment[0];
 
         assert_eq!(payment.asset, Asset::Explicit(policy_asset));
         assert_eq!(payment.value, Value::Explicit(99_000));
@@ -2831,7 +2966,7 @@ mod tests {
             &secp,
             &[value_commitment(&secp, &funding_utxo, policy_asset)],
             &[
-                value_commitment(&secp, &payment, policy_asset),
+                value_commitment(&secp, payment, policy_asset),
                 value_commitment(&secp, &fee, policy_asset),
             ],
         ));
@@ -2839,6 +2974,41 @@ mod tests {
 
     /// An explicit HTLC can still fund a blinded payout: the input contributes
     /// zero blinding factors and `ValueBlindingFactor::last` balances the rest.
+    #[macros::test_all]
+    fn explicit_payout_takes_explicit_additional_outputs_only() {
+        let network = LiquidChain::LiquidRegtest;
+        let policy_asset = network.bitcoin();
+        let secp = Secp256k1::new();
+        let mut rng = OsRng;
+
+        let script = test_script(None, None, 100_000);
+        let htlc_address = script.to_address(network).unwrap();
+        let funding_utxo = explicit_output(htlc_address.script_pubkey(), policy_asset, 100_000);
+        let extra = test_script(None, None, 0).to_address(network).unwrap();
+        let tx = legacy_swap_tx(script, htlc_address.clone(), funding_utxo)
+            .with_additional_outputs(vec![(extra.clone(), 2_000)]);
+
+        let (payment, fee) = tx.build_payout_outputs(&secp, &mut rng, 1_000).unwrap();
+        assert_eq!(payment.len(), 2);
+        assert_eq!(payment[0].value, Value::Explicit(97_000));
+        assert_eq!(payment[1].script_pubkey, extra.script_pubkey());
+        assert_eq!(payment[1].value, Value::Explicit(2_000));
+        assert_eq!(fee.value, Value::Explicit(1_000));
+
+        let blinder = ZKKeyPair::new(&secp, &mut OsRng);
+        let confidential_extra = elements::Address::from_script(
+            &extra.script_pubkey(),
+            Some(blinder.public_key()),
+            network.into(),
+        )
+        .unwrap();
+        let err = tx
+            .with_additional_outputs(vec![(confidential_extra, 2_000)])
+            .build_payout_outputs(&secp, &mut rng, 1_000)
+            .unwrap_err();
+        assert!(err.message().contains("must be explicit"));
+    }
+
     #[macros::test_all]
     fn explicit_lbtc_payout_to_confidential_destination_balances() {
         let network = LiquidChain::LiquidRegtest;
@@ -2856,6 +3026,7 @@ mod tests {
         let tx = legacy_swap_tx(script, destination, funding_utxo.clone());
 
         let (payment, fee) = tx.build_payout_outputs(&secp, &mut rng, 1_000).unwrap();
+        let payment = &payment[0];
 
         assert!(payment.asset.is_confidential());
         assert!(payment.value.is_confidential());
@@ -2874,7 +3045,7 @@ mod tests {
             &secp,
             &[value_commitment(&secp, &funding_utxo, policy_asset)],
             &[
-                value_commitment(&secp, &payment, policy_asset),
+                value_commitment(&secp, payment, policy_asset),
                 value_commitment(&secp, &fee, policy_asset),
             ],
         ));
@@ -2906,6 +3077,7 @@ mod tests {
         let tx = legacy_swap_tx(script, destination, funding_utxo.clone());
 
         let (payment, fee) = tx.build_payout_outputs(&secp, &mut rng, 1_000).unwrap();
+        let payment = &payment[0];
 
         let secrets = payment
             .unblind(&secp, destination_blinder.secret_key())
@@ -2917,7 +3089,7 @@ mod tests {
             &secp,
             &[value_commitment(&secp, &funding_utxo, policy_asset)],
             &[
-                value_commitment(&secp, &payment, policy_asset),
+                value_commitment(&secp, payment, policy_asset),
                 value_commitment(&secp, &fee, policy_asset),
             ],
         ));
@@ -3874,5 +4046,402 @@ mod tests {
 
         assert_eq!(tx_size(&tx, false), 1333);
         assert_eq!(tx_size(&tx, true), 216);
+    }
+
+    use crate::util::secrets::Preimage;
+    use bitcoin::key::rand::thread_rng;
+    use elements::AddressParams;
+
+    const FUNDING_SAT: u64 = 100_000;
+    const FEE_SAT: u64 = 500;
+
+    /// Build a LiquidSwapTx over a locally fabricated blinded funding utxo, so
+    /// the confidential-transaction construction can be exercised without a
+    /// chain backend. Returns the keypair that signs for the given tx kind.
+    fn swap_tx_fixture(
+        swap_type: SwapType,
+        kind: SwapTxKind,
+    ) -> (
+        LiquidSwapTx,
+        Keypair,
+        Preimage,
+        ZKKeyPair,
+        elements::AssetId,
+    ) {
+        let secp = Secp256k1::new();
+        let mut rng = OsRng;
+
+        let preimage = Preimage::random();
+        let recvr_keypair = Keypair::new(&secp, &mut thread_rng());
+        let sender_keypair = Keypair::new(&secp, &mut thread_rng());
+        let blinding_keypair = ZKKeyPair::new(&secp, &mut thread_rng());
+
+        let swap_script = LiquidSwapScript {
+            swap_type,
+            side: None,
+            funding_addrs: None,
+            hashlock: preimage.hash160,
+            receiver_pubkey: PublicKey {
+                compressed: true,
+                inner: recvr_keypair.public_key(),
+            },
+            locktime: elements::LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey {
+                compressed: true,
+                inner: sender_keypair.public_key(),
+            },
+            blinding_key: Some(blinding_keypair),
+            asset_context: None,
+            expected_amount: FUNDING_SAT,
+        };
+
+        let funding_spk = swap_script
+            .to_address(LiquidChain::Liquid)
+            .unwrap()
+            .script_pubkey();
+
+        // Fabricate a blinded funding utxo paying the swap script, blinded to
+        // the swap script's blinding key so create_claim can unblind it.
+        let asset_id = elements::AssetId::from_slice(&[0x11; 32]).unwrap();
+        let in_abf = AssetBlindingFactor::new(&mut rng);
+        let in_vbf = ValueBlindingFactor::new(&mut rng);
+        let surjection_domain = TxOutSecrets {
+            asset: asset_id,
+            asset_bf: AssetBlindingFactor::zero(),
+            value: FUNDING_SAT,
+            value_bf: ValueBlindingFactor::zero(),
+        };
+        let (blinded_asset, surjection_proof) = Asset::Explicit(asset_id)
+            .blind(&mut rng, &secp, in_abf, &[surjection_domain])
+            .unwrap();
+        let rp_msg = elements::RangeProofMessage {
+            asset: asset_id,
+            bf: in_abf,
+        };
+        let (blinded_value, nonce, rangeproof) =
+            elements::confidential::Value::Explicit(FUNDING_SAT)
+                .blind(
+                    &secp,
+                    in_vbf,
+                    blinding_keypair.public_key(),
+                    SecretKey::new(&mut rng),
+                    &funding_spk,
+                    &rp_msg,
+                )
+                .unwrap();
+        let funding_utxo = TxOut {
+            script_pubkey: funding_spk,
+            value: blinded_value,
+            asset: blinded_asset,
+            nonce,
+            witness: TxOutWitness {
+                surjection_proof: Some(Box::new(surjection_proof)),
+                rangeproof: Some(Box::new(rangeproof)),
+            },
+        };
+
+        let (primary_address, primary_blinder) = confidential_address(&secp);
+
+        let signing_keys = match kind {
+            SwapTxKind::Claim => recvr_keypair,
+            SwapTxKind::Refund => sender_keypair,
+        };
+
+        let swap_tx = LiquidSwapTx {
+            kind,
+            swap_script,
+            output_address: primary_address,
+            additional_outputs: Vec::new(),
+            funding_outpoint: OutPoint::default(),
+            funding_utxo,
+            genesis_hash: BlockHash::all_zeros(),
+        };
+
+        (swap_tx, signing_keys, preimage, primary_blinder, asset_id)
+    }
+
+    fn claim_fixture() -> (
+        LiquidSwapTx,
+        Keypair,
+        Preimage,
+        ZKKeyPair,
+        elements::AssetId,
+    ) {
+        swap_tx_fixture(SwapType::ReverseSubmarine, SwapTxKind::Claim)
+    }
+
+    fn confidential_address(
+        secp: &Secp256k1<elements::secp256k1_zkp::All>,
+    ) -> (Address, ZKKeyPair) {
+        let spend_keypair = Keypair::new(secp, &mut thread_rng());
+        let blinder_keypair = ZKKeyPair::new(secp, &mut thread_rng());
+        let address = Address::p2wpkh(
+            &PublicKey {
+                compressed: true,
+                inner: spend_keypair.public_key(),
+            },
+            Some(blinder_keypair.public_key()),
+            &AddressParams::LIQUID,
+        );
+        (address, blinder_keypair)
+    }
+
+    #[macros::test_all]
+    fn test_claim_single_output() {
+        let (swap_tx, keys, preimage, primary_blinder, asset_id) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        let tx = swap_tx
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap();
+
+        assert_eq!(tx.output.len(), 2);
+        assert_eq!(tx.output[1].value.explicit().unwrap(), FEE_SAT);
+        assert!(tx.output[1].is_fee());
+
+        // The whole confidential transaction must balance and verify.
+        tx.verify_tx_amt_proofs(&secp, &[swap_tx.funding_utxo.clone()])
+            .unwrap();
+
+        let secrets = tx.output[0]
+            .unblind(&secp, primary_blinder.secret_key())
+            .unwrap();
+        assert_eq!(secrets.value, FUNDING_SAT - FEE_SAT);
+        assert_eq!(secrets.asset, asset_id);
+    }
+
+    #[macros::test_all]
+    fn test_claim_with_additional_outputs() {
+        let (swap_tx, keys, preimage, primary_blinder, asset_id) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        let (extra_address_1, extra_blinder_1) = confidential_address(&secp);
+        let (extra_address_2, extra_blinder_2) = confidential_address(&secp);
+
+        let swap_tx = swap_tx.with_additional_outputs(vec![
+            (extra_address_1.clone(), 800),
+            (extra_address_2.clone(), 1_200),
+        ]);
+
+        let tx = swap_tx
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap();
+
+        // primary, two additional, fee
+        assert_eq!(tx.output.len(), 4);
+        assert!(tx.output[3].is_fee());
+        assert_eq!(tx.output[3].value.explicit().unwrap(), FEE_SAT);
+
+        // The whole confidential transaction must balance and verify.
+        tx.verify_tx_amt_proofs(&secp, &[swap_tx.funding_utxo.clone()])
+            .unwrap();
+
+        // Primary output keeps index 0 and receives the remainder.
+        assert_eq!(
+            tx.output[0].script_pubkey,
+            swap_tx.output_address.script_pubkey()
+        );
+        let primary = tx.output[0]
+            .unblind(&secp, primary_blinder.secret_key())
+            .unwrap();
+        assert_eq!(primary.value, FUNDING_SAT - FEE_SAT - 800 - 1_200);
+        assert_eq!(primary.asset, asset_id);
+
+        // Each additional output pays its fixed amount to its own address.
+        assert_eq!(tx.output[1].script_pubkey, extra_address_1.script_pubkey());
+        let extra_1 = tx.output[1]
+            .unblind(&secp, extra_blinder_1.secret_key())
+            .unwrap();
+        assert_eq!(extra_1.value, 800);
+        assert_eq!(extra_1.asset, asset_id);
+
+        assert_eq!(tx.output[2].script_pubkey, extra_address_2.script_pubkey());
+        let extra_2 = tx.output[2]
+            .unblind(&secp, extra_blinder_2.secret_key())
+            .unwrap();
+        assert_eq!(extra_2.value, 1_200);
+        assert_eq!(extra_2.asset, asset_id);
+    }
+
+    #[macros::test_all]
+    fn test_refund_with_additional_outputs() {
+        let (swap_tx, keys, _, primary_blinder, asset_id) =
+            swap_tx_fixture(SwapType::Submarine, SwapTxKind::Refund);
+        let secp = Secp256k1::new();
+
+        let (extra_address, extra_blinder) = confidential_address(&secp);
+        let swap_tx = swap_tx.with_additional_outputs(vec![(extra_address.clone(), 700)]);
+
+        let tx = swap_tx.create_refund(&keys, FEE_SAT, false).unwrap();
+
+        // fee first, then primary and additional (refund output order)
+        assert_eq!(tx.output.len(), 3);
+        assert!(tx.output[0].is_fee());
+        assert_eq!(tx.output[0].value.explicit().unwrap(), FEE_SAT);
+
+        tx.verify_tx_amt_proofs(&secp, &[swap_tx.funding_utxo.clone()])
+            .unwrap();
+
+        assert_eq!(
+            tx.output[1].script_pubkey,
+            swap_tx.output_address.script_pubkey()
+        );
+        let primary = tx.output[1]
+            .unblind(&secp, primary_blinder.secret_key())
+            .unwrap();
+        assert_eq!(primary.value, FUNDING_SAT - FEE_SAT - 700);
+        assert_eq!(primary.asset, asset_id);
+
+        assert_eq!(tx.output[2].script_pubkey, extra_address.script_pubkey());
+        let extra = tx.output[2]
+            .unblind(&secp, extra_blinder.secret_key())
+            .unwrap();
+        assert_eq!(extra.value, 700);
+    }
+
+    #[macros::test_all]
+    fn test_claim_additional_outputs_exceed_input() {
+        let (swap_tx, keys, preimage, _, _) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        let (extra_address, _) = confidential_address(&secp);
+        let swap_tx = swap_tx.with_additional_outputs(vec![(extra_address, FUNDING_SAT)]);
+
+        let err = swap_tx
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap_err();
+        assert!(err.message().contains("less than fees"));
+    }
+
+    #[macros::test_all]
+    fn test_additional_output_validation() {
+        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        // Zero amounts are rejected.
+        let (extra_address, _) = confidential_address(&secp);
+        let err = swap_tx
+            .clone()
+            .with_additional_outputs(vec![(extra_address, 0)])
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap_err();
+        assert!(err.message().contains("greater than zero"));
+
+        // Unblinded addresses are rejected.
+        let spend_keypair = Keypair::new(&secp, &mut thread_rng());
+        let unblinded = Address::p2wpkh(
+            &PublicKey {
+                compressed: true,
+                inner: spend_keypair.public_key(),
+            },
+            None,
+            &AddressParams::LIQUID,
+        );
+        let err = swap_tx
+            .with_additional_outputs(vec![(unblinded, 800)])
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap_err();
+        assert!(err.message().contains("must be confidential"));
+    }
+
+    #[macros::test_all]
+    fn test_zero_primary_rejected_without_additional_outputs() {
+        let (swap_tx, keys, preimage, ..) = claim_fixture();
+
+        // input == fee leaves a zero primary, which cannot be blinded.
+        let err = swap_tx
+            .create_claim(&keys, &preimage, FUNDING_SAT, false)
+            .unwrap_err();
+        assert!(err.message().contains("Primary output value is zero"));
+    }
+
+    #[macros::test_all]
+    fn test_zero_primary_rejected_with_additional_outputs() {
+        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        let (extra_address, _) = confidential_address(&secp);
+        let err = swap_tx
+            .with_additional_outputs(vec![(extra_address, FUNDING_SAT - FEE_SAT)])
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap_err();
+        assert!(err.message().contains("Primary output value is zero"));
+    }
+
+    #[macros::test_all]
+    fn test_additional_output_one_satoshi_blinds_and_verifies() {
+        let (swap_tx, keys, preimage, primary_blinder, asset_id) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        let (extra_address, extra_blinder) = confidential_address(&secp);
+        let swap_tx = swap_tx.with_additional_outputs(vec![(extra_address.clone(), 1)]);
+
+        let tx = swap_tx
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap();
+
+        tx.verify_tx_amt_proofs(&secp, &[swap_tx.funding_utxo.clone()])
+            .unwrap();
+
+        assert_eq!(tx.output[1].script_pubkey, extra_address.script_pubkey());
+        let extra = tx.output[1]
+            .unblind(&secp, extra_blinder.secret_key())
+            .unwrap();
+        assert_eq!(extra.value, 1);
+        assert_eq!(extra.asset, asset_id);
+
+        let primary = tx.output[0]
+            .unblind(&secp, primary_blinder.secret_key())
+            .unwrap();
+        assert_eq!(primary.value, FUNDING_SAT - FEE_SAT - 1);
+    }
+
+    #[macros::test_all]
+    fn test_additional_outputs_overflow() {
+        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let secp = Secp256k1::new();
+
+        let (extra_1, _) = confidential_address(&secp);
+        let (extra_2, _) = confidential_address(&secp);
+        let err = swap_tx
+            .with_additional_outputs(vec![(extra_1, u64::MAX), (extra_2, 1)])
+            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .unwrap_err();
+        assert!(err.message().contains("overflow"));
+    }
+
+    #[test]
+    fn output_address_rejects_wrong_network() {
+        let secp = Secp256k1::new();
+        let keypair = ZKKeyPair::new(&secp, &mut OsRng);
+        let address = Address::p2wpkh(
+            &PublicKey::new(keypair.public_key()),
+            None,
+            &elements::AddressParams::LIQUID,
+        );
+
+        assert!(parse_output_address(&address.to_string(), LiquidChain::LiquidRegtest).is_err());
+    }
+
+    #[test]
+    fn swap_script_debug_redacts_blinding_key() {
+        let secp = Secp256k1::new();
+        let receiver_keys = ZKKeyPair::new(&secp, &mut OsRng);
+        let sender_keys = ZKKeyPair::new(&secp, &mut OsRng);
+        let blinding_key = ZKKeyPair::new(&secp, &mut OsRng);
+        let script = LiquidSwapScript {
+            swap_type: SwapType::ReverseSubmarine,
+            side: None,
+            funding_addrs: None,
+            hashlock: hash160::Hash::hash(&[0; 32]),
+            receiver_pubkey: PublicKey::new(receiver_keys.public_key()),
+            locktime: LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey::new(sender_keys.public_key()),
+            blinding_key: Some(blinding_key),
+            asset_context: None,
+            expected_amount: 0,
+        };
+
+        assert!(!format!("{script:?}").contains(&blinding_key.display_secret().to_string()));
     }
 }
