@@ -62,6 +62,15 @@ additional outputs. `RefundDetails` gains `amount`, and
 `SwapScript::from_bitcoin` / `from_liquid` rebuild a swap script restored from
 storage.
 
+### Added — `@kaleidorg/swap-sdk/pay-through`, a client for the maker's pay-through API
+
+`PayThroughClient` calls `POST /v2/swap/pay` and `GET /v2/swap/{id}` and needs
+no WASM initialization. The maker has to enable `swap.pay_through_enabled`.
+`create` refuses terms that differ from the request, and an invoice whose
+amount or payment hash differs from the terms. Requests time out (30 s by
+default) and take an abort signal. The API has no idempotency key, so a lost
+create response must not be retried blindly.
+
 ### Fixed — test suite: the regtest submarine tests no longer race Boltz's batch sweep
 
 `liquid_v2_submarine_esplora` once failed in CI (#59) with
