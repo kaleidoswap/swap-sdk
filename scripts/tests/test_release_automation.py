@@ -1338,6 +1338,41 @@ class WorkflowInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "release authority"):
             workflow.validate(contents, actions_contents="\n      run: npm publish .\n")
 
+    def test_release_build_must_run_on_hosted_runners(self) -> None:
+        # release.yaml publishes what release-build.yaml builds, so a build job
+        # on a persistent self-hosted machine ships whatever an earlier pull
+        # request left in its toolchain or caches.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        build = (ROOT / ".github/workflows/release-build.yaml").read_text()
+        for replacement in (
+            "runs-on: [self-hosted, swap-sdk-ci]",
+            # A custom label alone selects a self-hosted runner.
+            "runs-on: swap-sdk-ci",
+            "runs-on:\n      group: swap-sdk",
+        ):
+            changed = build.replace("runs-on: ubuntu-24.04", replacement, 1)
+            self.assertNotEqual(changed, build)
+            with self.subTest(replacement=replacement):
+                with self.assertRaisesRegex(ValueError, "GitHub-hosted"):
+                    workflow.validate(contents, build_contents=changed)
+
+    def test_release_build_matrix_must_name_hosted_runners(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        build = (ROOT / ".github/workflows/release-build.yaml").read_text()
+        changed = build.replace("runner: ubuntu-24.04\n", "runner: swap-sdk-ci\n", 1)
+        self.assertNotEqual(changed, build)
+        with self.assertRaisesRegex(ValueError, "GitHub-hosted"):
+            workflow.validate(contents, build_contents=changed)
+
+    def test_publisher_must_run_on_hosted_runners(self) -> None:
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        changed = contents.replace(
+            "runs-on: ubuntu-24.04", "runs-on: [self-hosted, swap-sdk-ci]", 1
+        )
+        self.assertNotEqual(changed, contents)
+        with self.assertRaisesRegex(ValueError, "GitHub-hosted"):
+            workflow.validate(changed)
+
     def test_extra_oidc_permission_is_rejected(self) -> None:
         # A real permission key, not a comment: the count is anchored to YAML
         # keys so that a comment mentioning the scope cannot inflate it.
