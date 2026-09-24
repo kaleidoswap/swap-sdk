@@ -8,7 +8,7 @@ use kaleidorg_swap_sdk::{
     swaps::{boltz::CreateSubmarineRequest, ChainClient, SwapScript, SwapTransactionParams},
     util::{setup_logger, sleep},
 };
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::regtest::common::*;
 use crate::regtest::WAIT_TIME;
@@ -25,7 +25,20 @@ wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 const BTC_CHAIN: BitcoinChain = BitcoinChain::BitcoinRegtest;
 const LIQUID_CHAIN: LiquidChain = LiquidChain::LiquidRegtest;
 
+/// Upper bound on a swap's run from creation to cooperative claim. Each of the
+/// three statuses awaited on the way can take up to `next_status`'s 10s, and
+/// the node RPCs in between add a few seconds more.
+const COOPERATIVE_CLAIM_WINDOW: Duration = Duration::from_secs(45);
+
 async fn v2_submarine(chain_client: &ChainClient, underpay: bool, chain: Chain) {
+    if !underpay {
+        // From the moment Boltz pays the invoice until our partial signature
+        // lands, a scheduled batch sweep would claim the swap first and the
+        // cooperative claim below would be refused. The window covers the
+        // whole swap, since the claim cannot be timed any closer than that.
+        utils::wait_out_boltz_batch_sweep(COOPERATIVE_CLAIM_WINDOW).await;
+    }
+
     let secp = bitcoin::secp256k1::Secp256k1::new();
     let our_keys = Keypair::new(&secp, &mut thread_rng());
 

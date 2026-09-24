@@ -5,9 +5,10 @@ use futures::FutureExt;
 #[cfg(feature = "ws")]
 use kaleidorg_swap_sdk::boltz::BoltzWsApi;
 use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, LiquidChain};
+use kaleidorg_swap_sdk::util::sleep;
 use reqwest::Client;
 use serde_json::{json, Value};
-use std::{error::Error, sync::Arc};
+use std::{error::Error, sync::Arc, time::Duration};
 
 const BITCOIND_URL: &str = "http://localhost:18443/wallet/client";
 const ELEMENTSD_URL: &str = "http://localhost:18884/wallet/client";
@@ -218,6 +219,139 @@ pub async fn mine_blocks(n_blocks: u64) -> Result<(), Box<dyn Error>> {
         json_rpc_request(chain, "generatetoaddress", json!([n_blocks, address])).await?;
     }
     Ok(())
+}
+
+/// How often the regtest Boltz backend batch-sweeps the claims it deferred.
+///
+/// `regtest/boltz/data/backend/boltz.conf` does not set
+/// `swap.batchClaimInterval`, so the backend's default cron applies:
+/// `*/15 * * * *`, on the minute, every quarter hour. Every time zone offset is
+/// a whole number of quarter hours, so the boundaries fall on multiples of 15
+/// minutes in Unix time whatever the container's zone.
+const BOLTZ_BATCH_CLAIM_INTERVAL: Duration = Duration::from_secs(15 * 60);
+
+/// Margin either side of a sweep for the host and container clocks to disagree.
+const BOLTZ_SWEEP_CLOCK_SKEW: Duration = Duration::from_secs(5);
+
+/// Waits, if need be, until no Boltz batch sweep can fire in the next `window`.
+///
+/// Once Boltz pays a submarine swap's invoice it defers its own claim and
+/// reports `transaction.claim.pending`. The swap then waits in the backend's
+/// `DeferredClaimer` until we send a partial signature for a cooperative claim
+/// or the next scheduled sweep claims it on its own. If the sweep wins, Boltz
+/// answers our signature with `400 swap not eligible for a cooperative claim
+/// broadcast`. That is correct server behaviour, and the swap still completes,
+/// but the test fails. Run 34591230856 hit this at 11:00:00 UTC, on a sweep.
+///
+/// Tolerating that error would let the cooperative path go untested whenever
+/// the race is lost. Starting the swap clear of a sweep keeps it under test on
+/// every run.
+pub async fn wait_out_boltz_batch_sweep(window: Duration) {
+    if let Some(wait) = batch_sweep_wait(unix_now(), window) {
+        log::info!(
+            "Waiting {}s so a Boltz batch sweep cannot claim the swap before we do",
+            wait.as_secs()
+        );
+        sleep(wait).await;
+    }
+}
+
+/// How long to wait at `now` (since the Unix epoch) so the next `window` holds
+/// no sweep, allowing for clock skew. `None` when it is clear already.
+fn batch_sweep_wait(now: Duration, window: Duration) -> Option<Duration> {
+    let interval = BOLTZ_BATCH_CLAIM_INTERVAL.as_millis();
+    let skew = BOLTZ_SWEEP_CLOCK_SKEW.as_millis();
+    let since_sweep = now.as_millis() % interval;
+    let until_sweep = interval - since_sweep;
+
+    let wait_ms = if since_sweep < skew {
+        // A sweep has just fired, or is about to on the container's clock.
+        skew - since_sweep
+    } else if until_sweep < window.as_millis() + skew {
+        until_sweep + skew
+    } else {
+        return None;
+    };
+
+    Some(Duration::from_millis(wait_ms as u64))
+}
+
+fn unix_now() -> Duration {
+    // `SystemTime::now()` panics on wasm32-unknown-unknown; ask the browser.
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    {
+        Duration::from_millis(js_sys::Date::now() as u64)
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock is before the Unix epoch")
+    }
+}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+mod batch_sweep_wait_tests {
+    use super::{batch_sweep_wait, BOLTZ_BATCH_CLAIM_INTERVAL, BOLTZ_SWEEP_CLOCK_SKEW};
+    use std::time::Duration;
+
+    const WINDOW: Duration = Duration::from_secs(60);
+
+    /// Some quarter-hour boundary: 2026-09-11T11:00:00Z, when #59's run failed.
+    const SWEEP: Duration = Duration::from_secs(1_789_124_400);
+
+    fn secs(s: u64) -> Duration {
+        Duration::from_secs(s)
+    }
+
+    #[test]
+    fn the_boundary_constant_is_a_sweep() {
+        assert_eq!(SWEEP.as_secs() % BOLTZ_BATCH_CLAIM_INTERVAL.as_secs(), 0);
+    }
+
+    #[test]
+    fn does_not_wait_mid_interval() {
+        assert_eq!(batch_sweep_wait(SWEEP + secs(7 * 60), WINDOW), None);
+    }
+
+    /// The run in #59 started its swap about 1.5s before the 11:00 sweep.
+    #[test]
+    fn waits_past_an_imminent_sweep() {
+        let now = SWEEP - Duration::from_millis(1_500);
+        let wait = batch_sweep_wait(now, WINDOW).unwrap();
+        assert_eq!(now + wait, SWEEP + BOLTZ_SWEEP_CLOCK_SKEW);
+    }
+
+    #[test]
+    fn waits_for_a_sweep_that_just_fired_to_clear_the_skew() {
+        let now = SWEEP + secs(2);
+        let wait = batch_sweep_wait(now, WINDOW).unwrap();
+        assert_eq!(now + wait, SWEEP + BOLTZ_SWEEP_CLOCK_SKEW);
+    }
+
+    #[test]
+    fn the_skew_widens_the_window() {
+        let edge = SWEEP - WINDOW - BOLTZ_SWEEP_CLOCK_SKEW;
+        assert_eq!(batch_sweep_wait(edge, WINDOW), None);
+        assert!(batch_sweep_wait(edge + Duration::from_millis(1), WINDOW).is_some());
+    }
+
+    /// Whatever the starting point, the swap then has the whole window clear.
+    #[test]
+    fn leaves_the_window_clear_everywhere() {
+        let interval = BOLTZ_BATCH_CLAIM_INTERVAL.as_secs();
+        let skew = BOLTZ_SWEEP_CLOCK_SKEW.as_secs();
+        for offset in 0..interval {
+            let now = SWEEP + secs(offset);
+            let start = now + batch_sweep_wait(now, WINDOW).unwrap_or_default();
+            let since = start.as_secs() % interval;
+            assert!(
+                since >= skew && interval - since >= WINDOW.as_secs() + skew,
+                "starting at +{offset}s leaves the swap {since}s past a sweep",
+            );
+        }
+    }
 }
 
 // Pure body parsing, so the native run covers it; nothing here is
