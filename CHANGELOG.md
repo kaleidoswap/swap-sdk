@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-24
+
 ### Fixed — test suite: the regtest submarine tests no longer race Boltz's batch sweep
 
 `liquid_v2_submarine_esplora` once failed in CI (#59) with
@@ -23,6 +25,15 @@ it fails. Chain swaps are not exposed to this race, and nothing outside
 
 The `BorrowMutError` panics reported in the same run came from the LND test
 helper and were fixed separately in #79. They never failed a test.
+
+### Changed — the React Native package accepts swap-sdk 0.9 or 0.10 for its Arkade entry
+
+`@kaleidorg/swap-sdk-react-native/arkade` re-exports `@kaleidorg/swap-sdk/arkade`,
+and its optional peer range was `^0.9.0`. On `0.x` a caret range never crosses a
+minor, so React Native 0.10.0 would have refused `@kaleidorg/swap-sdk@0.10.0`,
+the gap 0.9.1 had to close for 0.9.0. The Arkade entry is the same in both
+minors, so the peer range is now `>=0.9.0 <0.11.0` and the dev dependency stays
+on the published 0.9.0.
 
 ## [0.9.1] - 2026-09-23
 
