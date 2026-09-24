@@ -4,12 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added — `@kaleidorg/swap-sdk/pay-through`, a client for the maker's draft pay-through API
+### Added — `@kaleidorg/swap-sdk/pay-through`, a client for the maker's pay-through API
 
 `PayThroughClient` calls `POST /v2/swap/pay` and `GET /v2/swap/{id}` and needs
-no WASM initialization. The maker has to enable `swap.pay_through_enabled`. The
-API is a draft and has no idempotency key, so a lost create response must not
-be retried blindly.
+no WASM initialization. The maker has to enable `swap.pay_through_enabled`.
+`create` refuses terms that differ from the request, and an invoice whose
+amount or payment hash differs from the terms. Requests time out (30 s by
+default) and take an abort signal. The API has no idempotency key, so a lost
+create response must not be retried blindly.
 
 ## [0.9.1] - 2026-09-23
 
