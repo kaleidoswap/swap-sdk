@@ -5091,6 +5091,7 @@ class _UniffiConverterTypeQuoteProfile(_UniffiConverterRustBuffer):
 
 class RefundDetails:
     tree: "SwapTree"
+    amount: "typing.Optional[int]"
     key_index: "int"
     transaction: "typing.Optional[TransactionOut]"
     lockup_address: "str"
@@ -5102,6 +5103,7 @@ class RefundDetails:
         self,
         *,
         tree: "SwapTree",
+        amount: "typing.Optional[int]",
         key_index: "int",
         transaction: "typing.Optional[TransactionOut]",
         lockup_address: "str",
@@ -5110,6 +5112,7 @@ class RefundDetails:
         blinding_key: "typing.Optional[str]",
     ):
         self.tree = tree
+        self.amount = amount
         self.key_index = key_index
         self.transaction = transaction
         self.lockup_address = lockup_address
@@ -5118,8 +5121,9 @@ class RefundDetails:
         self.blinding_key = blinding_key
 
     def __str__(self):
-        return "RefundDetails(tree={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={})".format(
+        return "RefundDetails(tree={}, amount={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={})".format(
             self.tree,
+            self.amount,
             self.key_index,
             self.transaction,
             self.lockup_address,
@@ -5130,6 +5134,8 @@ class RefundDetails:
 
     def __eq__(self, other):
         if self.tree != other.tree:
+            return False
+        if self.amount != other.amount:
             return False
         if self.key_index != other.key_index:
             return False
@@ -5151,6 +5157,7 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
     def read(buf):
         return RefundDetails(
             tree=_UniffiConverterTypeSwapTree.read(buf),
+            amount=_UniffiConverterOptionalUInt64.read(buf),
             key_index=_UniffiConverterUInt32.read(buf),
             transaction=_UniffiConverterOptionalTypeTransactionOut.read(buf),
             lockup_address=_UniffiConverterString.read(buf),
@@ -5162,6 +5169,7 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
     @staticmethod
     def check_lower(value):
         _UniffiConverterTypeSwapTree.check_lower(value.tree)
+        _UniffiConverterOptionalUInt64.check_lower(value.amount)
         _UniffiConverterUInt32.check_lower(value.key_index)
         _UniffiConverterOptionalTypeTransactionOut.check_lower(value.transaction)
         _UniffiConverterString.check_lower(value.lockup_address)
@@ -5172,6 +5180,7 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
     @staticmethod
     def write(value, buf):
         _UniffiConverterTypeSwapTree.write(value.tree, buf)
+        _UniffiConverterOptionalUInt64.write(value.amount, buf)
         _UniffiConverterUInt32.write(value.key_index, buf)
         _UniffiConverterOptionalTypeTransactionOut.write(value.transaction, buf)
         _UniffiConverterString.write(value.lockup_address, buf)

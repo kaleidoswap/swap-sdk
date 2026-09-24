@@ -97,7 +97,7 @@ const SUBMARINE_RESPONSE = {
         "2010154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087ad017bb1",
     },
   },
-  timeoutBlockHeight: 100n,
+  timeoutBlockHeight: 123n,
 };
 
 const CLAIM_PARAMS = {

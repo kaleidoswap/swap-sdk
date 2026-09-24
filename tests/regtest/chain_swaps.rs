@@ -45,7 +45,6 @@ async fn bitcoin_liquid_v2_chain_esplora() {
 async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: Chain) {
     let secp = Secp256k1::new();
     let preimage = Preimage::random();
-    log::info!("{preimage:#?}");
     let our_claim_keys = Keypair::new(&secp, &mut thread_rng());
     let claim_public_key = PublicKey {
         compressed: true,
@@ -53,8 +52,6 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
     };
 
     let our_refund_keys = Keypair::new(&secp, &mut thread_rng());
-    log::info!("Refund: {:#?}", our_refund_keys.display_secret());
-
     let refund_public_key = PublicKey {
         inner: our_refund_keys.public_key(),
         compressed: true,
@@ -77,7 +74,13 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
 
     let create_chain_response = boltz_api_v2.post_chain_req(create_chain_req).await.unwrap();
     create_chain_response
-        .validate(&claim_public_key, &refund_public_key, from, to)
+        .validate(
+            &claim_public_key,
+            &refund_public_key,
+            from,
+            to,
+            &preimage.sha256,
+        )
         .unwrap();
     let swap_id = create_chain_response.clone().id;
     let lockup_details = create_chain_response.clone().lockup_details;
@@ -176,15 +179,22 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
 
         log::info!("Claiming!");
 
+        // Pay an extra fixed-amount output from the cooperative chain claim,
+        // so Boltz partial-signs a multi-output claim transaction.
+        let additional_outputs = vec![(utils::generate_address(to).await.unwrap(), 600)];
+        let absolute_fee = 1000;
+        let server_lock_amount = claim_details.amount;
+
         let swap_params = SwapTransactionParams {
             keys: our_claim_keys,
             output_address: claim_address.clone(),
-            fee: Fee::Absolute(1000),
+            fee: Fee::Absolute(absolute_fee),
             swap_id: swap_id.clone(),
             options: Some(
                 TransactionOptions::default()
                     .with_chain_claim(our_refund_keys, lockup_script.clone())
-                    .with_lockup_tx(lockup_tx),
+                    .with_lockup_tx(lockup_tx)
+                    .with_additional_outputs(additional_outputs.clone()),
             ),
             chain_client,
             boltz_api: &boltz_api_v2,
@@ -208,6 +218,17 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
             .construct_claim(&preimage, swap_params.clone())
             .await
             .unwrap();
+
+        assert_multi_output_tx(
+            &tx,
+            to,
+            true,
+            &claim_address,
+            &additional_outputs,
+            server_lock_amount,
+            absolute_fee,
+        )
+        .await;
 
         chain_client.broadcast_tx(&tx).await.unwrap();
         log::info!("Successfully broadcasted claim tx!");

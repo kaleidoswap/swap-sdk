@@ -273,15 +273,16 @@ impl SwapClient {
             (_, Currency::LUsdt) => (None, expected_asset_context),
             _ => (None, None),
         };
+        let preimage_hash = swap_request
+            .preimage_hash
+            .parse::<sha256::Hash>()
+            .map_err(|e| Error::Generic(e.to_string()))?;
         let response = self
             .inner
             .post_chain_req(boltz::CreateChainRequest {
                 from: from_currency.to_string(),
                 to: to_currency.to_string(),
-                preimage_hash: swap_request
-                    .preimage_hash
-                    .parse::<sha256::Hash>()
-                    .map_err(|e| Error::Generic(e.to_string()))?,
+                preimage_hash,
                 claim_public_key: Some(swap_request.claim_public_key),
                 refund_public_key: Some(swap_request.refund_public_key),
                 user_lock_amount: swap_request.user_lock_amount,
@@ -296,6 +297,7 @@ impl SwapClient {
             &swap_request.refund_public_key,
             swap_request.from,
             swap_request.to,
+            &preimage_hash,
             Some(from_currency),
             Some(to_currency),
             from_asset_context,
@@ -998,6 +1000,7 @@ pub struct ClaimDetails {
 #[uniffi::remote(Record)]
 pub struct RefundDetails {
     pub tree: SwapTree,
+    pub amount: Option<u64>,
     pub key_index: u32,
     pub transaction: Option<TransactionOut>,
     pub lockup_address: String,

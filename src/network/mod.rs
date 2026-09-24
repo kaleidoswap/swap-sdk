@@ -183,8 +183,14 @@ impl From<Network> for bitcoin::Network {
 impl From<Chain> for Network {
     fn from(value: Chain) -> Self {
         match value {
-            Chain::Bitcoin(_) => Network::Mainnet,
-            Chain::Liquid(_) => Network::Mainnet,
+            Chain::Bitcoin(BitcoinChain::Bitcoin) | Chain::Liquid(LiquidChain::Liquid) => {
+                Network::Mainnet
+            }
+            Chain::Bitcoin(BitcoinChain::BitcoinTestnet)
+            | Chain::Liquid(LiquidChain::LiquidTestnet) => Network::Testnet,
+            Chain::Bitcoin(BitcoinChain::BitcoinSignet) => Network::Signet,
+            Chain::Bitcoin(BitcoinChain::BitcoinRegtest)
+            | Chain::Liquid(LiquidChain::LiquidRegtest) => Network::Regtest,
         }
     }
 }
@@ -286,5 +292,28 @@ mod tests {
         assert!(bitcoin.resolve_currency(Some(Currency::LUsdt)).is_err());
         assert!(liquid.resolve_currency(Some(Currency::Btc)).is_err());
         assert_eq!(Currency::LUsdt.to_string(), "L-USDT");
+    }
+    #[test]
+    fn chain_preserves_network() {
+        assert_eq!(
+            Network::from(Chain::Bitcoin(BitcoinChain::BitcoinTestnet)),
+            Network::Testnet
+        );
+        assert_eq!(
+            Network::from(Chain::Bitcoin(BitcoinChain::BitcoinSignet)),
+            Network::Signet
+        );
+        assert_eq!(
+            Network::from(Chain::Bitcoin(BitcoinChain::BitcoinRegtest)),
+            Network::Regtest
+        );
+        assert_eq!(
+            Network::from(Chain::Liquid(LiquidChain::LiquidTestnet)),
+            Network::Testnet
+        );
+        assert_eq!(
+            Network::from(Chain::Liquid(LiquidChain::LiquidRegtest)),
+            Network::Regtest
+        );
     }
 }

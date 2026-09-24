@@ -25,7 +25,11 @@ use crate::util::ensure_rustls_crypto_provider;
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
 use crate::{BtcSwapScript, LiquidAssetContext, LiquidSwapScript};
 use bitcoin::secp256k1;
-use bitcoin::{hashes::sha256, hex::DisplayHex, PublicKey};
+use bitcoin::{
+    hashes::{hash160, sha256},
+    hex::DisplayHex,
+    PublicKey,
+};
 use lightning_invoice::Bolt11Invoice;
 use reqwest::header::HeaderValue;
 use reqwest::Method;
@@ -1805,6 +1809,16 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             .finish()
     }
 }
+/// A create response's script must commit to our preimage hash.
+fn ensure_hashlock(actual: &hash160::Hash, expected: &hash160::Hash) -> Result<(), Error> {
+    if actual != expected {
+        return Err(Error::Protocol(format!(
+            "Hash160 mismatch: {actual},{expected}"
+        )));
+    }
+    Ok(())
+}
+
 impl CreateSubmarineResponse {
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
     pub fn validate(
@@ -1841,6 +1855,8 @@ impl CreateSubmarineResponse {
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_sub_script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
+                ensure_hashlock(&boltz_sub_script.hashlock, &preimage.hash160)?;
+
                 boltz_sub_script.validate_address(bitcoin_chain, self.address.clone())
             }
             Chain::Liquid(liquid_chain) => {
@@ -1851,12 +1867,7 @@ impl CreateSubmarineResponse {
                     chain.resolve_currency(currency)?,
                     expected_asset_context,
                 )?;
-                if boltz_sub_script.hashlock != preimage.hash160 {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_sub_script.hashlock, preimage.hash160
-                    )));
-                }
+                ensure_hashlock(&boltz_sub_script.hashlock, &preimage.hash160)?;
 
                 boltz_sub_script.validate_address(liquid_chain, self.address.clone())
             }
@@ -1895,6 +1906,7 @@ pub struct ClaimDetails {
 #[serde(rename_all = "camelCase")]
 pub struct RefundDetails {
     pub tree: SwapTree,
+    pub amount: Option<u64>,
     pub key_index: u32,
     pub transaction: Option<TransactionOut>,
     pub lockup_address: String,
@@ -2247,6 +2259,8 @@ impl CreateReverseResponse {
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_rev_script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
+                ensure_hashlock(&boltz_rev_script.hashlock, &preimage.hash160)?;
+
                 boltz_rev_script.validate_address(bitcoin_chain, self.lockup_address.clone())
             }
             Chain::Liquid(liquid_chain) => {
@@ -2256,6 +2270,8 @@ impl CreateReverseResponse {
                     chain.resolve_currency(currency)?,
                     expected_asset_context,
                 )?;
+                ensure_hashlock(&boltz_rev_script.hashlock, &preimage.hash160)?;
+
                 boltz_rev_script.validate_address(liquid_chain, self.lockup_address.clone())
             }
         }
@@ -2363,30 +2379,34 @@ impl std::fmt::Debug for CreateChainResponse {
     }
 }
 impl CreateChainResponse {
-    /// Validate chain swap response
+    /// Validate both sides of a chain swap against the requested preimage hash.
     pub fn validate(
         &self,
         claim_pubkey: &PublicKey,
         refund_pubkey: &PublicKey,
         from_chain: Chain,
         to_chain: Chain,
+        preimage_hash: &sha256::Hash,
     ) -> Result<(), Error> {
         self.validate_with_currency(
             claim_pubkey,
             refund_pubkey,
             from_chain,
             to_chain,
+            preimage_hash,
             None,
             None,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn validate_with_currency(
         &self,
         claim_pubkey: &PublicKey,
         refund_pubkey: &PublicKey,
         from_chain: Chain,
         to_chain: Chain,
+        preimage_hash: &sha256::Hash,
         from_currency: Option<Currency>,
         to_currency: Option<Currency>,
     ) -> Result<(), Error> {
@@ -2395,6 +2415,7 @@ impl CreateChainResponse {
             refund_pubkey,
             from_chain,
             to_chain,
+            preimage_hash,
             from_currency,
             to_currency,
             None,
@@ -2411,11 +2432,13 @@ impl CreateChainResponse {
         refund_pubkey: &PublicKey,
         from_chain: Chain,
         to_chain: Chain,
+        preimage_hash: &sha256::Hash,
         from_currency: Option<Currency>,
         to_currency: Option<Currency>,
         from_asset_context: Option<LiquidAssetContext>,
         to_asset_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
+        let expected_hashlock = Preimage::hash160_from_sha256(preimage_hash)?;
         self.validate_side(
             Side::Lockup,
             from_chain,
@@ -2423,6 +2446,7 @@ impl CreateChainResponse {
             from_asset_context,
             &self.lockup_details,
             refund_pubkey,
+            &expected_hashlock,
         )?;
         self.validate_side(
             Side::Claim,
@@ -2431,9 +2455,11 @@ impl CreateChainResponse {
             to_asset_context,
             &self.claim_details,
             claim_pubkey,
+            &expected_hashlock,
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn validate_side(
         &self,
         side: Side,
@@ -2442,11 +2468,14 @@ impl CreateChainResponse {
         expected_asset_context: Option<LiquidAssetContext>,
         details: &ChainSwapDetails,
         our_pubkey: &PublicKey,
+        expected_hashlock: &hash160::Hash,
     ) -> Result<(), Error> {
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_chain_script =
                     BtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
+                ensure_hashlock(&boltz_chain_script.hashlock, expected_hashlock)?;
+
                 boltz_chain_script.validate_address(bitcoin_chain, details.lockup_address.clone())
             }
             Chain::Liquid(liquid_chain) => {
@@ -2457,6 +2486,8 @@ impl CreateChainResponse {
                     chain.resolve_currency(currency)?,
                     expected_asset_context,
                 )?;
+                ensure_hashlock(&boltz_chain_script.hashlock, expected_hashlock)?;
+
                 boltz_chain_script.validate_address(liquid_chain, details.lockup_address.clone())
             }
         }
