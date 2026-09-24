@@ -246,6 +246,14 @@ const BOLTZ_SWEEP_CLOCK_SKEW: Duration = Duration::from_secs(5);
 /// Tolerating that error would let the cooperative path go untested whenever
 /// the race is lost. Starting the swap clear of a sweep keeps it under test on
 /// every run.
+///
+/// Only the interval sweep is guarded against, because on the pinned
+/// `regtest/boltz` it is the only sweep trigger that can fire. Neither
+/// `sweepAmountTrigger` nor `scheduleAmountTrigger` is set. `ExpiryTrigger`
+/// needs 120 minutes or less to expiry, and taproot submarine swaps get 10080.
+/// If a submodule bump changes any of that, the same 400 can come back from
+/// another trigger. It fails loudly, like this one did, and needs its own
+/// guard.
 pub async fn wait_out_boltz_batch_sweep(window: Duration) {
     if let Some(wait) = batch_sweep_wait(unix_now(), window) {
         log::info!(
