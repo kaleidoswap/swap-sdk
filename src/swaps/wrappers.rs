@@ -115,9 +115,10 @@ impl TransactionOptions {
     /// [primary, additions.., fee] and refunds [fee, primary, additions..].
     ///
     /// Calling this again replaces the previously set list. Addresses must be
-    /// valid for the chain client's network. On Liquid all addresses must be
-    /// confidential and all amounts positive; on Bitcoin zero-valued outputs
-    /// below the dust threshold for their script type are rejected at
+    /// valid for the chain client's network. On Liquid all amounts must be
+    /// positive and the addresses must match the spend: confidential for a
+    /// blinded spend, explicit for an explicit one. On both chains an explicit
+    /// output below the dust threshold for its script type is rejected at
     /// construction.
     /// Cooperative signing commits to every output, including the additional
     /// ones.
@@ -660,6 +661,28 @@ impl SwapScript {
         Ok(())
     }
 
+    /// Parse the additional outputs for this script's chain up front, so a bad
+    /// address fails before anything is fetched, signed or broadcast.
+    fn parse_additional_outputs(
+        &self,
+        chain_client: &ChainClient,
+        options: Option<&TransactionOptions>,
+    ) -> Result<ParsedAdditionalOutputs, Error> {
+        let raw = options
+            .map(|options| options.additional_outputs.as_slice())
+            .unwrap_or_default();
+        Ok(match &self.script {
+            SwapScriptImpl::Bitcoin(_) => {
+                let network = chain_client.require_bitcoin_client()?.network().into();
+                ParsedAdditionalOutputs::Bitcoin(Self::additional_outputs_bitcoin(raw, network)?)
+            }
+            SwapScriptImpl::Liquid(_) => {
+                let network = chain_client.require_liquid_client()?.network().into();
+                ParsedAdditionalOutputs::Liquid(Self::additional_outputs_liquid(raw, network)?)
+            }
+        })
+    }
+
     fn additional_outputs_bitcoin(
         additional_outputs: &[(String, u64)],
         network: bitcoin::Network,
@@ -683,13 +706,10 @@ impl SwapScript {
         additional_outputs
             .iter()
             .map(|(address, amount)| {
-                let address = elements::Address::parse_with_params(address, params)?;
-                if address.blinding_pubkey.is_none() {
-                    return Err(Error::Protocol(
-                        "Additional output addresses must be confidential on Liquid.".to_string(),
-                    ));
-                }
-                Ok((address, *amount))
+                Ok((
+                    elements::Address::parse_with_params(address, params)?,
+                    *amount,
+                ))
             })
             .collect()
     }
@@ -707,11 +727,8 @@ impl SwapScript {
             }
         }
 
-        let additional_outputs = params
-            .options
-            .as_ref()
-            .map(|options| options.additional_outputs.clone())
-            .unwrap_or_default();
+        let additional_outputs =
+            self.parse_additional_outputs(params.chain_client, params.options.as_ref())?;
         let cooperative = self
             .get_cooperative(
                 SwapTxKind::Claim,
@@ -753,10 +770,7 @@ impl SwapScript {
                     chain_client,
                     utxo,
                 )?
-                .with_additional_outputs(Self::additional_outputs_bitcoin(
-                    &additional_outputs,
-                    chain_client.network().into(),
-                )?);
+                .with_additional_outputs(additional_outputs.into_bitcoin());
 
                 tx.sign_claim(&params.keys, preimage, params.fee, cooperative)
                     .await
@@ -796,10 +810,7 @@ impl SwapScript {
                     utxo,
                 )
                 .await?
-                .with_additional_outputs(Self::additional_outputs_liquid(
-                    &additional_outputs,
-                    chain_client.network().into(),
-                )?);
+                .with_additional_outputs(additional_outputs.into_liquid());
 
                 tx.sign_claim(&params.keys, preimage, params.fee, cooperative, true)
                     .await
@@ -923,11 +934,8 @@ impl SwapScript {
             }
         }
 
-        let additional_outputs = params
-            .options
-            .as_ref()
-            .map(|options| options.additional_outputs.clone())
-            .unwrap_or_default();
+        let additional_outputs =
+            self.parse_additional_outputs(params.chain_client, params.options.as_ref())?;
         let cooperative = self
             .get_cooperative(
                 SwapTxKind::Refund,
@@ -948,10 +956,7 @@ impl SwapScript {
                     params.swap_id.clone(),
                 )
                 .await?
-                .with_additional_outputs(Self::additional_outputs_bitcoin(
-                    &additional_outputs,
-                    chain_client.network().into(),
-                )?);
+                .with_additional_outputs(additional_outputs.into_bitcoin());
                 tx.sign_refund(&params.keys, params.fee, cooperative)
                     .await
                     .map(BtcLikeTransaction::bitcoin)
@@ -966,14 +971,32 @@ impl SwapScript {
                     params.swap_id.clone(),
                 )
                 .await?
-                .with_additional_outputs(Self::additional_outputs_liquid(
-                    &additional_outputs,
-                    chain_client.network().into(),
-                )?);
+                .with_additional_outputs(additional_outputs.into_liquid());
                 tx.sign_refund(&params.keys, params.fee, cooperative, true)
                     .await
                     .map(BtcLikeTransaction::liquid)
             }
+        }
+    }
+}
+
+enum ParsedAdditionalOutputs {
+    Bitcoin(Vec<(bitcoin::Address, u64)>),
+    Liquid(Vec<(elements::Address, u64)>),
+}
+
+impl ParsedAdditionalOutputs {
+    fn into_bitcoin(self) -> Vec<(bitcoin::Address, u64)> {
+        match self {
+            Self::Bitcoin(outputs) => outputs,
+            Self::Liquid(_) => Vec::new(),
+        }
+    }
+
+    fn into_liquid(self) -> Vec<(elements::Address, u64)> {
+        match self {
+            Self::Liquid(outputs) => outputs,
+            Self::Bitcoin(_) => Vec::new(),
         }
     }
 }

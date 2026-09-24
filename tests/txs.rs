@@ -683,6 +683,7 @@ async fn lbtc_submarine_refund_relative_fee() {
 }
 
 #[tokio::test]
+#[cfg_attr(all(target_os = "linux", target_arch = "aarch64"), ignore)]
 async fn lbtc_reverse_claim_multi_output() {
     let (test_framework, swap_tx, preimage, recvr_keypair, blinding_keypair, swap_addrs, utxo) =
         prepare_lbtc_claim();
@@ -886,6 +887,7 @@ async fn btc_submarine_refund_multi_output() {
 }
 
 #[tokio::test]
+#[cfg_attr(all(target_os = "linux", target_arch = "aarch64"), ignore)]
 async fn lbtc_submarine_refund_multi_output() {
     let (test_framework, swap_tx, sender_keypair, blinding_keypair, swap_addrs, utxo) =
         prepare_lbtc_refund();

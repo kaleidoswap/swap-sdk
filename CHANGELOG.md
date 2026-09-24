@@ -33,17 +33,26 @@ and `TransactionOptions::with_additional_outputs` pay fixed amounts to extra
 addresses. The primary output receives the remainder. Liquid claims order
 outputs `[primary, additions.., fee]` and refunds `[fee, primary, additions..]`.
 A blinded Liquid spend needs confidential additional addresses, and an explicit
-one needs explicit addresses. The caller-funded L-USDT PSET flow does not take
+one needs explicit addresses. Explicit outputs below the dust threshold are
+rejected on Liquid as on Bitcoin. The caller-funded L-USDT PSET flow does not take
 additional outputs. `RefundDetails` gains `amount`, and
 `SwapScript::from_bitcoin` / `from_liquid` rebuild a swap script restored from
 storage.
 
-**Migration (breaking):** `CreateChainResponse::validate`,
-`validate_with_currency` and `validate_with_currency_and_asset_context` take
-the requested preimage hash after `to_chain`. The bindings already hold it and
-pass it through. `BtcSwapTx` and `LiquidSwapTx` gained a public
-`additional_outputs` field, so struct literals must set it; the constructors
-set it to empty.
+**Migration (breaking):**
+
+- `CreateChainResponse::validate`, `validate_with_currency` and
+  `validate_with_currency_and_asset_context` take the requested preimage hash
+  after `to_chain`. The bindings already hold it and pass it through.
+- `BtcSwapTx` and `LiquidSwapTx` gained a public `additional_outputs` field,
+  so struct literals must set it; the constructors set it to empty.
+- `SwapScriptCommon` gained a required `receiver_pubkey` method.
+- `swaps::bitcoin::bytes_to_u32_little_endian` is removed; timelocks are
+  decoded by the strict script-number parser.
+- `From<Chain> for Network` returned `Mainnet` for every chain. It now
+  returns the chain's own network (testnet, signet or regtest).
+- The UniFFI `RefundDetails` record gained `amount`, which changes its
+  Kotlin, Swift and Python constructors.
 
 ## [0.9.1] - 2026-09-23
 

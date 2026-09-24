@@ -923,9 +923,8 @@ impl BtcSwapTx {
     /// Build the payment outputs: the primary output (which receives the
     /// remainder) at index 0, followed by any additional fixed-amount outputs.
     ///
-    /// Zero-valued outputs are consensus-valid and accepted here; construction
-    /// rejects any output, including the computed primary remainder, below
-    /// the dust threshold for its script type.
+    /// Construction rejects any output, including the computed primary
+    /// remainder, below the dust threshold for its script type.
     fn create_payment_outputs(
         &self,
         input_value: Amount,

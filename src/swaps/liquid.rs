@@ -1705,18 +1705,6 @@ impl LiquidSwapTx {
         })
     }
 
-    pub fn validate_lockup_amount(&self, expected_amount: u64) -> Result<(), Error> {
-        let secrets = unblind_swap_output(&self.funding_utxo, self.swap_script.blinding_secret())?;
-        if secrets.value != expected_amount {
-            return Err(Error::Protocol(format!(
-                "Lockup amount mismatch: {} BTC != {} BTC",
-                Amount::from_sat(secrets.value),
-                Amount::from_sat(expected_amount)
-            )));
-        }
-        Ok(())
-    }
-
     /// Add fixed-amount outputs (in satoshis) paid in addition to the primary
     /// output address. The primary output receives the remainder
     /// (input - fee - sum of additional outputs) and remains the first payment
@@ -2071,6 +2059,16 @@ impl LiquidSwapTx {
                 return Err(Error::Protocol(
                     "Additional outputs of an explicit Liquid spend must be explicit".to_string(),
                 ));
+            }
+            for (address, value) in &destinations {
+                let dust = bitcoin::Script::from_bytes(address.script_pubkey().as_bytes())
+                    .minimal_non_dust()
+                    .to_sat();
+                if *value < dust {
+                    return Err(Error::Protocol(format!(
+                        "Explicit output of {value} sat to {address} is below the {dust} sat dust threshold"
+                    )));
+                }
             }
             let payment_outputs = destinations
                 .iter()
@@ -2973,8 +2971,6 @@ mod tests {
         ));
     }
 
-    /// An explicit HTLC can still fund a blinded payout: the input contributes
-    /// zero blinding factors and `ValueBlindingFactor::last` balances the rest.
     #[macros::test_all]
     fn explicit_payout_takes_explicit_additional_outputs_only() {
         let network = LiquidChain::LiquidRegtest;
@@ -3010,6 +3006,8 @@ mod tests {
         assert!(err.message().contains("must be explicit"));
     }
 
+    /// An explicit HTLC can still fund a blinded payout: the input contributes
+    /// zero blinding factors and `ValueBlindingFactor::last` balances the rest.
     #[macros::test_all]
     fn explicit_lbtc_payout_to_confidential_destination_balances() {
         let network = LiquidChain::LiquidRegtest;
@@ -3217,6 +3215,16 @@ mod tests {
 
         let error = tx.build_payout_outputs(&secp, &mut rng, 1_000).unwrap_err();
         assert!(error.message().contains("Primary output value is zero"));
+
+        let script = test_script(None, None, 100_000);
+        let htlc_address = script.to_address(network).unwrap();
+        let funding_utxo = explicit_output(htlc_address.script_pubkey(), policy_asset, 100_000);
+        let extra = test_script(None, None, 0).to_address(network).unwrap();
+        let error = legacy_swap_tx(script, htlc_address, funding_utxo)
+            .with_additional_outputs(vec![(extra, 98_900)])
+            .build_payout_outputs(&secp, &mut rng, 1_000)
+            .unwrap_err();
+        assert!(error.message().contains("dust threshold"));
     }
 
     #[macros::test_all]

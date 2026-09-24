@@ -98,6 +98,19 @@ fn validate_address(chain: Chain, address: &str) {
     }
 }
 
+/// The state file holds claim and refund keys: create it owner-only.
+fn write_secret_file(path: &str, contents: &str) {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(contents.as_bytes()))
+        .unwrap();
+}
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     kaleidorg_swap_sdk::util::setup_logger();
@@ -148,6 +161,17 @@ async fn main() {
                 .await
                 .unwrap();
             resp.validate(&preimage, &claim_public_key, chain).unwrap();
+            // The claim spends the lockup, not the invoice: Boltz's fees come off
+            // first. Refuse before the invoice is shown, since a claim that
+            // cannot be built after payment only recovers by editing the state.
+            assert!(
+                extra_amount
+                    .checked_add(claim_fee)
+                    .is_some_and(|spent| spent < resp.onchain_amount),
+                "extra amount {extra_amount} + fee {claim_fee} must leave a primary remainder \
+                 from the {} sat lockup",
+                resp.onchain_amount
+            );
 
             let state = State {
                 chain: chain_str,
@@ -161,7 +185,7 @@ async fn main() {
                 claim_fee_sat: claim_fee,
             };
             let state_file = format!("multiout-swap-{}.json", resp.id);
-            std::fs::write(&state_file, serde_json::to_string_pretty(&state).unwrap()).unwrap();
+            write_secret_file(&state_file, &serde_json::to_string_pretty(&state).unwrap());
 
             println!(
                 "\n=== swap {} created, recovery state saved to {state_file} ===",
@@ -249,7 +273,7 @@ async fn main() {
                 claim_fee_sat: claim_fee,
             };
             let state_file = format!("multiout-chainswap-{}.json", resp.id);
-            std::fs::write(&state_file, serde_json::to_string_pretty(&state).unwrap()).unwrap();
+            write_secret_file(&state_file, &serde_json::to_string_pretty(&state).unwrap());
 
             println!(
                 "\n=== chain swap {} created, recovery state saved to {state_file} ===",

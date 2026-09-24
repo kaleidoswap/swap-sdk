@@ -1809,6 +1809,16 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             .finish()
     }
 }
+/// A create response's script must commit to our preimage hash.
+fn ensure_hashlock(actual: &hash160::Hash, expected: &hash160::Hash) -> Result<(), Error> {
+    if actual != expected {
+        return Err(Error::Protocol(format!(
+            "Hash160 mismatch: {actual},{expected}"
+        )));
+    }
+    Ok(())
+}
+
 impl CreateSubmarineResponse {
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
     pub fn validate(
@@ -1845,12 +1855,7 @@ impl CreateSubmarineResponse {
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_sub_script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
-                if boltz_sub_script.hashlock != preimage.hash160 {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_sub_script.hashlock, preimage.hash160
-                    )));
-                }
+                ensure_hashlock(&boltz_sub_script.hashlock, &preimage.hash160)?;
 
                 boltz_sub_script.validate_address(bitcoin_chain, self.address.clone())
             }
@@ -1862,12 +1867,7 @@ impl CreateSubmarineResponse {
                     chain.resolve_currency(currency)?,
                     expected_asset_context,
                 )?;
-                if boltz_sub_script.hashlock != preimage.hash160 {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_sub_script.hashlock, preimage.hash160
-                    )));
-                }
+                ensure_hashlock(&boltz_sub_script.hashlock, &preimage.hash160)?;
 
                 boltz_sub_script.validate_address(liquid_chain, self.address.clone())
             }
@@ -2259,12 +2259,7 @@ impl CreateReverseResponse {
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_rev_script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
-                if boltz_rev_script.hashlock != preimage.hash160 {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_rev_script.hashlock, preimage.hash160
-                    )));
-                }
+                ensure_hashlock(&boltz_rev_script.hashlock, &preimage.hash160)?;
 
                 boltz_rev_script.validate_address(bitcoin_chain, self.lockup_address.clone())
             }
@@ -2275,12 +2270,7 @@ impl CreateReverseResponse {
                     chain.resolve_currency(currency)?,
                     expected_asset_context,
                 )?;
-                if boltz_rev_script.hashlock != preimage.hash160 {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_rev_script.hashlock, preimage.hash160
-                    )));
-                }
+                ensure_hashlock(&boltz_rev_script.hashlock, &preimage.hash160)?;
 
                 boltz_rev_script.validate_address(liquid_chain, self.lockup_address.clone())
             }
@@ -2484,12 +2474,7 @@ impl CreateChainResponse {
             Chain::Bitcoin(bitcoin_chain) => {
                 let boltz_chain_script =
                     BtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
-                if boltz_chain_script.hashlock != *expected_hashlock {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_chain_script.hashlock, *expected_hashlock
-                    )));
-                }
+                ensure_hashlock(&boltz_chain_script.hashlock, expected_hashlock)?;
 
                 boltz_chain_script.validate_address(bitcoin_chain, details.lockup_address.clone())
             }
@@ -2501,12 +2486,7 @@ impl CreateChainResponse {
                     chain.resolve_currency(currency)?,
                     expected_asset_context,
                 )?;
-                if boltz_chain_script.hashlock != *expected_hashlock {
-                    return Err(Error::Protocol(format!(
-                        "Hash160 mismatch: {},{}",
-                        boltz_chain_script.hashlock, *expected_hashlock
-                    )));
-                }
+                ensure_hashlock(&boltz_chain_script.hashlock, expected_hashlock)?;
 
                 boltz_chain_script.validate_address(liquid_chain, details.lockup_address.clone())
             }
