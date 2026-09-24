@@ -2006,10 +2006,10 @@ impl LiquidSwapTx {
     /// a confidential HTLC swept to an explicit destination: the input's
     /// blinding factors would have no blinded output to balance against, so the
     /// Pedersen commitments could not sum to zero.
-    /// Build the payment outputs (the primary output, which receives the
-    /// remainder, first, then any additional fixed-amount outputs) and the
-    /// explicit fee output. In a blinded spend the last payment output
-    /// balances the blinding against the input and the fee output.
+    ///
+    /// The primary output, which receives the remainder, comes first, then any
+    /// additional fixed-amount outputs. In a blinded spend the last payment
+    /// output balances the blinding against the input and the fee output.
     fn build_payout_outputs(
         &self,
         secp: &Secp256k1<elements::secp256k1_zkp::All>,
@@ -2053,6 +2053,14 @@ impl LiquidSwapTx {
                 .chain(self.additional_outputs.iter().map(|(a, v)| (a, *v)))
                 .collect();
 
+        // A zero-value primary cannot be relayed, and in a blinded spend the
+        // rangeproof cannot prove it either.
+        if primary_value == Amount::ZERO {
+            return Err(Error::Protocol(
+                "Primary output value is zero after fees and additional outputs".to_string(),
+            ));
+        }
+
         if blinding_pubkey.is_none() {
             // Explicit HTLC to an explicit destination: every blinding factor in
             // the transaction is zero, so the outputs carry no proofs.
@@ -2075,13 +2083,6 @@ impl LiquidSwapTx {
                 })
                 .collect();
             return Ok((payment_outputs, fee_output));
-        }
-
-        // The rangeproof cannot prove a zero value.
-        if primary_value == Amount::ZERO {
-            return Err(Error::Protocol(
-                "Primary output value is zero after fees and additional outputs".to_string(),
-            ));
         }
 
         let input_blinding_factors = [(
@@ -3161,6 +3162,61 @@ mod tests {
             claim_tx.create_refund(&keys, 1_000, false).unwrap();
             claim_tx.create_refund(&keys, 1_000, true).unwrap();
         }
+    }
+
+    #[macros::async_test_all]
+    async fn caller_funded_pset_refuses_additional_outputs() {
+        let network = LiquidChain::LiquidRegtest;
+        let script = crate::swaps::SwapScript::from_liquid(test_script(
+            None,
+            Some(LiquidAssetContext {
+                swap_asset: elements::AssetId::from_str(
+                    "1111111111111111111111111111111111111111111111111111111111111111",
+                )
+                .unwrap(),
+                policy_asset: network.bitcoin(),
+            }),
+            42,
+        ));
+        let extra = test_script(None, None, 0).to_address(network).unwrap();
+        let chain_client = crate::swaps::ChainClient::new();
+        let boltz_api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".to_string(), None);
+
+        let error = script
+            .prepare_liquid_claim(crate::swaps::LiquidPsetParams {
+                output_address: extra.to_string(),
+                max_fee: 1_000,
+                quoted_fee_cap: 1_000,
+                swap_id: "swap".to_string(),
+                chain_client: &chain_client,
+                boltz_api: &boltz_api,
+                options: Some(
+                    crate::swaps::TransactionOptions::default()
+                        .with_additional_outputs(vec![(extra.to_string(), 1_000)]),
+                ),
+            })
+            .await
+            .unwrap_err();
+
+        assert!(error.message().contains("do not take additional outputs"));
+    }
+
+    #[macros::test_all]
+    fn explicit_payout_rejects_a_zero_primary() {
+        let network = LiquidChain::LiquidRegtest;
+        let policy_asset = network.bitcoin();
+        let secp = Secp256k1::new();
+        let mut rng = OsRng;
+
+        let script = test_script(None, None, 100_000);
+        let htlc_address = script.to_address(network).unwrap();
+        let funding_utxo = explicit_output(htlc_address.script_pubkey(), policy_asset, 100_000);
+        let extra = test_script(None, None, 0).to_address(network).unwrap();
+        let tx = legacy_swap_tx(script, htlc_address, funding_utxo)
+            .with_additional_outputs(vec![(extra, 99_000)]);
+
+        let error = tx.build_payout_outputs(&secp, &mut rng, 1_000).unwrap_err();
+        assert!(error.message().contains("Primary output value is zero"));
     }
 
     #[macros::test_all]

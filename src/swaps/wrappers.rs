@@ -844,6 +844,15 @@ impl SwapScript {
                 ));
             }
         };
+        if params
+            .options
+            .as_ref()
+            .is_some_and(|options| !options.additional_outputs.is_empty())
+        {
+            return Err(Error::Protocol(
+                "Caller-funded PSET spends do not take additional outputs".to_string(),
+            ));
+        }
         let liquid_client = params.chain_client.require_liquid_client()?;
         // Pin the payout destination to this swap's chain before anything is
         // broadcast or fetched. `Address::from_str` alone accepts another
