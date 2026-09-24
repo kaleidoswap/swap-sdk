@@ -64,7 +64,7 @@ env:
 jobs:
   preflight:
     name: Release preflight
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 10
     outputs:
       commit: ${{ steps.release.outputs.commit }}
@@ -209,7 +209,7 @@ jobs:
   python-sdist:
     name: Release Python sdist
     needs: preflight
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 45
     steps:
       - name: Checkout tagged source
@@ -294,7 +294,7 @@ jobs:
   typescript-package:
     name: Release npm package
     needs: preflight
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 30
     steps:
       - name: Checkout tagged source
@@ -359,7 +359,7 @@ jobs:
       - python-sdist
       - typescript-package
       - react-native-package
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 30
     steps:
       - name: Checkout tagged source
@@ -431,7 +431,7 @@ jobs:
     needs:
       - preflight
       - release-ready
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     permissions:
       contents: read
     steps:

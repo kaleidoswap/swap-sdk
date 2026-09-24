@@ -10,7 +10,7 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, swap-sdk-ci]
     strategy:
       matrix:
         rust:
@@ -44,7 +44,7 @@ jobs:
 
   build-as-wasm-dependency:
     name: Build as wasm dependency
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, swap-sdk-ci]
     steps:
       - name: checkout
         uses: actions/checkout@v3

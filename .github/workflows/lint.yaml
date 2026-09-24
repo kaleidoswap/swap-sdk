@@ -9,7 +9,7 @@ name: lint
 jobs:
   fmt:
     name: rust fmt
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, swap-sdk-ci]
     steps:
       - name: Checkout
         uses: actions/checkout@v3

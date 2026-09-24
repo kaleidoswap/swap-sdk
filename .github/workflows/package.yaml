@@ -20,7 +20,7 @@ env:
 jobs:
   generated-artifacts:
     name: Generated artifacts
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -125,7 +125,7 @@ jobs:
 
   python-sdist:
     name: Python sdist
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 45
     steps:
       - name: Checkout
@@ -158,7 +158,7 @@ jobs:
 
   typescript-package:
     name: TypeScript package
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, swap-sdk-ci]
     timeout-minutes: 30
     steps:
       - name: Checkout
