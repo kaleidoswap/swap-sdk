@@ -23,6 +23,8 @@ const requiredPaths = [
   "dist/index.node.js",
   "dist/arkade/index.d.ts",
   "dist/arkade/index.js",
+  "dist/pay-through.d.ts",
+  "dist/pay-through.js",
   "package.json",
   "vendor/bindings_wasm.d.ts",
   "vendor/bindings_wasm.js",
@@ -174,6 +176,18 @@ try {
       );
     }
   }
+
+  // ./pay-through has no WASM and no peer deps, so it is imported, not just
+  // resolved.
+  execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "-e",
+      'const m = await import("@kaleidorg/swap-sdk/pay-through"); if (typeof m.PayThroughClient !== "function") throw new Error("./pay-through does not export PayThroughClient");',
+    ],
+    { cwd: consumerRoot, stdio: "inherit" },
+  );
 
   writeFileSync(
     join(consumerRoot, "smoke.mjs"),
