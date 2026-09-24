@@ -92,6 +92,14 @@ REGISTRY_FLAGS = (
     "PYPI_PUBLISH_ENABLED",
 )
 
+# Every release job runs on a fresh GitHub-hosted VM. A self-hosted runner
+# keeps ~/.cargo, the npm cache and the tool cache between jobs, and on a
+# public repository it also runs pull-request code — so anything a pull
+# request left on it could reach an artifact that ships. A self-hosted runner
+# can be selected by its custom label alone, so this allowlists hosted image
+# names instead of searching for "self-hosted".
+HOSTED_RUNNER = re.compile(r"(?:ubuntu|macos|windows)-[a-z0-9.-]+")
+
 REHEARSAL_FAILURE_CASES = {
     "malformed-tag",
     "missing-wheel",
@@ -294,6 +302,22 @@ def validate(
         raise ValueError(
             "publish-npm must publish both npm tarballs by explicit path, the "
             f"browser package and the React Native package (found {publishes})"
+        )
+
+    # A matrix job names its runners in `runner:` entries, which are checked
+    # like any other; the `runs-on` that reads them is the only non-literal
+    # allowed. A list or block value lands here as something other than a
+    # hosted image name and is rejected with the rest.
+    runners = re.findall(r"^\s*(?:runs-on|runner):(.*)$", combined, re.MULTILINE)
+    unhosted = [
+        runner
+        for runner in (value.split(" #", 1)[0].strip() for value in runners)
+        if runner != "${{ matrix.runner }}" and not HOSTED_RUNNER.fullmatch(runner)
+    ]
+    if unhosted:
+        raise ValueError(
+            "release workflows must run on GitHub-hosted runners, never a "
+            f"persistent self-hosted machine (found {unhosted})"
         )
 
     mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
