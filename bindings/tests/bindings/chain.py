@@ -44,6 +44,9 @@ async def swap(
     )
 
     # Monitor the swap status via WebSocket
+    # The receiver must exist BEFORE subscribing: the broadcast channel only
+    # delivers events sent after the receiver was created, and boltz pushes
+    # swap.created immediately on subscription.
     updates = ws_client.updates()
     await ws_client.subscribe_swap(swap_id)
 
