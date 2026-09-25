@@ -249,7 +249,9 @@ export class PayThroughClient {
     }
     this.baseUrl = url.href.replace(/\/$/, "");
     this.apiKey = options.apiKey;
-    this.request = options.fetch ?? fetch;
+    // Called as this.request(...), so a bare `fetch` would run with the client
+    // as `this`, which browsers reject as an illegal invocation.
+    this.request = options.fetch ?? ((input, init) => fetch(input, init));
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
