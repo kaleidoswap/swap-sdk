@@ -4,13 +4,41 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — documentation
+
+The 0.10.0 entry below was corrected after that release was tagged:
+
+- It said the new `VERSIONING.md` ranges take this release's patches. They
+  cannot, because `^0.9.0` stops below 0.10.0.
+- It said `scripts/check_release_workflow.py` enforces all of the new release
+  gating. The script does not check the wait step's logging, retry budget or
+  completeness comparison.
+- It gave the batch-sweep wait as at most 50 seconds. The bound is 55.
+- It now says that TypeScript and Python callers get the stricter validation
+  too.
+- It now lists two more breaking changes: the checks a caller can now fail,
+  and the new field on the core `RefundDetails`.
+- It now names the new public validation helpers, and the pay-through client's
+  error, trust and URL rules.
+
+The 0.9.0 entry said 0.9.1 would move the React Native peer ranges. It now says
+0.10.0. The GitHub release for v0.10.0 still carries the notes as tagged.
+
+`VERSIONING.md` now writes its range examples as `^0.10.0` and `~=0.10.0`. It
+used to name `0.9.1` as the patch a `^0.9.0` range picks up, and 0.9.1 was never
+released.
+
 ## [0.10.0] - 2026-09-24
+
+This release also ships the untagged 0.9.1 (#92): the last three entries below
+were prepared for it.
 
 ### BREAKING — Rust core: chain-swap validation takes the preimage hash, and the upstream merge's API changes
 
-Only the Rust crate and the UniFFI records change. The TypeScript and Python
-call sites are unchanged, because the bindings already hold the preimage hash
-and pass it through.
+Only the Rust crate and the UniFFI records change signature. The TypeScript and
+Python call sites are unchanged, because the bindings already hold the preimage
+hash and pass it through. The stricter checks in the last row apply to every
+binding.
 
 | Was | Now | Migration |
 |---|---|---|
@@ -19,7 +47,8 @@ and pass it through.
 | `SwapScriptCommon` | new required method `receiver_pubkey` | implement it on any external implementor (both in-crate types do) |
 | `swaps::bitcoin::bytes_to_u32_little_endian` | removed | timelocks are decoded by the strict script-number parser inside the script constructors |
 | `From<Chain> for Network` returned `Mainnet` for every chain | returns the chain's own network | callers relying on `Mainnet` for testnet, signet or regtest must match on the chain instead |
-| UniFFI `RefundDetails` record | gains `amount: Option<u64>` | Kotlin, Swift and Python constructors take the new field |
+| `swaps::boltz::RefundDetails` and the UniFFI `RefundDetails` record | gain `amount: Option<u64>` | add `amount` to Rust struct literals; Kotlin, Swift and Python constructors take the new field |
+| Create responses, fetched lockups, claim preimages and spend outputs were checked only in part | each is rejected when it fails a check listed under **Security** below | nothing, against a conforming maker. A claim or refund whose explicit primary output would be dust now fails instead of building a transaction that cannot relay. A Liquid claim or refund address must be on the client's network |
 
 There is no deprecation window, for the reason 0.9.0 gave: nothing outside
 this organization consumes the SDK, and a `0.x` caret pin never crosses a
@@ -46,8 +75,21 @@ This merges `SatoshiPortal/boltz-rust` trunk as of 2026-09-09 (fork point
 - Explicit outputs below the dust limit for their script type are rejected on
   Bitcoin and Liquid, the computed remainder included. Such a transaction
   cannot relay, and a cooperative claim has already revealed the preimage.
-- `Debug` on `SwapMasterKey`, `Preimage` and `LiquidSwapScript` no longer
-  prints the mnemonic, xprv, preimage or blinding key.
+- `Debug` output leaves secrets out: `SwapMasterKey` omits the mnemonic and
+  xprv, `Preimage` the preimage, `LiquidSwapScript` the blinding key, and
+  `DirectTxOptions` and `TransactionOptions` the keys they hold.
+
+The checks live in the core crate. TypeScript callers get the same rejections
+through the WASM build, and Python and mobile callers through UniFFI, without a
+code change.
+
+Three helpers are public for code that builds swaps by hand:
+
+- `verify_submarine_preimage` checks a submarine preimage against its invoice.
+- `Preimage::hash160_from_sha256` derives the hashlock that a preimage hash
+  commits to.
+- `BtcSwapTx::validate_lockup_amount` compares a Bitcoin lockup with the
+  expected amount.
 
 The KaleidoSwap signet maker passes every new check: all five advertised
 routes validate, and funded reverse BTC→L-BTC and chain BTC→L-USDT settled.
@@ -66,12 +108,33 @@ storage.
 
 ### Added — `@kaleidorg/swap-sdk/pay-through`, a client for the maker's pay-through API
 
-`PayThroughClient` calls `POST /v2/swap/pay` and `GET /v2/swap/{id}` and needs
-no WASM initialization. The maker has to enable `swap.pay_through_enabled`.
-`create` refuses terms that differ from the request, and an invoice whose
-amount or payment hash differs from the terms. Requests time out (30 s by
-default) and take an abort signal. The API has no idempotency key, so a lost
-create response must not be retried blindly.
+`PayThroughClient` needs no WASM initialization. `create` calls
+`POST /v2/swap/pay` and `status` calls `GET /v2/swap/{id}`. The maker has to
+enable `swap.pay_through_enabled`. The Lightning payment is held until the
+maker broadcasts the address payout. That payout has no hash lock, so the maker
+is trusted for that leg.
+
+`create` checks the maker's terms before the caller pays. It refuses:
+
+- another destination;
+- a different `invoiceAmount`;
+- less than the requested `payoutAmount`;
+- another `asset`;
+- an invoice whose amount or payment hash differs from the terms.
+
+It does not check the invoice's signature, network or expiry, or the fees. So
+when the request names `invoiceAmount`, the maker sets the payout amount.
+
+`makerUrl` must be an HTTPS URL ending in `/v2`, and HTTP is allowed only on
+loopback. An `apiKey` is refused outside Node, Deno and Bun. Requests time out
+(30 s by default) and take an abort signal.
+
+A `PayThroughApiError` with a 4xx status means nothing was created. A 5xx, a
+timeout or a network error leaves the outcome unknown. The API has no
+idempotency key, so a lost create response must not be retried blindly.
+
+`decodeBolt11` is also exported. It reads an invoice's amount and payment hash,
+and does not verify the signature.
 
 ### Fixed — test suite: the regtest submarine tests no longer race Boltz's batch sweep
 
@@ -85,16 +148,13 @@ failed because the cooperative path it asserts never ran.
 
 A submarine swap headed for a cooperative claim now starts only when no sweep
 can fire in the next 45 seconds, allowing 5 seconds of clock skew either side.
-Otherwise it waits, which happens for about one swap in fifteen and lasts at
-most 50 seconds. The claim is still asserted on every run, not tolerated when
+Otherwise it waits, which happens for about one swap in sixteen and lasts at
+most 55 seconds. The claim is still asserted on every run, not tolerated when
 it fails. Chain swaps are not exposed to this race, and nothing outside
 `tests/` changes.
 
 The `BorrowMutError` panics reported in the same run came from the LND test
 helper and were fixed separately in #79. They never failed a test.
-
-0.9.1 was prepared but never tagged, so its changes ship here. They are the
-last three entries of this section.
 
 ### Fixed — the React Native package's Arkade entry gets the mainnet send fix
 
@@ -128,8 +188,18 @@ jobs only after the release job finished, and GitHub would then ask for a second
 approval. Each registry job publishes only once the release is public and
 carries every file in the sealed bundle. Each attempt logs what it got, and a
 401 or 403 fails at once rather than waiting. If the release job fails, both
-registry jobs time out and publish nothing. `scripts/check_release_workflow.py` enforces
-all of this, and `docs/releasing.md` describes it.
+registry jobs time out and publish nothing. `docs/releasing.md` describes all
+of this.
+
+`scripts/check_release_workflow.py` fails the build in these cases:
+
+- a publishing job loses the `release` environment;
+- either registry job loses the wait step;
+- either registry job runs the wait after publishing;
+- either registry job gains the `needs:` edge that would split the approval.
+
+The script does not check the per-attempt logging, the retry budget or the
+completeness comparison.
 
 ### Changed — documentation
 
@@ -140,16 +210,17 @@ surface, although 0.9.0 removed both names. It now names `SwapClient` and
 `VERSIONING.md` said a caret range on a `0.x` package crosses minors, and
 told consumers to pin an exact version for that reason. It does not cross
 them: `^0.9.0` means `>=0.9.0 <0.10.0`, and the 0.9.0 entry below relies on
-exactly that. The document now recommends `^0.9.0`, or `~=0.9.0` in Python.
-Those ranges take this release's patches and never take the next minor. An
-exact pin would have kept a consumer on 0.9.0 and off this release's React
-Native fix.
+exactly that. The document now recommends a caret range on the minor you have
+tested, or `~=` in Python. Such a range takes that minor's patches and never
+takes the next minor. Reaching this release therefore takes a deliberate edit
+to `^0.10.0` or `~=0.10.0`, which its breaking changes call for anyway.
 
 The 0.9.0 entry below was completed after that release was tagged. It now
 covers the release-engineering fixes, the new versioning and security policies,
 the TypeScript examples, the Boltz-named spellings still on the UniFFI surface,
-and the React Native package's `@kaleidorg/swap-sdk` peer range. The GitHub
-release for v0.9.0 still carries the notes as tagged.
+the `@arkade-os` peer ranges as a breaking change, and the React Native
+package's `@kaleidorg/swap-sdk` peer range. The GitHub release for v0.9.0 still
+carries the notes as tagged.
 
 ## [0.9.0] - 2026-09-23
 
@@ -221,7 +292,7 @@ pins until it can depend on a published SDK release that carries this fix. Its
 `@kaleidorg/swap-sdk` peer also stays `^0.7.0`, so
 `@kaleidorg/swap-sdk-react-native/arkade` still resolves the 0.7.x venue. It
 does not carry this fix, and `@kaleidorg/swap-sdk@0.9.0` falls outside that
-package's peer range. 0.9.1 moves those ranges.
+package's peer range. 0.10.0 moves those ranges.
 
 Two behaviours come with 0.0.20:
 
