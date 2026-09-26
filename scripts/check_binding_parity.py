@@ -59,6 +59,8 @@ ALIASES = {
     ("BoltzClient", "quote"): "get_quote",
     ("BoltzClient", "nodes"): "get_nodes",
     ("SwapScript", "construct_cooperative_claim"): "submarine_cooperative_claim",
+    ("BoltzClient", "atomic_pairs"): "get_atomic_pairs",
+    ("BoltzClient", "atomic_swap"): "get_atomic_swap",
 }
 
 # Capabilities the UniFFI binding intentionally does not mirror. Each entry is a

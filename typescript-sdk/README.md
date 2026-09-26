@@ -86,6 +86,46 @@ Requests time out after `timeoutMs` (30 s by default) and take an optional
 a 5xx, a timeout or a network error leaves the outcome unknown. There is no
 idempotency key, so do not blindly retry creation or pay a second invoice.
 
+## RGB swaps (USDT-RGB on Bitcoin L1)
+
+`RgbSwaps` wraps a `SwapClient`'s RGB routes: submarine `USDT-RGB → BTC`,
+reverse `BTC → USDT-RGB`, and atomic `BTC ⇄ USDT-RGB`. The asset moves in
+the caller's rgb-lib wallet, which this package does not ship. The SDK
+validates the maker's terms and signs the swap's HTLC spends. Every RGB
+amount counts the contract's units (6 decimals for USDT-RGB), and rgb-lib's
+messages cross as JSON strings so none of their numbers is rounded.
+
+```ts
+import { RgbHtlcSpend, RgbSwaps, SwapClient, USDT_RGB } from "@kaleidorg/swap-sdk";
+
+const rgb = new RgbSwaps(SwapClient.forNetwork("signet"));
+const swap = await rgb.createReverseSwap(
+  "signet",
+  { from: "BTC", to: USDT_RGB, claimPublicKey, preimageHash, invoiceAmount: 50_000n },
+  { assetId }, // the contract you mean to receive
+);
+// Pay swap.invoice. Once the maker locked (reverseTx(swap.id)) and your
+// rgb-lib wallet accepted the transfer with swap.rgb.blinding:
+const spend = RgbHtlcSpend.claim("signet", swap, claimPublicKey, lockTxHex, destScriptHex);
+const colored = /* rgb-lib psbt_op_prepare(spend.psbt(), output_map {1: amount}) */;
+const claimTx = spend.signColoredTx(colored, claimSecretHex, preimageHex);
+```
+
+- **Submarine.** Call `rgb.createSubmarineSwap(...)`. Check the recipient id
+  with `rgbCheckRecipientScript(swap.rgb, scriptFromRecipientId)`, then send
+  with rgb-lib to that witness recipient: `htlcSat` sats, `blinding`,
+  `transportEndpoints`. After the timeout, `RgbHtlcSpend.refund(...)`
+  returns the asset. It takes a wallet fee input when the lock's sats can't
+  pay.
+- **Atomic.** `atomicQuote` → rgb-lib `accept_swap_offer(offerJson)` →
+  `atomicRequest(quote, requestJson)` → `complete_swap_proposal(proposalJson)`
+  → `atomicComplete(quote, completionJson)` → `accept_swap_transfers`. Each
+  step checks that the answer belongs to the quote.
+
+The generic `createSubmarineSwap` / `createReverseSwap` refuse `USDT-RGB` and
+point here. `signColored` refuses a PSBT without an RGB commitment, because an
+uncolored spend of an RGB HTLC burns the asset.
+
 ## Arkade Intents corridor
 
 `ARKD` in the maker's catalogue is bitcoin on Arkade, and it is not a

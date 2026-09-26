@@ -28,6 +28,8 @@ wasm-bindgen-futures = "0.4"
 serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
 serde = { version = "1", features = ["derive"] }
+# rgb-lib swap messages cross the boundary as JSON strings.
+serde_json = { workspace = true }
 # `sync` names the broadcast::Receiver / Mutex used by the WS status stream.
 tokio = { version = "1", default-features = false, features = ["sync"] }
 # `ws` enables the Boltz WebSocket swap-status stream (BoltzWsApi).

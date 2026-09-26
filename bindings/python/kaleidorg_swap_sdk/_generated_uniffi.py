@@ -522,6 +522,13 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_func_rgb_check_recipient_script()
+        != 58420
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex() != 9628:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -582,6 +589,28 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_fee_sat() != 26915:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_psbt() != 54314:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_sign_colored()
+        != 7553
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_sign_colored_tx()
+        != 35486
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote() != 43473:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -594,6 +623,24 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id() != 33793:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete()
+        != 50371
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote() != 49411:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request()
+        != 12980
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -615,7 +662,35 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_rgb_reverse_swap()
+        != 45055
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_rgb_submarine_swap()
+        != 25514
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap() != 17792:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs()
+        != 50551
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap()
+        != 39277
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -837,6 +912,17 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new() != 58443:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_rgbhtlcspend_claim() != 3845:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_rgbhtlcspend_refund()
+        != 44526
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -1273,6 +1359,75 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template.argt
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbhtlcspend.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbhtlcspend.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbhtlcspend.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbhtlcspend.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_rgbhtlcspend_claim.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_rgbhtlcspend_claim.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_rgbhtlcspend_refund.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_rgbhtlcspend_refund.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_fee_sat.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_fee_sat.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_psbt.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_psbt.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_sign_colored.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_sign_colored.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_sign_colored_tx.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_sign_colored_tx.restype = (
+    ctypes.c_void_p
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapclient.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1328,6 +1483,30 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.argtypes = 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_url.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1347,11 +1526,38 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_reverse_swap.ar
     _UniffiRustBuffer,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_reverse_swap.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_rgb_reverse_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_rgb_reverse_swap.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_rgb_submarine_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_rgb_submarine_swap.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap.restype = (
     ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_pairs.argtypes = (
@@ -1675,6 +1881,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_rgb_check_recipient_script.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_rgb_check_recipient_script.restype = None
 _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1909,6 +2121,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.resty
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_rgb_check_recipient_script.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_rgb_check_recipient_script.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.restype = (
     ctypes.c_uint16
@@ -1949,6 +2163,18 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finaliz
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_fee_sat.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_fee_sat.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_psbt.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_psbt.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_sign_colored.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_sign_colored.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_sign_colored_tx.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbhtlcspend_sign_colored_tx.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.restype = (
     ctypes.c_uint16
@@ -1959,6 +2185,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.restype = (
     ctypes.c_uint16
@@ -1967,10 +2201,18 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_chain_swa
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_chain_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_reverse_swap.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_reverse_swap.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_rgb_reverse_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_rgb_reverse_swap.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_rgb_submarine_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_rgb_submarine_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_txs.argtypes = ()
@@ -2075,6 +2317,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new.argtypes 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_rgbhtlcspend_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_rgbhtlcspend_claim.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_rgbhtlcspend_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_rgbhtlcspend_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_default.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_default.restype = (
     ctypes.c_uint16
@@ -2278,6 +2526,593 @@ class _UniffiConverterDuration(_UniffiConverterRustBuffer):
         nanoseconds = value.microseconds * 1000
         buf.write_i64(seconds)
         buf.write_u32(nanoseconds)
+
+
+class AtomicCompletion:
+    """
+    The broadcast swap and the finalized completion, for the taker's
+    `accept_swap_transfers`.
+    """
+
+    id: "str"
+    status: "str"
+    txid: "str"
+    completion_json: "str"
+
+    def __init__(
+        self, *, id: "str", status: "str", txid: "str", completion_json: "str"
+    ):
+        self.id = id
+        self.status = status
+        self.txid = txid
+        self.completion_json = completion_json
+
+    def __str__(self):
+        return "AtomicCompletion(id={}, status={}, txid={}, completion_json={})".format(
+            self.id, self.status, self.txid, self.completion_json
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.status != other.status:
+            return False
+        if self.txid != other.txid:
+            return False
+        if self.completion_json != other.completion_json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicCompletion(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicCompletion(
+            id=_UniffiConverterString.read(buf),
+            status=_UniffiConverterString.read(buf),
+            txid=_UniffiConverterString.read(buf),
+            completion_json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterString.check_lower(value.txid)
+        _UniffiConverterString.check_lower(value.completion_json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterString.write(value.txid, buf)
+        _UniffiConverterString.write(value.completion_json, buf)
+
+
+class AtomicPair:
+    pair_id: "typing.Optional[str]"
+    hash: "str"
+    rate: "float"
+    limits: "AtomicPairLimits"
+    fees: "AtomicPairFees"
+
+    def __init__(
+        self,
+        *,
+        pair_id: "typing.Optional[str]",
+        hash: "str",
+        rate: "float",
+        limits: "AtomicPairLimits",
+        fees: "AtomicPairFees",
+    ):
+        self.pair_id = pair_id
+        self.hash = hash
+        self.rate = rate
+        self.limits = limits
+        self.fees = fees
+
+    def __str__(self):
+        return "AtomicPair(pair_id={}, hash={}, rate={}, limits={}, fees={})".format(
+            self.pair_id, self.hash, self.rate, self.limits, self.fees
+        )
+
+    def __eq__(self, other):
+        if self.pair_id != other.pair_id:
+            return False
+        if self.hash != other.hash:
+            return False
+        if self.rate != other.rate:
+            return False
+        if self.limits != other.limits:
+            return False
+        if self.fees != other.fees:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicPair(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicPair(
+            pair_id=_UniffiConverterOptionalString.read(buf),
+            hash=_UniffiConverterString.read(buf),
+            rate=_UniffiConverterDouble.read(buf),
+            limits=_UniffiConverterTypeAtomicPairLimits.read(buf),
+            fees=_UniffiConverterTypeAtomicPairFees.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.pair_id)
+        _UniffiConverterString.check_lower(value.hash)
+        _UniffiConverterDouble.check_lower(value.rate)
+        _UniffiConverterTypeAtomicPairLimits.check_lower(value.limits)
+        _UniffiConverterTypeAtomicPairFees.check_lower(value.fees)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalString.write(value.pair_id, buf)
+        _UniffiConverterString.write(value.hash, buf)
+        _UniffiConverterDouble.write(value.rate, buf)
+        _UniffiConverterTypeAtomicPairLimits.write(value.limits, buf)
+        _UniffiConverterTypeAtomicPairFees.write(value.fees, buf)
+
+
+class AtomicPairFees:
+    percentage: "float"
+    miner_fees: "int"
+
+    def __init__(self, *, percentage: "float", miner_fees: "int"):
+        self.percentage = percentage
+        self.miner_fees = miner_fees
+
+    def __str__(self):
+        return "AtomicPairFees(percentage={}, miner_fees={})".format(
+            self.percentage, self.miner_fees
+        )
+
+    def __eq__(self, other):
+        if self.percentage != other.percentage:
+            return False
+        if self.miner_fees != other.miner_fees:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicPairFees(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicPairFees(
+            percentage=_UniffiConverterDouble.read(buf),
+            miner_fees=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterDouble.check_lower(value.percentage)
+        _UniffiConverterUInt64.check_lower(value.miner_fees)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterDouble.write(value.percentage, buf)
+        _UniffiConverterUInt64.write(value.miner_fees, buf)
+
+
+class AtomicPairLimits:
+    minimal: "int"
+    maximal: "int"
+
+    def __init__(self, *, minimal: "int", maximal: "int"):
+        self.minimal = minimal
+        self.maximal = maximal
+
+    def __str__(self):
+        return "AtomicPairLimits(minimal={}, maximal={})".format(
+            self.minimal, self.maximal
+        )
+
+    def __eq__(self, other):
+        if self.minimal != other.minimal:
+            return False
+        if self.maximal != other.maximal:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicPairLimits(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicPairLimits(
+            minimal=_UniffiConverterUInt64.read(buf),
+            maximal=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt64.check_lower(value.minimal)
+        _UniffiConverterUInt64.check_lower(value.maximal)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt64.write(value.minimal, buf)
+        _UniffiConverterUInt64.write(value.maximal, buf)
+
+
+class AtomicProposal:
+    """
+    The maker's unsigned proposal, for the taker's `complete_swap_proposal`.
+    """
+
+    id: "str"
+    status: "str"
+    proposal_json: "str"
+
+    def __init__(self, *, id: "str", status: "str", proposal_json: "str"):
+        self.id = id
+        self.status = status
+        self.proposal_json = proposal_json
+
+    def __str__(self):
+        return "AtomicProposal(id={}, status={}, proposal_json={})".format(
+            self.id, self.status, self.proposal_json
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.status != other.status:
+            return False
+        if self.proposal_json != other.proposal_json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicProposal(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicProposal(
+            id=_UniffiConverterString.read(buf),
+            status=_UniffiConverterString.read(buf),
+            proposal_json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterString.check_lower(value.proposal_json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterString.write(value.proposal_json, buf)
+
+
+class AtomicQuote:
+    """
+    An atomic quote, with rgb-lib's offer as the JSON string `offer_json`
+    for the taker's `accept_swap_offer`.
+    """
+
+    id: "str"
+    pair: "str"
+    direction: "AtomicAmountDirection"
+    from_amount: "int"
+    to_amount: "int"
+    asset_id: "str"
+    network_fee_sat: "int"
+    service_fee: "int"
+    expires_at: "int"
+    offer_expires_at: "int"
+    offer_json: "str"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        pair: "str",
+        direction: "AtomicAmountDirection",
+        from_amount: "int",
+        to_amount: "int",
+        asset_id: "str",
+        network_fee_sat: "int",
+        service_fee: "int",
+        expires_at: "int",
+        offer_expires_at: "int",
+        offer_json: "str",
+    ):
+        self.id = id
+        self.pair = pair
+        self.direction = direction
+        self.from_amount = from_amount
+        self.to_amount = to_amount
+        self.asset_id = asset_id
+        self.network_fee_sat = network_fee_sat
+        self.service_fee = service_fee
+        self.expires_at = expires_at
+        self.offer_expires_at = offer_expires_at
+        self.offer_json = offer_json
+
+    def __str__(self):
+        return "AtomicQuote(id={}, pair={}, direction={}, from_amount={}, to_amount={}, asset_id={}, network_fee_sat={}, service_fee={}, expires_at={}, offer_expires_at={}, offer_json={})".format(
+            self.id,
+            self.pair,
+            self.direction,
+            self.from_amount,
+            self.to_amount,
+            self.asset_id,
+            self.network_fee_sat,
+            self.service_fee,
+            self.expires_at,
+            self.offer_expires_at,
+            self.offer_json,
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.pair != other.pair:
+            return False
+        if self.direction != other.direction:
+            return False
+        if self.from_amount != other.from_amount:
+            return False
+        if self.to_amount != other.to_amount:
+            return False
+        if self.asset_id != other.asset_id:
+            return False
+        if self.network_fee_sat != other.network_fee_sat:
+            return False
+        if self.service_fee != other.service_fee:
+            return False
+        if self.expires_at != other.expires_at:
+            return False
+        if self.offer_expires_at != other.offer_expires_at:
+            return False
+        if self.offer_json != other.offer_json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicQuote(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicQuote(
+            id=_UniffiConverterString.read(buf),
+            pair=_UniffiConverterString.read(buf),
+            direction=_UniffiConverterTypeAtomicAmountDirection.read(buf),
+            from_amount=_UniffiConverterUInt64.read(buf),
+            to_amount=_UniffiConverterUInt64.read(buf),
+            asset_id=_UniffiConverterString.read(buf),
+            network_fee_sat=_UniffiConverterUInt64.read(buf),
+            service_fee=_UniffiConverterUInt64.read(buf),
+            expires_at=_UniffiConverterInt64.read(buf),
+            offer_expires_at=_UniffiConverterInt64.read(buf),
+            offer_json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterTypeAtomicAmountDirection.check_lower(value.direction)
+        _UniffiConverterUInt64.check_lower(value.from_amount)
+        _UniffiConverterUInt64.check_lower(value.to_amount)
+        _UniffiConverterString.check_lower(value.asset_id)
+        _UniffiConverterUInt64.check_lower(value.network_fee_sat)
+        _UniffiConverterUInt64.check_lower(value.service_fee)
+        _UniffiConverterInt64.check_lower(value.expires_at)
+        _UniffiConverterInt64.check_lower(value.offer_expires_at)
+        _UniffiConverterString.check_lower(value.offer_json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterTypeAtomicAmountDirection.write(value.direction, buf)
+        _UniffiConverterUInt64.write(value.from_amount, buf)
+        _UniffiConverterUInt64.write(value.to_amount, buf)
+        _UniffiConverterString.write(value.asset_id, buf)
+        _UniffiConverterUInt64.write(value.network_fee_sat, buf)
+        _UniffiConverterUInt64.write(value.service_fee, buf)
+        _UniffiConverterInt64.write(value.expires_at, buf)
+        _UniffiConverterInt64.write(value.offer_expires_at, buf)
+        _UniffiConverterString.write(value.offer_json, buf)
+
+
+class AtomicQuoteRequest:
+    pair: "str"
+    amount: "int"
+    direction: "AtomicAmountDirection"
+
+    def __init__(
+        self, *, pair: "str", amount: "int", direction: "AtomicAmountDirection"
+    ):
+        self.pair = pair
+        self.amount = amount
+        self.direction = direction
+
+    def __str__(self):
+        return "AtomicQuoteRequest(pair={}, amount={}, direction={})".format(
+            self.pair, self.amount, self.direction
+        )
+
+    def __eq__(self, other):
+        if self.pair != other.pair:
+            return False
+        if self.amount != other.amount:
+            return False
+        if self.direction != other.direction:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicQuoteRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicQuoteRequest(
+            pair=_UniffiConverterString.read(buf),
+            amount=_UniffiConverterUInt64.read(buf),
+            direction=_UniffiConverterTypeAtomicAmountDirection.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterUInt64.check_lower(value.amount)
+        _UniffiConverterTypeAtomicAmountDirection.check_lower(value.direction)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterUInt64.write(value.amount, buf)
+        _UniffiConverterTypeAtomicAmountDirection.write(value.direction, buf)
+
+
+class AtomicSwapStatus:
+    id: "str"
+    pair: "str"
+    status: "str"
+    state: "str"
+    from_amount: "int"
+    to_amount: "int"
+    asset_id: "str"
+    network_fee_sat: "int"
+    txid: "typing.Optional[str]"
+    confirmations: "int"
+    expires_at: "int"
+    offer_expires_at: "int"
+    created_at: "int"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        pair: "str",
+        status: "str",
+        state: "str",
+        from_amount: "int",
+        to_amount: "int",
+        asset_id: "str",
+        network_fee_sat: "int",
+        txid: "typing.Optional[str]",
+        confirmations: "int",
+        expires_at: "int",
+        offer_expires_at: "int",
+        created_at: "int",
+    ):
+        self.id = id
+        self.pair = pair
+        self.status = status
+        self.state = state
+        self.from_amount = from_amount
+        self.to_amount = to_amount
+        self.asset_id = asset_id
+        self.network_fee_sat = network_fee_sat
+        self.txid = txid
+        self.confirmations = confirmations
+        self.expires_at = expires_at
+        self.offer_expires_at = offer_expires_at
+        self.created_at = created_at
+
+    def __str__(self):
+        return "AtomicSwapStatus(id={}, pair={}, status={}, state={}, from_amount={}, to_amount={}, asset_id={}, network_fee_sat={}, txid={}, confirmations={}, expires_at={}, offer_expires_at={}, created_at={})".format(
+            self.id,
+            self.pair,
+            self.status,
+            self.state,
+            self.from_amount,
+            self.to_amount,
+            self.asset_id,
+            self.network_fee_sat,
+            self.txid,
+            self.confirmations,
+            self.expires_at,
+            self.offer_expires_at,
+            self.created_at,
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.pair != other.pair:
+            return False
+        if self.status != other.status:
+            return False
+        if self.state != other.state:
+            return False
+        if self.from_amount != other.from_amount:
+            return False
+        if self.to_amount != other.to_amount:
+            return False
+        if self.asset_id != other.asset_id:
+            return False
+        if self.network_fee_sat != other.network_fee_sat:
+            return False
+        if self.txid != other.txid:
+            return False
+        if self.confirmations != other.confirmations:
+            return False
+        if self.expires_at != other.expires_at:
+            return False
+        if self.offer_expires_at != other.offer_expires_at:
+            return False
+        if self.created_at != other.created_at:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicSwapStatus(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicSwapStatus(
+            id=_UniffiConverterString.read(buf),
+            pair=_UniffiConverterString.read(buf),
+            status=_UniffiConverterString.read(buf),
+            state=_UniffiConverterString.read(buf),
+            from_amount=_UniffiConverterUInt64.read(buf),
+            to_amount=_UniffiConverterUInt64.read(buf),
+            asset_id=_UniffiConverterString.read(buf),
+            network_fee_sat=_UniffiConverterUInt64.read(buf),
+            txid=_UniffiConverterOptionalString.read(buf),
+            confirmations=_UniffiConverterUInt32.read(buf),
+            expires_at=_UniffiConverterInt64.read(buf),
+            offer_expires_at=_UniffiConverterInt64.read(buf),
+            created_at=_UniffiConverterInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterString.check_lower(value.state)
+        _UniffiConverterUInt64.check_lower(value.from_amount)
+        _UniffiConverterUInt64.check_lower(value.to_amount)
+        _UniffiConverterString.check_lower(value.asset_id)
+        _UniffiConverterUInt64.check_lower(value.network_fee_sat)
+        _UniffiConverterOptionalString.check_lower(value.txid)
+        _UniffiConverterUInt32.check_lower(value.confirmations)
+        _UniffiConverterInt64.check_lower(value.expires_at)
+        _UniffiConverterInt64.check_lower(value.offer_expires_at)
+        _UniffiConverterInt64.check_lower(value.created_at)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterString.write(value.state, buf)
+        _UniffiConverterUInt64.write(value.from_amount, buf)
+        _UniffiConverterUInt64.write(value.to_amount, buf)
+        _UniffiConverterString.write(value.asset_id, buf)
+        _UniffiConverterUInt64.write(value.network_fee_sat, buf)
+        _UniffiConverterOptionalString.write(value.txid, buf)
+        _UniffiConverterUInt32.write(value.confirmations, buf)
+        _UniffiConverterInt64.write(value.expires_at, buf)
+        _UniffiConverterInt64.write(value.offer_expires_at, buf)
+        _UniffiConverterInt64.write(value.created_at, buf)
 
 
 class BoltzWsConfig:
@@ -3593,6 +4428,174 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalTypeRgbLock.write(value.rgb, buf)
 
 
+class CreateRgbReverseRequest:
+    """
+    An RGB reverse swap (`BTC → USDT-RGB`): the taker pays the maker's hold
+    invoice and claims the USDT-RGB the maker locks.
+    """
+
+    preimage_hash: "str"
+    claim_public_key: "PublicKey"
+    invoice_amount: "int"
+    pair_hash: "typing.Optional[str]"
+    description: "typing.Optional[str]"
+    referral_id: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        preimage_hash: "str",
+        claim_public_key: "PublicKey",
+        invoice_amount: "int",
+        pair_hash: "typing.Optional[str]" = _DEFAULT,
+        description: "typing.Optional[str]" = _DEFAULT,
+        referral_id: "typing.Optional[str]" = _DEFAULT,
+    ):
+        self.preimage_hash = preimage_hash
+        self.claim_public_key = claim_public_key
+        self.invoice_amount = invoice_amount
+        if pair_hash is _DEFAULT:
+            self.pair_hash = None
+        else:
+            self.pair_hash = pair_hash
+        if description is _DEFAULT:
+            self.description = None
+        else:
+            self.description = description
+        if referral_id is _DEFAULT:
+            self.referral_id = None
+        else:
+            self.referral_id = referral_id
+
+    def __str__(self):
+        return "CreateRgbReverseRequest(preimage_hash={}, claim_public_key={}, invoice_amount={}, pair_hash={}, description={}, referral_id={})".format(
+            self.preimage_hash,
+            self.claim_public_key,
+            self.invoice_amount,
+            self.pair_hash,
+            self.description,
+            self.referral_id,
+        )
+
+    def __eq__(self, other):
+        if self.preimage_hash != other.preimage_hash:
+            return False
+        if self.claim_public_key != other.claim_public_key:
+            return False
+        if self.invoice_amount != other.invoice_amount:
+            return False
+        if self.pair_hash != other.pair_hash:
+            return False
+        if self.description != other.description:
+            return False
+        if self.referral_id != other.referral_id:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCreateRgbReverseRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CreateRgbReverseRequest(
+            preimage_hash=_UniffiConverterString.read(buf),
+            claim_public_key=_UniffiConverterTypePublicKey.read(buf),
+            invoice_amount=_UniffiConverterUInt64.read(buf),
+            pair_hash=_UniffiConverterOptionalString.read(buf),
+            description=_UniffiConverterOptionalString.read(buf),
+            referral_id=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.preimage_hash)
+        _UniffiConverterTypePublicKey.check_lower(value.claim_public_key)
+        _UniffiConverterUInt64.check_lower(value.invoice_amount)
+        _UniffiConverterOptionalString.check_lower(value.pair_hash)
+        _UniffiConverterOptionalString.check_lower(value.description)
+        _UniffiConverterOptionalString.check_lower(value.referral_id)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.preimage_hash, buf)
+        _UniffiConverterTypePublicKey.write(value.claim_public_key, buf)
+        _UniffiConverterUInt64.write(value.invoice_amount, buf)
+        _UniffiConverterOptionalString.write(value.pair_hash, buf)
+        _UniffiConverterOptionalString.write(value.description, buf)
+        _UniffiConverterOptionalString.write(value.referral_id, buf)
+
+
+class CreateRgbSubmarineRequest:
+    """
+    An RGB submarine swap (`USDT-RGB → BTC`): the taker locks USDT-RGB and
+    the maker pays `invoice`.
+    """
+
+    invoice: "str"
+    refund_public_key: "PublicKey"
+    pair_hash: "typing.Optional[str]"
+    referral_id: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        invoice: "str",
+        refund_public_key: "PublicKey",
+        pair_hash: "typing.Optional[str]" = _DEFAULT,
+        referral_id: "typing.Optional[str]" = _DEFAULT,
+    ):
+        self.invoice = invoice
+        self.refund_public_key = refund_public_key
+        if pair_hash is _DEFAULT:
+            self.pair_hash = None
+        else:
+            self.pair_hash = pair_hash
+        if referral_id is _DEFAULT:
+            self.referral_id = None
+        else:
+            self.referral_id = referral_id
+
+    def __str__(self):
+        return "CreateRgbSubmarineRequest(invoice={}, refund_public_key={}, pair_hash={}, referral_id={})".format(
+            self.invoice, self.refund_public_key, self.pair_hash, self.referral_id
+        )
+
+    def __eq__(self, other):
+        if self.invoice != other.invoice:
+            return False
+        if self.refund_public_key != other.refund_public_key:
+            return False
+        if self.pair_hash != other.pair_hash:
+            return False
+        if self.referral_id != other.referral_id:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCreateRgbSubmarineRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CreateRgbSubmarineRequest(
+            invoice=_UniffiConverterString.read(buf),
+            refund_public_key=_UniffiConverterTypePublicKey.read(buf),
+            pair_hash=_UniffiConverterOptionalString.read(buf),
+            referral_id=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.invoice)
+        _UniffiConverterTypePublicKey.check_lower(value.refund_public_key)
+        _UniffiConverterOptionalString.check_lower(value.pair_hash)
+        _UniffiConverterOptionalString.check_lower(value.referral_id)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.invoice, buf)
+        _UniffiConverterTypePublicKey.write(value.refund_public_key, buf)
+        _UniffiConverterOptionalString.write(value.pair_hash, buf)
+        _UniffiConverterOptionalString.write(value.referral_id, buf)
+
+
 class CreateSubmarineRequest:
     _from: "Chain"
     to: "Chain"
@@ -4056,6 +5059,37 @@ class _UniffiConverterTypeFundedLiquidPset(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterString.write(value.pset, buf)
         _UniffiConverterTypeLiquidOutputSecrets.write(value.payment_output_secrets, buf)
+
+
+class GetAtomicPairsResponse:
+    pairs: "dict[str, dict[str, AtomicPair]]"
+
+    def __init__(self, *, pairs: "dict[str, dict[str, AtomicPair]]"):
+        self.pairs = pairs
+
+    def __str__(self):
+        return "GetAtomicPairsResponse(pairs={})".format(self.pairs)
+
+    def __eq__(self, other):
+        if self.pairs != other.pairs:
+            return False
+        return True
+
+
+class _UniffiConverterTypeGetAtomicPairsResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return GetAtomicPairsResponse(
+            pairs=_UniffiConverterMapStringMapStringTypeAtomicPair.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterMapStringMapStringTypeAtomicPair.check_lower(value.pairs)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterMapStringMapStringTypeAtomicPair.write(value.pairs, buf)
 
 
 class GetChainPairsResponse:
@@ -5745,6 +6779,78 @@ class _UniffiConverterTypeRfqStatus(_UniffiConverterRustBuffer):
         _UniffiConverterTypeQuoteProfile.write(value.profile, buf)
 
 
+class RgbFeeInput:
+    """
+    A P2TR key-path UTXO of the caller's wallet that pays a refund's fee.
+    """
+
+    outpoint: "str"
+    """
+    `txid:vout`.
+    """
+
+    value_sat: "int"
+    script_pubkey_hex: "str"
+    change_script_hex: "str"
+
+    def __init__(
+        self,
+        *,
+        outpoint: "str",
+        value_sat: "int",
+        script_pubkey_hex: "str",
+        change_script_hex: "str",
+    ):
+        self.outpoint = outpoint
+        self.value_sat = value_sat
+        self.script_pubkey_hex = script_pubkey_hex
+        self.change_script_hex = change_script_hex
+
+    def __str__(self):
+        return "RgbFeeInput(outpoint={}, value_sat={}, script_pubkey_hex={}, change_script_hex={})".format(
+            self.outpoint,
+            self.value_sat,
+            self.script_pubkey_hex,
+            self.change_script_hex,
+        )
+
+    def __eq__(self, other):
+        if self.outpoint != other.outpoint:
+            return False
+        if self.value_sat != other.value_sat:
+            return False
+        if self.script_pubkey_hex != other.script_pubkey_hex:
+            return False
+        if self.change_script_hex != other.change_script_hex:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRgbFeeInput(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RgbFeeInput(
+            outpoint=_UniffiConverterString.read(buf),
+            value_sat=_UniffiConverterUInt64.read(buf),
+            script_pubkey_hex=_UniffiConverterString.read(buf),
+            change_script_hex=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.outpoint)
+        _UniffiConverterUInt64.check_lower(value.value_sat)
+        _UniffiConverterString.check_lower(value.script_pubkey_hex)
+        _UniffiConverterString.check_lower(value.change_script_hex)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.outpoint, buf)
+        _UniffiConverterUInt64.write(value.value_sat, buf)
+        _UniffiConverterString.write(value.script_pubkey_hex, buf)
+        _UniffiConverterString.write(value.change_script_hex, buf)
+
+
 class RgbLock:
     """
     The `rgb` object of an RGB submarine or reverse create response.
@@ -5856,6 +6962,62 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.script_pubkey, buf)
         _UniffiConverterSequenceString.write(value.transport_endpoints, buf)
         _UniffiConverterUInt8.write(value.min_confirmations, buf)
+
+
+class RgbLockExpectations:
+    """
+    What the caller requires of an RGB lock beyond the swap tree. `None`
+    keeps the default: any `rgb:` contract, a 10 000 sat submarine cap.
+    """
+
+    asset_id: "typing.Optional[str]"
+    max_submarine_htlc_sat: "typing.Optional[int]"
+
+    def __init__(
+        self,
+        *,
+        asset_id: "typing.Optional[str]" = _DEFAULT,
+        max_submarine_htlc_sat: "typing.Optional[int]" = _DEFAULT,
+    ):
+        if asset_id is _DEFAULT:
+            self.asset_id = None
+        else:
+            self.asset_id = asset_id
+        if max_submarine_htlc_sat is _DEFAULT:
+            self.max_submarine_htlc_sat = None
+        else:
+            self.max_submarine_htlc_sat = max_submarine_htlc_sat
+
+    def __str__(self):
+        return "RgbLockExpectations(asset_id={}, max_submarine_htlc_sat={})".format(
+            self.asset_id, self.max_submarine_htlc_sat
+        )
+
+    def __eq__(self, other):
+        if self.asset_id != other.asset_id:
+            return False
+        if self.max_submarine_htlc_sat != other.max_submarine_htlc_sat:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRgbLockExpectations(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RgbLockExpectations(
+            asset_id=_UniffiConverterOptionalString.read(buf),
+            max_submarine_htlc_sat=_UniffiConverterOptionalUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.asset_id)
+        _UniffiConverterOptionalUInt64.check_lower(value.max_submarine_htlc_sat)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalString.write(value.asset_id, buf)
+        _UniffiConverterOptionalUInt64.write(value.max_submarine_htlc_sat, buf)
 
 
 class SubmarineFees:
@@ -6805,6 +7967,38 @@ class _UniffiConverterTypeAmountSide(_UniffiConverterRustBuffer):
         if value == AmountSide.FROM:
             buf.write_i32(1)
         if value == AmountSide.TO:
+            buf.write_i32(2)
+
+
+class AtomicAmountDirection(enum.Enum):
+    FROM = 0
+
+    TO = 1
+
+
+class _UniffiConverterTypeAtomicAmountDirection(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return AtomicAmountDirection.FROM
+        if variant == 2:
+            return AtomicAmountDirection.TO
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == AtomicAmountDirection.FROM:
+            return
+        if value == AtomicAmountDirection.TO:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == AtomicAmountDirection.FROM:
+            buf.write_i32(1)
+        if value == AtomicAmountDirection.TO:
             buf.write_i32(2)
 
 
@@ -7916,6 +9110,32 @@ class _UniffiConverterOptionalTypeBtcLikeTransaction(_UniffiConverterRustBuffer)
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypePreimage(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypePreimage.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypePreimage.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypePreimage.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeChainClaim(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -8148,6 +9368,32 @@ class _UniffiConverterOptionalTypeRfqStatus(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeRfqStatus.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRgbFeeInput(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRgbFeeInput.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRgbFeeInput.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRgbFeeInput.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -8452,6 +9698,38 @@ class _UniffiConverterSequenceTypeSwapRestoreResponse(_UniffiConverterRustBuffer
         return [_UniffiConverterTypeSwapRestoreResponse.read(buf) for i in range(count)]
 
 
+class _UniffiConverterMapStringTypeAtomicPair(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, items):
+        for key, value in items.items():
+            _UniffiConverterString.check_lower(key)
+            _UniffiConverterTypeAtomicPair.check_lower(value)
+
+    @classmethod
+    def write(cls, items, buf):
+        buf.write_i32(len(items))
+        for key, value in items.items():
+            _UniffiConverterString.write(key, buf)
+            _UniffiConverterTypeAtomicPair.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative map size")
+
+        # It would be nice to use a dict comprehension,
+        # but in Python 3.7 and before the evaluation order is not according to spec,
+        # so we we're reading the value before the key.
+        # This loop makes the order explicit: first reading the key, then the value.
+        d = {}
+        for i in range(count):
+            key = _UniffiConverterString.read(buf)
+            val = _UniffiConverterTypeAtomicPair.read(buf)
+            d[key] = val
+        return d
+
+
 class _UniffiConverterMapStringTypeChainPair(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, items):
@@ -8576,6 +9854,38 @@ class _UniffiConverterMapStringTypeSubmarinePair(_UniffiConverterRustBuffer):
         for i in range(count):
             key = _UniffiConverterString.read(buf)
             val = _UniffiConverterTypeSubmarinePair.read(buf)
+            d[key] = val
+        return d
+
+
+class _UniffiConverterMapStringMapStringTypeAtomicPair(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, items):
+        for key, value in items.items():
+            _UniffiConverterString.check_lower(key)
+            _UniffiConverterMapStringTypeAtomicPair.check_lower(value)
+
+    @classmethod
+    def write(cls, items, buf):
+        buf.write_i32(len(items))
+        for key, value in items.items():
+            _UniffiConverterString.write(key, buf)
+            _UniffiConverterMapStringTypeAtomicPair.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative map size")
+
+        # It would be nice to use a dict comprehension,
+        # but in Python 3.7 and before the evaluation order is not according to spec,
+        # so we we're reading the value before the key.
+        # This loop makes the order explicit: first reading the key, then the value.
+        d = {}
+        for i in range(count):
+            key = _UniffiConverterString.read(buf)
+            val = _UniffiConverterMapStringTypeAtomicPair.read(buf)
             d[key] = val
         return d
 
@@ -9311,6 +10621,291 @@ class _UniffiConverterTypePreparedLiquidSpend:
         buf.write_u64(cls.lower(value))
 
 
+class RgbHtlcSpendProtocol(typing.Protocol):
+    """
+    A colored claim or refund of an RGB HTLC.
+    """
+
+    def fee_sat(
+        self,
+    ):
+        """
+        The miner fee the spend pays, sats.
+        """
+
+        raise NotImplementedError
+
+    def psbt(
+        self,
+    ):
+        """
+        The unsigned PSBT (base64) for rgb-lib to color; output 1 receives
+        the asset.
+        """
+
+        raise NotImplementedError
+
+    def sign_colored(
+        self,
+        colored_psbt: "str",
+        keys: "KeyPair",
+        preimage: "typing.Optional[Preimage]",
+    ):
+        """
+        Sign the HTLC input of the PSBT rgb-lib colored (base64), returning it
+        with that input finalized.
+        """
+
+        raise NotImplementedError
+
+    def sign_colored_tx(
+        self,
+        colored_psbt: "str",
+        keys: "KeyPair",
+        preimage: "typing.Optional[Preimage]",
+    ):
+        """
+        `sign_colored` for a spend whose only input is the HTLC: the
+        broadcastable transaction.
+        """
+
+        raise NotImplementedError
+
+
+# RgbHtlcSpend is a Rust-only trait - it's a wrapper around a Rust implementation.
+class RgbHtlcSpend:
+    """
+    A colored claim or refund of an RGB HTLC.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbhtlcspend, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbhtlcspend, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    @classmethod
+    def claim(
+        cls,
+        chain: "BitcoinChain",
+        response: "CreateReverseResponse",
+        our_pubkey: "PublicKey",
+        lock_tx_hex: "str",
+        dest_script_hex: "str",
+        fee_rate_sat_vb: "typing.Optional[int]",
+    ):
+        """
+        The taker's claim of a reverse lock.
+        """
+
+        _UniffiConverterTypeBitcoinChain.check_lower(chain)
+
+        _UniffiConverterTypeCreateReverseResponse.check_lower(response)
+
+        _UniffiConverterTypePublicKey.check_lower(our_pubkey)
+
+        _UniffiConverterString.check_lower(lock_tx_hex)
+
+        _UniffiConverterString.check_lower(dest_script_hex)
+
+        _UniffiConverterOptionalUInt64.check_lower(fee_rate_sat_vb)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_rgbhtlcspend_claim,
+            _UniffiConverterTypeBitcoinChain.lower(chain),
+            _UniffiConverterTypeCreateReverseResponse.lower(response),
+            _UniffiConverterTypePublicKey.lower(our_pubkey),
+            _UniffiConverterString.lower(lock_tx_hex),
+            _UniffiConverterString.lower(dest_script_hex),
+            _UniffiConverterOptionalUInt64.lower(fee_rate_sat_vb),
+        )
+        return cls._make_instance_(pointer)
+
+    @classmethod
+    def refund(
+        cls,
+        chain: "BitcoinChain",
+        response: "CreateSubmarineResponse",
+        our_pubkey: "PublicKey",
+        lock_tx_hex: "str",
+        dest_script_hex: "str",
+        fee_input: "typing.Optional[RgbFeeInput]",
+        fee_rate_sat_vb: "int",
+    ):
+        """
+        The taker's refund of its own submarine lock after the timeout.
+        """
+
+        _UniffiConverterTypeBitcoinChain.check_lower(chain)
+
+        _UniffiConverterTypeCreateSubmarineResponse.check_lower(response)
+
+        _UniffiConverterTypePublicKey.check_lower(our_pubkey)
+
+        _UniffiConverterString.check_lower(lock_tx_hex)
+
+        _UniffiConverterString.check_lower(dest_script_hex)
+
+        _UniffiConverterOptionalTypeRgbFeeInput.check_lower(fee_input)
+
+        _UniffiConverterUInt64.check_lower(fee_rate_sat_vb)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_rgbhtlcspend_refund,
+            _UniffiConverterTypeBitcoinChain.lower(chain),
+            _UniffiConverterTypeCreateSubmarineResponse.lower(response),
+            _UniffiConverterTypePublicKey.lower(our_pubkey),
+            _UniffiConverterString.lower(lock_tx_hex),
+            _UniffiConverterString.lower(dest_script_hex),
+            _UniffiConverterOptionalTypeRgbFeeInput.lower(fee_input),
+            _UniffiConverterUInt64.lower(fee_rate_sat_vb),
+        )
+        return cls._make_instance_(pointer)
+
+    def fee_sat(
+        self,
+    ) -> "int":
+        """
+        The miner fee the spend pays, sats.
+        """
+
+        return _UniffiConverterUInt64.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_fee_sat,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def psbt(
+        self,
+    ) -> "str":
+        """
+        The unsigned PSBT (base64) for rgb-lib to color; output 1 receives
+        the asset.
+        """
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_psbt,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def sign_colored(
+        self,
+        colored_psbt: "str",
+        keys: "KeyPair",
+        preimage: "typing.Optional[Preimage]",
+    ) -> "str":
+        """
+        Sign the HTLC input of the PSBT rgb-lib colored (base64), returning it
+        with that input finalized.
+        """
+
+        _UniffiConverterString.check_lower(colored_psbt)
+
+        _UniffiConverterTypeKeyPair.check_lower(keys)
+
+        _UniffiConverterOptionalTypePreimage.check_lower(preimage)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_sign_colored,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(colored_psbt),
+                _UniffiConverterTypeKeyPair.lower(keys),
+                _UniffiConverterOptionalTypePreimage.lower(preimage),
+            )
+        )
+
+    def sign_colored_tx(
+        self,
+        colored_psbt: "str",
+        keys: "KeyPair",
+        preimage: "typing.Optional[Preimage]",
+    ) -> "BtcLikeTransaction":
+        """
+        `sign_colored` for a spend whose only input is the HTLC: the
+        broadcastable transaction.
+        """
+
+        _UniffiConverterString.check_lower(colored_psbt)
+
+        _UniffiConverterTypeKeyPair.check_lower(keys)
+
+        _UniffiConverterOptionalTypePreimage.check_lower(preimage)
+
+        return _UniffiConverterTypeBtcLikeTransaction.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbhtlcspend_sign_colored_tx,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(colored_psbt),
+                _UniffiConverterTypeKeyPair.lower(keys),
+                _UniffiConverterOptionalTypePreimage.lower(preimage),
+            )
+        )
+
+
+class _UniffiConverterTypeRgbHtlcSpend:
+    @staticmethod
+    def lift(value: int):
+        return RgbHtlcSpend._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: RgbHtlcSpend):
+        if not isinstance(value, RgbHtlcSpend):
+            raise TypeError(
+                "Expected RgbHtlcSpend instance, {} found".format(type(value).__name__)
+            )
+
+    @staticmethod
+    def lower(value: RgbHtlcSpendProtocol):
+        if not isinstance(value, RgbHtlcSpend):
+            raise TypeError(
+                "Expected RgbHtlcSpend instance, {} found".format(type(value).__name__)
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: RgbHtlcSpendProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
 class SwapClientProtocol(typing.Protocol):
     def accept_quote(
         self, swap_id: "str", amount_sat: "int", swap_auth: "typing.Optional[str]"
@@ -9358,6 +10953,32 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def atomic_complete(self, quote: "AtomicQuote", completion_json: "str"):
+        """
+        `POST /v2/swap/atomic/{id}/complete` with the taker-signed
+        `OnchainSwapCompletion`; the maker signs last and broadcasts.
+        """
+
+        raise NotImplementedError
+
+    def atomic_quote(
+        self, request: "AtomicQuoteRequest", expected_asset_id: "typing.Optional[str]"
+    ):
+        """
+        `POST /v2/swap/atomic/quote`, validated against the request and, when
+        given, the expected contract.
+        """
+
+        raise NotImplementedError
+
+    def atomic_request(self, quote: "AtomicQuote", request_json: "str"):
+        """
+        `POST /v2/swap/atomic/{id}/request` with rgb-lib's
+        `OnchainSwapRequest`, the proposal checked to belong to `quote`.
+        """
+
+        raise NotImplementedError
+
     def corridor_url(
         self,
     ):
@@ -9374,7 +10995,49 @@ class SwapClientProtocol(typing.Protocol):
     def create_reverse_swap(self, swap_request: "CreateReverseRequest"):
         raise NotImplementedError
 
+    def create_rgb_reverse_swap(
+        self,
+        chain: "BitcoinChain",
+        swap_request: "CreateRgbReverseRequest",
+        expectations: "RgbLockExpectations",
+    ):
+        """
+        Create an RGB reverse swap, returned only once its swap tree and its
+        `rgb` lock both validated.
+        """
+
+        raise NotImplementedError
+
+    def create_rgb_submarine_swap(
+        self,
+        chain: "BitcoinChain",
+        swap_request: "CreateRgbSubmarineRequest",
+        expectations: "RgbLockExpectations",
+    ):
+        """
+        Create an RGB submarine swap, returned only once its swap tree and
+        its `rgb` lock both validated.
+        """
+
+        raise NotImplementedError
+
     def create_swap(self, swap_request: "CreateSubmarineRequest"):
+        raise NotImplementedError
+
+    def get_atomic_pairs(
+        self,
+    ):
+        """
+        `GET /v2/swap/atomic/pairs`.
+        """
+
+        raise NotImplementedError
+
+    def get_atomic_swap(self, swap_id: "str"):
+        """
+        `GET /v2/swap/atomic/{id}`.
+        """
+
         raise NotImplementedError
 
     def get_chain_pairs(
@@ -9688,6 +11351,87 @@ class SwapClient:
             )
         )
 
+    async def atomic_complete(
+        self, quote: "AtomicQuote", completion_json: "str"
+    ) -> "AtomicCompletion":
+        """
+        `POST /v2/swap/atomic/{id}/complete` with the taker-signed
+        `OnchainSwapCompletion`; the maker signs last and broadcasts.
+        """
+
+        _UniffiConverterTypeAtomicQuote.check_lower(quote)
+
+        _UniffiConverterString.check_lower(completion_json)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeAtomicQuote.lower(quote),
+                _UniffiConverterString.lower(completion_json),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicCompletion.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def atomic_quote(
+        self, request: "AtomicQuoteRequest", expected_asset_id: "typing.Optional[str]"
+    ) -> "AtomicQuote":
+        """
+        `POST /v2/swap/atomic/quote`, validated against the request and, when
+        given, the expected contract.
+        """
+
+        _UniffiConverterTypeAtomicQuoteRequest.check_lower(request)
+
+        _UniffiConverterOptionalString.check_lower(expected_asset_id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeAtomicQuoteRequest.lower(request),
+                _UniffiConverterOptionalString.lower(expected_asset_id),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicQuote.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def atomic_request(
+        self, quote: "AtomicQuote", request_json: "str"
+    ) -> "AtomicProposal":
+        """
+        `POST /v2/swap/atomic/{id}/request` with rgb-lib's
+        `OnchainSwapRequest`, the proposal checked to belong to `quote`.
+        """
+
+        _UniffiConverterTypeAtomicQuote.check_lower(quote)
+
+        _UniffiConverterString.check_lower(request_json)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeAtomicQuote.lower(quote),
+                _UniffiConverterString.lower(request_json),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicProposal.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     def corridor_url(
         self,
     ) -> "str":
@@ -9742,6 +11486,72 @@ class SwapClient:
             _UniffiConverterTypeError,
         )
 
+    async def create_rgb_reverse_swap(
+        self,
+        chain: "BitcoinChain",
+        swap_request: "CreateRgbReverseRequest",
+        expectations: "RgbLockExpectations",
+    ) -> "CreateReverseResponse":
+        """
+        Create an RGB reverse swap, returned only once its swap tree and its
+        `rgb` lock both validated.
+        """
+
+        _UniffiConverterTypeBitcoinChain.check_lower(chain)
+
+        _UniffiConverterTypeCreateRgbReverseRequest.check_lower(swap_request)
+
+        _UniffiConverterTypeRgbLockExpectations.check_lower(expectations)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_rgb_reverse_swap(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeBitcoinChain.lower(chain),
+                _UniffiConverterTypeCreateRgbReverseRequest.lower(swap_request),
+                _UniffiConverterTypeRgbLockExpectations.lower(expectations),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeCreateReverseResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def create_rgb_submarine_swap(
+        self,
+        chain: "BitcoinChain",
+        swap_request: "CreateRgbSubmarineRequest",
+        expectations: "RgbLockExpectations",
+    ) -> "CreateSubmarineResponse":
+        """
+        Create an RGB submarine swap, returned only once its swap tree and
+        its `rgb` lock both validated.
+        """
+
+        _UniffiConverterTypeBitcoinChain.check_lower(chain)
+
+        _UniffiConverterTypeCreateRgbSubmarineRequest.check_lower(swap_request)
+
+        _UniffiConverterTypeRgbLockExpectations.check_lower(expectations)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_rgb_submarine_swap(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeBitcoinChain.lower(chain),
+                _UniffiConverterTypeCreateRgbSubmarineRequest.lower(swap_request),
+                _UniffiConverterTypeRgbLockExpectations.lower(expectations),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeCreateSubmarineResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def create_swap(
         self, swap_request: "CreateSubmarineRequest"
     ) -> "CreateSubmarineResponse":
@@ -9757,6 +11567,46 @@ class SwapClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeCreateSubmarineResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_atomic_pairs(
+        self,
+    ) -> "GetAtomicPairsResponse":
+        """
+        `GET /v2/swap/atomic/pairs`.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeGetAtomicPairsResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_atomic_swap(self, swap_id: "str") -> "AtomicSwapStatus":
+        """
+        `GET /v2/swap/atomic/{id}`.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicSwapStatus.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -11019,9 +12869,28 @@ def new_rfq_id() -> "str":
     )
 
 
+def rgb_check_recipient_script(lock: "RgbLock", script_hex: "str") -> None:
+    """
+    Check the script rgb-lib decodes from `lock.recipient_id` against the
+    HTLC. Call it before a submarine lock.
+    """
+
+    _UniffiConverterTypeRgbLock.check_lower(lock)
+
+    _UniffiConverterString.check_lower(script_hex)
+
+    _uniffi_rust_call_with_error(
+        _UniffiConverterTypeError,
+        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_rgb_check_recipient_script,
+        _UniffiConverterTypeRgbLock.lower(lock),
+        _UniffiConverterString.lower(script_hex),
+    )
+
+
 __all__ = [
     "InternalError",
     "AmountSide",
+    "AtomicAmountDirection",
     "BitcoinChain",
     "Chain",
     "ClientConnection",
@@ -11035,6 +12904,14 @@ __all__ = [
     "Side",
     "SubSwapStates",
     "SwapRestoreType",
+    "AtomicCompletion",
+    "AtomicPair",
+    "AtomicPairFees",
+    "AtomicPairLimits",
+    "AtomicProposal",
+    "AtomicQuote",
+    "AtomicQuoteRequest",
+    "AtomicSwapStatus",
     "BoltzWsConfig",
     "ChainClaim",
     "ChainFees",
@@ -11052,12 +12929,15 @@ __all__ = [
     "CreateChainResponse",
     "CreateReverseRequest",
     "CreateReverseResponse",
+    "CreateRgbReverseRequest",
+    "CreateRgbSubmarineRequest",
     "CreateSubmarineRequest",
     "CreateSubmarineResponse",
     "ElectrumBuilder",
     "EsploraBuilder",
     "FailureReasonIncorrectAmounts",
     "FundedLiquidPset",
+    "GetAtomicPairsResponse",
     "GetChainPairsResponse",
     "GetFeeEstimationResponse",
     "GetNodesResponse",
@@ -11086,7 +12966,9 @@ __all__ = [
     "RfqQuote",
     "RfqRefusal",
     "RfqStatus",
+    "RgbFeeInput",
     "RgbLock",
+    "RgbLockExpectations",
     "SubmarineFees",
     "SubmarinePair",
     "SubmarinePairLimits",
@@ -11105,11 +12987,13 @@ __all__ = [
     "btc_chain_from_network",
     "lbtc_chain_from_network",
     "new_rfq_id",
+    "rgb_check_recipient_script",
     "BtcLikeTransaction",
     "ChainClient",
     "KeyPair",
     "Preimage",
     "PreparedLiquidSpend",
+    "RgbHtlcSpend",
     "SwapClient",
     "SwapMasterKey",
     "SwapScript",

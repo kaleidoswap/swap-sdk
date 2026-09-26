@@ -338,7 +338,7 @@ impl BtcLikeTransaction {
 
 #[derive(uniffi::Object)]
 pub struct KeyPair {
-    inner: Keypair,
+    pub(crate) inner: Keypair,
 }
 
 #[uniffi::export]

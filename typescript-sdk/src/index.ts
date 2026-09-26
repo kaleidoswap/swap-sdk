@@ -8,6 +8,7 @@ import initWasm, {
   BoltzClient as WasmSwapClient,
   BtcLikeTransaction,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
+  RgbHtlcSpend as WasmRgbHtlcSpend,
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
@@ -594,6 +595,362 @@ export class IntentsCorridor {
   /** `null` for an id the maker never issued. */
   status(rfqId: string): Promise<RfqStatus | null> {
     return this.client.rfqStatus(rfqId) as Promise<RfqStatus | null>;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RGB — USDT on RGB (Bitcoin L1).
+//
+// Three routes: submarine `USDT-RGB -> BTC` and reverse `BTC -> USDT-RGB` over
+// Lightning, and atomic `BTC <-> USDT-RGB` in one on-chain transaction. The
+// asset moves in the caller's rgb-lib wallet, which this package does not
+// ship; the SDK validates the maker's terms and signs the swap's HTLC spends.
+//
+// Every RGB amount the maker states counts the contract's units: 6 decimals
+// for USDT-RGB, not sats. rgb-lib's swap messages cross as JSON strings
+// (`offerJson`, `proposalJson`, `completionJson`), so none of their numbers
+// is rounded or turned into a `bigint` on the way to rgb-lib.
+// ---------------------------------------------------------------------------
+
+export { rgbCheckRecipientScript } from "../vendor/bindings_wasm.js";
+
+/** The maker's currency name for Tether on RGB. */
+export const USDT_RGB = "USDT-RGB";
+/** Atomic pair: send BTC, receive USDT-RGB. */
+export const BTC_TO_USDT_RGB = "BTC/USDT-RGB";
+/** Atomic pair: send USDT-RGB, receive BTC. */
+export const USDT_RGB_TO_BTC = "USDT-RGB/BTC";
+
+/**
+ * The `rgb` object of an RGB create response: how the asset is locked in the
+ * swap tree's P2TR output.
+ *
+ * Submarine: send with rgb-lib to the witness recipient `recipientId` with
+ * `{ amount_sat: htlcSat, blinding }`, assigning `amount` of `assetId`, over
+ * `transportEndpoints` — after {@link rgbCheckRecipientScript} passed on the
+ * script rgb-lib decodes from `recipientId`.
+ *
+ * Reverse: once the hold invoice is paid the maker locks; accept the transfer
+ * with `blinding`, then claim with {@link RgbHtlcSpend.claim}.
+ */
+export interface RgbLock {
+  assetId: string;
+  /** Contract units; equals `expectedAmount` / `onchainAmount`. */
+  amount: bigint;
+  recipientId: string;
+  blinding: bigint;
+  htlcSat: bigint;
+  /** Reverse only: sat/vB the HTLC's sats fund the claim at. */
+  claimFeeRate?: bigint;
+  scriptPubkey: string;
+  transportEndpoints: string[];
+  minConfirmations: number;
+}
+
+/** What the caller requires of an RGB lock beyond the swap tree. */
+export interface RgbLockExpectations {
+  /** The contract the caller means to swap. Set it whenever you know it. */
+  assetId?: string;
+  /** Most sats a submarine may ask the taker to lock. Default 10 000. */
+  maxSubmarineHtlcSat?: bigint | number;
+}
+
+/** `createRgbSubmarineSwap` request: the Boltz submarine fields. */
+export interface CreateRgbSubmarineRequest {
+  from: typeof USDT_RGB;
+  to: "BTC";
+  invoice: string;
+  refundPublicKey: string;
+  pairHash?: string;
+  referralId?: string;
+}
+
+/** `createRgbReverseSwap` request: the Boltz reverse fields. */
+export interface CreateRgbReverseRequest {
+  from: "BTC";
+  to: typeof USDT_RGB;
+  claimPublicKey: string;
+  preimageHash?: string;
+  invoice?: string;
+  invoiceAmount?: bigint | number;
+  pairHash?: string;
+  description?: string;
+  referralId?: string;
+}
+
+export type AtomicAmountDirection = "from" | "to";
+
+export interface AtomicQuoteRequest {
+  pair: typeof BTC_TO_USDT_RGB | typeof USDT_RGB_TO_BTC;
+  /** Sats for BTC, contract units for USDT-RGB. */
+  amount: bigint | number;
+  direction?: AtomicAmountDirection;
+}
+
+/** A validated atomic quote. Pass it back to the later steps unchanged. */
+export interface AtomicQuote {
+  id: string;
+  pair: string;
+  direction: AtomicAmountDirection;
+  fromAmount: bigint;
+  toAmount: bigint;
+  assetId: string;
+  /** Miner fee the taker funds on top of `fromAmount`, sats. */
+  networkFeeSat: bigint;
+  serviceFee: bigint;
+  /** Unix seconds: the request must arrive before this. */
+  expiresAt: bigint;
+  /** Unix seconds: the completion must arrive before this. */
+  offerExpiresAt: bigint;
+  /** rgb-lib's offer, for `accept_swap_offer`. */
+  offerJson: string;
+}
+
+export interface AtomicProposal {
+  id: string;
+  status: string;
+  /** rgb-lib's `OnchainSwapProposal`, for `complete_swap_proposal`. */
+  proposalJson: string;
+}
+
+export interface AtomicCompletion {
+  id: string;
+  status: string;
+  txid: string;
+  /** The finalized completion, for `accept_swap_transfers`. */
+  completionJson: string;
+}
+
+export interface AtomicSwapStatus {
+  id: string;
+  pair: string;
+  status: string;
+  state: string;
+  fromAmount: bigint;
+  toAmount: bigint;
+  assetId: string;
+  networkFeeSat: bigint;
+  txid?: string | null;
+  confirmations: number;
+  expiresAt: bigint;
+  offerExpiresAt: bigint;
+  createdAt: bigint;
+}
+
+/** A validated RGB submarine create response (the fields the RGB flow
+ * reads; the rest of the Boltz response is carried as-is). Persist it whole:
+ * the refund is rebuilt from it. */
+export interface RgbSubmarineSwap {
+  id: string;
+  address: string;
+  /** Contract units of USDT-RGB to lock. */
+  expectedAmount: bigint;
+  timeoutBlockHeight: bigint;
+  rgb: RgbLock;
+  swapAuth?: string;
+  [field: string]: unknown;
+}
+
+/** A validated RGB reverse create response. Persist it whole: the claim is
+ * rebuilt from it. */
+export interface RgbReverseSwap {
+  id: string;
+  invoice?: string;
+  lockupAddress: string;
+  /** Contract units of USDT-RGB the maker locks. */
+  onchainAmount: bigint;
+  timeoutBlockHeight: number;
+  rgb: RgbLock;
+  swapAuth?: string;
+  [field: string]: unknown;
+}
+
+/** A P2TR key-path UTXO of the caller's wallet that pays a refund's fee. */
+export interface RgbFeeInput {
+  /** `txid:vout`. */
+  outpoint: string;
+  valueSat: bigint | number;
+  scriptPubkeyHex: string;
+  changeScriptHex: string;
+}
+
+/**
+ * Typed façade over a {@link SwapClient}'s RGB methods.
+ *
+ * ```ts
+ * const rgb = new RgbSwaps(SwapClient.forNetwork("signet"));
+ * const swap = await rgb.createReverseSwap("signet", {
+ *   from: "BTC", to: USDT_RGB, claimPublicKey, preimageHash, invoiceAmount,
+ * }, { assetId });
+ * // pay swap.invoice; once the maker locked, claim with RgbHtlcSpend.claim
+ * ```
+ */
+export class RgbSwaps {
+  constructor(private readonly client: WasmSwapClient) {}
+
+  /** Create a submarine swap, returned only once its lock validated. */
+  createSubmarineSwap(
+    network: Network,
+    request: CreateRgbSubmarineRequest,
+    expectations?: RgbLockExpectations,
+  ): Promise<RgbSubmarineSwap> {
+    return this.client.createRgbSubmarineSwap(
+      network,
+      request,
+      expectations,
+    ) as Promise<RgbSubmarineSwap>;
+  }
+
+  /** Create a reverse swap, returned only once its lock validated. */
+  createReverseSwap(
+    network: Network,
+    request: CreateRgbReverseRequest,
+    expectations?: RgbLockExpectations,
+  ): Promise<RgbReverseSwap> {
+    return this.client.createRgbReverseSwap(
+      network,
+      request,
+      expectations,
+    ) as Promise<RgbReverseSwap>;
+  }
+
+  atomicPairs(): Promise<Record<string, Record<string, unknown>>> {
+    return this.client.atomicPairs() as Promise<
+      Record<string, Record<string, unknown>>
+    >;
+  }
+
+  /** Quote, validated against the request and the expected contract. */
+  atomicQuote(
+    request: AtomicQuoteRequest,
+    expectedAssetId?: string,
+  ): Promise<AtomicQuote> {
+    return this.client.atomicQuote(
+      request,
+      expectedAssetId,
+    ) as Promise<AtomicQuote>;
+  }
+
+  /** Send rgb-lib's `OnchainSwapRequest` (JSON). */
+  atomicRequest(
+    quote: AtomicQuote,
+    requestJson: string,
+  ): Promise<AtomicProposal> {
+    return this.client.atomicRequest(
+      quote,
+      requestJson,
+    ) as Promise<AtomicProposal>;
+  }
+
+  /**
+   * Send the taker-signed `OnchainSwapCompletion` (JSON); the maker signs
+   * last and broadcasts. An error does not prove it was not broadcast: check
+   * {@link atomicSwap} before reusing the inputs.
+   */
+  atomicComplete(
+    quote: AtomicQuote,
+    completionJson: string,
+  ): Promise<AtomicCompletion> {
+    return this.client.atomicComplete(
+      quote,
+      completionJson,
+    ) as Promise<AtomicCompletion>;
+  }
+
+  atomicSwap(swapId: string): Promise<AtomicSwapStatus> {
+    return this.client.atomicSwap(swapId) as Promise<AtomicSwapStatus>;
+  }
+}
+
+/**
+ * A colored claim or refund of an RGB HTLC.
+ *
+ * 1. `RgbHtlcSpend.claim(...)` / `RgbHtlcSpend.refund(...)`.
+ * 2. Color {@link psbt} with rgb-lib's `psbt_op_prepare`, `output_map`
+ *    `{ 1: amount }`, the HTLC outpoint as the input.
+ * 3. {@link signColoredTx} (HTLC-only spend) or {@link signColored} (with a
+ *    fee input, which the wallet then signs).
+ *
+ * Never spend an RGB HTLC any other way: an uncolored spend burns the asset,
+ * and {@link signColored} refuses a PSBT whose output 0 is not a commitment.
+ */
+export class RgbHtlcSpend {
+  private constructor(private readonly inner: WasmRgbHtlcSpend) {}
+
+  /** The taker's claim of a reverse lock; `feeRateSatVb` defaults to the
+   * lock's `claimFeeRate`. */
+  static claim(
+    network: Network,
+    response: unknown,
+    ourPubkeyHex: string,
+    lockTxHex: string,
+    destScriptHex: string,
+    feeRateSatVb?: bigint,
+  ): RgbHtlcSpend {
+    return new RgbHtlcSpend(
+      WasmRgbHtlcSpend.claim(
+        network,
+        response,
+        ourPubkeyHex,
+        lockTxHex,
+        destScriptHex,
+        feeRateSatVb,
+      ),
+    );
+  }
+
+  /** The taker's refund of its submarine lock, after the timeout. */
+  static refund(
+    network: Network,
+    response: unknown,
+    ourPubkeyHex: string,
+    lockTxHex: string,
+    destScriptHex: string,
+    feeInput: RgbFeeInput | undefined,
+    feeRateSatVb: bigint,
+  ): RgbHtlcSpend {
+    return new RgbHtlcSpend(
+      WasmRgbHtlcSpend.refund(
+        network,
+        response,
+        ourPubkeyHex,
+        lockTxHex,
+        destScriptHex,
+        feeInput,
+        feeRateSatVb,
+      ),
+    );
+  }
+
+  /** Unsigned PSBT (base64) for rgb-lib to color. */
+  psbt(): string {
+    return this.inner.psbt();
+  }
+
+  feeSat(): bigint {
+    return this.inner.feeSat();
+  }
+
+  /** Sign the HTLC input of the colored PSBT (base64 in, base64 out). */
+  signColored(
+    coloredPsbt: string,
+    keysSecretHex: string,
+    preimageHex?: string,
+  ): string {
+    return this.inner.signColored(coloredPsbt, keysSecretHex, preimageHex);
+  }
+
+  /** {@link signColored} for an HTLC-only spend: the broadcastable tx. */
+  signColoredTx(
+    coloredPsbt: string,
+    keysSecretHex: string,
+    preimageHex?: string,
+  ): BtcLikeTransaction {
+    return this.inner.signColoredTx(coloredPsbt, keysSecretHex, preimageHex);
+  }
+
+  free(): void {
+    this.inner.free();
   }
 }
 

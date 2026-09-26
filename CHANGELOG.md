@@ -35,6 +35,20 @@ colors, and this crate validates and signs.
   response types check that each step stays on the quoted swap (the
   maker's id and rgb-lib's) and that the quote answers the request.
 - `get_usdt_rgb_to_btc_pair` / `get_btc_to_usdt_rgb_pair` pair accessors.
+- `create_rgb_submarine_swap` / `create_rgb_reverse_swap` on
+  `BoltzApiClientV2`: create, then return the response only once
+  `validate_rgb` passes. `RgbHtlcSpend::claim_from_response` /
+  `refund_from_response` rebuild the swap script from the create response.
+- **TypeScript:** `RgbSwaps` (RGB create, atomic quote, request, complete
+  and status) and `RgbHtlcSpend`, both typed, plus
+  `rgbCheckRecipientScript`. rgb-lib messages cross as JSON strings
+  (`offerJson`, `proposalJson`, `completionJson`). The generic create methods
+  now refuse `USDT-RGB` and point to the RGB ones.
+- **UniFFI (Python, Kotlin, Swift):** the same surface.
+  `SwapClient.create_rgb_submarine_swap`, `create_rgb_reverse_swap`,
+  `get_atomic_pairs`, `atomic_quote`, `atomic_request`, `atomic_complete`
+  and `get_atomic_swap`, the `RgbHtlcSpend` object and
+  `rgb_check_recipient_script`. The binding-parity check covers them.
 
 Every RGB amount the maker states counts the contract's units. For USDT-RGB
 that is 6 decimals, not sats and not 8-decimal card units.
@@ -42,7 +56,7 @@ that is 6 decimals, not sats and not 8-decimal card units.
 **Breaking for struct literals only:** `CreateSubmarineResponse` and
 `CreateReverseResponse` gain the public field `rgb: Option<RgbLock>`. Add
 `rgb: None`. The UniFFI records gain the same field, and the Python glue is
-regenerated. Parsing and the TypeScript surface are unchanged.
+regenerated. Parsing is unchanged.
 
 ## [0.10.0] - 2026-09-24
 

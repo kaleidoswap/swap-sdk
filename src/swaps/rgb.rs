@@ -51,7 +51,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::bitcoin::BtcSwapScript;
-use super::boltz::{CreateReverseResponse, CreateSubmarineResponse, SwapType};
+use super::boltz::{
+    BoltzApiClientV2, CreateReverseRequest, CreateReverseResponse, CreateSubmarineRequest,
+    CreateSubmarineResponse, SwapType,
+};
 use crate::error::Error;
 use crate::network::{BitcoinChain, Chain};
 use crate::util::secrets::Preimage;
@@ -636,6 +639,59 @@ impl RgbHtlcSpend {
         })
     }
 
+    /// [`Self::claim`] from the reverse create response the caller
+    /// validated with [`CreateReverseResponse::validate_rgb`]: the swap
+    /// script is rebuilt from it (checked against `lockupAddress` on
+    /// `chain`) and the HTLC output found in `lock_tx`, the maker's lock
+    /// transaction.
+    pub fn claim_from_response(
+        response: &CreateReverseResponse,
+        our_pubkey: &bitcoin::PublicKey,
+        chain: BitcoinChain,
+        lock_tx: &Transaction,
+        dest_script: ScriptBuf,
+        fee_rate_sat_vb: Option<u64>,
+    ) -> Result<Self, Error> {
+        let lock = response
+            .rgb
+            .as_ref()
+            .ok_or_else(|| rgb_error("the create response carries no rgb lock"))?;
+        let swap_script = BtcSwapScript::reverse_from_swap_resp(response, *our_pubkey)?;
+        swap_script.validate_address(chain, response.lockup_address.clone())?;
+        let htlc = lock.find_htlc_output(lock_tx)?;
+        Self::claim(&swap_script, lock, htlc, dest_script, fee_rate_sat_vb)
+    }
+
+    /// [`Self::refund`] from the submarine create response the caller
+    /// validated with [`CreateSubmarineResponse::validate_rgb`]: the swap
+    /// script is rebuilt from it (checked against `address` on `chain`) and
+    /// the HTLC output found in `lock_tx`, the taker's own lock transaction.
+    pub fn refund_from_response(
+        response: &CreateSubmarineResponse,
+        our_pubkey: &bitcoin::PublicKey,
+        chain: BitcoinChain,
+        lock_tx: &Transaction,
+        dest_script: ScriptBuf,
+        fee_input: Option<RgbFeeInput>,
+        fee_rate_sat_vb: u64,
+    ) -> Result<Self, Error> {
+        let lock = response
+            .rgb
+            .as_ref()
+            .ok_or_else(|| rgb_error("the create response carries no rgb lock"))?;
+        let swap_script = BtcSwapScript::submarine_from_swap_resp(response, *our_pubkey)?;
+        swap_script.validate_address(chain, response.address.clone())?;
+        let htlc = lock.find_htlc_output(lock_tx)?;
+        Self::refund(
+            &swap_script,
+            lock,
+            htlc,
+            dest_script,
+            fee_input,
+            fee_rate_sat_vb,
+        )
+    }
+
     fn check_htlc(swap_script: &BtcSwapScript, lock: &RgbLock, htlc: &TxOut) -> Result<(), Error> {
         let script = lock.script_pubkey()?;
         if htlc.script_pubkey != script {
@@ -872,6 +928,58 @@ impl RgbHtlcSpend {
             .clone()
             .ok_or_else(|| rgb_error("the HTLC input was not finalized"))?;
         Ok(tx)
+    }
+}
+
+impl BoltzApiClientV2 {
+    /// Create an RGB submarine swap (`req.from` = [`USDT_RGB`]) and return
+    /// the response only once [`CreateSubmarineResponse::validate_rgb`]
+    /// passed.
+    pub async fn create_rgb_submarine_swap(
+        &self,
+        req: &CreateSubmarineRequest,
+        chain: BitcoinChain,
+        expected: &RgbLockExpectations,
+    ) -> Result<CreateSubmarineResponse, Error> {
+        if req.from != USDT_RGB {
+            return Err(rgb_error(format!(
+                "an RGB submarine swap sends {USDT_RGB}, not {}",
+                req.from
+            )));
+        }
+        let response = self.post_swap_req(req).await?;
+        response.validate_rgb(&req.invoice, &req.refund_public_key, chain, expected)?;
+        Ok(response)
+    }
+
+    /// Create an RGB reverse swap (`req.to` = [`USDT_RGB`]) and return the
+    /// response only once [`CreateReverseResponse::validate_rgb`] passed
+    /// against the request's `preimageHash` (or its invoice's payment hash).
+    pub async fn create_rgb_reverse_swap(
+        &self,
+        req: CreateReverseRequest,
+        chain: BitcoinChain,
+        expected: &RgbLockExpectations,
+    ) -> Result<CreateReverseResponse, Error> {
+        if req.to != USDT_RGB {
+            return Err(rgb_error(format!(
+                "an RGB reverse swap receives {USDT_RGB}, not {}",
+                req.to
+            )));
+        }
+        let preimage = match (&req.preimage_hash, &req.invoice) {
+            (Some(hash), _) => Preimage::from_sha256_str(&hash.to_string())?,
+            (None, Some(invoice)) => Preimage::from_invoice_str(invoice)?,
+            (None, None) => {
+                return Err(rgb_error(
+                    "a reverse swap request needs preimageHash or invoice",
+                ))
+            }
+        };
+        let claim_public_key = req.claim_public_key;
+        let response = self.post_reverse_req(req).await?;
+        response.validate_rgb(&preimage, &claim_public_key, chain, expected)?;
+        Ok(response)
     }
 }
 

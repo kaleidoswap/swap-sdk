@@ -306,6 +306,13 @@ fn asset_from_boltz(
              this client for the quote, and @kaleidorg/swap-sdk/arkade to fund or \
              claim the lockup",
         )),
+        // RGB routes validate a lock the generic create methods know nothing
+        // about, so they have their own entry points.
+        "USDT-RGB" => Err(arg_err(
+            "USDT-RGB is USDT on RGB (Bitcoin L1): create it with \
+             createRgbSubmarineSwap() / createRgbReverseSwap(), which validate \
+             the maker's RGB lock as well as the swap tree",
+        )),
         other => Err(arg_err(format!("unsupported Boltz asset '{other}'"))),
     }
 }
@@ -967,6 +974,141 @@ impl BoltzClient {
                 .map_err(core_err)?,
         )
     }
+
+    // ---- RGB (USDT-RGB on Bitcoin L1) --------------------------------------
+
+    /// Create an RGB submarine swap (`from: "USDT-RGB"`, `to: "BTC"`). The
+    /// response is returned only once its swap tree and its `rgb` lock both
+    /// validated: the lock pays `address`, for `expectedAmount` of the
+    /// expected contract, and asks for at most `maxSubmarineHtlcSat` sats.
+    /// `expectations` is `{ assetId?, maxSubmarineHtlcSat? }`.
+    #[wasm_bindgen(js_name = createRgbSubmarineSwap)]
+    pub async fn create_rgb_submarine_swap(
+        &self,
+        network: StringArg,
+        req: JsValue,
+        expectations: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let chain = bitcoin_chain_arg(network)?;
+        let req: CreateSubmarineRequest = from_js(req)?;
+        let expected = rgb_expectations(expectations)?;
+        let resp = self
+            .inner
+            .create_rgb_submarine_swap(&req, chain, &expected)
+            .await
+            .map_err(core_err)?;
+        to_js(&resp)
+    }
+
+    /// Create an RGB reverse swap (`from: "BTC"`, `to: "USDT-RGB"`). The
+    /// response is returned only once its swap tree and its `rgb` lock both
+    /// validated: the lock pays `lockupAddress`, for `onchainAmount` of the
+    /// expected contract, with enough `htlcSat` to fund the taker's claim.
+    #[wasm_bindgen(js_name = createRgbReverseSwap)]
+    pub async fn create_rgb_reverse_swap(
+        &self,
+        network: StringArg,
+        req: JsValue,
+        expectations: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let chain = bitcoin_chain_arg(network)?;
+        let req: CreateReverseRequest = from_js(req)?;
+        let expected = rgb_expectations(expectations)?;
+        let resp = self
+            .inner
+            .create_rgb_reverse_swap(req, chain, &expected)
+            .await
+            .map_err(core_err)?;
+        to_js(&resp)
+    }
+
+    /// `GET /v2/swap/atomic/pairs`: the atomic BTC ⇄ USDT-RGB rate cards.
+    #[wasm_bindgen(js_name = atomicPairs)]
+    pub async fn atomic_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_atomic_pairs().await.map_err(core_err)?)
+    }
+
+    /// `POST /v2/swap/atomic/quote`, validated against the request (and the
+    /// expected contract, when given). rgb-lib's offer comes back as the
+    /// JSON string `offerJson`, for the taker's `accept_swap_offer`.
+    #[wasm_bindgen(js_name = atomicQuote)]
+    pub async fn atomic_quote(
+        &self,
+        req: JsValue,
+        expected_asset_id: Option<StringArg>,
+    ) -> Result<JsValue, JsValue> {
+        let req: rgb::AtomicQuoteRequest = from_js(req)?;
+        let expected_asset_id = opt_str_arg(expected_asset_id, "expectedAssetId")?;
+        let quote = self.inner.post_atomic_quote(&req).await.map_err(core_err)?;
+        quote
+            .validate(&req, expected_asset_id.as_deref(), now_unix())
+            .map_err(core_err)?;
+        to_js(&JsAtomicQuote::from_core(&quote)?)
+    }
+
+    /// `POST /v2/swap/atomic/{id}/request` with rgb-lib's
+    /// `OnchainSwapRequest` (a JSON string). Returns
+    /// `{ id, status, proposalJson }` once the proposal is checked to belong
+    /// to `quote`.
+    #[wasm_bindgen(js_name = atomicRequest)]
+    pub async fn atomic_request(
+        &self,
+        quote: JsValue,
+        request_json: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let quote = from_js::<JsAtomicQuote>(quote)?.into_core()?;
+        let request = json_arg(request_json, "requestJson")?;
+        let proposal = self
+            .inner
+            .post_atomic_request(&quote.id, request)
+            .await
+            .map_err(core_err)?;
+        proposal.validate(&quote).map_err(core_err)?;
+        to_js(&serde_json::json!({
+            "id": proposal.id,
+            "status": proposal.status,
+            "proposalJson": proposal.proposal.to_string(),
+        }))
+    }
+
+    /// `POST /v2/swap/atomic/{id}/complete` with the taker-signed
+    /// `OnchainSwapCompletion` (a JSON string); the maker signs last and
+    /// broadcasts. Returns `{ id, status, txid, completionJson }`, the
+    /// finalized completion for the taker's `accept_swap_transfers`.
+    #[wasm_bindgen(js_name = atomicComplete)]
+    pub async fn atomic_complete(
+        &self,
+        quote: JsValue,
+        completion_json: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let quote = from_js::<JsAtomicQuote>(quote)?.into_core()?;
+        let completion = json_arg(completion_json, "completionJson")?;
+        let done = self
+            .inner
+            .post_atomic_complete(&quote.id, completion)
+            .await
+            .map_err(core_err)?;
+        done.validate(&quote).map_err(core_err)?;
+        to_js(&serde_json::json!({
+            "id": done.id,
+            "status": done.status,
+            "txid": done.txid,
+            "completionJson": done.completion.to_string(),
+        }))
+    }
+
+    /// `GET /v2/swap/atomic/{id}`.
+    #[wasm_bindgen(js_name = atomicSwap)]
+    pub async fn atomic_swap(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        to_js(
+            &self
+                .inner
+                .get_atomic_swap(&swap_id)
+                .await
+                .map_err(core_err)?,
+        )
+    }
 }
 
 // ============================================================================
@@ -1467,6 +1609,303 @@ impl PreparedLiquidSpend {
             inner: CoreBtcLikeTransaction::liquid(tx),
         })
     }
+}
+
+// ============================================================================
+// RGB (USDT-RGB on Bitcoin L1): lock checks, colored HTLC spends, and the
+// atomic quote's JS shape. rgb-lib messages cross as JSON strings, so their
+// 64-bit numbers are never turned into BigInt on the way to rgb-lib.
+// ============================================================================
+
+use kaleidorg_swap_sdk::rgb::{
+    self, RgbFeeInput, RgbHtlcSpend as CoreRgbHtlcSpend, RgbLock, RgbLockExpectations,
+};
+
+fn bitcoin_chain_arg(
+    network: StringArg,
+) -> Result<kaleidorg_swap_sdk::network::BitcoinChain, JsValue> {
+    let network = str_arg(network, "network")?;
+    Ok(parse_network(&network)?.into())
+}
+
+fn now_unix() -> i64 {
+    (js_sys::Date::now() / 1000.0) as i64
+}
+
+fn json_arg(v: StringArg, param: &str) -> Result<serde_json::Value, JsValue> {
+    let text = str_arg(v, param)?;
+    serde_json::from_str(&text).map_err(|e| arg_err(format!("argument `{param}` is not JSON: {e}")))
+}
+
+/// `{ assetId?, maxSubmarineHtlcSat? }`; `undefined` / `null` keep the
+/// defaults.
+fn rgb_expectations(v: JsValue) -> Result<RgbLockExpectations, JsValue> {
+    #[derive(serde::Deserialize, Default)]
+    #[serde(rename_all = "camelCase")]
+    struct Expectations {
+        #[serde(default)]
+        asset_id: Option<String>,
+        #[serde(default)]
+        max_submarine_htlc_sat: Option<u64>,
+    }
+    let parsed: Expectations = if v.is_undefined() || v.is_null() {
+        Expectations::default()
+    } else {
+        from_js(v)?
+    };
+    let defaults = RgbLockExpectations::default();
+    Ok(RgbLockExpectations {
+        asset_id: parsed.asset_id,
+        max_submarine_htlc_sat: parsed
+            .max_submarine_htlc_sat
+            .unwrap_or(defaults.max_submarine_htlc_sat),
+    })
+}
+
+/// An atomic quote as JS sees it: the maker's fields, with rgb-lib's offer
+/// as the JSON string `offerJson`.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsAtomicQuote {
+    id: String,
+    pair: String,
+    direction: rgb::AtomicAmountDirection,
+    from_amount: u64,
+    to_amount: u64,
+    asset_id: String,
+    network_fee_sat: u64,
+    service_fee: u64,
+    expires_at: i64,
+    offer_expires_at: i64,
+    offer_json: String,
+}
+
+impl JsAtomicQuote {
+    fn from_core(q: &rgb::AtomicQuoteResponse) -> Result<Self, JsValue> {
+        Ok(Self {
+            id: q.id.clone(),
+            pair: q.pair.clone(),
+            direction: q.direction,
+            from_amount: q.from_amount,
+            to_amount: q.to_amount,
+            asset_id: q.asset_id.clone(),
+            network_fee_sat: q.network_fee_sat,
+            service_fee: q.service_fee,
+            expires_at: q.expires_at,
+            offer_expires_at: q.offer_expires_at,
+            offer_json: q.offer.to_string(),
+        })
+    }
+
+    fn into_core(self) -> Result<rgb::AtomicQuoteResponse, JsValue> {
+        let offer = serde_json::from_str(&self.offer_json)
+            .map_err(|e| arg_err(format!("quote.offerJson is not JSON: {e}")))?;
+        Ok(rgb::AtomicQuoteResponse {
+            id: self.id,
+            pair: self.pair,
+            direction: self.direction,
+            from_amount: self.from_amount,
+            to_amount: self.to_amount,
+            asset_id: self.asset_id,
+            network_fee_sat: self.network_fee_sat,
+            service_fee: self.service_fee,
+            expires_at: self.expires_at,
+            offer_expires_at: self.offer_expires_at,
+            offer,
+        })
+    }
+}
+
+fn script_arg(hex: &str, param: &str) -> Result<kaleidorg_swap_sdk::bitcoin::ScriptBuf, JsValue> {
+    kaleidorg_swap_sdk::bitcoin::ScriptBuf::from_hex(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex script: {e}")))
+}
+
+fn tx_arg(hex: &str, param: &str) -> Result<kaleidorg_swap_sdk::bitcoin::Transaction, JsValue> {
+    kaleidorg_swap_sdk::bitcoin::consensus::encode::deserialize_hex(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex transaction: {e}")))
+}
+
+fn psbt_arg(base64: &str, param: &str) -> Result<kaleidorg_swap_sdk::bitcoin::Psbt, JsValue> {
+    kaleidorg_swap_sdk::bitcoin::Psbt::from_str(base64)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a base64 PSBT: {e}")))
+}
+
+/// Check the script rgb-lib decodes from `lock.recipientId`
+/// (`script_buf_from_recipient_id`) against the HTLC. Call it before a
+/// submarine lock: rgb-lib pays the script the recipient id encodes.
+#[wasm_bindgen(js_name = rgbCheckRecipientScript)]
+pub fn rgb_check_recipient_script(lock: JsValue, script_hex: StringArg) -> Result<(), JsValue> {
+    let lock: RgbLock = from_js(lock)?;
+    let script_hex = str_arg(script_hex, "scriptHex")?;
+    lock.check_recipient_script(&script_arg(&script_hex, "scriptHex")?)
+        .map_err(core_err)
+}
+
+/// A colored claim or refund of an RGB HTLC: color `psbt()` with rgb-lib
+/// (`output_map` `{1: amount}`), then sign it here.
+#[wasm_bindgen]
+pub struct RgbHtlcSpend {
+    inner: CoreRgbHtlcSpend,
+}
+
+#[wasm_bindgen]
+impl RgbHtlcSpend {
+    /// The taker's claim of a reverse lock. `response` is the create
+    /// response, `ourPubkeyHex` the claim key, `lockTxHex` the maker's lock
+    /// transaction, `destScriptHex` the taker's colored receive script.
+    /// `feeRateSatVb` defaults to the lock's `claimFeeRate`.
+    pub fn claim(
+        network: StringArg,
+        response: JsValue,
+        our_pubkey_hex: StringArg,
+        lock_tx_hex: StringArg,
+        dest_script_hex: StringArg,
+        fee_rate_sat_vb: Option<u64>,
+    ) -> Result<RgbHtlcSpend, JsValue> {
+        let chain = bitcoin_chain_arg(network)?;
+        let resp: CreateReverseResponse = from_js(response)?;
+        let pk = parse_pubkey_arg(&str_arg(our_pubkey_hex, "ourPubkeyHex")?, "ourPubkeyHex")?;
+        let lock_tx = tx_arg(&str_arg(lock_tx_hex, "lockTxHex")?, "lockTxHex")?;
+        let dest = script_arg(&str_arg(dest_script_hex, "destScriptHex")?, "destScriptHex")?;
+        Ok(RgbHtlcSpend {
+            inner: CoreRgbHtlcSpend::claim_from_response(
+                &resp,
+                &pk,
+                chain,
+                &lock_tx,
+                dest,
+                fee_rate_sat_vb,
+            )
+            .map_err(core_err)?,
+        })
+    }
+
+    /// The taker's refund of its own submarine lock after the timeout.
+    /// `feeInput` is `null`/`undefined` or `{ outpoint: "txid:vout",
+    /// valueSat, scriptPubkeyHex, changeScriptHex }`, a P2TR key-path UTXO of
+    /// the caller's wallet.
+    pub fn refund(
+        network: StringArg,
+        response: JsValue,
+        our_pubkey_hex: StringArg,
+        lock_tx_hex: StringArg,
+        dest_script_hex: StringArg,
+        fee_input: JsValue,
+        fee_rate_sat_vb: u64,
+    ) -> Result<RgbHtlcSpend, JsValue> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct FeeInput {
+            outpoint: String,
+            value_sat: u64,
+            script_pubkey_hex: String,
+            change_script_hex: String,
+        }
+        let chain = bitcoin_chain_arg(network)?;
+        let resp: CreateSubmarineResponse = from_js(response)?;
+        let pk = parse_pubkey_arg(&str_arg(our_pubkey_hex, "ourPubkeyHex")?, "ourPubkeyHex")?;
+        let lock_tx = tx_arg(&str_arg(lock_tx_hex, "lockTxHex")?, "lockTxHex")?;
+        let dest = script_arg(&str_arg(dest_script_hex, "destScriptHex")?, "destScriptHex")?;
+        let fee_input = if fee_input.is_undefined() || fee_input.is_null() {
+            None
+        } else {
+            let f: FeeInput = from_js(fee_input)?;
+            Some(RgbFeeInput {
+                outpoint: kaleidorg_swap_sdk::bitcoin::OutPoint::from_str(&f.outpoint)
+                    .map_err(|e| arg_err(format!("feeInput.outpoint: {e}")))?,
+                txout: kaleidorg_swap_sdk::bitcoin::TxOut {
+                    value: kaleidorg_swap_sdk::bitcoin::Amount::from_sat(f.value_sat),
+                    script_pubkey: script_arg(&f.script_pubkey_hex, "feeInput.scriptPubkeyHex")?,
+                },
+                change_script: script_arg(&f.change_script_hex, "feeInput.changeScriptHex")?,
+            })
+        };
+        Ok(RgbHtlcSpend {
+            inner: CoreRgbHtlcSpend::refund_from_response(
+                &resp,
+                &pk,
+                chain,
+                &lock_tx,
+                dest,
+                fee_input,
+                fee_rate_sat_vb,
+            )
+            .map_err(core_err)?,
+        })
+    }
+
+    /// The unsigned PSBT (base64) for rgb-lib to color. Output 1 receives
+    /// the asset.
+    pub fn psbt(&self) -> Result<String, JsValue> {
+        Ok(self.inner.psbt().map_err(core_err)?.to_string())
+    }
+
+    /// The miner fee the spend pays, sats.
+    #[wasm_bindgen(js_name = feeSat)]
+    pub fn fee_sat(&self) -> u64 {
+        self.inner.fee_sat()
+    }
+
+    /// Sign the HTLC input of the PSBT rgb-lib colored (base64), returning
+    /// it (base64) with that input finalized. Refused unless output 0 now
+    /// carries the RGB commitment and nothing else changed. `preimageHex`
+    /// is required for a claim.
+    #[wasm_bindgen(js_name = signColored)]
+    pub fn sign_colored(
+        &self,
+        colored_psbt: StringArg,
+        keys_secret_hex: StringArg,
+        preimage_hex: Option<StringArg>,
+    ) -> Result<String, JsValue> {
+        let (psbt, keys, preimage) = spend_args(colored_psbt, keys_secret_hex, preimage_hex)?;
+        Ok(self
+            .inner
+            .sign_colored(&psbt, &keys, preimage.as_ref())
+            .map_err(core_err)?
+            .to_string())
+    }
+
+    /// [`Self::sign_colored`] for a spend whose only input is the HTLC:
+    /// the broadcastable transaction.
+    #[wasm_bindgen(js_name = signColoredTx)]
+    pub fn sign_colored_tx(
+        &self,
+        colored_psbt: StringArg,
+        keys_secret_hex: StringArg,
+        preimage_hex: Option<StringArg>,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let (psbt, keys, preimage) = spend_args(colored_psbt, keys_secret_hex, preimage_hex)?;
+        let tx = self
+            .inner
+            .sign_colored_tx(&psbt, &keys, preimage.as_ref())
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::bitcoin(tx),
+        })
+    }
+}
+
+fn spend_args(
+    colored_psbt: StringArg,
+    keys_secret_hex: StringArg,
+    preimage_hex: Option<StringArg>,
+) -> Result<
+    (
+        kaleidorg_swap_sdk::bitcoin::Psbt,
+        Keypair,
+        Option<CorePreimage>,
+    ),
+    JsValue,
+> {
+    let psbt = psbt_arg(&str_arg(colored_psbt, "coloredPsbt")?, "coloredPsbt")?;
+    let secret =
+        parse_secret_key_arg(&str_arg(keys_secret_hex, "keysSecretHex")?, "keysSecretHex")?;
+    let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+    let preimage = opt_str_arg(preimage_hex, "preimageHex")?
+        .map(|hex| parse_preimage_arg(&hex, "preimageHex"))
+        .transpose()?;
+    Ok((psbt, keys, preimage))
 }
 
 /// A signed Bitcoin/Liquid transaction produced by claim/refund construction.
