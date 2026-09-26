@@ -11,6 +11,7 @@ use kaleidorg_swap_sdk::error::Error as CoreError;
 use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 use kaleidorg_swap_sdk::network::{Chain, Currency, Network};
 use kaleidorg_swap_sdk::swaps::boltz::*;
+use kaleidorg_swap_sdk::swaps::rgb::RgbLock;
 use kaleidorg_swap_sdk::util::secrets::Preimage;
 use kaleidorg_swap_sdk::LiquidAssetContext;
 use std::collections::HashMap;
@@ -628,6 +629,20 @@ pub struct SwapTree {
     pub refund_leaf: Leaf,
 }
 
+/// The `rgb` object of an RGB submarine or reverse create response.
+#[uniffi::remote(Record)]
+pub struct RgbLock {
+    pub asset_id: String,
+    pub amount: u64,
+    pub recipient_id: String,
+    pub blinding: u64,
+    pub htlc_sat: u64,
+    pub claim_fee_rate: Option<u64>,
+    pub script_pubkey: String,
+    pub transport_endpoints: Vec<String>,
+    pub min_confirmations: u8,
+}
+
 #[uniffi::remote(Record)]
 pub struct CreateSubmarineResponse {
     pub accept_zero_conf: bool,
@@ -645,6 +660,9 @@ pub struct CreateSubmarineResponse {
     /// Per-swap taker credential the KaleidoSwap maker issues once on
     /// creation. No submarine-swap route needs it today; persist it anyway.
     pub swap_auth: Option<String>,
+    /// RGB routes only (`USDT-RGB → BTC`): how to lock the asset in the
+    /// swap tree's address. `expected_amount` then counts contract units.
+    pub rgb: Option<RgbLock>,
 }
 
 #[uniffi::remote(Record)]
@@ -663,6 +681,9 @@ pub struct CreateReverseResponse {
     /// Per-swap taker credential the KaleidoSwap maker issues once on
     /// creation. No reverse-swap route needs it today; persist it anyway.
     pub swap_auth: Option<String>,
+    /// RGB routes only (`BTC → USDT-RGB`): how to find and claim the asset
+    /// the maker locks. `onchain_amount` then counts contract units.
+    pub rgb: Option<RgbLock>,
 }
 
 #[derive(Debug, Record)]

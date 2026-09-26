@@ -298,7 +298,7 @@ impl BtcSwapScript {
         })
     }
 
-    fn claim_script(&self) -> ScriptBuf {
+    pub(crate) fn claim_script(&self) -> ScriptBuf {
         match self.swap_type {
             SwapType::Submarine => Builder::new()
                 .push_opcode(OP_HASH160)
@@ -321,7 +321,7 @@ impl BtcSwapScript {
         }
     }
 
-    fn refund_script(&self) -> ScriptBuf {
+    pub(crate) fn refund_script(&self) -> ScriptBuf {
         // Refund scripts are same for all swap types
         Builder::new()
             .push_x_only_key(&self.sender_pubkey.inner.x_only_public_key().0)
@@ -332,7 +332,7 @@ impl BtcSwapScript {
     }
 
     /// Internally used to convert struct into a bitcoin::Script type
-    fn taproot_spendinfo(&self) -> Result<TaprootSpendInfo, Error> {
+    pub(crate) fn taproot_spendinfo(&self) -> Result<TaprootSpendInfo, Error> {
         let secp = Secp256k1::new();
 
         // Setup Key Aggregation cache

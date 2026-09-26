@@ -20,6 +20,11 @@
 use crate::kaleido::{ApiKey, API_KEY_HEADER};
 use crate::network::{Currency, Network};
 use crate::swaps::corridor;
+use crate::swaps::rgb::{
+    AtomicCompleteBody, AtomicCompleteResponse, AtomicProposalResponse, AtomicQuoteRequest,
+    AtomicQuoteResponse, AtomicRequestBody, AtomicSwapStatus, GetAtomicPairsResponse, RgbLock,
+    USDT_RGB,
+};
 #[cfg(feature = "ws")]
 use crate::util::ensure_rustls_crypto_provider;
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
@@ -352,6 +357,12 @@ impl GetSubmarinePairsResponse {
         self.get("L-USDT", "BTC").cloned()
     }
 
+    /// Get the USDT-RGB (RGB on Bitcoin L1) to BTC pair data from the
+    /// response. Its limits count USDT-RGB contract units.
+    pub fn get_usdt_rgb_to_btc_pair(&self) -> Option<SubmarinePair> {
+        self.get(USDT_RGB, "BTC").cloned()
+    }
+
     /// Resolve the Liquid assets committed by the selected public pair card.
     pub fn expected_liquid_asset_context(
         &self,
@@ -410,6 +421,12 @@ impl GetReversePairsResponse {
     /// Get the BTC to L-USDT pair data from the response.
     pub fn get_btc_to_lusdt_pair(&self) -> Option<ReversePair> {
         self.get("BTC", "L-USDT").cloned()
+    }
+
+    /// Get the BTC to USDT-RGB (RGB on Bitcoin L1) pair data from the
+    /// response. Its rate and fees count USDT-RGB contract units.
+    pub fn get_btc_to_usdt_rgb_pair(&self) -> Option<ReversePair> {
+        self.get("BTC", USDT_RGB).cloned()
     }
 
     /// Resolve the Liquid assets committed by the selected public pair card.
@@ -1635,6 +1652,64 @@ impl BoltzApiClientV2 {
         self.get_json(&end_point).await
     }
 
+    /// `GET /v2/swap/atomic/pairs` — the atomic BTC L1 ⇄ RGB L1 rate cards.
+    /// An RGB leg counts the contract's units.
+    pub async fn get_atomic_pairs(&self) -> Result<GetAtomicPairsResponse, Error> {
+        self.get_json("swap/atomic/pairs").await
+    }
+
+    /// `POST /v2/swap/atomic/quote` — price an atomic swap and get rgb-lib's
+    /// offer.
+    ///
+    /// Run [`AtomicQuoteResponse::validate`] on the answer, then hand
+    /// `offer` to the taker's rgb-lib `accept_swap_offer` with the quoted
+    /// amounts, and the resulting request to [`Self::post_atomic_request`]
+    /// before `expiresAt`.
+    pub async fn post_atomic_quote(
+        &self,
+        req: &AtomicQuoteRequest,
+    ) -> Result<AtomicQuoteResponse, Error> {
+        self.post_json("swap/atomic/quote", req).await
+    }
+
+    /// `POST /v2/swap/atomic/{id}/request` — send rgb-lib's
+    /// `OnchainSwapRequest`; the maker selects its inputs and answers with
+    /// the unsigned proposal for the taker's `complete_swap_proposal`.
+    ///
+    /// A retry is answered from the maker's record of the first call.
+    pub async fn post_atomic_request(
+        &self,
+        swap_id: &str,
+        request: Value,
+    ) -> Result<AtomicProposalResponse, Error> {
+        let end_point = format!("swap/atomic/{swap_id}/request");
+        self.post_json(&end_point, AtomicRequestBody { request })
+            .await
+    }
+
+    /// `POST /v2/swap/atomic/{id}/complete` — send the taker-signed
+    /// `OnchainSwapCompletion` before `offerExpiresAt`. The maker validates
+    /// it, signs last and broadcasts in the same call, and returns the
+    /// finalized completion for the taker's `accept_swap_transfers`.
+    ///
+    /// An error here does not prove the swap was not broadcast: check
+    /// [`Self::get_atomic_swap`] before treating the taker's inputs as free.
+    pub async fn post_atomic_complete(
+        &self,
+        swap_id: &str,
+        completion: Value,
+    ) -> Result<AtomicCompleteResponse, Error> {
+        let end_point = format!("swap/atomic/{swap_id}/complete");
+        self.post_json(&end_point, AtomicCompleteBody { completion })
+            .await
+    }
+
+    /// `GET /v2/swap/atomic/{id}` — where an atomic swap stands.
+    pub async fn get_atomic_swap(&self, swap_id: &str) -> Result<AtomicSwapStatus, Error> {
+        let end_point = format!("swap/atomic/{swap_id}");
+        self.get_json(&end_point).await
+    }
+
     /// Restore swaps from an xpub.
     ///
     /// `derivation_path` is the path boltz appends `/{index}` to when deriving
@@ -1770,6 +1845,12 @@ pub struct CreateSubmarineResponse {
     /// [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+    /// **RGB routes only** (`USDT-RGB → BTC`): how to lock the RGB asset in
+    /// the swap tree's P2TR `address`. `expectedAmount` is then the asset
+    /// amount in the contract's units, not sats. Validate it with
+    /// [`Self::validate_rgb`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<RgbLock>,
 }
 /// Hand-written only to redact `swap_auth`; every other field prints as the
 /// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
@@ -1791,6 +1872,7 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             asset_id,
             fee_asset_id,
             swap_auth,
+            rgb,
         } = self;
         f.debug_struct("CreateSubmarineResponse")
             .field("accept_zero_conf", accept_zero_conf)
@@ -1806,6 +1888,7 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             .field("asset_id", asset_id)
             .field("fee_asset_id", fee_asset_id)
             .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("rgb", rgb)
             .finish()
     }
 }
@@ -2176,6 +2259,12 @@ pub struct CreateReverseResponse {
     /// [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+    /// **RGB routes only** (`BTC → USDT-RGB`): how to find and claim the RGB
+    /// asset the maker locks in the swap tree's P2TR `lockupAddress`.
+    /// `onchainAmount` is then the asset amount in the contract's units, not
+    /// sats. Validate it with [`Self::validate_rgb`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<RgbLock>,
 }
 /// Hand-written only to redact `swap_auth`; every other field prints as the
 /// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
@@ -2195,6 +2284,7 @@ impl std::fmt::Debug for CreateReverseResponse {
             asset_id,
             fee_asset_id,
             swap_auth,
+            rgb,
         } = self;
         f.debug_struct("CreateReverseResponse")
             .field("id", id)
@@ -2208,6 +2298,7 @@ impl std::fmt::Debug for CreateReverseResponse {
             .field("asset_id", asset_id)
             .field("fee_asset_id", fee_asset_id)
             .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("rgb", rgb)
             .finish()
     }
 }

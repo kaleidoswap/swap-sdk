@@ -80,6 +80,43 @@ claiming a receive lockup needs an Ark wallet, which is the
 Build that venue's transport from the same maker URL with
 `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
+## RGB swaps (USDT-RGB on Bitcoin L1)
+
+The maker serves Tether on RGB on three routes, all on the Bitcoin chain:
+submarine `USDT-RGB → BTC` and reverse `BTC → USDT-RGB` over Lightning, and
+atomic `BTC ⇄ USDT-RGB` in one on-chain transaction.
+`kaleidorg_swap_sdk::rgb` is the taker's half. The asset itself moves in the
+caller's rgb-lib wallet, which this crate does not link. Every RGB amount
+counts the contract's units: 6 decimals for USDT-RGB.
+
+The HTLC is the ordinary swap tree. What changes is funding and spending it:
+
+```rust
+use kaleidorg_swap_sdk::rgb::{RgbHtlcSpend, RgbLockExpectations, COLORED_OUTPUT_INDEX};
+
+// Reverse: validate the lock terms before paying the invoice.
+let lock = resp.validate_rgb(&preimage, &our_pubkey, chain, &RgbLockExpectations::for_asset(asset_id))?;
+// ...once the maker locked (txid on GET /swap/reverse/{id}/transaction)
+// and the taker's rgb-lib accepted the transfer with `lock.blinding`:
+let spend = RgbHtlcSpend::claim(&swap_script, lock, lock.find_htlc_output(&lock_tx)?, dest_script, None)?;
+let mut psbt = spend.psbt()?;
+// rgb-lib: psbt_op_prepare(&mut psbt, output_map {COLORED_OUTPUT_INDEX: lock.amount}, [htlc outpoint], ...)
+let claim_tx = spend.sign_colored_tx(&psbt, &claim_keys, Some(&preimage))?;
+```
+
+- **Submarine.** Call `validate_rgb`, then `lock.check_recipient_script(&script)`
+  with the script rgb-lib decodes from `recipientId`. Then send with rgb-lib to a
+  witness recipient: `recipientId`, `WitnessData { amount_sat: htlcSat,
+  blinding: Some(blinding) }`, over `transportEndpoints`. After
+  `timeoutBlockHeight`, `RgbHtlcSpend::refund` returns the asset, taking a
+  fee input from the wallet when the HTLC's sats cannot pay.
+- **Atomic.** `post_atomic_quote` → rgb-lib `accept_swap_offer` →
+  `post_atomic_request` → `complete_swap_proposal` → `post_atomic_complete`
+  → `accept_swap_transfers`, validating each response against the quote.
+
+Never spend an RGB HTLC with `BtcSwapTx`. It builds an uncolored spend, and an
+uncolored spend burns the asset.
+
 ## Partner attribution (organization API keys)
 
 A partner organization can have the swaps it originates attributed to it, so the

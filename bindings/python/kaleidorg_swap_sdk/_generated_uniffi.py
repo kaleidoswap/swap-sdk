@@ -3465,6 +3465,12 @@ class CreateReverseResponse:
     creation. No reverse-swap route needs it today; persist it anyway.
     """
 
+    rgb: "typing.Optional[RgbLock]"
+    """
+    RGB routes only (`BTC → USDT-RGB`): how to find and claim the asset
+    the maker locks. `onchain_amount` then counts contract units.
+    """
+
     def __init__(
         self,
         *,
@@ -3479,6 +3485,7 @@ class CreateReverseResponse:
         asset_id: "typing.Optional[str]",
         fee_asset_id: "typing.Optional[str]",
         swap_auth: "typing.Optional[str]",
+        rgb: "typing.Optional[RgbLock]",
     ):
         self.id = id
         self.invoice = invoice
@@ -3491,9 +3498,10 @@ class CreateReverseResponse:
         self.asset_id = asset_id
         self.fee_asset_id = fee_asset_id
         self.swap_auth = swap_auth
+        self.rgb = rgb
 
     def __str__(self):
-        return "CreateReverseResponse(id={}, invoice={}, swap_tree={}, lockup_address={}, refund_public_key={}, timeout_block_height={}, onchain_amount={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={})".format(
+        return "CreateReverseResponse(id={}, invoice={}, swap_tree={}, lockup_address={}, refund_public_key={}, timeout_block_height={}, onchain_amount={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={}, rgb={})".format(
             self.id,
             self.invoice,
             self.swap_tree,
@@ -3505,6 +3513,7 @@ class CreateReverseResponse:
             self.asset_id,
             self.fee_asset_id,
             self.swap_auth,
+            self.rgb,
         )
 
     def __eq__(self, other):
@@ -3530,6 +3539,8 @@ class CreateReverseResponse:
             return False
         if self.swap_auth != other.swap_auth:
             return False
+        if self.rgb != other.rgb:
+            return False
         return True
 
 
@@ -3548,6 +3559,7 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
             asset_id=_UniffiConverterOptionalString.read(buf),
             fee_asset_id=_UniffiConverterOptionalString.read(buf),
             swap_auth=_UniffiConverterOptionalString.read(buf),
+            rgb=_UniffiConverterOptionalTypeRgbLock.read(buf),
         )
 
     @staticmethod
@@ -3563,6 +3575,7 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.asset_id)
         _UniffiConverterOptionalString.check_lower(value.fee_asset_id)
         _UniffiConverterOptionalString.check_lower(value.swap_auth)
+        _UniffiConverterOptionalTypeRgbLock.check_lower(value.rgb)
 
     @staticmethod
     def write(value, buf):
@@ -3577,6 +3590,7 @@ class _UniffiConverterTypeCreateReverseResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.asset_id, buf)
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
         _UniffiConverterOptionalString.write(value.swap_auth, buf)
+        _UniffiConverterOptionalTypeRgbLock.write(value.rgb, buf)
 
 
 class CreateSubmarineRequest:
@@ -3710,6 +3724,12 @@ class CreateSubmarineResponse:
     creation. No submarine-swap route needs it today; persist it anyway.
     """
 
+    rgb: "typing.Optional[RgbLock]"
+    """
+    RGB routes only (`USDT-RGB → BTC`): how to lock the asset in the
+    swap tree's address. `expected_amount` then counts contract units.
+    """
+
     def __init__(
         self,
         *,
@@ -3726,6 +3746,7 @@ class CreateSubmarineResponse:
         asset_id: "typing.Optional[str]",
         fee_asset_id: "typing.Optional[str]",
         swap_auth: "typing.Optional[str]",
+        rgb: "typing.Optional[RgbLock]",
     ):
         self.accept_zero_conf = accept_zero_conf
         self.address = address
@@ -3740,9 +3761,10 @@ class CreateSubmarineResponse:
         self.asset_id = asset_id
         self.fee_asset_id = fee_asset_id
         self.swap_auth = swap_auth
+        self.rgb = rgb
 
     def __str__(self):
-        return "CreateSubmarineResponse(accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={})".format(
+        return "CreateSubmarineResponse(accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={}, rgb={})".format(
             self.accept_zero_conf,
             self.address,
             self.bip21,
@@ -3756,6 +3778,7 @@ class CreateSubmarineResponse:
             self.asset_id,
             self.fee_asset_id,
             self.swap_auth,
+            self.rgb,
         )
 
     def __eq__(self, other):
@@ -3785,6 +3808,8 @@ class CreateSubmarineResponse:
             return False
         if self.swap_auth != other.swap_auth:
             return False
+        if self.rgb != other.rgb:
+            return False
         return True
 
 
@@ -3805,6 +3830,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
             asset_id=_UniffiConverterOptionalString.read(buf),
             fee_asset_id=_UniffiConverterOptionalString.read(buf),
             swap_auth=_UniffiConverterOptionalString.read(buf),
+            rgb=_UniffiConverterOptionalTypeRgbLock.read(buf),
         )
 
     @staticmethod
@@ -3822,6 +3848,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.asset_id)
         _UniffiConverterOptionalString.check_lower(value.fee_asset_id)
         _UniffiConverterOptionalString.check_lower(value.swap_auth)
+        _UniffiConverterOptionalTypeRgbLock.check_lower(value.rgb)
 
     @staticmethod
     def write(value, buf):
@@ -3838,6 +3865,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.asset_id, buf)
         _UniffiConverterOptionalString.write(value.fee_asset_id, buf)
         _UniffiConverterOptionalString.write(value.swap_auth, buf)
+        _UniffiConverterOptionalTypeRgbLock.write(value.rgb, buf)
 
 
 class ElectrumBuilder:
@@ -5715,6 +5743,119 @@ class _UniffiConverterTypeRfqStatus(_UniffiConverterRustBuffer):
         _UniffiConverterTypeRfqState.write(value.state, buf)
         _UniffiConverterUInt64.write(value.updated_at, buf)
         _UniffiConverterTypeQuoteProfile.write(value.profile, buf)
+
+
+class RgbLock:
+    """
+    The `rgb` object of an RGB submarine or reverse create response.
+    """
+
+    asset_id: "str"
+    amount: "int"
+    recipient_id: "str"
+    blinding: "int"
+    htlc_sat: "int"
+    claim_fee_rate: "typing.Optional[int]"
+    script_pubkey: "str"
+    transport_endpoints: "typing.List[str]"
+    min_confirmations: "int"
+
+    def __init__(
+        self,
+        *,
+        asset_id: "str",
+        amount: "int",
+        recipient_id: "str",
+        blinding: "int",
+        htlc_sat: "int",
+        claim_fee_rate: "typing.Optional[int]",
+        script_pubkey: "str",
+        transport_endpoints: "typing.List[str]",
+        min_confirmations: "int",
+    ):
+        self.asset_id = asset_id
+        self.amount = amount
+        self.recipient_id = recipient_id
+        self.blinding = blinding
+        self.htlc_sat = htlc_sat
+        self.claim_fee_rate = claim_fee_rate
+        self.script_pubkey = script_pubkey
+        self.transport_endpoints = transport_endpoints
+        self.min_confirmations = min_confirmations
+
+    def __str__(self):
+        return "RgbLock(asset_id={}, amount={}, recipient_id={}, blinding={}, htlc_sat={}, claim_fee_rate={}, script_pubkey={}, transport_endpoints={}, min_confirmations={})".format(
+            self.asset_id,
+            self.amount,
+            self.recipient_id,
+            self.blinding,
+            self.htlc_sat,
+            self.claim_fee_rate,
+            self.script_pubkey,
+            self.transport_endpoints,
+            self.min_confirmations,
+        )
+
+    def __eq__(self, other):
+        if self.asset_id != other.asset_id:
+            return False
+        if self.amount != other.amount:
+            return False
+        if self.recipient_id != other.recipient_id:
+            return False
+        if self.blinding != other.blinding:
+            return False
+        if self.htlc_sat != other.htlc_sat:
+            return False
+        if self.claim_fee_rate != other.claim_fee_rate:
+            return False
+        if self.script_pubkey != other.script_pubkey:
+            return False
+        if self.transport_endpoints != other.transport_endpoints:
+            return False
+        if self.min_confirmations != other.min_confirmations:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RgbLock(
+            asset_id=_UniffiConverterString.read(buf),
+            amount=_UniffiConverterUInt64.read(buf),
+            recipient_id=_UniffiConverterString.read(buf),
+            blinding=_UniffiConverterUInt64.read(buf),
+            htlc_sat=_UniffiConverterUInt64.read(buf),
+            claim_fee_rate=_UniffiConverterOptionalUInt64.read(buf),
+            script_pubkey=_UniffiConverterString.read(buf),
+            transport_endpoints=_UniffiConverterSequenceString.read(buf),
+            min_confirmations=_UniffiConverterUInt8.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.asset_id)
+        _UniffiConverterUInt64.check_lower(value.amount)
+        _UniffiConverterString.check_lower(value.recipient_id)
+        _UniffiConverterUInt64.check_lower(value.blinding)
+        _UniffiConverterUInt64.check_lower(value.htlc_sat)
+        _UniffiConverterOptionalUInt64.check_lower(value.claim_fee_rate)
+        _UniffiConverterString.check_lower(value.script_pubkey)
+        _UniffiConverterSequenceString.check_lower(value.transport_endpoints)
+        _UniffiConverterUInt8.check_lower(value.min_confirmations)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.asset_id, buf)
+        _UniffiConverterUInt64.write(value.amount, buf)
+        _UniffiConverterString.write(value.recipient_id, buf)
+        _UniffiConverterUInt64.write(value.blinding, buf)
+        _UniffiConverterUInt64.write(value.htlc_sat, buf)
+        _UniffiConverterOptionalUInt64.write(value.claim_fee_rate, buf)
+        _UniffiConverterString.write(value.script_pubkey, buf)
+        _UniffiConverterSequenceString.write(value.transport_endpoints, buf)
+        _UniffiConverterUInt8.write(value.min_confirmations, buf)
 
 
 class SubmarineFees:
@@ -8007,6 +8148,32 @@ class _UniffiConverterOptionalTypeRfqStatus(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeRfqStatus.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRgbLock(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRgbLock.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRgbLock.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRgbLock.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -10919,6 +11086,7 @@ __all__ = [
     "RfqQuote",
     "RfqRefusal",
     "RfqStatus",
+    "RgbLock",
     "SubmarineFees",
     "SubmarinePair",
     "SubmarinePairLimits",

@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — RGB swaps: the taker's side of the maker's USDT-RGB routes
+
+The maker now serves USDT on RGB (Bitcoin L1) on three routes
+(kaleidoswap-maker-rs#551). `kaleidorg_swap_sdk::rgb` is the client half of
+all three. rgb-lib is not a dependency: the caller's rgb-lib wallet funds and
+colors, and this crate validates and signs.
+
+- **Submarine `USDT-RGB → BTC`.** `CreateSubmarineResponse` carries the `rgb`
+  lock. `validate_rgb` checks it against the swap tree: it must pay
+  `address`, be for `expectedAmount` of the expected contract, and ask no
+  more than `max_submarine_htlc_sat` (10 000 by default).
+  `RgbLock::check_recipient_script` checks the script rgb-lib decodes from
+  `recipientId` before the taker sends. After the timeout,
+  `RgbHtlcSpend::refund` refunds through the refund leaf, optionally with a
+  fee input from the wallet.
+- **Reverse `BTC → USDT-RGB`.** `CreateReverseResponse::validate_rgb` also
+  checks that `htlcSat` funds the claim at `claimFeeRate`.
+  `RgbHtlcSpend::claim` builds the claim: the HTLC is the only input and its
+  sats pay the fee, so the taker needs no BTC.
+- **Colored spends.** `RgbHtlcSpend::psbt` has an empty OP_RETURN at output 0
+  for rgb-lib's `psbt_op_prepare` to write the commitment into.
+  `sign_colored` / `sign_colored_tx` sign the HTLC leaf over the colored
+  transaction. They refuse a PSBT without a written commitment (an uncolored
+  spend burns the asset), or one whose inputs, outputs or locktime changed.
+  The fee and `htlcSat` arithmetic matches the maker's.
+- **Atomic `BTC ⇄ USDT-RGB`.** `get_atomic_pairs`, `post_atomic_quote`,
+  `post_atomic_request`, `post_atomic_complete` and `get_atomic_swap` on
+  `BoltzApiClientV2`. rgb-lib's messages are carried as opaque JSON. The
+  response types check that each step stays on the quoted swap (the
+  maker's id and rgb-lib's) and that the quote answers the request.
+- `get_usdt_rgb_to_btc_pair` / `get_btc_to_usdt_rgb_pair` pair accessors.
+
+Every RGB amount the maker states counts the contract's units. For USDT-RGB
+that is 6 decimals, not sats and not 8-decimal card units.
+
+**Breaking for struct literals only:** `CreateSubmarineResponse` and
+`CreateReverseResponse` gain the public field `rgb: Option<RgbLock>`. Add
+`rgb: None`. The UniFFI records gain the same field, and the Python glue is
+regenerated. Parsing and the TypeScript surface are unchanged.
+
 ## [0.10.0] - 2026-09-24
 
 ### BREAKING — Rust core: chain-swap validation takes the preimage hash, and the upstream merge's API changes
