@@ -29,7 +29,7 @@ use bitcoin::{blockdata::locktime::absolute::LockTime, hashes::hash160};
 
 use super::boltz::{
     BoltzApiClientV2, ChainSwapDetails, Cooperative, CreateReverseResponse,
-    CreateSubmarineResponse, Side, SwapTxKind, SwapType, ToSign,
+    CreateSubmarineResponse, Side, SwapTree, SwapTxKind, SwapType, ToSign,
 };
 use super::rgb::RgbHtlcContext;
 use super::wrappers::SwapScriptCommon;
@@ -320,6 +320,25 @@ impl BtcSwapScript {
             expected_amount: chain_swap_details.amount,
             rgb: None,
         })
+    }
+
+    /// RGB wire leaves must match the tree the SDK will spend, including version
+    /// and every script byte; parsing only the hash and timeout is insufficient.
+    pub(crate) fn validate_rgb_response_tree(&self, tree: &SwapTree) -> Result<(), Error> {
+        let version = LeafVersion::TapScript.to_consensus();
+        if tree.claim_leaf.version != version || tree.refund_leaf.version != version {
+            return Err(Error::Protocol(format!(
+                "RGB swap tree must use leaf version {version:#04x}"
+            )));
+        }
+        if ScriptBuf::from_hex(&tree.claim_leaf.output)? != self.claim_script()
+            || ScriptBuf::from_hex(&tree.refund_leaf.output)? != self.refund_script()
+        {
+            return Err(Error::Protocol(
+                "RGB swap tree contains non-canonical claim or refund script".to_string(),
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn claim_script(&self) -> ScriptBuf {

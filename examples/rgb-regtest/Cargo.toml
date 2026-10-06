@@ -1,0 +1,33 @@
+[package]
+name = "rgb-sdk-regtest"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+publish = false
+
+# rgb-lib and test-node clients stay outside the SDK dependency graph.
+[workspace]
+
+[dependencies]
+kaleidorg-swap-sdk = { path = "../.." }
+rgb-lib = { git = "https://github.com/kaleidoswap/rgb-lib", rev = "96f039d975cf2a83712c3c0a90e703621d445425", default-features = false, features = ["esplora"] }
+ldk-server-client = { git = "https://github.com/kaleidoswap/kaleidoswap-maker-rs", rev = "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0" }
+maker-connector-grpc = { git = "https://github.com/kaleidoswap/kaleidoswap-maker-rs", rev = "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0" }
+# rgb-lib's pre-release invoice dependency otherwise selects incompatible stable consensus.
+rgb-consensus = "=0.11.1-rc.11"
+bitcoin = { version = "0.32", features = ["base64", "rand-std"] }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+tonic = { version = "0.14", features = ["transport"] }
+
+# SDK pins the commit of the yanked secp256k1 beta; RGB consensus names the
+# registry beta. Unify both sources so Cargo links one v0_12 native library.
+[patch.crates-io]
+secp256k1 = { git = "https://github.com/rust-bitcoin/rust-secp256k1", rev = "6e5c556e566d6ca1954daa1d8592efac70e75d06" }
+secp256k1-sys = { git = "https://github.com/rust-bitcoin/rust-secp256k1", rev = "6e5c556e566d6ca1954daa1d8592efac70e75d06" }

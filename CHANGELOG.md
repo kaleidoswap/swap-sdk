@@ -54,6 +54,33 @@ L-USDT flow; see `docs/rgb-swaps-plan.md`.
 - `Error::RgbFeeInputRequired` (`rgb_fee_input_required`) is returned when
   `htlcSat` cannot pay the fee and still leave a 546 sat colored output.
 
+### Added — live USDT-RGB regtest example
+
+- Native `examples/rgb-regtest` drives actual rgb-lib wallets, a maker daemon,
+  Bitcoin Core/Esplora, an RGB proxy and two real Lightning nodes. rgb-lib stays
+  outside the SDK and wasm dependency graph.
+- Live validation covers submarine payment/claim, a failed-payment refund with
+  a wallet BTC fee input and an early CLTV rejection, and an HTLC-only reverse
+  claim from a wallet with zero BTC. Actual RGB allocations and consignments
+  settle; all issued units are conserved across the three wallets.
+- Private recovery state is persisted before payment/broadcast and ignored by
+  Git. The example includes pinned dependencies, isolated Compose services,
+  reproduction instructions and a sanitized successful-run report. Its local
+  price feed supplies deterministic test quotes.
+
+### Added — USDT-RGB wire compatibility fixtures
+
+- Frozen maker API requests, pair cards and create responses, generated through
+  the maker router at `49c6ce2`; six-network recipient vectors use pinned rgb-lib.
+- SDK contract tests check response bindings, tampering and the maker's reference
+  claim PSBT/fee budget. A verified maker companion patch checks the same vectors
+  in its CI. Fixtures use mocked wallet/chain state; the separate native regtest
+  example validates live RGB transfers.
+- RGB validation now rejects noncanonical leaf scripts and leaf versions; the
+  frozen-response mutation tests exposed that these fields were previously ignored.
+- Clarified pair amount units: limits use input units, rates convert input to
+  output units, and miner fees use output units.
+
 ### Added — USDT-RGB bindings
 
 - UniFFI/Python and wasm/TypeScript expose RGB PSBT preparation, immutable
@@ -70,7 +97,7 @@ L-USDT flow; see `docs/rgb-swaps-plan.md`.
   its HTLC input index and `requires_funding = false`; the original spend is unchanged.
 - Synthetic Python and JavaScript binding tests cover both RGB directions,
   local contract pins, wrong allocations and caller-funded refunds. These do not
-  validate RGB consignments or replace the planned live rgb-lib regtest tests.
+  validate RGB consignments or replace the separate live rgb-lib regtest tests.
 
 ### Fixed — the Arkade venue accepts and runs on `@arkade-os/swap` 0.0.21–0.0.24
 

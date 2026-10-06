@@ -1,6 +1,6 @@
 # Plan: USDT-RGB (RGB on Bitcoin L1) submarine and reverse swaps
 
-> Status: **Phases 1–2 (Rust core and bindings) implemented; live validation pending.** Tracks the maker work in
+> Status: **Phases 1–4 implemented and validated on regtest.** Tracks the maker work in
 > kaleidoswap/kaleidoswap-maker-rs#551 (cases 2a and 2b). The maker side ships
 > behind `[rgb] enabled = false`, and its pairs are seeded disabled.
 
@@ -72,9 +72,12 @@ No request changes: the taker sends the Boltz request with
 }
 ```
 
-Units: every client-facing RGB amount is in **contract units** (USDT-RGB is
-6-decimal). This covers pair `limits`, `rate`, `minerFees`, `expectedAmount`,
-`onchainAmount` and `rgb.amount`.
+Units follow each asset leg. Pair `limits` use the **input** asset's base
+units; `rate` is output units per input unit; `minerFees` use the **output**
+asset's base units. Thus submarine limits use RGB contract units and its fees
+use BTC sats; reverse limits use BTC sats and its fees use RGB contract units.
+`expectedAmount` (RGB submarine), `onchainAmount` (RGB reverse) and `rgb.amount`
+use contract units (6 decimals for USDT-RGB). `htlcSat` always uses BTC sats.
 
 The HTLC is the standard Boltz taproot tree (leaf version `0xc0`), with the
 same MuSig aggregation order as BTC: submarine is claim-first, reverse is
@@ -86,7 +89,8 @@ reconstruction and address check.
 The response is rejected unless all of these hold:
 
 1. The Boltz checks pass: hashlock, CLTV equal to `timeoutBlockHeight`, our
-   key in the right leaf, address recomputed.
+   key in the right leaf, address recomputed. Both wire leaves must exactly
+   match the reconstructed scripts and use leaf version `0xc0`.
 2. `rgb` is present, and `rgb.assetId` equals the contract id the **caller**
    pins. The pair cards carry no contract id, and in a reverse swap a
    substituted contract pays the taker in a worthless asset.
@@ -204,10 +208,20 @@ returns the extracted transaction.
    broadcastable transaction; caller-funded spends may still need wallet signatures.
    Synthetic binding vectors exercise both directions without a live maker or RGB
    proofs. They do not replace the frozen maker wire fixture or live wallet tests.
-3. **Wire fixture.** `tests/fixtures/rgb-v1/` with a frozen maker create
-   response and golden vectors cross-checked against the maker repo.
-4. **Live validation.** An example (`examples/rgb_*`) driving a real rgb-lib
-   wallet against a regtest maker, for 2a lock and refund and 2b claim.
+3. **Wire fixture (implemented).** `tests/fixtures/rgb-v1/` freezes actual
+   maker router requests, pair cards and both create responses at `49c6ce2`.
+   The mock venue calls the pinned rgb-lib encoder. Golden vectors cover six
+   networks and the maker's reference claim PSBT. `tests/rgb_contract.rs`
+   validates the SDK; a verified maker companion patch pins its schemas, trees,
+   MuSig order, recipient codec and fee model. See the fixture README for capture
+   provenance and reproduction. The companion patch still needs to land in the
+   maker repository through its own PR.
+4. **Live validation (implemented).** The standalone native crate
+   [`examples/rgb-regtest`](../examples/rgb-regtest/README.md) drives real
+   rgb-lib wallets against the maker daemon, Bitcoin/Esplora, an RGB proxy and
+   two real Lightning nodes: 2a payment/claim, 2a failed-payment refund and 2b
+   claim without taker BTC. It has a separate workspace so RGB wallet/node
+   dependencies stay outside the SDK and wasm graph.
 
 ## Phase 2 validation (2026-10-06)
 
@@ -224,8 +238,68 @@ returns the extracted transaction.
 - Binding parity, Rust/Python formatting, TypeScript lint/format/typecheck and
   example typecheck pass. The wasm package builds; all 70 TypeScript tests pass.
 - The shared vectors in `bindings/tests/fixtures/rgb-spends.json` are synthetic
-  Bitcoin/PSBT vectors. RGB proofs, the real maker wire fixture (Phase 3), and
-  live wallet validation (Phase 4) remain outstanding.
+  Bitcoin/PSBT vectors. Phase 3 now supplies independently generated maker wire
+  fixtures. RGB proofs and live wallet validation were pending at this phase; the
+  Phase 4 run below now covers them.
+
+## Phase 3 validation (2026-10-06)
+
+- Captured both create routes and pair cards through the maker's real axum
+  router against disposable PostgreSQL. Node, balances and chain backend are
+  mocked; witness recipients use actual rgb-lib `96f039d` / rgb-invoicing
+  `0.11.1-rc.11`. The asset was not issued and no RGB proof is claimed.
+- Validation passes: 6 SDK RGB contract tests, 7 existing Liquid contract tests,
+  178 SDK library tests (4 ignored), and 4 maker contract tests. Native and
+  wasm Clippy, maker companion Clippy and formatting pass.
+- SDK contract tests validate both responses and reject changed contracts,
+  amounts, scripts, addresses, recipient networks/checksums, confirmations,
+  endpoints, blinding, timelocks and claim fee budgets.
+- The SDK claim matches the maker's reference unsigned PSBT and prevout; fee
+  caps and insufficient BTC funding are tested. Recipient vectors cover all
+  six supported RGB networks on the actual maker HTLC output keys.
+- Maker companion tests reconstruct both trees and MuSig addresses, encode
+  every recipient with rgb-lib, freeze response schema serialization and
+  compare the reference PSBT and maker fee formulas. These run in the maker's
+  existing workspace CI once the companion patch lands.
+- A failing fixture mutation test exposed ignored RGB wire leaf versions/bytes.
+  `validate_rgb` now requires the exact canonical tree for both directions.
+- Amount documentation now distinguishes input/output asset units, including
+  submarine miner fees in BTC sats and reverse miner fees in contract units.
+
+## Phase 4 validation (2026-10-06)
+
+- One complete run of the documented native example passed on the private
+  `rgb-sdk-regtest` stack. Maker `49c6ce2` and rgb-lib `96f039d` were pinned;
+  LDK server `86ca542` supplied real hold-invoice payments. An issued NIA with
+  6 decimals and ticker USDT is the test asset. This is regtest validation.
+- Bitcoin, Lightning, the maker daemon, PostgreSQL, RGB wallet state and RGB
+  consignments are real. Only the price feed is supplied by the test client,
+  at BTC/USDT 100000 with a tiny deterministic step to satisfy the maker's
+  stale-quote policy. The fresh chain lacks fee estimates, so maker RGB fees
+  use its configured 5 sat/vB floor.
+- Submarine: response validation precedes the rgb-lib donation lock; a real
+  100,000-sat invoice succeeds, the maker claim confirms, the API reaches
+  `transaction.claimed`, and RGB balances settle.
+- Refund: a real held payment is cancelled and reaches `invoice.failedToPay`.
+  A 1000-sat HTLC at 5 sat/vB yields `RgbFeeInputRequired`; the wallet funds
+  the SDK template with one BTC input, rgb-lib colors it, the SDK signs the
+  refund leaf and the wallet signs its own input without changing that witness.
+  Bitcoin Core rejects the early transaction with `non-final`. After maturity,
+  the refund confirms and its receive consignment restores the prior RGB balance.
+- Reverse: the receiver starts with zero BTC, validates the pinned contract
+  before paying the real hold invoice, confirms and accepts the maker's RGB
+  consignment, and colors the SDK claim. The claim has one HTLC input, pays
+  975 sat from its 1521-sat value and leaves 546 sat. Its witness reveals the
+  exact preimage; both the RGB receive and Lightning hold invoice settle.
+- Coloring passes actual rgb-lib fascia assignments back to the SDK. Durable
+  private recovery files precede payment and broadcast; wallet state, keys and
+  credentials stay in ignored `run/`. The three final settled wallet balances
+  sum to all 2,000,000,000 issued units (2000 test USDT).
+- Independent Esplora reads confirm all three colored spends and their
+  expected script-path witnesses before teardown. Example formatting, Clippy
+  with `-D warnings`, shell syntax and whitespace checks pass. Live execution is opt-in; it is not added to ordinary SDK CI.
+  See the [reproduction guide](../examples/rgb-regtest/README.md) and
+  [sanitized run report](../examples/rgb-regtest/validation-report.json).
 
 ## Open questions
 

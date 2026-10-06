@@ -1,0 +1,735 @@
+diff --git a/crates/maker-api/Cargo.toml b/crates/maker-api/Cargo.toml
+index f723095..1ac4803 100644
+--- a/crates/maker-api/Cargo.toml
++++ b/crates/maker-api/Cargo.toml
+@@ -80,7 +80,7 @@ sha2.workspace = true
+ sqlx.workspace = true
+ # The regtest atomic-swap e2e (`tests/atomic_regtest.rs`, #[ignore]) runs a
+ # real rgb-lib maker and taker.
+-maker-layer-rgb = { path = "../maker-layer-rgb", features = ["wallet"] }
++maker-layer-rgb = { path = "../maker-layer-rgb", features = ["wallet", "test-util"] }
+ 
+ [lints]
+ workspace = true
+diff --git a/crates/maker-layer-rgb/src/htlc_mock.rs b/crates/maker-layer-rgb/src/htlc_mock.rs
+index 9d79dd2..7ea3eb2 100644
+--- a/crates/maker-layer-rgb/src/htlc_mock.rs
++++ b/crates/maker-layer-rgb/src/htlc_mock.rs
+@@ -67,6 +67,7 @@ struct State {
+ 
+ pub struct MockRgbHtlc {
+     state: Mutex<State>,
++    recipient_encoder: Option<fn(&ScriptBuf) -> Result<String>>,
+ }
+ 
+ impl Default for MockRgbHtlc {
+@@ -79,9 +80,16 @@ impl MockRgbHtlc {
+     pub fn new() -> Self {
+         Self {
+             state: Mutex::new(State::default()),
++            recipient_encoder: None,
+         }
+     }
+ 
++    /// Use an independent recipient encoder in wire compatibility tests.
++    pub fn with_recipient_encoder(mut self, encoder: fn(&ScriptBuf) -> Result<String>) -> Self {
++        self.recipient_encoder = Some(encoder);
++        self
++    }
++
+     fn lock(&self) -> std::sync::MutexGuard<'_, State> {
+         self.state.lock().unwrap_or_else(|p| p.into_inner())
+     }
+@@ -187,6 +195,9 @@ impl MockRgbHtlc {
+ #[async_trait]
+ impl RgbHtlcOps for MockRgbHtlc {
+     fn htlc_recipient_id(&self, script_pubkey: &ScriptBuf) -> Result<String> {
++        if let Some(encoder) = self.recipient_encoder {
++            return encoder(script_pubkey);
++        }
+         Ok(format!("bcrt:wvout:{}", script_pubkey.to_hex_string()))
+     }
+ 
+diff --git a/crates/maker-api/tests/rgb_wire_capture.rs b/crates/maker-api/tests/rgb_wire_capture.rs
+new file mode 100644
+index 0000000..a0b3b5e
+--- /dev/null
++++ b/crates/maker-api/tests/rgb_wire_capture.rs
+@@ -0,0 +1,141 @@
++//! Explicit fixture capture through the real router; no live wallet or asset proofs.
++mod common;
++
++use bitcoin::{
++    hashes::{sha256, Hash},
++    ScriptBuf,
++};
++use common::rgb::{
++    call, htlc_keyring, htlc_pair, htlc_post, htlc_publish_default, htlc_state, htlc_venue,
++    HTLC_INVOICE_SAT,
++};
++use maker_core::SwapType;
++use maker_layer_rgb::{
++    rgb_lib, MockRgbHtlc, MockRgbProvider, RgbBalance, RgbBtcBalance, RgbError, RgbNetwork,
++};
++use maker_node::mock_bolt11_invoice;
++use serde_json::json;
++use std::sync::Arc;
++
++const ASSET: &str = "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ";
++fn recipient(script: &ScriptBuf) -> maker_layer_rgb::Result<String> {
++    rgb_lib::utils::recipient_id_from_script_buf(script.clone(), rgb_lib::BitcoinNetwork::Regtest)
++        .map_err(|e| RgbError::Htlc(e.to_string()))
++}
++
++#[tokio::test]
++#[ignore = "explicit capture requires TEST_DATABASE_URL and RGB_WIRE_FIXTURE_OUTPUT"]
++async fn capture_rgb_wire_contract() {
++    let output = std::env::var("RGB_WIRE_FIXTURE_OUTPUT").expect("explicit output directory");
++    assert!(
++        std::env::var("TEST_DATABASE_URL").is_ok(),
++        "require explicit isolated DB"
++    );
++    let preimage = [3u8; 32];
++    let hash = sha256::Hash::hash(&preimage).to_byte_array();
++    let mut create = json!({});
++    let mut pairs = json!({});
++    let mut recipients = vec![];
++    let mut claim = json!(null);
++    for (name, kind) in [
++        ("submarine", SwapType::Submarine),
++        ("reverse", SwapType::Reverse),
++    ] {
++        let (_db, state) = htlc_state(kind, hash)
++            .await
++            .expect("database must be reachable");
++        let wallet = Arc::new(MockRgbProvider::new(RgbNetwork::Regtest));
++        wallet.set_ready(true);
++        let balance = RgbBalance {
++            settled: 10_000_000,
++            future: 10_000_000,
++            spendable: 10_000_000,
++        };
++        wallet.set_asset_balance(ASSET, balance);
++        wallet.set_asset_precision(ASSET, 6);
++        wallet.set_btc_balance(RgbBtcBalance {
++            vanilla: balance,
++            colored: RgbBalance::default(),
++        });
++        let ops = Arc::new(MockRgbHtlc::new().with_recipient_encoder(recipient));
++        let state = state
++            .with_rgb_provider(wallet, Some(ASSET.into()))
++            .with_rgb_htlc(htlc_venue(ops, 12));
++        htlc_publish_default(&state, kind).await;
++        let public_key = hex::encode(htlc_keyring(kind).derive(99).unwrap().public_key());
++        let request = if name == "submarine" {
++            json!({"from":"USDT-RGB", "to":"BTC", "pairId":htlc_pair(kind), "refundPublicKey":public_key, "invoice":mock_bolt11_invoice(hash, HTLC_INVOICE_SAT)})
++        } else {
++            json!({"from":"BTC", "to":"USDT-RGB", "pairId":htlc_pair(kind), "claimPublicKey":public_key, "preimageHash":hex::encode(hash), "invoiceAmount":HTLC_INVOICE_SAT})
++        };
++        let (status, response) = htlc_post(state.clone(), kind, &request).await;
++        assert_eq!(status, axum::http::StatusCode::CREATED, "{response}");
++        let (status, cards) = call(state, &format!("/v2/swap/{name}"), None).await;
++        assert_eq!(status, axum::http::StatusCode::OK, "{cards}");
++        pairs[name] = cards;
++        let script_hex = response["rgb"]["scriptPubkey"].as_str().unwrap();
++        let script = ScriptBuf::from_bytes(hex::decode(script_hex).unwrap());
++        for (prefix, network) in [
++            ("bc", rgb_lib::BitcoinNetwork::Mainnet),
++            ("tb3", rgb_lib::BitcoinNetwork::Testnet),
++            ("tb4", rgb_lib::BitcoinNetwork::Testnet4),
++            ("sb", rgb_lib::BitcoinNetwork::Signet),
++            ("sbc", rgb_lib::BitcoinNetwork::SignetCustom),
++            ("bcrt", rgb_lib::BitcoinNetwork::Regtest),
++        ] {
++            let id = rgb_lib::utils::recipient_id_from_script_buf(script.clone(), network).unwrap();
++            assert_eq!(
++                rgb_lib::utils::script_buf_from_recipient_id(id.clone())
++                    .unwrap()
++                    .unwrap(),
++                script
++            );
++            recipients.push(json!({"scriptPubkey":script_hex, "network":prefix, "recipientId":id}));
++        }
++        if name == "reverse" {
++            let outpoint = bitcoin::OutPoint::new(bitcoin::Txid::from_byte_array([0x11; 32]), 0);
++            let destination = ScriptBuf::from_bytes(
++                hex::decode("512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
++                    .unwrap(),
++            );
++            let prevout = bitcoin::TxOut {
++                value: bitcoin::Amount::from_sat(response["rgb"]["htlcSat"].as_u64().unwrap()),
++                script_pubkey: script.clone(),
++            };
++            let leaf_len = hex::decode(
++                response["swapTree"]["claimLeaf"]["output"]
++                    .as_str()
++                    .unwrap(),
++            )
++            .unwrap()
++            .len();
++            let psbt =
++                maker_layer_rgb::build_taker_claim_psbt(&maker_layer_rgb::TakerClaimParams {
++                    htlc_outpoint: outpoint,
++                    htlc_txout: prevout,
++                    htlc_witness_weight: maker_layer_rgb::claim_leaf_witness_weight(
++                        leaf_len as u64,
++                    ),
++                    fee_rate_sat_vb: 5,
++                    dest_script: destination.clone(),
++                })
++                .unwrap();
++            claim = json!({"outpoint":outpoint.to_string(), "destinationScript":destination.to_hex_string(), "psbt":psbt.to_string()});
++        }
++        create[name] = json!({"request": request, "response":response});
++    }
++    let provenance = json!({"makerRevision":"49c6ce2e9554eea0d819fd3bbd267af6db45b1c0", "rgbLibRevision":"96f039d975cf2a83712c3c0a90e703621d445425", "rgbInvoicingVersion":"0.11.1-rc.11", "capture":"maker-api axum router; isolated PostgreSQL; mock node, chain and wallet; real rgb-lib recipient encoder", "network":"regtest", "assetPrecision":6, "assetIssued":false});
++    let wire = json!({"schemaVersion":1, "provenance":provenance, "contractId":ASSET, "preimage":hex::encode(preimage), "amountSemantics":{"limits":"inputAssetBaseUnits", "rate":"outputAssetBaseUnitsPerInputAssetBaseUnit", "quotedFees":"outputAssetBaseUnits", "rgbAmount":"contractUnits", "htlcSat":"bitcoinSatoshis"}, "pairResponses":pairs, "create":create});
++    let golden = json!({"schemaVersion":1,"provenance":provenance,"recipients":recipients,"takerClaim":claim,"feeModel":{"claimVsize":195,"claimFeeRate":5,"reverseHtlcSat":1521,"claimPayoutSat":546,"makerClaimVsize":294,"makerLockVsize":312,"submarineMinerFeeSat":470,"reverseLockFeeSat":1560}});
++    std::fs::create_dir_all(&output).unwrap();
++    for (name, value) in [
++        ("wire-contract.json", wire),
++        ("rgb-golden-vectors.json", golden),
++    ] {
++        std::fs::write(
++            std::path::Path::new(&output).join(name),
++            format!("{}\n", serde_json::to_string_pretty(&value).unwrap()),
++        )
++        .unwrap();
++    }
++}
+diff --git a/crates/maker-api/tests/rgb_wire_contract.rs b/crates/maker-api/tests/rgb_wire_contract.rs
+new file mode 100644
+index 0000000..57e7b1c
+--- /dev/null
++++ b/crates/maker-api/tests/rgb_wire_contract.rs
+@@ -0,0 +1,240 @@
++//! Shared SDK contract fixtures: no database or live wallet required.
++use std::str::FromStr;
++
++use bitcoin::{
++    hashes::{sha256, Hash},
++    OutPoint, Psbt, ScriptBuf,
++};
++use maker_layer_rgb::{
++    build_taker_claim_psbt, claim_leaf_witness_weight, maker_lock_fee_sat, maker_spend_fee_sat,
++    rgb_lib, taker_claim_htlc_sat, TakerClaimParams,
++};
++use maker_musig::{
++    lockup_address, reverse_swap_tree, submarine_swap_tree, Chain, CooperativeKey, LeafVersion,
++    SwapTree,
++};
++use serde_json::Value;
++
++const WIRE: &str = include_str!("../../../tests/fixtures/rgb-v1/wire-contract.json");
++const GOLDEN: &str = include_str!("../../../tests/fixtures/rgb-v1/rgb-golden-vectors.json");
++fn text(value: &Value) -> &str {
++    value.as_str().expect("fixture string")
++}
++
++#[test]
++fn maker_reconstructs_the_shared_swap_trees_and_addresses() {
++    let f: Value = serde_json::from_str(WIRE).unwrap();
++    let preimage = hex::decode(text(&f["preimage"])).unwrap();
++    let hash = sha256::Hash::hash(&preimage).to_byte_array();
++    for name in ["submarine", "reverse"] {
++        let request = &f["create"][name]["request"];
++        let response = &f["create"][name]["response"];
++        let (claim, refund, address_field) = if name == "submarine" {
++            (
++                &response["claimPublicKey"],
++                &request["refundPublicKey"],
++                "address",
++            )
++        } else {
++            (
++                &request["claimPublicKey"],
++                &response["refundPublicKey"],
++                "lockupAddress",
++            )
++        };
++        let claim = hex::decode(text(claim)).unwrap();
++        let refund = hex::decode(text(refund)).unwrap();
++        let height = u32::try_from(response["timeoutBlockHeight"].as_u64().unwrap()).unwrap();
++        let tree = if name == "submarine" {
++            submarine_swap_tree(LeafVersion::Bitcoin, &hash, &claim, &refund, height)
++        } else {
++            reverse_swap_tree(LeafVersion::Bitcoin, &hash, &claim, &refund, height)
++        }
++        .unwrap();
++        assert_eq!(
++            tree,
++            SwapTree::from_boltz_json(&response["swapTree"]).unwrap()
++        );
++        let cooperative = if name == "submarine" {
++            CooperativeKey::from_bytes(&claim, &refund)
++        } else {
++            CooperativeKey::from_bytes_reverse(&claim, &refund)
++        }
++        .unwrap();
++        assert_eq!(
++            lockup_address(&cooperative, &tree, Chain::Regtest).unwrap(),
++            text(&response[address_field])
++        );
++        let script = bitcoin::Address::from_str(text(&response[address_field]))
++            .unwrap()
++            .require_network(bitcoin::Network::Regtest)
++            .unwrap()
++            .script_pubkey();
++        assert_eq!(
++            script.to_hex_string(),
++            text(&response["rgb"]["scriptPubkey"])
++        );
++        assert_eq!(
++            rgb_lib::utils::recipient_id_from_script_buf(script, rgb_lib::BitcoinNetwork::Regtest)
++                .unwrap(),
++            text(&response["rgb"]["recipientId"])
++        );
++        assert_eq!(response["rgb"]["assetId"], f["contractId"]);
++        assert_eq!(
++            response["rgb"]["amount"],
++            response[if name == "submarine" {
++                "expectedAmount"
++            } else {
++                "onchainAmount"
++            }]
++        );
++    }
++}
++
++#[test]
++fn rgb_lib_reencodes_every_frozen_recipient() {
++    let g: Value = serde_json::from_str(GOLDEN).unwrap();
++    for v in g["recipients"].as_array().unwrap() {
++        let net = match text(&v["network"]) {
++            "bc" => rgb_lib::BitcoinNetwork::Mainnet,
++            "tb3" => rgb_lib::BitcoinNetwork::Testnet,
++            "tb4" => rgb_lib::BitcoinNetwork::Testnet4,
++            "sb" => rgb_lib::BitcoinNetwork::Signet,
++            "sbc" => rgb_lib::BitcoinNetwork::SignetCustom,
++            "bcrt" => rgb_lib::BitcoinNetwork::Regtest,
++            other => panic!("unknown network {other}"),
++        };
++        let script = ScriptBuf::from_bytes(hex::decode(text(&v["scriptPubkey"])).unwrap());
++        let id = rgb_lib::utils::recipient_id_from_script_buf(script.clone(), net).unwrap();
++        assert_eq!(id, text(&v["recipientId"]));
++        assert_eq!(
++            rgb_lib::utils::script_buf_from_recipient_id(id)
++                .unwrap()
++                .unwrap(),
++            script
++        );
++    }
++}
++
++#[test]
++fn maker_claim_psbt_and_pricing_match_the_frozen_reference() {
++    let f: Value = serde_json::from_str(WIRE).unwrap();
++    let g: Value = serde_json::from_str(GOLDEN).unwrap();
++    let reference = &g["takerClaim"];
++    let recorded = Psbt::from_str(text(&reference["psbt"])).unwrap();
++    let weight = claim_leaf_witness_weight(
++        hex::decode(text(
++            &f["create"]["reverse"]["response"]["swapTree"]["claimLeaf"]["output"],
++        ))
++        .unwrap()
++        .len() as u64,
++    );
++    let actual = build_taker_claim_psbt(&TakerClaimParams {
++        htlc_outpoint: OutPoint::from_str(text(&reference["outpoint"])).unwrap(),
++        htlc_txout: recorded.inputs[0].witness_utxo.clone().unwrap(),
++        htlc_witness_weight: weight,
++        fee_rate_sat_vb: 5,
++        dest_script: ScriptBuf::from_bytes(
++            hex::decode(text(&reference["destinationScript"])).unwrap(),
++        ),
++    })
++    .unwrap();
++    assert_eq!(actual, recorded);
++    let fees = &g["feeModel"];
++    assert_eq!(fees["claimFeeRate"], 5);
++    assert_eq!(
++        fees["claimPayoutSat"],
++        actual.unsigned_tx.output[1].value.to_sat()
++    );
++    assert_eq!(
++        fees["reverseHtlcSat"],
++        taker_claim_htlc_sat(weight, 5).unwrap()
++    );
++    assert_eq!(
++        fees["claimVsize"],
++        (taker_claim_htlc_sat(weight, 1).unwrap() - 546)
++    );
++    assert_eq!(fees["makerLockVsize"], maker_lock_fee_sat(1).unwrap());
++    assert_eq!(fees["reverseLockFeeSat"], maker_lock_fee_sat(5).unwrap());
++    assert_eq!(taker_claim_htlc_sat(weight, 5).unwrap(), 1_521);
++    assert_eq!(maker_lock_fee_sat(5).unwrap(), 1_560);
++    let sub_weight = claim_leaf_witness_weight(
++        hex::decode(text(
++            &f["create"]["submarine"]["response"]["swapTree"]["claimLeaf"]["output"],
++        ))
++        .unwrap()
++        .len() as u64,
++    );
++    assert_eq!(maker_spend_fee_sat(sub_weight, 5).unwrap() - 1_000, 470);
++    assert_eq!(
++        fees["makerClaimVsize"],
++        maker_spend_fee_sat(sub_weight, 1).unwrap()
++    );
++    assert_eq!(
++        fees["submarineMinerFeeSat"],
++        maker_spend_fee_sat(sub_weight, 5).unwrap() - 1_000
++    );
++    assert_eq!(
++        f["create"]["submarine"]["response"]["expectedAmount"],
++        (100_000u64 + 470).div_ceil(100)
++    );
++    assert_eq!(
++        f["create"]["reverse"]["response"]["onchainAmount"],
++        (100_000u64 - 1_521 - 1_560) / 100
++    );
++}
++
++#[test]
++fn public_response_schemas_preserve_the_frozen_json_shape() {
++    use maker_api::schemas::{ReverseCreateResponse, RgbLock, SubmarineCreateResponse};
++    let f: Value = serde_json::from_str(WIRE).unwrap();
++    let rgb = |response: &Value| {
++        let r = &response["rgb"];
++        RgbLock {
++            asset_id: text(&r["assetId"]).into(),
++            amount: r["amount"].as_u64().unwrap(),
++            recipient_id: text(&r["recipientId"]).into(),
++            blinding: text(&r["blinding"]).into(),
++            htlc_sat: r["htlcSat"].as_u64().unwrap(),
++            claim_fee_rate: r["claimFeeRate"].as_u64(),
++            script_pubkey: text(&r["scriptPubkey"]).into(),
++            transport_endpoints: serde_json::from_value(r["transportEndpoints"].clone()).unwrap(),
++            min_confirmations: u8::try_from(r["minConfirmations"].as_u64().unwrap()).unwrap(),
++        }
++    };
++    let s = &f["create"]["submarine"]["response"];
++    let submarine = SubmarineCreateResponse {
++        id: text(&s["id"]).into(),
++        swap_auth: text(&s["swapAuth"]).into(),
++        claim_public_key: text(&s["claimPublicKey"]).into(),
++        address: text(&s["address"]).into(),
++        swap_tree: serde_json::from_value(s["swapTree"].clone()).unwrap(),
++        timeout_block_height: u32::try_from(s["timeoutBlockHeight"].as_u64().unwrap()).unwrap(),
++        expected_amount: s["expectedAmount"].as_u64().unwrap(),
++        accept_zero_conf: false,
++        bip21: String::new(),
++        referral_id: None,
++        asset_id: None,
++        fee_asset_id: None,
++        preimage_hash: None,
++        invoice_amount: None,
++        rgb: Some(rgb(s)),
++    };
++    assert_eq!(serde_json::to_value(submarine).unwrap(), *s);
++    let r = &f["create"]["reverse"]["response"];
++    let reverse = ReverseCreateResponse {
++        id: text(&r["id"]).into(),
++        swap_auth: text(&r["swapAuth"]).into(),
++        invoice: text(&r["invoice"]).into(),
++        refund_public_key: text(&r["refundPublicKey"]).into(),
++        lockup_address: text(&r["lockupAddress"]).into(),
++        swap_tree: serde_json::from_value(r["swapTree"].clone()).unwrap(),
++        timeout_block_height: r["timeoutBlockHeight"].as_i64().unwrap(),
++        onchain_amount: r["onchainAmount"].as_u64().unwrap(),
++        blinding_key: None,
++        asset_id: None,
++        fee_asset_id: None,
++        rgb: Some(rgb(r)),
++    };
++    assert_eq!(serde_json::to_value(reverse).unwrap(), *r);
++}
+diff --git a/tests/fixtures/rgb-v1/README.md b/tests/fixtures/rgb-v1/README.md
+new file mode 100644
+index 0000000..83dc62b
+--- /dev/null
++++ b/tests/fixtures/rgb-v1/README.md
+@@ -0,0 +1,29 @@
++# RGB HTLC wire contract, version 1
++
++Shared with the swap SDK. Captured from maker revision
++`49c6ce2e9554eea0d819fd3bbd267af6db45b1c0` through the actual axum router with
++isolated PostgreSQL, mock chain/node/wallet state and the real rgb-lib recipient
++encoder. rgb-lib is pinned to `96f039d975cf2a83712c3c0a90e703621d445425`, resolving
++rgb-invoicing `0.11.1-rc.11`. The test contract was not issued; no RGB proofs or
++live wallet transfers are claimed. Auth tokens and invoices belong to disposable
++mock swaps. The claim prevout is synthetic.
++
++Run the four database-free compatibility tests:
++
++```sh
++cargo test -p maker-api --test rgb_wire_contract --locked
++```
++
++To recapture deliberately, use a disposable PostgreSQL instance:
++
++```sh
++TEST_DATABASE_URL=postgres://postgres:rgb-wire-test@127.0.0.1:15433/postgres \
++RGB_WIRE_FIXTURE_OUTPUT="$PWD/tests/fixtures/rgb-v1" \
++cargo test -p maker-api --test rgb_wire_capture -- --ignored --nocapture
++```
++
++Copy both JSON files into the SDK's `tests/fixtures/rgb-v1/` and run its
++`cargo test --test rgb_contract` too. IDs, blinding and invoice timestamps vary
++on capture; CI consumes one frozen capture. Its pair limits use input units,
++miner fees use output units, and rates convert between the two. The RGB contract
++has 6 decimals and the internal quote card has 8.
+diff --git a/tests/fixtures/rgb-v1/rgb-golden-vectors.json b/tests/fixtures/rgb-v1/rgb-golden-vectors.json
+new file mode 100644
+index 0000000..b9defcd
+--- /dev/null
++++ b/tests/fixtures/rgb-v1/rgb-golden-vectors.json
+@@ -0,0 +1,89 @@
++{
++  "schemaVersion": 1,
++  "provenance": {
++    "makerRevision": "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0",
++    "rgbLibRevision": "96f039d975cf2a83712c3c0a90e703621d445425",
++    "rgbInvoicingVersion": "0.11.1-rc.11",
++    "capture": "maker-api axum router; isolated PostgreSQL; mock node, chain and wallet; real rgb-lib recipient encoder",
++    "network": "regtest",
++    "assetPrecision": 6,
++    "assetIssued": false
++  },
++  "recipients": [
++    {
++      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++      "network": "bc",
++      "recipientId": "bc:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
++    },
++    {
++      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++      "network": "tb3",
++      "recipientId": "tb3:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
++    },
++    {
++      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++      "network": "tb4",
++      "recipientId": "tb4:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
++    },
++    {
++      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++      "network": "sb",
++      "recipientId": "sb:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
++    },
++    {
++      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++      "network": "sbc",
++      "recipientId": "sbc:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
++    },
++    {
++      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++      "network": "bcrt",
++      "recipientId": "bcrt:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
++    },
++    {
++      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++      "network": "bc",
++      "recipientId": "bc:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
++    },
++    {
++      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++      "network": "tb3",
++      "recipientId": "tb3:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
++    },
++    {
++      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++      "network": "tb4",
++      "recipientId": "tb4:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
++    },
++    {
++      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++      "network": "sb",
++      "recipientId": "sb:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
++    },
++    {
++      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++      "network": "sbc",
++      "recipientId": "sbc:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
++    },
++    {
++      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++      "network": "bcrt",
++      "recipientId": "bcrt:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
++    }
++  ],
++  "takerClaim": {
++    "outpoint": "1111111111111111111111111111111111111111111111111111111111111111:0",
++    "destinationScript": "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
++    "psbt": "cHNidP8BAGkCAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD9////AgAAAAAAAAAAAmoAIgIAAAAAAAAiUSB5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmAAAAAAAAQEr8QUAAAAAAAAiUSB+hsRrF5L2USrB8tY31KZFd7Ir6Tz5axMRFEmnPHTk9QAAAA=="
++  },
++  "feeModel": {
++    "claimVsize": 195,
++    "claimFeeRate": 5,
++    "reverseHtlcSat": 1521,
++    "claimPayoutSat": 546,
++    "makerClaimVsize": 294,
++    "makerLockVsize": 312,
++    "submarineMinerFeeSat": 470,
++    "reverseLockFeeSat": 1560
++  }
++}
+diff --git a/tests/fixtures/rgb-v1/wire-contract.json b/tests/fixtures/rgb-v1/wire-contract.json
+new file mode 100644
+index 0000000..a1a6c7e
+--- /dev/null
++++ b/tests/fixtures/rgb-v1/wire-contract.json
+@@ -0,0 +1,154 @@
++{
++  "schemaVersion": 1,
++  "provenance": {
++    "makerRevision": "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0",
++    "rgbLibRevision": "96f039d975cf2a83712c3c0a90e703621d445425",
++    "rgbInvoicingVersion": "0.11.1-rc.11",
++    "capture": "maker-api axum router; isolated PostgreSQL; mock node, chain and wallet; real rgb-lib recipient encoder",
++    "network": "regtest",
++    "assetPrecision": 6,
++    "assetIssued": false
++  },
++  "contractId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
++  "preimage": "0303030303030303030303030303030303030303030303030303030303030303",
++  "amountSemantics": {
++    "limits": "inputAssetBaseUnits",
++    "rate": "outputAssetBaseUnitsPerInputAssetBaseUnit",
++    "quotedFees": "outputAssetBaseUnits",
++    "rgbAmount": "contractUnits",
++    "htlcSat": "bitcoinSatoshis"
++  },
++  "pairResponses": {
++    "submarine": {
++      "BTC": {},
++      "L-BTC": {},
++      "L-USDT": {},
++      "ARKD": {},
++      "USDT-RGB": {
++        "BTC": {
++          "pairId": "USDT-RGB/BTC@LN",
++          "hash": "8de43622c150d7e0b0bed2c7a99ad13352dce2851dfc127f3ce7a33803ae95e8",
++          "rate": 100.0,
++          "limits": {
++            "minimal": 10,
++            "maximal": 10000,
++            "maximalZeroConf": 0
++          },
++          "fees": {
++            "percentage": 0.0,
++            "minerFees": 470
++          }
++        }
++      }
++    },
++    "reverse": {
++      "BTC": {
++        "USDT-RGB": {
++          "pairId": "BTC@LN/USDT-RGB",
++          "hash": "8de43622c150d7e0b0bed2c7a99ad13352dce2851dfc127f3ce7a33803ae95e8",
++          "rate": 0.01,
++          "limits": {
++            "minimal": 1000,
++            "maximal": 1000000
++          },
++          "fees": {
++            "percentage": 0.0,
++            "minerFees": {
++              "lockup": 0,
++              "claim": 31
++            }
++          }
++        }
++      },
++      "L-BTC": {},
++      "L-USDT": {},
++      "ARKD": {}
++    }
++  },
++  "create": {
++    "submarine": {
++      "request": {
++        "from": "USDT-RGB",
++        "to": "BTC",
++        "pairId": "USDT-RGB/BTC@LN",
++        "refundPublicKey": "02d4e4d88e467ce9e1991d5d0125b39ba5ca6ca53e45c69135d7d862e689daea02",
++        "invoice": "lnbcrt1m1p4vfmrldq8d4hkx6cpp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzys9zmv38345s4fygpmhwyjcvnvcppfdnddzs07g8l25r9ermd7gv6ydykgs9rgecxmemduuc6rg4gvhndfx729h92500hmeh0xke25auspm8zmsu"
++      },
++      "response": {
++        "id": "01M48KQM920RFMR2V4K9H1W2WP",
++        "claimPublicKey": "02b459e397884574edcb90214723a86621072fb27c2817b8243a816d1608e97a00",
++        "address": "bcrt1p5pjferapnjzfsl4uwlq996l0nrk8hmkzcfujqr0dhsyvaqmnv77qldqzjc",
++        "swapTree": {
++          "claimLeaf": {
++            "version": 192,
++            "output": "a9148a486ff2e31d6158bf39e2608864d63fefd09d5b8820b459e397884574edcb90214723a86621072fb27c2817b8243a816d1608e97a00ac"
++          },
++          "refundLeaf": {
++            "version": 192,
++            "output": "20d4e4d88e467ce9e1991d5d0125b39ba5ca6ca53e45c69135d7d862e689daea02ad029000b1"
++          }
++        },
++        "timeoutBlockHeight": 144,
++        "expectedAmount": 1005,
++        "acceptZeroConf": false,
++        "bip21": "",
++        "referralId": null,
++        "swapAuth": "6301e289997bab9280aa03a2e08dcd616112d7c90f6ce9252905703c2256f3e2",
++        "rgb": {
++          "assetId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
++          "amount": 1005,
++          "recipientId": "bcrt:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA",
++          "blinding": "4420872638298704050",
++          "htlcSat": 1000,
++          "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
++          "transportEndpoints": [
++            "rpc://proxy.test/json-rpc"
++          ],
++          "minConfirmations": 1
++        }
++      }
++    },
++    "reverse": {
++      "request": {
++        "from": "BTC",
++        "to": "USDT-RGB",
++        "pairId": "BTC@LN/USDT-RGB",
++        "claimPublicKey": "03b0f78f9879c37d49c96f12c73b6601d362862c8c8dddd530addc661e19fbe141",
++        "preimageHash": "648aa5c579fb30f38af744d97d6ec840c7a91277a499a0d780f3e7314eca090b",
++        "invoiceAmount": 100000
++      },
++      "response": {
++        "id": "01M48KQNJPMSR41ZDQGE94456J",
++        "invoice": "lnbcrt1m1p4vfmyqdq8d4hkx6cpp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysqlxdc3xg0kvms2lpvnuy0d5zactccr096xlw89dt4eq0sdatpcznq43yl99wrjtmzhaf0dca3vhzjdywsgvpfp88jmvnmpehr8x8zzqp6eh3z4",
++        "refundPublicKey": "0342fda8e9951f85317524d74e033458090032ea9e359fd55448e70915b18d9a64",
++        "lockupAddress": "bcrt1p06rvg6chjtm9z2kp7ttr049xg4mmy2lf8nukkyc3z3y6w0r5un6ssh0fmv",
++        "swapTree": {
++          "claimLeaf": {
++            "version": 192,
++            "output": "82012088a9148a486ff2e31d6158bf39e2608864d63fefd09d5b8820b0f78f9879c37d49c96f12c73b6601d362862c8c8dddd530addc661e19fbe141ac"
++          },
++          "refundLeaf": {
++            "version": 192,
++            "output": "2042fda8e9951f85317524d74e033458090032ea9e359fd55448e70915b18d9a64ad0118b1"
++          }
++        },
++        "timeoutBlockHeight": 24,
++        "onchainAmount": 969,
++        "swapAuth": "5fc31f17e370014ead7feff80329d5544c9fc795c3893ba876229de8d97b6f5f",
++        "rgb": {
++          "assetId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
++          "amount": 969,
++          "recipientId": "bcrt:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ",
++          "blinding": "2054954119320635677",
++          "htlcSat": 1521,
++          "claimFeeRate": 5,
++          "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
++          "transportEndpoints": [
++            "rpc://proxy.test/json-rpc"
++          ],
++          "minConfirmations": 1
++        }
++      }
++    }
++  }
++}
