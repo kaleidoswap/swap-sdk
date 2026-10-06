@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — the Arkade venue accepts and runs on `@arkade-os/swap` 0.0.21–0.0.24
+
+The `@arkade-os/swap` peer was `^0.0.20`, which on a 0.0.x version admits
+0.0.20 alone, so a host on 0.0.24 could not install `@kaleidorg/swap-sdk`
+beside it. Widening the range alone would not have been enough. 0.0.21 moved
+the lockup's VTXO read from the indexer to the wallet's contract manager:
+`findLockupVtxos` takes a `getContractsWithVtxos` source where it took a
+`getVtxos` one, and `RfqSwapManagerDeps.contracts` became required. The venue
+still passed the indexer to both. On 0.0.21 and later, the receive-route claim
+therefore never ran and the swap stayed `funded`, and a send refund after
+`refund_locktime` threw `contracts.getContractsWithVtxos is not a function`.
+The manager reported both through `onSwapFailed`, which the venue does not
+surface.
+
+The venue now gives `RfqSwapManager` the wallet's contract manager beside the
+indexer. Its default refund hands `findLockupVtxos` a source that answers both
+reads. The same build works on 0.0.20 and on 0.0.21 to 0.0.24, and the test
+suite passes against each of them with its pinned `@arkade-os/sdk`. Two new
+tests drive the real `findLockupVtxos` through the default refund and through
+the wallet's own contract manager. Both fail against the old venue on 0.0.24.
+
+- The `@arkade-os/swap` peer is now `>=0.0.20 <0.1.0`. `@arkade-os/sdk` stays
+  `>=0.4.74 <0.5.0`, and the dev pins move to 0.0.24 and 0.4.78. The 0.1.0
+  release candidates are outside the range.
+- `ArkadeIntentsVenueOptions.contractManager` is new and optional. It defaults
+  to `wallet.getContractManager()`, which is resolved once, on first use. The
+  new `ArkadeContractSource` type names the methods the venue calls on it.
+- On every supported version, the manager now registers each lockup in the
+  wallet's contract manager. 0.0.20 already did this whenever it was given a
+  contract manager.
+
+`@kaleidorg/swap-sdk-react-native` keeps `@arkade-os/swap ^0.0.20`. Its peer
+range still admits `@kaleidorg/swap-sdk` 0.10.0, which fails on 0.0.21 and
+later, so its range can widen only once it requires a release with this fix.
+
 ### Fixed — `PayThroughClient` works in browsers without an injected `fetch`
 
 In 0.10.0, a client built without the `fetch` option stored the global `fetch`

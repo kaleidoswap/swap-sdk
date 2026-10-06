@@ -38,12 +38,18 @@
  *
  * `@arkade-os/swap` hard-pins its own `@arkade-os/sdk`; the `wallet` object
  * crossing this boundary must come from that same SDK line. The peer ranges
- * encode it: `>=0.4.74 <0.5.0` for the SDK and `^0.0.20` for `@arkade-os/swap`
- * — both pre-1.0, so the caret pins the exact minor/patch line this module
- * was written against. The host app owns the pins.
+ * encode it: `>=0.4.74 <0.5.0` for the SDK and `>=0.0.20 <0.1.0` for
+ * `@arkade-os/swap`. The host app owns the pins.
+ *
+ * 0.0.21 moved the lockup's VTXO read from the indexer to the wallet's
+ * contract manager: `findLockupVtxos` takes a `getContractsWithVtxos` source
+ * instead of a `getVtxos` one, and `RfqSwapManagerDeps.contracts` became
+ * required. This module hands both releases what they read — the manager
+ * gets `indexer` and `contracts`, and `findLockupVtxos` gets a source that
+ * answers both calls — so one build of it runs on 0.0.20 and on 0.0.21+.
  */
 
-import type { IWallet } from "@arkade-os/sdk";
+import type { IContractManager, IWallet } from "@arkade-os/sdk";
 import { corridorRootFromMakerUrl } from "../corridor-url.js";
 export { corridorRootFromMakerUrl };
 import {
@@ -352,9 +358,70 @@ export interface ArkadeIntentsVenueOptions {
   /** Defaults to REST providers on `arkServerUrl`. */
   arkProvider?: RefundArkProvider;
   indexerProvider?: LockupSpendIndexer;
+  /** Where the lockup is registered and, on `@arkade-os/swap` 0.0.21+, where
+   * its VTXOs are read from. Defaults to `wallet.getContractManager()`,
+   * resolved on first use rather than in the constructor. */
+  contractManager?: ArkadeContractSource;
   /** Unix seconds; injectable for tests. */
   now?: () => number;
   flows?: Partial<ArkadeIntentsFlows>;
+}
+
+/**
+ * The contract-manager surface this venue and its `RfqSwapManager` use: the
+ * union of `SwapContractRegistry` and `LockupContractSource` across the
+ * supported `@arkade-os/swap` range. A real `ContractManager`
+ * (`await wallet.getContractManager()`) satisfies it.
+ */
+export type ArkadeContractSource = Pick<
+  IContractManager,
+  | "createContract"
+  | "getContracts"
+  | "getContractsWithVtxos"
+  | "onContractEvent"
+  | "setContractWatchState"
+>;
+
+/**
+ * An {@link ArkadeContractSource} that resolves `load()` on its first call
+ * and reuses it after. The venue's constructor is synchronous and
+ * `wallet.getContractManager()` is not, and a venue that never reaches a
+ * contract read should not have to build a manager. A failed load is retried
+ * on the next call instead of being cached.
+ */
+function lazyContractSource(
+  load: () => Promise<ArkadeContractSource>,
+): ArkadeContractSource {
+  let pending: Promise<ArkadeContractSource> | undefined;
+  const get = (): Promise<ArkadeContractSource> => {
+    pending ??= load().catch((error: unknown) => {
+      pending = undefined;
+      throw error;
+    });
+    return pending;
+  };
+  return {
+    createContract: async (...args) => (await get()).createContract(...args),
+    getContracts: async (...args) => (await get()).getContracts(...args),
+    getContractsWithVtxos: async (...args) =>
+      (await get()).getContractsWithVtxos(...args),
+    setContractWatchState: async (...args) =>
+      (await get()).setContractWatchState(...args),
+    onContractEvent: (callback) => {
+      let unsubscribe: (() => void) | undefined;
+      let cancelled = false;
+      get().then(
+        (manager) => {
+          if (!cancelled) unsubscribe = manager.onContractEvent(callback);
+        },
+        () => {},
+      );
+      return () => {
+        cancelled = true;
+        unsubscribe?.();
+      };
+    },
+  };
 }
 
 /** Result of {@link ArkadeIntentsVenue.prepareAssetSwap}. */
@@ -596,6 +663,7 @@ export class ArkadeIntentsVenue {
   private readonly store: ArkadeSwapStore;
   private readonly ark: RefundArkProvider;
   private readonly indexer: LockupSpendIndexer;
+  private readonly contracts: ArkadeContractSource;
   private readonly now: () => number;
   private readonly flows: ArkadeIntentsFlows;
   private readonly assetSwaps?: AssetSwapRepository;
@@ -621,6 +689,10 @@ export class ArkadeIntentsVenue {
     this.ark = options.arkProvider ?? new RestArkProvider(options.arkServerUrl);
     this.indexer =
       options.indexerProvider ?? new RestIndexerProvider(options.arkServerUrl);
+    const wallet = options.wallet;
+    this.contracts =
+      options.contractManager ??
+      lazyContractSource(() => wallet.getContractManager());
     this.now = options.now ?? (() => Math.floor(Date.now() / 1000));
     this.flows = {
       requestLightningSend,
@@ -638,7 +710,7 @@ export class ArkadeIntentsVenue {
     };
 
     this.manager = new RfqSwapManager(
-      { indexer: this.indexer },
+      { indexer: this.indexer, contracts: this.contracts },
       { enableAutoActions: true, now: this.now },
     );
     const callbacks: AvailableRfqSwapManagerCallbacks = {
@@ -1129,8 +1201,16 @@ export class ArkadeIntentsVenue {
     record: ArkadeSwapRecord,
     script: InstanceType<typeof VHTLC.ScriptV2>,
   ): Promise<{ arkTxid: string; amount: number } | null> {
+    // 0.0.20 reads the lockup through `getVtxos`, 0.0.21+ through
+    // `getContractsWithVtxos`; answer both (see "Version coupling" above).
+    const lockupSource = {
+      getVtxos: this.indexer.getVtxos.bind(this.indexer),
+      getContractsWithVtxos: this.contracts.getContractsWithVtxos.bind(
+        this.contracts,
+      ),
+    };
     const vtxos = await findLockupVtxos(
-      this.indexer,
+      lockupSource,
       hex.decode(record.swapPkScriptHex),
     );
     if (vtxos.length === 0) return null;
