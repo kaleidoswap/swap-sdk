@@ -179,6 +179,39 @@ function fakeIndexer({
   };
 }
 
+/** A fake contract manager over the same chain state as `indexer`.
+ * `@arkade-os/swap` 0.0.21+ reads a lockup's VTXOs from the wallet's contract
+ * manager (`getContractsWithVtxos`) instead of the indexer, so this answers
+ * that read from the indexer's own `getVtxos` — the spendable set as live,
+ * the recoverable set as swept — and accepts registration as a no-op. */
+function fakeContracts(indexer) {
+  return {
+    createContract: async (params) => ({
+      ...params,
+      state: "active",
+      createdAt: 0,
+    }),
+    getContracts: async () => [],
+    getContractsWithVtxos: async ({ script } = {}) => {
+      const [{ vtxos }, { vtxos: swept }] = await Promise.all([
+        indexer.getVtxos({ scripts: [script], spendableOnly: true }),
+        indexer.getVtxos({ scripts: [script], recoverableOnly: true }),
+      ]);
+      return [
+        {
+          contract: { script },
+          vtxos: [
+            ...vtxos.map((vtxo) => ({ ...vtxo, isSwept: false })),
+            ...swept.map((vtxo) => ({ ...vtxo, isSwept: true })),
+          ],
+        },
+      ];
+    },
+    onContractEvent: () => () => {},
+    setContractWatchState: async () => {},
+  };
+}
+
 /** A minimal, decodable PSBT spending `lockupTxid:lockupVout` with the given
  * final witness on its one input — enough for `readLockupFate` to read a
  * preimage (or not) out of `finalScriptWitness`. Returns both the encoded
@@ -231,22 +264,30 @@ function makeVenue({
   now = () => NOW,
   store = new InMemoryArkadeSwapStore(),
   indexerProvider = fakeIndexer(),
+  // `null` leaves the option unset, so the venue falls back to the wallet's.
+  contractManager = fakeContracts(indexerProvider),
+  wallet = {},
+  // Flow names to leave at the venue's own default instead of the fakes below.
+  defaultFlows = [],
 } = {}) {
+  const fakedFlows = {
+    requestLightningSend: async () => sendResponse(),
+    requestLightningReceive: async () => receiveResponse(),
+    claimLockup: async () => ({ arkTxid: "claim-tx", amount: 1_000 }),
+    refundArkade: async () => null,
+    ...flows,
+  };
+  for (const name of defaultFlows) delete fakedFlows[name];
   const venue = new ArkadeIntentsVenue({
-    wallet: {},
+    wallet,
     arkServerUrl: "https://ark.example",
     transport: {},
     store,
     arkProvider: {},
     indexerProvider,
+    contractManager: contractManager ?? undefined,
     now,
-    flows: {
-      requestLightningSend: async () => sendResponse(),
-      requestLightningReceive: async () => receiveResponse(),
-      claimLockup: async () => ({ arkTxid: "claim-tx", amount: 1_000 }),
-      refundArkade: async () => null,
-      ...flows,
-    },
+    flows: fakedFlows,
   });
   return { venue, store };
 }
@@ -551,6 +592,26 @@ test("the solo refund of an empty (never actually funded) lockup reports cancell
   assert.equal((await store.get("rfq-1")).resolvedTxid, undefined);
 });
 
+test("the default refund reads an empty lockup through @arkade-os/swap's own findLockupVtxos", async () => {
+  // No `refundArkade` fake: the venue's default calls the real
+  // `findLockupVtxos`, which reads `getVtxos` on 0.0.20 and
+  // `getContractsWithVtxos` on 0.0.21+. Handing it the indexer alone threw
+  // on 0.0.21+, so the refund never resolved.
+  let now = NOW + 3601;
+  const { venue, store } = makeVenue({
+    now: () => now,
+    indexerProvider: fakeIndexer({ vtxos: [] }),
+    defaultFlows: ["refundArkade"],
+  });
+  await venue.prepareLightningSend({ invoice: {} });
+  await venue.notifyFunded("rfq-1", "tx");
+  assert.deepEqual((await venue.reconcile()).pending, ["rfq-1"]);
+  now = NOW + 3600 + 2 * 60 * 60;
+  const report = await venue.reconcile();
+  assert.deepEqual(report.cancelled, ["rfq-1"]);
+  assert.equal((await store.get("rfq-1")).resolvedTxid, undefined);
+});
+
 test("a swept lockup reports needs_recovery with its outpoints and keeps retrying", async () => {
   const { venue, store } = makeVenue({
     now: () => NOW + 3601, // within the MTP-lag grace window
@@ -636,6 +697,37 @@ test("reconcile dispatches a claim once the lockup is funded", async () => {
   assert.equal(claimInput.record.id, "rfq-r1");
   assert.equal(claimInput.options.partiallyClaimed, false);
   assert.ok(claimInput.vtxos.length > 0);
+});
+
+test("without a contractManager the venue reads the wallet's, resolved once", async () => {
+  let loads = 0;
+  let claimInput;
+  const { venue } = makeVenue({
+    contractManager: null,
+    wallet: {
+      getContractManager: async () => {
+        loads += 1;
+        return fakeContracts(fakeIndexer());
+      },
+    },
+    flows: {
+      claimLockup: async (record, script, vtxos) => {
+        claimInput = { vtxos };
+        return { arkTxid: "claim-tx", amount: 1_000 };
+      },
+    },
+  });
+  await venue.prepareLightningReceive({
+    amountSats: 1_000,
+    decodeInvoice: () => ({}),
+  });
+  await venue.notifyFunded("rfq-r1");
+  await venue.reconcile();
+  await venue.reconcile();
+  // On 0.0.21+ the claim's VTXOs can only have come from the wallet's
+  // manager. 0.0.20 reads them from the indexer and may never load it.
+  assert.ok(claimInput.vtxos.length > 0);
+  assert.ok(loads <= 1, `getContractManager() called ${loads} times`);
 });
 
 test("reconcile settles a receive once chain evidence confirms our claim", async () => {

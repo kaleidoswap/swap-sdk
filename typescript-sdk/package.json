@@ -71,7 +71,7 @@
   },
   "peerDependencies": {
     "@arkade-os/sdk": ">=0.4.74 <0.5.0",
-    "@arkade-os/swap": "^0.0.20"
+    "@arkade-os/swap": ">=0.0.20 <0.1.0"
   },
   "peerDependenciesMeta": {
     "@arkade-os/sdk": {
@@ -82,8 +82,8 @@
     }
   },
   "devDependencies": {
-    "@arkade-os/sdk": "0.4.74",
-    "@arkade-os/swap": "0.0.20",
+    "@arkade-os/sdk": "0.4.78",
+    "@arkade-os/swap": "0.0.24",
     "@eslint/js": "10.0.1",
     "@types/node": "^22.20.1",
     "eslint": "10.8.0",
