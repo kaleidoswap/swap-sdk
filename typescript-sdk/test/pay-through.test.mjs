@@ -254,3 +254,44 @@ test("pay-through requests time out and honour a caller's abort signal", async (
   controller.abort(new Error("caller gave up"));
   await assert.rejects(pending, /caller gave up/);
 });
+
+test("pay-through calls the global fetch unbound when none is injected", async () => {
+  // Browsers' window.fetch throws unless `this` is the global or undefined;
+  // Node's does not, so stand in a fetch that checks like a browser's.
+  const original = globalThis.fetch;
+  let reached = false;
+  globalThis.fetch = function (url) {
+    if (this !== undefined && this !== globalThis) {
+      throw new TypeError(
+        "Failed to execute 'fetch' on 'Window': Illegal invocation",
+      );
+    }
+    reached = true;
+    assert.equal(
+      url,
+      "https://maker.example/v2/swap/01J9ZSWAPIDULID0000000000",
+    );
+    return Promise.resolve(
+      Response.json({
+        id: "01J9ZSWAPIDULID0000000000",
+        type: "reverse",
+        status: "swap.created",
+        paymentStatus: "pending",
+        failureReason: null,
+        failureDetails: null,
+        events: [],
+        payout: { mode: "direct", destination: "bcrt1test", layer: "BTC_L1" },
+      }),
+    );
+  };
+  try {
+    const client = new PayThroughClient({
+      makerUrl: "https://maker.example/v2",
+    });
+    const status = await client.status("01J9ZSWAPIDULID0000000000");
+    assert.equal(reached, true);
+    assert.equal(status.status, "swap.created");
+  } finally {
+    globalThis.fetch = original;
+  }
+});
