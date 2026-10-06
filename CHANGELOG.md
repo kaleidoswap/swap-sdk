@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — `PayThroughClient` works in browsers without an injected `fetch`
+
+In 0.10.0, a client built without the `fetch` option stored the global `fetch`
+and called it as a method of the client. Browsers reject a `fetch` whose `this`
+is not the global, so every `create` and `status` threw
+`TypeError: Failed to execute 'fetch' on 'Window': Illegal invocation`. That
+includes the README example. Node accepts any `this`, and every test injected
+its own `fetch`, so CI never saw it. The default now calls the global `fetch`
+unbound. An injected `fetch` is called as before. A new test stands in a
+`fetch` that checks `this` the way a browser's does.
+
 ## [0.10.0] - 2026-09-24
 
 ### BREAKING — Rust core: chain-swap validation takes the preimage hash, and the upstream merge's API changes
