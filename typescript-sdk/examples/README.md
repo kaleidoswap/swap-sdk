@@ -75,3 +75,13 @@ created on one chain and funded or watched on another.
 money moves. That file carries the `swapAuth` credential — issued once, never
 re-issued — and the material a refund needs. It is gitignored; treat it as
 secret.
+
+## RGB wallet adapter
+
+[`05-rgb-spend.ts`](05-rgb-spend.ts) exports claim/refund integration helpers for
+an application-provided rgb-lib adapter. It is not a live swap CLI. Create with
+an explicit contract pin, validate/accept the lock, then pass the reconstructed
+script and PSBT parameters to the helper. It funds before coloring, retains the
+immutable funded spend, and returns the signed PSBT plus the wallet operation
+ID. The application completes wallet signing, broadcast and RGB operation
+application. See [USDT-RGB swaps](../README.md#usdt-rgb-swaps).

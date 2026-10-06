@@ -4,6 +4,74 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — Rust core: RGB-aware Bitcoin swap scripts
+
+| Was | Now | Migration |
+|---|---|---|
+| `BtcSwapScript { .. }` struct literals | new public field `rgb: Option<RgbHtlcContext>` | add `rgb: None`; the constructors set it from the response |
+| `Currency` had three variants | adds `Currency::UsdtRgb` (`"USDT-RGB"`, Bitcoin only) | cover it in exhaustive matches |
+| `CreateSubmarineResponse` / `CreateReverseResponse` struct literals | new field `rgb: Option<RgbLock>` | add `rgb: None` |
+| The Bitcoin branch of `validate_with_currency*` ignored `currency` | resolves it and refuses anything but BTC, and refuses a BTC response that carries an RGB lock | pass `None` or `Some(Currency::Btc)` for BTC swaps; validate USDT-RGB swaps with `validate_rgb` |
+| UniFFI `CreateSubmarineRequest` / `CreateReverseRequest` Rust struct literals | gain optional `rgb_contract_id` | add `rgb_contract_id: None` for BTC/Liquid, or a pinned contract for RGB; generated Python constructors default to `None` |
+| UniFFI `CreateSubmarineResponse` / `CreateReverseResponse` records | gain `rgb: Option<RgbLock>` | Kotlin, Swift and Python constructors take the new field |
+
+### Added — USDT-RGB submarine and reverse swaps (Rust core)
+
+These are the client side of the KaleidoSwap maker's RGB-on-L1 HTLC routes:
+`USDT-RGB → BTC` Lightning (submarine) and `BTC` Lightning `→ USDT-RGB`
+(reverse). The HTLC is the standard Boltz taproot tree. It carries `htlcSat`
+sats plus an RGB allocation, which the caller's RGB wallet (rgb-lib) moves.
+The SDK does not depend on rgb-lib. The design follows the caller-funded
+L-USDT flow; see `docs/rgb-swaps-plan.md`.
+
+- **`validate_rgb`** on both create responses checks the Boltz fields, then
+  binds the response's `rgb` lock:
+  - the contract id must be the one the caller pins (pair cards carry none);
+  - the amount must be the swap amount;
+  - `scriptPubkey` must be the swap address, and `recipientId` must be
+    rgb-lib's canonical witness recipient id for that script on a compatible
+    network. The encoder is ported and pinned by vectors from `rgb-invoicing`;
+  - a reverse `htlcSat` must fund the taker's claim at `claimFeeRate`.
+- **`SwapScript::prepare_rgb_claim` / `prepare_rgb_refund`** return a
+  `PreparedRgbSpend`. Its template is the HTLC input, an empty `OP_RETURN` at
+  output 0 and the colored payout at output 1. There are two funding modes:
+  - `RgbSpendFunding::HtlcValue` pays the fee from `htlcSat`. A reverse claim
+    at the advertised rate is 195 vB, exactly what the maker sizes the lock
+    for;
+  - `RgbSpendFunding::CallerInputs` lets the wallet add BTC inputs and change,
+    accepted by `fund`.
+- **`finalize_claim` / `finalize_refund`** sign the leaf only after these
+  checks pass:
+  - the wallet's coloring changed nothing but the 32-byte commitment;
+  - rgb-lib's allocations are exactly the locked amount at output 1.
+
+  The signature uses `Prevouts::All` at the re-derived HTLC input index.
+- An uncolored spend of an RGB HTLC burns the asset, so these now refuse a
+  script that carries an RGB lock:
+  - `BtcSwapTx::new_claim` / `new_refund` / `sign_*`;
+  - cooperative partial signing;
+  - `SwapScript::construct_claim` / `construct_refund`.
+- `Error::RgbFeeInputRequired` (`rgb_fee_input_required`) is returned when
+  `htlcSat` cannot pay the fee and still leave a 546 sat colored output.
+
+### Added — USDT-RGB bindings
+
+- UniFFI/Python and wasm/TypeScript expose RGB PSBT preparation, immutable
+  funding, and colored claim/refund finalization. Finalization returns a base64
+  PSBT and a transaction only when every input is final.
+- Native create request records accept optional `rgb_contract_id`; wasm create
+  methods accept optional third argument `rgbContractId`. USDT-RGB routes require
+  this caller-pinned contract before posting and validate the response against it.
+  BTC and Liquid calls retain their existing defaults. RGB chain swaps are refused.
+- The native binding exposes `BtcLikeTransaction.from_hex_bitcoin` for local lock
+  discovery and maps the typed `RgbFeeInputRequired` error. Existing FFI error
+  variant indices are preserved.
+- After `PreparedRgbSpend::fund`, `template()` returns the frozen funded PSBT,
+  its HTLC input index and `requires_funding = false`; the original spend is unchanged.
+- Synthetic Python and JavaScript binding tests cover both RGB directions,
+  local contract pins, wrong allocations and caller-funded refunds. These do not
+  validate RGB consignments or replace the planned live rgb-lib regtest tests.
+
 ### Fixed — the Arkade venue accepts and runs on `@arkade-os/swap` 0.0.21–0.0.24
 
 The `@arkade-os/swap` peer was `^0.0.20`, which on a 0.0.x version admits

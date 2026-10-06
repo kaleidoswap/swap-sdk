@@ -18,8 +18,9 @@
 //! );
 
 use crate::kaleido::{ApiKey, API_KEY_HEADER};
-use crate::network::{Currency, Network};
+use crate::network::{BitcoinChain, Currency, Network};
 use crate::swaps::corridor;
+use crate::swaps::rgb::RgbLock;
 #[cfg(feature = "ws")]
 use crate::util::ensure_rustls_crypto_provider;
 use crate::{error::Error, network::Chain, util::secrets::Preimage};
@@ -49,7 +50,7 @@ pub const BOLTZ_REGTEST: &str = "http://localhost:9001/v2";
 /// Mutinynet, so pair it with [`BitcoinChain::BitcoinSignet`] chain access
 /// rather than testnet3.
 ///
-/// [`BitcoinChain::BitcoinSignet`]: crate::network::BitcoinChain::BitcoinSignet
+/// [`BitcoinChain::BitcoinSignet`]: BitcoinChain::BitcoinSignet
 pub const KALEIDOSWAP_SIGNET_URL_V2: &str = "https://maker.signet.kaleidoswap.com/v2";
 
 /// Header carrying the per-swap taker credential the KaleidoSwap maker issues
@@ -352,6 +353,12 @@ impl GetSubmarinePairsResponse {
         self.get("L-USDT", "BTC").cloned()
     }
 
+    /// Get the USDT-RGB to BTC (Lightning) pair. Its limits are in the RGB
+    /// contract's units.
+    pub fn get_usdt_rgb_to_btc_pair(&self) -> Option<SubmarinePair> {
+        self.get("USDT-RGB", "BTC").cloned()
+    }
+
     /// Resolve the Liquid assets committed by the selected public pair card.
     pub fn expected_liquid_asset_context(
         &self,
@@ -410,6 +417,12 @@ impl GetReversePairsResponse {
     /// Get the BTC to L-USDT pair data from the response.
     pub fn get_btc_to_lusdt_pair(&self) -> Option<ReversePair> {
         self.get("BTC", "L-USDT").cloned()
+    }
+
+    /// Get the BTC (Lightning) to USDT-RGB pair. Its rate and fees are in the
+    /// RGB contract's units.
+    pub fn get_btc_to_usdt_rgb_pair(&self) -> Option<ReversePair> {
+        self.get("BTC", "USDT-RGB").cloned()
     }
 
     /// Resolve the Liquid assets committed by the selected public pair card.
@@ -1770,6 +1783,10 @@ pub struct CreateSubmarineResponse {
     /// [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+    /// The RGB allocation to lock, on a KaleidoSwap `USDT-RGB` route. Validate
+    /// it with [`CreateSubmarineResponse::validate_rgb`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<RgbLock>,
 }
 /// Hand-written only to redact `swap_auth`; every other field prints as the
 /// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
@@ -1791,6 +1808,7 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             asset_id,
             fee_asset_id,
             swap_auth,
+            rgb,
         } = self;
         f.debug_struct("CreateSubmarineResponse")
             .field("accept_zero_conf", accept_zero_conf)
@@ -1806,6 +1824,7 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             .field("asset_id", asset_id)
             .field("fee_asset_id", fee_asset_id)
             .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("rgb", rgb)
             .finish()
     }
 }
@@ -1819,7 +1838,59 @@ fn ensure_hashlock(actual: &hash160::Hash, expected: &hash160::Hash) -> Result<(
     Ok(())
 }
 
+/// The plain Bitcoin validators take BTC only. A USDT-RGB swap needs the
+/// contract id the caller expects, which only `validate_rgb` takes, and a BTC
+/// swap must not come back carrying an RGB lock: its HTLC could then only be
+/// spent through the colored flow.
+fn ensure_plain_btc_response(currency: Currency, rgb: Option<&RgbLock>) -> Result<(), Error> {
+    match (currency, rgb) {
+        (Currency::Btc, None) => Ok(()),
+        (Currency::Btc, Some(_)) => Err(Error::Protocol(
+            "BTC swap response carries an RGB lock".to_string(),
+        )),
+        (Currency::UsdtRgb, _) => Err(Error::Protocol(
+            "USDT-RGB swaps are validated with validate_rgb, which pins the contract id"
+                .to_string(),
+        )),
+        (currency, _) => Err(Error::Protocol(format!(
+            "Currency {currency} is not valid for chain BTC"
+        ))),
+    }
+}
+
 impl CreateSubmarineResponse {
+    /// Validate a KaleidoSwap `USDT-RGB → BTC` submarine response before the
+    /// asset is locked.
+    ///
+    /// On top of the Boltz checks (hashlock, timelock, our refund key, the
+    /// address), the `rgb` lock must name `expected_contract_id` and exactly
+    /// `expectedAmount` of it, and its script and recipient id must be this
+    /// swap's HTLC. The contract id has to come from the caller: the pair card
+    /// does not carry one.
+    pub fn validate_rgb(
+        &self,
+        invoice: &str,
+        our_pubkey: &PublicKey,
+        chain: BitcoinChain,
+        expected_contract_id: &str,
+    ) -> Result<(), Error> {
+        let preimage = Preimage::from_invoice_str(invoice)?;
+        let script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
+        ensure_hashlock(&script.hashlock, &preimage.hash160)?;
+        script.validate_address(chain, self.address.clone())?;
+        script
+            .rgb
+            .as_ref()
+            .ok_or_else(|| Error::Protocol("USDT-RGB swap response has no RGB lock".to_string()))?
+            .validate_swap(
+                &script,
+                chain,
+                &self.address,
+                self.expected_amount,
+                expected_contract_id,
+            )
+    }
+
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
     pub fn validate(
         &self,
@@ -1854,6 +1925,7 @@ impl CreateSubmarineResponse {
 
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
+                ensure_plain_btc_response(chain.resolve_currency(currency)?, self.rgb.as_ref())?;
                 let boltz_sub_script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
                 ensure_hashlock(&boltz_sub_script.hashlock, &preimage.hash160)?;
 
@@ -2176,6 +2248,10 @@ pub struct CreateReverseResponse {
     /// [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
+    /// The RGB allocation the maker locks, on a KaleidoSwap `USDT-RGB` route.
+    /// Validate it with [`CreateReverseResponse::validate_rgb`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rgb: Option<RgbLock>,
 }
 /// Hand-written only to redact `swap_auth`; every other field prints as the
 /// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
@@ -2195,6 +2271,7 @@ impl std::fmt::Debug for CreateReverseResponse {
             asset_id,
             fee_asset_id,
             swap_auth,
+            rgb,
         } = self;
         f.debug_struct("CreateReverseResponse")
             .field("id", id)
@@ -2208,10 +2285,60 @@ impl std::fmt::Debug for CreateReverseResponse {
             .field("asset_id", asset_id)
             .field("fee_asset_id", fee_asset_id)
             .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("rgb", rgb)
             .finish()
     }
 }
 impl CreateReverseResponse {
+    /// Validate a KaleidoSwap `BTC → USDT-RGB` reverse response before the
+    /// invoice is paid.
+    ///
+    /// On top of the Boltz checks (invoice payment hash, hashlock, timelock,
+    /// our claim key, the address), the `rgb` lock must name
+    /// `expected_contract_id` and exactly `onchainAmount` of it, its script and
+    /// recipient id must be this swap's HTLC, and `htlcSat` must fund our claim
+    /// at the advertised `claimFeeRate`. The contract id has to come from the
+    /// caller: with a substituted one, the claim would pay out a different
+    /// asset.
+    pub fn validate_rgb(
+        &self,
+        preimage: &Preimage,
+        our_pubkey: &PublicKey,
+        chain: BitcoinChain,
+        expected_contract_id: &str,
+    ) -> Result<(), Error> {
+        self.validate_invoice_hash(preimage)?;
+        let script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
+        ensure_hashlock(&script.hashlock, &preimage.hash160)?;
+        script.validate_address(chain, self.lockup_address.clone())?;
+        script
+            .rgb
+            .as_ref()
+            .ok_or_else(|| Error::Protocol("USDT-RGB swap response has no RGB lock".to_string()))?
+            .validate_swap(
+                &script,
+                chain,
+                &self.lockup_address,
+                self.onchain_amount,
+                expected_contract_id,
+            )
+    }
+
+    fn validate_invoice_hash(&self, preimage: &Preimage) -> Result<(), Error> {
+        if let Some(invoice) = &self.invoice {
+            // Boltz will only return a BOLT11 invoice if the invoice is not provided
+            let invoice = Bolt11Invoice::from_str(invoice)?;
+            if invoice.payment_hash().to_string() != preimage.sha256.to_string() {
+                return Err(Error::Protocol(format!(
+                    "Preimage hash mismatch : {},{}",
+                    &invoice.payment_hash().to_string(),
+                    preimage.sha256
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Validate reverse swap response
     /// Ensure reverse swap invoice uses the provided preimage
     /// Ensure reverse swap redeem script matches locally constructured SwapScript
@@ -2244,20 +2371,11 @@ impl CreateReverseResponse {
         currency: Option<Currency>,
         expected_asset_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
-        if let Some(invoice) = &self.invoice {
-            // Boltz will only return a BOLT11 invoice if the invoice is not provided
-            let invoice = Bolt11Invoice::from_str(invoice)?;
-            if invoice.payment_hash().to_string() != preimage.sha256.to_string() {
-                return Err(Error::Protocol(format!(
-                    "Preimage hash mismatch : {},{}",
-                    &invoice.payment_hash().to_string(),
-                    preimage.sha256
-                )));
-            }
-        }
+        self.validate_invoice_hash(preimage)?;
 
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
+                ensure_plain_btc_response(chain.resolve_currency(currency)?, self.rgb.as_ref())?;
                 let boltz_rev_script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
                 ensure_hashlock(&boltz_rev_script.hashlock, &preimage.hash160)?;
 
@@ -2472,6 +2590,9 @@ impl CreateChainResponse {
     ) -> Result<(), Error> {
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
+                // A chain swap carries no RGB lock: the maker's RGB on-chain
+                // route is the atomic PSBT swap, not a Boltz chain swap.
+                ensure_plain_btc_response(chain.resolve_currency(currency)?, None)?;
                 let boltz_chain_script =
                     BtcSwapScript::chain_from_swap_resp(side, details.clone(), *our_pubkey)?;
                 ensure_hashlock(&boltz_chain_script.hashlock, expected_hashlock)?;

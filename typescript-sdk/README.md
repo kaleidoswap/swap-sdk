@@ -201,6 +201,60 @@ Values rejected earlier by wasm-bindgen's generated ABI glue remain native
 JavaScript errors. In particular, passing a `number` where a declared `bigint` is
 required throws `TypeError` before Rust can attach a code.
 
+## USDT-RGB swaps
+
+`createSubmarineSwap(network, request, rgbContractId)` supports `USDT-RGB → BTC`;
+`createReverseSwap(network, request, rgbContractId)` supports `BTC → USDT-RGB`.
+The third argument pins the expected contract locally. It is required for RGB
+before any POST and is not sent to the maker; BTC/Liquid calls may omit it.
+Pair cards do not identify the contract. RGB chain swaps are unsupported.
+
+The wallet uses rgb-lib to fund a submarine HTLC, or accept the maker's lock
+consignment for a reverse swap. The SDK validates the Bitcoin HTLC and RGB lock
+instructions, but rgb-lib validates the asset proofs. `rgb.amount` is in contract
+units (six decimals for USDT-RGB); `rgb.htlcSat` is Bitcoin satoshis.
+
+Reconstruct the validated response using `SwapScript.fromReverse` or
+`fromSubmarine`, then call `prepareRgbClaim` or `prepareRgbRefund` with:
+
+```ts
+const spend = await script.prepareRgbClaim({
+  outputAddress: rgbWalletReceiveAddress,
+  funding: { kind: "htlcValue", feeRateSatVb: response.rgb.claimFeeRate },
+  maxFee: 10_000n,
+  swapId: response.id,
+  makerBaseUrl,
+  network: "regtest",
+  bitcoinEsploraUrl,
+  lockupTxHex,
+});
+```
+
+The payout address must correspond to an RGB wallet witness receive. For a
+caller-funded refund, use `{ kind: "callerInputs" }`, add BTC inputs/change, and
+retain the new spend from `spend.fund(fundedPsbt)`. Its `template()` contains the
+frozen funded PSBT and current HTLC input index. Fund before coloring or signing.
+
+Pass the template to rgb-lib's `psbt_op_prepare_with_expiry`, assigning the asset
+amount to `paymentOutputIndex`, then return its PSBT and actual allocations to
+`finalizeClaim(coloredPsbt, keysSecretHex, preimageHex)` or
+`finalizeRefund(coloredPsbt, keysSecretHex)`. These return a signed PSBT and an
+optional `BtcLikeTransaction` (`null` while wallet inputs remain unsigned).
+Preserve the HTLC witness when signing the remaining wallet inputs. Free spend
+and transaction handles after use.
+
+The wallet retains its operation ID and completes `psbt_op_mark_broadcast`,
+broadcast, `psbt_op_apply` and `psbt_op_provide_receive_consignment`. A Bitcoin
+broadcast alone does not complete the RGB wallet receive. Reverse swaps have no
+`transaction.confirmed` event: enforce the lock confirmations through the chain
+and rgb-lib before claiming. Refunds wait for the timeout; claims must confirm
+before it. Insufficient HTLC sats produce `rgb_fee_input_required`; prepare with
+caller inputs instead.
+
+See [the wallet adapter example](examples/05-rgb-spend.ts) and
+[the RGB design](../docs/rgb-swaps-plan.md). The adapter is a coordination example;
+a real rgb-lib regtest run remains planned.
+
 ## Partner attribution — `createKaleidoMakerClient`
 
 A partner organization can have the swaps it originates attributed to it. That

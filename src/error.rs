@@ -55,6 +55,10 @@ pub enum Error {
     /// A non-policy-asset Liquid spend cannot pay its transaction fee without
     /// at least one caller-provided policy-asset input.
     LiquidFeeAssetRequired,
+    /// An RGB HTLC spend cannot pay its fee from the HTLC's own sats and
+    /// still leave a colored output above the dust minimum: the caller's
+    /// wallet has to add a BTC input (`RgbSpendFunding::CallerInputs`).
+    RgbFeeInputRequired,
     Generic(String),
     HTTPStatusNotSuccess(reqwest::StatusCode, Value),
     /// A request the server answered with a success status, whose body did not
@@ -317,6 +321,7 @@ impl Error {
             Error::Taproot(_) => "Taproot",
             Error::Musig2(_) => "Musig2",
             Error::LiquidFeeAssetRequired => "liquid_fee_asset_required",
+            Error::RgbFeeInputRequired => "rgb_fee_input_required",
             Error::Generic(_) => "Generic",
             Error::HTTPStatusNotSuccess(_, _) => "HTTPStatusNotSuccess",
             Error::HTTPResponseBodyInvalid(_, _) => "HTTPResponseBodyInvalid",
@@ -359,6 +364,10 @@ impl Error {
             Error::Musig2(e) => e.clone(),
             Error::LiquidFeeAssetRequired => {
                 "A caller-provided Liquid policy-asset input is required to pay fees".to_string()
+            }
+            Error::RgbFeeInputRequired => {
+                "The RGB HTLC cannot pay this fee itself; a caller-provided BTC input is required"
+                    .to_string()
             }
             Error::Generic(e) => e.clone(),
             Error::HTTPStatusNotSuccess(status, body) => {
@@ -485,6 +494,7 @@ impl std::error::Error for Error {
             | Error::Taproot(_)
             | Error::Musig2(_)
             | Error::LiquidFeeAssetRequired
+            | Error::RgbFeeInputRequired
             | Error::Generic(_)
             | Error::HTTPStatusNotSuccess(_, _)
             | Error::HTTPResponseBodyInvalid(_, _) => None,
@@ -700,6 +710,7 @@ mod tests {
             Error::Hex("odd hex string length".to_string()),
             Error::Protocol("not a key".to_string()),
             Error::LiquidFeeAssetRequired,
+            Error::RgbFeeInputRequired,
             Error::HTTPStatusNotSuccess(
                 reqwest::StatusCode::UNAUTHORIZED,
                 serde_json::json!({"error": "unauthorized"}),

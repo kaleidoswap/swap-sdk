@@ -45,6 +45,7 @@ pub enum Currency {
     Btc,
     LBtc,
     LUsdt,
+    UsdtRgb,
 }
 
 #[derive(uniffi::Record)]

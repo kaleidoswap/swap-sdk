@@ -32,3 +32,10 @@ fn submarine() {
 fn kaleido_auth() {
     run_test("tests/bindings/kaleido_auth.py");
 }
+
+/// RGB create and spend bindings use a local HTTP stub, without regtest daemons.
+#[test]
+#[serial]
+fn rgb() {
+    run_test("tests/bindings/rgb.py");
+}

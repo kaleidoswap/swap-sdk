@@ -23,6 +23,9 @@ pub enum Currency {
     Btc,
     LBtc,
     LUsdt,
+    /// USDT issued as an RGB asset on Bitcoin L1, swapped through an HTLC that
+    /// carries the RGB allocation. See [`crate::swaps::rgb`].
+    UsdtRgb,
 }
 
 impl fmt::Display for Currency {
@@ -31,6 +34,7 @@ impl fmt::Display for Currency {
             Currency::Btc => write!(f, "BTC"),
             Currency::LBtc => write!(f, "L-BTC"),
             Currency::LUsdt => write!(f, "L-USDT"),
+            Currency::UsdtRgb => write!(f, "USDT-RGB"),
         }
     }
 }
@@ -56,7 +60,7 @@ impl Chain {
         });
 
         match (self, currency) {
-            (Chain::Bitcoin(_), Currency::Btc)
+            (Chain::Bitcoin(_), Currency::Btc | Currency::UsdtRgb)
             | (Chain::Liquid(_), Currency::LBtc | Currency::LUsdt) => Ok(currency),
             (chain, currency) => Err(Error::Protocol(format!(
                 "Currency {currency} is not valid for chain {chain}"

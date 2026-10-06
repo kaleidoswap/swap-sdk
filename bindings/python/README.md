@@ -103,3 +103,46 @@ Complete working examples are available in the `examples/` directory:
 - [`reverse.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
 - [`submarine.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
 - [`chain.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)
+
+## USDT-RGB swaps
+
+Set `rgb_contract_id` on `CreateSubmarineRequest` or `CreateReverseRequest` and
+select `Currency.USDT_RGB` for the on-chain side. The pin is required before the
+POST and checked against the returned contract. It stays local; the maker wire
+request is unchanged. RGB chain swaps are unsupported. Other currencies retain
+the existing create defaults.
+
+The caller's rgb-lib wallet funds submarine locks and validates reverse lock
+consignments. The SDK validates the HTLC, builds the claim/refund PSBT and signs
+its script path. RGB proof validation and wallet state remain in rgb-lib.
+
+`SwapScript.prepare_rgb_claim` / `prepare_rgb_refund` take `RgbPsbtParams`:
+`output_address`, `funding`, `max_fee` (sats), `swap_id`, `chain_client`,
+`boltz_api`, and optional `lockup_tx`. Parse a lock transaction with
+`BtcLikeTransaction.from_hex_bitcoin(hex)`. Use the original lock transaction
+for refunds. The payout address must come from an RGB wallet witness receive.
+
+- `RgbSpendFunding.HTLC_VALUE(fee_rate_sat_vb=rate)` uses the HTLC's sats.
+  Reverse locks are sized for the advertised `rgb.claim_fee_rate`.
+- `RgbSpendFunding.CALLER_INPUTS()` requires BTC funding. Add wallet inputs/change
+  without coloring or signing, then retain `spend.fund(funded_psbt)`.
+  Its `template()` returns the frozen PSBT and current HTLC input index.
+
+Color that PSBT with rgb-lib's `psbt_op_prepare_with_expiry`, assigning the full
+RGB amount to the template's payment output. Return the actual RGB allocations
+in `ColoredRgbPsbt` to `finalize_claim(colored, keys, preimage)` or
+`finalize_refund(colored, keys)`. `FinalizedRgbSpend` contains `psbt`,
+`swap_input_index` and optional `transaction`. Sign/finalize remaining wallet
+inputs while preserving the SDK's HTLC witness. `Error.RgbFeeInputRequired`
+means the HTLC cannot pay the fee while keeping the minimum payout; prepare with
+caller inputs instead.
+
+Keep the rgb-lib operation ID and complete `psbt_op_mark_broadcast`, broadcast,
+`psbt_op_apply` and `psbt_op_provide_receive_consignment`. Enforce reverse lock
+confirmations using the chain and rgb-lib: there is no reverse
+`transaction.confirmed` event. Refunds wait for the timeout; claims must confirm
+before it. Asset amounts use contract units; `htlc_sat` and fees use sats.
+
+[The adapter example](examples/rgb_spend.py) demonstrates both spend directions.
+It requires an application-provided RGB wallet adapter; live rgb-lib validation
+is the next integration phase.
