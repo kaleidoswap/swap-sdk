@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — account-key restore path
+
+TypeScript `SwapMasterKey.restore(client, gapLimit?)` and
+`restoreIndex(client, gapLimit?)` explicitly use `"m"` with the account xpub, so
+discovery searches the same child keys as `deriveSwapKey`. Low-level restore
+methods retain their explicit path option for callers using root xpubs.
+
 ### Cooperative refund authorization and signed credential recovery
 
 Cooperative Bitcoin/Liquid submarine and chain refunds now forward the per-swap

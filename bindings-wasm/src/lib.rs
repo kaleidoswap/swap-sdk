@@ -949,6 +949,9 @@ impl BoltzClient {
             .map_err(core_err)
     }
 
+    /// Discover swaps from an xpub. Pass `"m"` as `derivationPath` when using
+    /// `WasmSwapMasterKey.masterXpub()`; the maker's omitted-path default is
+    /// intended for a root xpub and will not match this account's child keys.
     #[wasm_bindgen(js_name = swapRestore)]
     pub async fn swap_restore(
         &self,
@@ -966,6 +969,8 @@ impl BoltzClient {
                 .map_err(core_err)?,
         )
     }
+    /// Find the highest known key index. Use the same explicit `"m"` path as
+    /// `swapRestore` for account xpubs. Results are bounded by the gap limit.
     #[wasm_bindgen(js_name = swapRestoreIndex)]
     pub async fn swap_restore_index(
         &self,

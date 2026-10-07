@@ -389,6 +389,21 @@ throwaway tarball when given no argument, or check a supplied one:
 
 ### Recovering swap authorization
 
+Discover swaps with `SwapMasterKey.restore(client, gapLimit?)` and the highest
+known key index with `SwapMasterKey.restoreIndex(client, gapLimit?)`. Both use
+the account xpub returned by `masterXpub()` with derivation path `"m"`, matching
+`deriveSwapKey(index)`. If calling `client.swapRestore` or
+`client.swapRestoreIndex` directly with that xpub, explicitly pass `"m"` as the
+second argument; the maker's root-xpub default otherwise searches different
+keys and can return no swaps. Keep the wallet's saved highest allocated index:
+these discovery calls are bounded by the gap limit and are not a guarantee that
+an empty result makes previously used indices safe to reuse.
+
+```ts
+const restoredSwaps = await master.restore(client);
+const restoredIndex = await master.restoreIndex(client);
+```
+
 Save `swapAuth` from the create response with the swap receipt. KaleidoSwap
 cooperative refunds require it in `TxParams`:
 
@@ -401,7 +416,9 @@ credentials to an xpub holder. Recover each credential with a restored taker
 key, then save it in the receipt:
 
 ```ts
-const keys = master.deriveSwapKey(restored.refundDetails.keyIndex);
+// Submarine example: restore keyIndex is a u32 (JS number), while derivation
+// accepts a u64 (JS bigint).
+const keys = master.deriveSwapKey(BigInt(restored.refundDetails.keyIndex));
 const swapAuth = await client.recoverSwapAuth(restored.id, keys.secretKey);
 await script.constructRefund({ ...params, swapAuth });
 // For a restored chain swap, the same credential authorizes acceptQuote:
