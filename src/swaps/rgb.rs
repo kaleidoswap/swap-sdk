@@ -5,18 +5,19 @@
 //! sats. Two routes use it:
 //!
 //! - **Submarine** `USDT-RGB → BTC` (Lightning): the taker locks the asset and
-//!   refunds it through the refund leaf after the timeout.
+//!   refunds it through the refund leaf after the timeout or the explicit
+//!   colored cooperative key-path flow before it.
 //! - **Reverse** `BTC` (Lightning) `→ USDT-RGB`: the maker locks the asset and
 //!   the taker claims it through the claim leaf.
 //!
 //! RGB state never enters this SDK. The caller's RGB wallet (rgb-lib) locks,
 //! accepts consignments and colors spends; the SDK validates the swap, builds
-//! the spend skeleton, checks what the wallet colored, and signs the HTLC leaf.
+//! the spend skeleton, checks what the wallet colored, and signs the HTLC leaf or cooperative key path.
 //! See `docs/rgb-swaps-plan.md` for the whole flow.
 //!
 //! A spend of an RGB HTLC without the RGB commitment at output 0 **burns the
 //! asset**. The uncolored spend paths ([`super::bitcoin::BtcSwapTx`],
-//! cooperative signing, [`super::SwapScript::construct_claim`] and
+//! generic cooperative signing, [`super::SwapScript::construct_claim`] and
 //! [`super::SwapScript::construct_refund`]) therefore refuse a script that
 //! carries an [`RgbHtlcContext`]; [`PreparedRgbSpend`] is the only way out.
 
@@ -30,18 +31,24 @@ use bitcoin::base64::Engine;
 use bitcoin::hashes::{sha256, Hash, HashEngine};
 use bitcoin::key::TweakedPublicKey;
 use bitcoin::psbt::Psbt;
-use bitcoin::secp256k1::Keypair;
+use bitcoin::secp256k1::{Keypair, Message, Secp256k1};
+use bitcoin::sighash::{Prevouts, SighashCache};
 use bitcoin::transaction::Version;
+use bitcoin::TapSighashType;
 use bitcoin::{
     Address, Amount, OutPoint, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Weight,
     Witness, XOnlyPublicKey,
 };
+use secp256k1_musig::{musig, Scalar};
 use serde::{Deserialize, Serialize};
 
-use super::bitcoin::BtcSwapScript;
+use super::bitcoin::{
+    convert_keypair, convert_public_key, convert_schnorr_signature, BtcSwapScript,
+};
 use super::boltz::{SwapTxKind, SwapType};
 use crate::error::Error;
 use crate::network::BitcoinChain;
+use crate::util::secrets::rng_32b;
 use crate::util::secrets::Preimage;
 
 /// The smallest colored output the maker locks to or accepts, in sats.
@@ -80,6 +87,9 @@ const MAX_RGB_PSBT_OUTPUTS: usize = 64;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RgbLock {
+    /// Versioned early-refund protocol advertised by the maker; absent on older makers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cooperative_refund: Option<String>,
     /// RGB contract id (`rgb:…`).
     pub asset_id: String,
     /// Asset amount locked in the HTLC. Equals `expectedAmount` (submarine)
@@ -289,6 +299,7 @@ fn same_contract_id(a: &str, b: &str) -> bool {
 /// Keep the lock transaction's id: a refund spends exactly that outpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RgbHtlcContext {
+    pub cooperative_refund: Option<String>,
     pub contract_id: String,
     pub amount: u64,
     pub recipient_id: String,
@@ -349,6 +360,7 @@ impl RgbHtlcContext {
             .parse::<u64>()
             .map_err(|_| Error::Protocol("RGB blinding is not a u64".to_string()))?;
         Ok(Self {
+            cooperative_refund: lock.cooperative_refund.clone(),
             contract_id: lock.asset_id.clone(),
             amount: lock.amount,
             recipient_id: lock.recipient_id.clone(),
@@ -588,6 +600,7 @@ pub struct FinalizedRgbSpend {
 /// locked amount to output 1.
 #[derive(Debug, Clone)]
 pub struct PreparedRgbSpend {
+    cooperative: bool,
     kind: SwapTxKind,
     swap_script: BtcSwapScript,
     context: RgbHtlcContext,
@@ -598,6 +611,139 @@ pub struct PreparedRgbSpend {
     template: Psbt,
     /// The funded, uncolored PSBT, once [`Self::fund`] accepted it.
     funded: Option<Psbt>,
+}
+
+pub const RGB_COOPERATIVE_REFUND_PROTOCOL: &str = "rgb-coop-refund-v1";
+
+/// Versioned RGB request for the existing submarine refund endpoint.
+/// The PSBT contains the committed RGB transition/proof; history is held by the maker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RgbCooperativeRefundRequest {
+    pub protocol: String,
+    pub psbt: String,
+    pub index: u32,
+    pub pub_nonce: String,
+    pub session_id: String,
+}
+
+impl RgbCooperativeRefundRequest {
+    pub fn request_hash(&self, swap_id: &str) -> String {
+        let mut engine = sha256::Hash::engine();
+        engine.input(b"kaleidoswap/rgb-coop-refund/v1\0");
+        for value in [
+            swap_id,
+            &self.protocol,
+            &self.session_id,
+            &self.psbt,
+            &self.pub_nonce,
+        ] {
+            engine.input(&(value.len() as u32).to_le_bytes());
+            engine.input(value.as_bytes());
+        }
+        engine.input(&self.index.to_le_bytes());
+        sha256::Hash::from_engine(engine).to_string()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RgbCooperativeRefundResponse {
+    pub session_id: String,
+    pub request_hash: String,
+    pub pub_nonce: String,
+    pub partial_signature: String,
+}
+
+/// A non-cloneable, non-serializable secret nonce. Completing consumes the session.
+pub struct RgbCooperativeRefund {
+    psbt: Psbt,
+    request: RgbCooperativeRefundRequest,
+    request_hash: String,
+    index: usize,
+    message: [u8; 32],
+    key_agg: musig::KeyAggCache,
+    secret_nonce: musig::SecretNonce,
+    public_nonce: musig::PublicNonce,
+    swap_script: BtcSwapScript,
+}
+
+impl std::fmt::Debug for RgbCooperativeRefund {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RgbCooperativeRefund")
+            .field("session_id", &self.request.session_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RgbCooperativeRefund {
+    pub fn request(&self) -> RgbCooperativeRefundRequest {
+        self.request.clone()
+    }
+
+    pub fn complete(
+        self,
+        response: RgbCooperativeRefundResponse,
+        keys: &Keypair,
+    ) -> Result<FinalizedRgbSpend, Error> {
+        if response.session_id != self.request.session_id
+            || response.request_hash != self.request_hash
+        {
+            return Err(Error::Protocol(
+                "RGB cooperative reply belongs to another signing context".into(),
+            ));
+        }
+        if keys.public_key() != self.swap_script.sender_pubkey.inner {
+            return Err(Error::Protocol(
+                "RGB cooperative refund requires the taker's refund key".into(),
+            ));
+        }
+        let nonce = musig::PublicNonce::from_str(&response.pub_nonce)?;
+        let partial = musig::PartialSignature::from_str(&response.partial_signature)?;
+        let aggregate_nonce = musig::AggregatedNonce::new(&[&nonce, &self.public_nonce]);
+        let session = musig::Session::new(&self.key_agg, aggregate_nonce, &self.message);
+        if !session.partial_verify(
+            &self.key_agg,
+            &partial,
+            &nonce,
+            convert_public_key(self.swap_script.receiver_pubkey.inner),
+        ) {
+            return Err(Error::Protocol(
+                "Invalid maker partial signature for RGB refund".into(),
+            ));
+        }
+        let own = session.partial_sign(self.secret_nonce, &convert_keypair(keys), &self.key_agg);
+        let signature =
+            convert_schnorr_signature(session.partial_sig_agg(&[&partial, &own]).assume_valid());
+        Secp256k1::new().verify_schnorr(
+            &signature,
+            &Message::from_digest(self.message),
+            &self
+                .swap_script
+                .taproot_spendinfo()?
+                .output_key()
+                .to_x_only_public_key(),
+        )?;
+        let mut psbt = self.psbt;
+        psbt.inputs[self.index].final_script_witness =
+            Some(Witness::from_slice(&[signature.as_ref()]));
+        let transaction = psbt
+            .inputs
+            .iter()
+            .all(|input| input.final_script_witness.is_some())
+            .then(|| {
+                let mut tx = psbt.unsigned_tx.clone();
+                for (txin, input) in tx.input.iter_mut().zip(&psbt.inputs) {
+                    txin.witness = input.final_script_witness.clone().unwrap_or_default();
+                }
+                tx
+            });
+        Ok(FinalizedRgbSpend {
+            psbt,
+            swap_input_index: self.index as u32,
+            transaction,
+        })
+    }
 }
 
 fn psbt_from_base64(psbt: &str) -> Result<Psbt, Error> {
@@ -681,6 +827,7 @@ impl PreparedRgbSpend {
         template.inputs[0].witness_utxo = Some(funding_utxo.clone());
 
         Ok(Self {
+            cooperative: false,
             kind,
             swap_script,
             context,
@@ -690,6 +837,116 @@ impl PreparedRgbSpend {
             max_fee,
             template,
             funded: None,
+        })
+    }
+
+    /// Prepare an early submarine refund. Funding/coloring precede MuSig2 signing.
+    pub fn new_cooperative_refund(
+        swap_script: BtcSwapScript,
+        output_address: &str,
+        network: BitcoinChain,
+        funding_utxo: (OutPoint, TxOut),
+        funding: RgbSpendFunding,
+        max_fee: u64,
+    ) -> Result<Self, Error> {
+        let mut prepared = Self::new(
+            SwapTxKind::Refund,
+            swap_script,
+            output_address,
+            network,
+            funding_utxo,
+            RgbSpendFunding::CallerInputs,
+            max_fee,
+        )?;
+        if prepared.context.cooperative_refund.as_deref() != Some(RGB_COOPERATIVE_REFUND_PROTOCOL) {
+            return Err(Error::Protocol(
+                "Maker does not advertise RGB cooperative refunds".into(),
+            ));
+        }
+        prepared.cooperative = true;
+        prepared.funding = funding;
+        prepared.template.unsigned_tx.lock_time = bitcoin::absolute::LockTime::ZERO;
+        if let RgbSpendFunding::HtlcValue { fee_rate_sat_vb } = funding {
+            let fee = self_funded_fee(&prepared.template.unsigned_tx, 66, fee_rate_sat_vb)?;
+            if fee > max_fee {
+                return Err(Error::Protocol(
+                    "RGB cooperative refund exceeds the fee cap".into(),
+                ));
+            }
+            let payout = prepared
+                .funding_utxo
+                .value
+                .to_sat()
+                .checked_sub(fee)
+                .filter(|value| *value >= MIN_COLORED_OUTPUT_SAT)
+                .ok_or(Error::RgbFeeInputRequired)?;
+            prepared.template.unsigned_tx.output[RGB_PAYMENT_OUTPUT_INDEX as usize].value =
+                Amount::from_sat(payout);
+        }
+        Ok(prepared)
+    }
+
+    /// Begin a one-use MuSig2 session after the local wallet has colored the frozen PSBT.
+    /// Allocation metadata must come from the trusted wallet; the maker validates the proof.
+    pub fn begin_cooperative_refund(
+        &self,
+        colored: ColoredRgbPsbt,
+        keys: &Keypair,
+        swap_id: &str,
+    ) -> Result<RgbCooperativeRefund, Error> {
+        if !self.cooperative || self.kind != SwapTxKind::Refund {
+            return Err(Error::Protocol(
+                "Prepare an RGB cooperative refund before signing it".into(),
+            ));
+        }
+        if keys.public_key() != self.swap_script.sender_pubkey.inner {
+            return Err(Error::Protocol(
+                "RGB cooperative refund requires the taker's refund key".into(),
+            ));
+        }
+        if swap_id.is_empty() || swap_id.len() > 128 {
+            return Err(Error::Protocol("Invalid RGB cooperative swap id".into()));
+        }
+        let (psbt, index, prevouts) = self.validate_colored(colored)?;
+        let message = SighashCache::new(&psbt.unsigned_tx)
+            .taproot_key_spend_signature_hash(
+                index,
+                &Prevouts::All(&prevouts),
+                TapSighashType::Default,
+            )?
+            .to_byte_array();
+        let mut key_agg = self.swap_script.musig_keyagg_cache();
+        let tweak = Scalar::from_be_bytes(
+            self.swap_script
+                .taproot_spendinfo()?
+                .tap_tweak()
+                .to_byte_array(),
+        )?;
+        key_agg.pubkey_xonly_tweak_add(&tweak)?;
+        let (secret_nonce, public_nonce) = key_agg.nonce_gen(
+            musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b()),
+            convert_public_key(keys.public_key()),
+            &message,
+            Some(rng_32b()),
+        );
+        let request = RgbCooperativeRefundRequest {
+            protocol: RGB_COOPERATIVE_REFUND_PROTOCOL.to_owned(),
+            psbt: psbt.to_string(),
+            index: index as u32,
+            pub_nonce: public_nonce.to_string(),
+            session_id: bitcoin::hex::DisplayHex::to_lower_hex_string(&rng_32b()),
+        };
+        let request_hash = request.request_hash(swap_id);
+        Ok(RgbCooperativeRefund {
+            psbt,
+            request,
+            request_hash,
+            index,
+            message,
+            key_agg,
+            secret_nonce,
+            public_nonce,
+            swap_script: self.swap_script.clone(),
         })
     }
 
@@ -801,6 +1058,11 @@ impl PreparedRgbSpend {
         colored: ColoredRgbPsbt,
         keys: &Keypair,
     ) -> Result<FinalizedRgbSpend, Error> {
+        if self.cooperative {
+            return Err(Error::Protocol(
+                "Use the cooperative session to finalize this RGB refund".into(),
+            ));
+        }
         if self.kind != SwapTxKind::Refund {
             return Err(Error::Protocol("This RGB spend is a claim".to_string()));
         }
@@ -813,45 +1075,7 @@ impl PreparedRgbSpend {
         keys: &Keypair,
         preimage: Option<&Preimage>,
     ) -> Result<FinalizedRgbSpend, Error> {
-        let frozen = match (&self.funding, &self.funded) {
-            (RgbSpendFunding::HtlcValue { .. }, _) => &self.template,
-            (RgbSpendFunding::CallerInputs, Some(funded)) => funded,
-            (RgbSpendFunding::CallerInputs, None) => {
-                return Err(Error::Protocol(
-                    "Fund this RGB spend before coloring and signing it".to_string(),
-                ))
-            }
-        };
-        let mut psbt = psbt_from_base64(&colored.psbt)?;
-        ensure_only_commitment_added(&frozen.unsigned_tx, &psbt.unsigned_tx)?;
-
-        let expected = RgbAllocation {
-            asset_id: self.context.contract_id.clone(),
-            vout: Some(RGB_PAYMENT_OUTPUT_INDEX),
-            amount: self.context.amount,
-        };
-        match colored.allocations.as_slice() {
-            [allocation]
-                if same_contract_id(&allocation.asset_id, &expected.asset_id)
-                    && allocation.vout == expected.vout
-                    && allocation.amount == expected.amount => {}
-            other => {
-                return Err(Error::Protocol(format!(
-                    "The RGB transition assigns {other:?}, not {} of {} to output {}",
-                    expected.amount, expected.asset_id, RGB_PAYMENT_OUTPUT_INDEX
-                )))
-            }
-        }
-
-        let htlc_index = self.htlc_input_index(&psbt.unsigned_tx)?;
-        if htlc_input_is_signed(&psbt, htlc_index) {
-            return Err(Error::Protocol(
-                "The HTLC input is already signed".to_string(),
-            ));
-        }
-        // The sighash commits to every prevout. Take them from the frozen,
-        // validated PSBT, not from what came back with the coloring.
-        let prevouts = input_prevouts(frozen)?;
+        let (mut psbt, htlc_index, prevouts) = self.validate_colored(colored)?;
         let witness = self.swap_script.rgb_leaf_witness(
             self.kind.clone(),
             &psbt.unsigned_tx,
@@ -881,6 +1105,57 @@ impl PreparedRgbSpend {
             swap_input_index: htlc_index as u32,
             transaction,
         })
+    }
+
+    fn validate_colored(
+        &self,
+        colored: ColoredRgbPsbt,
+    ) -> Result<(Psbt, usize, Vec<TxOut>), Error> {
+        let frozen = match (&self.funding, &self.funded) {
+            (RgbSpendFunding::HtlcValue { .. }, _) => &self.template,
+            (RgbSpendFunding::CallerInputs, Some(funded)) => funded,
+            (RgbSpendFunding::CallerInputs, None) => {
+                return Err(Error::Protocol(
+                    "Fund this RGB spend before coloring and signing it".to_string(),
+                ))
+            }
+        };
+        let psbt = psbt_from_base64(&colored.psbt)?;
+        ensure_only_commitment_added(&frozen.unsigned_tx, &psbt.unsigned_tx)?;
+
+        let expected = RgbAllocation {
+            asset_id: self.context.contract_id.clone(),
+            vout: Some(RGB_PAYMENT_OUTPUT_INDEX),
+            amount: self.context.amount,
+        };
+        match colored.allocations.as_slice() {
+            [allocation]
+                if same_contract_id(&allocation.asset_id, &expected.asset_id)
+                    && allocation.vout == expected.vout
+                    && allocation.amount == expected.amount => {}
+            other => {
+                return Err(Error::Protocol(format!(
+                    "The RGB transition assigns {other:?}, not {} of {} to output {}",
+                    expected.amount, expected.asset_id, RGB_PAYMENT_OUTPUT_INDEX
+                )))
+            }
+        }
+
+        let htlc_index = self.htlc_input_index(&psbt.unsigned_tx)?;
+        if htlc_input_is_signed(&psbt, htlc_index) {
+            return Err(Error::Protocol(
+                "The HTLC input is already signed".to_string(),
+            ));
+        }
+        // The sighash commits to every prevout. Take them from the frozen,
+        // validated PSBT, not from what came back with the coloring.
+        let prevouts = input_prevouts(frozen)?;
+        if input_prevouts(&psbt)? != prevouts {
+            return Err(Error::Protocol(
+                "RGB coloring changed previous-output metadata".into(),
+            ));
+        }
+        Ok((psbt, htlc_index, prevouts))
     }
 
     fn htlc_input_index(&self, tx: &Transaction) -> Result<usize, Error> {
@@ -918,6 +1193,17 @@ fn input_prevouts(psbt: &Psbt) -> Result<Vec<TxOut>, Error> {
                     txin.previous_output
                 ))
             })?;
+            if !(prevout.script_pubkey.is_p2tr() || prevout.script_pubkey.is_p2wpkh())
+                || !txin.script_sig.is_empty()
+                || input
+                    .final_script_sig
+                    .as_ref()
+                    .is_some_and(|script| !script.is_empty())
+            {
+                return Err(Error::Protocol(
+                    "RGB fee inputs must use native P2WPKH or P2TR without scriptSig".into(),
+                ));
+            }
             if let Some(prev_tx) = &input.non_witness_utxo {
                 let matches = prev_tx.compute_txid() == txin.previous_output.txid
                     && prev_tx.output.get(txin.previous_output.vout as usize) == Some(&prevout);
@@ -1106,6 +1392,7 @@ mod tests {
             .unwrap()
             .script_pubkey();
         script.rgb = Some(RgbHtlcContext {
+            cooperative_refund: None,
             contract_id: CONTRACT.to_string(),
             amount: 1_005,
             recipient_id: rgb_recipient_id(&script_pubkey, RgbChainNet::BitcoinRegtest).unwrap(),
@@ -1475,6 +1762,7 @@ mod tests {
     fn lock_of(f: &Fixture) -> RgbLock {
         let rgb = f.script.rgb.as_ref().unwrap();
         RgbLock {
+            cooperative_refund: rgb.cooperative_refund.clone(),
             asset_id: rgb.contract_id.clone(),
             amount: rgb.amount,
             recipient_id: rgb.recipient_id.clone(),
@@ -1785,5 +2073,169 @@ mod tests {
             &"00".repeat(32),
         )
         .is_err());
+    }
+    fn cooperative_fixture(funding: RgbSpendFunding) -> (Fixture, PreparedRgbSpend) {
+        let mut f = fixture(SwapType::Submarine, 5_000);
+        f.script.rgb.as_mut().unwrap().cooperative_refund =
+            Some(RGB_COOPERATIVE_REFUND_PROTOCOL.into());
+        let prepared = PreparedRgbSpend::new_cooperative_refund(
+            f.script.clone(),
+            &dest(),
+            BitcoinChain::BitcoinRegtest,
+            (f.outpoint, f.utxo.clone()),
+            funding,
+            10_000,
+        )
+        .unwrap();
+        (f, prepared)
+    }
+
+    fn maker_reply(session: &RgbCooperativeRefund) -> RgbCooperativeRefundResponse {
+        let maker =
+            Keypair::from_secret_key(&Secp256k1::new(), &SecretKey::from_slice(&[9; 32]).unwrap());
+        let (secret, nonce) = session.key_agg.nonce_gen(
+            musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b()),
+            convert_public_key(maker.public_key()),
+            &session.message,
+            Some(rng_32b()),
+        );
+        let aggregate = musig::AggregatedNonce::new(&[&nonce, &session.public_nonce]);
+        let signer = musig::Session::new(&session.key_agg, aggregate, &session.message);
+        let partial = signer.partial_sign(secret, &convert_keypair(&maker), &session.key_agg);
+        RgbCooperativeRefundResponse {
+            session_id: session.request.session_id.clone(),
+            request_hash: session.request_hash.clone(),
+            pub_nonce: nonce.to_string(),
+            partial_signature: partial.to_string(),
+        }
+    }
+
+    #[test]
+    fn cooperative_refund_signs_the_colored_key_path_before_cltv() {
+        let (f, prepared) = cooperative_fixture(RgbSpendFunding::HtlcValue { fee_rate_sat_vb: 2 });
+        assert_eq!(
+            prepared.template.unsigned_tx.lock_time,
+            bitcoin::absolute::LockTime::ZERO
+        );
+        assert!(prepared
+            .finalize_refund(colored(&prepared.template().psbt), &f.taker)
+            .is_err());
+        let session = prepared
+            .begin_cooperative_refund(colored(&prepared.template().psbt), &f.taker, "swap")
+            .unwrap();
+        let message = session.message;
+        let response = maker_reply(&session);
+        let tx = session
+            .complete(response, &f.taker)
+            .unwrap()
+            .transaction
+            .unwrap();
+        assert_eq!(tx.input[0].witness.len(), 1);
+        let signature =
+            bitcoin::secp256k1::schnorr::Signature::from_slice(tx.input[0].witness.nth(0).unwrap())
+                .unwrap();
+        Secp256k1::new()
+            .verify_schnorr(
+                &signature,
+                &Message::from_digest(message),
+                &f.script
+                    .taproot_spendinfo()
+                    .unwrap()
+                    .output_key()
+                    .to_x_only_public_key(),
+            )
+            .unwrap();
+        assert_eq!(
+            tx.output[0].script_pubkey,
+            ScriptBuf::new_op_return([0xab; 32])
+        );
+        assert_eq!(
+            tx.compute_txid(),
+            Psbt::from_str(&color(&prepared.template().psbt))
+                .unwrap()
+                .unsigned_tx
+                .compute_txid()
+        );
+    }
+
+    #[test]
+    fn cooperative_refund_commits_to_wallet_fee_inputs_and_refuses_legacy_funding() {
+        let (f, prepared) = cooperative_fixture(RgbSpendFunding::CallerInputs);
+        let mut psbt = Psbt::from_str(&prepared.template().psbt).unwrap();
+        psbt.unsigned_tx.input.push(TxIn {
+            previous_output: OutPoint::new(Txid::from_byte_array([8; 32]), 0),
+            sequence: RGB_SPEND_SEQUENCE,
+            ..Default::default()
+        });
+        psbt.inputs.push(bitcoin::psbt::Input {
+            witness_utxo: Some(TxOut {
+                value: Amount::from_sat(1_000),
+                script_pubkey: f.utxo.script_pubkey.clone(),
+            }),
+            ..Default::default()
+        });
+        let funded = prepared.fund(&psbt.to_string()).unwrap();
+        let mut tampered = colored(&funded.template().psbt);
+        let mut changed = Psbt::from_str(&tampered.psbt).unwrap();
+        changed.inputs[1].witness_utxo.as_mut().unwrap().value = Amount::from_sat(2_000);
+        tampered.psbt = changed.to_string();
+        assert!(funded
+            .begin_cooperative_refund(tampered, &f.taker, "swap")
+            .is_err());
+        let session = funded
+            .begin_cooperative_refund(colored(&funded.template().psbt), &f.taker, "swap")
+            .unwrap();
+        let response = maker_reply(&session);
+        let finalized = session.complete(response, &f.taker).unwrap();
+        assert_eq!(finalized.swap_input_index, 0);
+        assert_eq!(
+            finalized.psbt.inputs[0]
+                .final_script_witness
+                .as_ref()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(finalized.transaction.is_none());
+        psbt.inputs[1].witness_utxo.as_mut().unwrap().script_pubkey =
+            ScriptBuf::from_hex("76a914000000000000000000000000000000000000000088ac").unwrap();
+        assert!(prepared.fund(&psbt.to_string()).is_err());
+    }
+
+    #[test]
+    fn cooperative_refund_rejects_wrong_context_partial_key_and_script_path_intents() {
+        let (f, prepared) = cooperative_fixture(RgbSpendFunding::HtlcValue { fee_rate_sat_vb: 2 });
+        for change in 0..3 {
+            let session = prepared
+                .begin_cooperative_refund(colored(&prepared.template().psbt), &f.taker, "swap")
+                .unwrap();
+            let mut response = maker_reply(&session);
+            match change {
+                0 => response.session_id = "00".repeat(32),
+                1 => response.request_hash = "00".repeat(32),
+                _ => response.partial_signature = "00".repeat(32),
+            }
+            assert!(session.complete(response, &f.taker).is_err());
+        }
+        let other = Keypair::from_secret_key(
+            &Secp256k1::new(),
+            &SecretKey::from_slice(&[10; 32]).unwrap(),
+        );
+        assert!(prepared
+            .begin_cooperative_refund(colored(&prepared.template().psbt), &other, "swap")
+            .is_err());
+        let unilateral = prepare(
+            &f,
+            SwapTxKind::Refund,
+            RgbSpendFunding::HtlcValue { fee_rate_sat_vb: 2 },
+        );
+        assert!(unilateral
+            .begin_cooperative_refund(colored(&unilateral.template().psbt), &f.taker, "swap")
+            .is_err());
+        let mut wrong = colored(&prepared.template().psbt);
+        wrong.allocations[0].amount -= 1;
+        assert!(prepared
+            .begin_cooperative_refund(wrong, &f.taker, "swap")
+            .is_err());
     }
 }

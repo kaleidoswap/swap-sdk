@@ -1,4 +1,6 @@
 //! Native, opt-in end-to-end exercise. All funds are on the private regtest stack.
+mod amount_audit;
+mod bridge;
 mod pricefeed;
 mod support;
 mod wallet;
@@ -425,6 +427,13 @@ async fn main() -> Result<()> {
     match std::env::args().nth(1).as_deref() {
         Some("bootstrap") => bootstrap().await,
         Some("run") => run().await,
-        _ => bail!("usage: rgb-sdk-regtest bootstrap|run"),
+        Some("ts-bridge") => bridge::run().await,
+        Some("ts-attach") => bridge::attach().await,
+        Some("serve") => bridge::serve().await,
+        Some("audit-amounts") => amount_audit::run().await,
+        Some("audit-lightning") => amount_audit::lightning_balances().await,
+        _ => bail!(
+            "usage: rgb-sdk-regtest bootstrap|run|ts-bridge|ts-attach|serve|audit-amounts|audit-lightning"
+        ),
     }
 }

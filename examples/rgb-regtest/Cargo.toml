@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 kaleidorg-swap-sdk = { path = "../.." }
-rgb-lib = { git = "https://github.com/kaleidoswap/rgb-lib", rev = "96f039d975cf2a83712c3c0a90e703621d445425", default-features = false, features = ["esplora"] }
+rgb-lib = { git = "https://github.com/kaleidoswap/rgb-lib", rev = "dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f", default-features = false, features = ["esplora"] }
 ldk-server-client = { git = "https://github.com/kaleidoswap/kaleidoswap-maker-rs", rev = "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0" }
 maker-connector-grpc = { git = "https://github.com/kaleidoswap/kaleidoswap-maker-rs", rev = "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0" }
 # rgb-lib's pre-release invoice dependency otherwise selects incompatible stable consensus.
@@ -22,7 +22,7 @@ serde_json = "1"
 hex = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "signal"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tonic = { version = "0.14", features = ["transport"] }
 

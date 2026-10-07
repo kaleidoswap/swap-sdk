@@ -10,7 +10,8 @@ use kaleidorg_swap_sdk::boltz::{CreateReverseResponse, CreateSubmarineResponse, 
 use kaleidorg_swap_sdk::fees::Fee;
 use kaleidorg_swap_sdk::network::Chain;
 use kaleidorg_swap_sdk::swaps::rgb::{
-    ColoredRgbPsbt, RgbAllocation, RgbPsbtTemplate, RgbSpendFunding,
+    ColoredRgbPsbt, RgbAllocation, RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbPsbtTemplate, RgbSpendFunding,
 };
 use kaleidorg_swap_sdk::swaps::{self as swaps_bitcoin};
 use std::str::FromStr;
@@ -75,6 +76,50 @@ pub struct ColoredRgbPsbt {
     pub allocations: Vec<RgbAllocation>,
 }
 
+#[uniffi::remote(Record)]
+pub struct RgbCooperativeRefundRequest {
+    pub protocol: String,
+    pub psbt: String,
+    pub index: u32,
+    pub pub_nonce: String,
+    pub session_id: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct RgbCooperativeRefundResponse {
+    pub session_id: String,
+    pub request_hash: String,
+    pub pub_nonce: String,
+    pub partial_signature: String,
+}
+
+#[derive(Debug, uniffi::Object)]
+pub struct RgbCooperativeRefund {
+    inner: std::sync::Mutex<Option<swaps_bitcoin::rgb::RgbCooperativeRefund>>,
+    request: RgbCooperativeRefundRequest,
+}
+
+#[uniffi::export]
+impl RgbCooperativeRefund {
+    pub fn request(&self) -> RgbCooperativeRefundRequest {
+        self.request.clone()
+    }
+
+    pub fn complete(
+        &self,
+        response: RgbCooperativeRefundResponse,
+        keys: &KeyPair,
+    ) -> Result<FinalizedRgbSpend, Error> {
+        let session = self
+            .inner
+            .lock()
+            .map_err(|_| Error::Generic("RGB signing session unavailable".into()))?
+            .take()
+            .ok_or_else(|| Error::Generic("RGB signing session already consumed".into()))?;
+        Ok(session.complete(response, &keys.inner)?.into())
+    }
+}
+
 #[derive(uniffi::Record)]
 pub struct FinalizedRgbSpend {
     pub psbt: String,
@@ -108,6 +153,22 @@ impl PreparedRgbSpend {
     /// Return a new immutable spend with the wallet's BTC funding frozen.
     pub fn fund(&self, funded_psbt: &str) -> Result<Self, Error> {
         Ok(Self(self.0.fund(funded_psbt)?))
+    }
+
+    pub fn begin_cooperative_refund(
+        &self,
+        colored_psbt: ColoredRgbPsbt,
+        keys: &KeyPair,
+        swap_id: &str,
+    ) -> Result<RgbCooperativeRefund, Error> {
+        let session = self
+            .0
+            .begin_cooperative_refund(colored_psbt, &keys.inner, swap_id)?;
+        let request = session.request();
+        Ok(RgbCooperativeRefund {
+            inner: std::sync::Mutex::new(Some(session)),
+            request,
+        })
     }
 
     pub fn finalize_claim(
@@ -368,6 +429,17 @@ impl SwapScript {
     ) -> Result<PreparedRgbSpend, Error> {
         Ok(PreparedRgbSpend(
             self.0.prepare_rgb_refund(params.try_into()?).await?,
+        ))
+    }
+
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: &RgbPsbtParams,
+    ) -> Result<PreparedRgbSpend, Error> {
+        Ok(PreparedRgbSpend(
+            self.0
+                .prepare_rgb_cooperative_refund(params.try_into()?)
+                .await?,
         ))
     }
 

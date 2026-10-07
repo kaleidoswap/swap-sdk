@@ -1472,6 +1472,26 @@ impl BoltzApiClientV2 {
         self.post_json(&endpoint, data).await
     }
 
+    /// Authenticated, proof-carrying RGB request to the submarine refund endpoint.
+    pub async fn get_rgb_refund_partial_sig(
+        &self,
+        id: &str,
+        request: &super::rgb::RgbCooperativeRefundRequest,
+        swap_auth: &str,
+    ) -> Result<super::rgb::RgbCooperativeRefundResponse, Error> {
+        if swap_auth.is_empty() {
+            return Err(Error::Protocol(
+                "RGB cooperative refund requires swapAuth".into(),
+            ));
+        }
+        self.post_json_with_swap_auth(
+            &format!("swap/submarine/{id}/refund"),
+            serde_json::to_value(request)?,
+            Some(swap_auth),
+        )
+        .await
+    }
+
     pub async fn get_submarine_partial_sig(
         &self,
         id: &String,

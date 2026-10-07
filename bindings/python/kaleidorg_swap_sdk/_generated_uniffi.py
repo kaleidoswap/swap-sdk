@@ -583,6 +583,13 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_begin_cooperative_refund()
+        != 37014
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_claim()
         != 26399
     ):
@@ -603,6 +610,20 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_template()
         != 46368
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete()
+        != 37288
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request()
+        != 7198
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -694,6 +715,13 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_tx()
         != 34653
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_rgb_refund_partial_sig()
+        != 51458
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -815,6 +843,13 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_claim()
         != 49572
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_cooperative_refund()
+        != 56069
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1334,6 +1369,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedrgbspend.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedrgbspend.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_begin_cooperative_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_begin_cooperative_refund.restype = ctypes.c_void_p
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_claim.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -1362,6 +1405,34 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_template.argtype
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_template.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbcooperativerefund.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbcooperativerefund.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbcooperativerefund.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbcooperativerefund.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_complete.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_complete.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request.restype = (
     _UniffiRustBuffer
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapclient.argtypes = (
@@ -1503,6 +1574,13 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_tx.argtype
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_tx.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_rgb_refund_partial_sig.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_rgb_refund_partial_sig.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_pairs.argtypes = (
     ctypes.c_void_p,
 )
@@ -1688,6 +1766,11 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_claim.argt
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_claim.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_cooperative_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_cooperative_refund.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_refund.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -2054,6 +2137,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finaliz
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_begin_cooperative_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_begin_cooperative_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_claim.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_claim.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_refund.argtypes = ()
@@ -2064,6 +2149,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_fund.resty
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_template.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_template.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.restype = (
     ctypes.c_uint16
@@ -2110,6 +2199,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_pair
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_pairs.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_tx.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_tx.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_rgb_refund_partial_sig.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_rgb_refund_partial_sig.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_pairs.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_preimage.argtypes = ()
@@ -2156,6 +2247,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_r
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_claim.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_claim.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_cooperative_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_cooperative_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.argtypes = ()
@@ -6050,11 +6143,142 @@ class _UniffiConverterTypeRgbAllocation(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.write(value.amount, buf)
 
 
+class RgbCooperativeRefundRequest:
+    protocol: "str"
+    psbt: "str"
+    index: "int"
+    pub_nonce: "str"
+    session_id: "str"
+
+    def __init__(
+        self,
+        *,
+        protocol: "str",
+        psbt: "str",
+        index: "int",
+        pub_nonce: "str",
+        session_id: "str",
+    ):
+        self.protocol = protocol
+        self.psbt = psbt
+        self.index = index
+        self.pub_nonce = pub_nonce
+        self.session_id = session_id
+
+    def __str__(self):
+        return "RgbCooperativeRefundRequest(protocol={}, psbt={}, index={}, pub_nonce={}, session_id={})".format(
+            self.protocol, self.psbt, self.index, self.pub_nonce, self.session_id
+        )
+
+    def __eq__(self, other):
+        if self.protocol != other.protocol:
+            return False
+        if self.psbt != other.psbt:
+            return False
+        if self.index != other.index:
+            return False
+        if self.pub_nonce != other.pub_nonce:
+            return False
+        if self.session_id != other.session_id:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRgbCooperativeRefundRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RgbCooperativeRefundRequest(
+            protocol=_UniffiConverterString.read(buf),
+            psbt=_UniffiConverterString.read(buf),
+            index=_UniffiConverterUInt32.read(buf),
+            pub_nonce=_UniffiConverterString.read(buf),
+            session_id=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.protocol)
+        _UniffiConverterString.check_lower(value.psbt)
+        _UniffiConverterUInt32.check_lower(value.index)
+        _UniffiConverterString.check_lower(value.pub_nonce)
+        _UniffiConverterString.check_lower(value.session_id)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.protocol, buf)
+        _UniffiConverterString.write(value.psbt, buf)
+        _UniffiConverterUInt32.write(value.index, buf)
+        _UniffiConverterString.write(value.pub_nonce, buf)
+        _UniffiConverterString.write(value.session_id, buf)
+
+
+class RgbCooperativeRefundResponse:
+    session_id: "str"
+    request_hash: "str"
+    pub_nonce: "str"
+    partial_signature: "str"
+
+    def __init__(
+        self,
+        *,
+        session_id: "str",
+        request_hash: "str",
+        pub_nonce: "str",
+        partial_signature: "str",
+    ):
+        self.session_id = session_id
+        self.request_hash = request_hash
+        self.pub_nonce = pub_nonce
+        self.partial_signature = partial_signature
+
+    def __str__(self):
+        return "RgbCooperativeRefundResponse(session_id={}, request_hash={}, pub_nonce={}, partial_signature={})".format(
+            self.session_id, self.request_hash, self.pub_nonce, self.partial_signature
+        )
+
+    def __eq__(self, other):
+        if self.session_id != other.session_id:
+            return False
+        if self.request_hash != other.request_hash:
+            return False
+        if self.pub_nonce != other.pub_nonce:
+            return False
+        if self.partial_signature != other.partial_signature:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRgbCooperativeRefundResponse(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RgbCooperativeRefundResponse(
+            session_id=_UniffiConverterString.read(buf),
+            request_hash=_UniffiConverterString.read(buf),
+            pub_nonce=_UniffiConverterString.read(buf),
+            partial_signature=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.session_id)
+        _UniffiConverterString.check_lower(value.request_hash)
+        _UniffiConverterString.check_lower(value.pub_nonce)
+        _UniffiConverterString.check_lower(value.partial_signature)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.session_id, buf)
+        _UniffiConverterString.write(value.request_hash, buf)
+        _UniffiConverterString.write(value.pub_nonce, buf)
+        _UniffiConverterString.write(value.partial_signature, buf)
+
+
 class RgbLock:
     """
     The RGB allocation a KaleidoSwap `USDT-RGB` HTLC carries.
     """
 
+    cooperative_refund: "typing.Optional[str]"
     asset_id: "str"
     amount: "int"
     recipient_id: "str"
@@ -6068,6 +6292,7 @@ class RgbLock:
     def __init__(
         self,
         *,
+        cooperative_refund: "typing.Optional[str]" = _DEFAULT,
         asset_id: "str",
         amount: "int",
         recipient_id: "str",
@@ -6078,6 +6303,10 @@ class RgbLock:
         transport_endpoints: "typing.List[str]",
         min_confirmations: "int",
     ):
+        if cooperative_refund is _DEFAULT:
+            self.cooperative_refund = None
+        else:
+            self.cooperative_refund = cooperative_refund
         self.asset_id = asset_id
         self.amount = amount
         self.recipient_id = recipient_id
@@ -6089,7 +6318,8 @@ class RgbLock:
         self.min_confirmations = min_confirmations
 
     def __str__(self):
-        return "RgbLock(asset_id={}, amount={}, recipient_id={}, blinding={}, htlc_sat={}, claim_fee_rate={}, script_pubkey={}, transport_endpoints={}, min_confirmations={})".format(
+        return "RgbLock(cooperative_refund={}, asset_id={}, amount={}, recipient_id={}, blinding={}, htlc_sat={}, claim_fee_rate={}, script_pubkey={}, transport_endpoints={}, min_confirmations={})".format(
+            self.cooperative_refund,
             self.asset_id,
             self.amount,
             self.recipient_id,
@@ -6102,6 +6332,8 @@ class RgbLock:
         )
 
     def __eq__(self, other):
+        if self.cooperative_refund != other.cooperative_refund:
+            return False
         if self.asset_id != other.asset_id:
             return False
         if self.amount != other.amount:
@@ -6127,6 +6359,7 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return RgbLock(
+            cooperative_refund=_UniffiConverterOptionalString.read(buf),
             asset_id=_UniffiConverterString.read(buf),
             amount=_UniffiConverterUInt64.read(buf),
             recipient_id=_UniffiConverterString.read(buf),
@@ -6140,6 +6373,7 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
 
     @staticmethod
     def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.cooperative_refund)
         _UniffiConverterString.check_lower(value.asset_id)
         _UniffiConverterUInt64.check_lower(value.amount)
         _UniffiConverterString.check_lower(value.recipient_id)
@@ -6152,6 +6386,7 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
 
     @staticmethod
     def write(value, buf):
+        _UniffiConverterOptionalString.write(value.cooperative_refund, buf)
         _UniffiConverterString.write(value.asset_id, buf)
         _UniffiConverterUInt64.write(value.amount, buf)
         _UniffiConverterString.write(value.recipient_id, buf)
@@ -9990,6 +10225,11 @@ class _UniffiConverterTypePreparedLiquidSpend:
 
 
 class PreparedRgbSpendProtocol(typing.Protocol):
+    def begin_cooperative_refund(
+        self, colored_psbt: "ColoredRgbPsbt", keys: "KeyPair", swap_id: "str"
+    ):
+        raise NotImplementedError
+
     def finalize_claim(
         self, colored_psbt: "ColoredRgbPsbt", keys: "KeyPair", preimage: "Preimage"
     ):
@@ -10040,6 +10280,26 @@ class PreparedRgbSpend:
         inst = cls.__new__(cls)
         inst._pointer = pointer
         return inst
+
+    def begin_cooperative_refund(
+        self, colored_psbt: "ColoredRgbPsbt", keys: "KeyPair", swap_id: "str"
+    ) -> "RgbCooperativeRefund":
+        _UniffiConverterTypeColoredRgbPsbt.check_lower(colored_psbt)
+
+        _UniffiConverterTypeKeyPair.check_lower(keys)
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        return _UniffiConverterTypeRgbCooperativeRefund.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_begin_cooperative_refund,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeColoredRgbPsbt.lower(colored_psbt),
+                _UniffiConverterTypeKeyPair.lower(keys),
+                _UniffiConverterString.lower(swap_id),
+            )
+        )
 
     def finalize_claim(
         self, colored_psbt: "ColoredRgbPsbt", keys: "KeyPair", preimage: "Preimage"
@@ -10138,6 +10398,111 @@ class _UniffiConverterTypePreparedRgbSpend:
 
     @classmethod
     def write(cls, value: PreparedRgbSpendProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class RgbCooperativeRefundProtocol(typing.Protocol):
+    def complete(self, response: "RgbCooperativeRefundResponse", keys: "KeyPair"):
+        raise NotImplementedError
+
+    def request(
+        self,
+    ):
+        raise NotImplementedError
+
+
+# RgbCooperativeRefund is a Rust-only trait - it's a wrapper around a Rust implementation.
+class RgbCooperativeRefund:
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbcooperativerefund,
+                pointer,
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbcooperativerefund,
+            self._pointer,
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def complete(
+        self, response: "RgbCooperativeRefundResponse", keys: "KeyPair"
+    ) -> "FinalizedRgbSpend":
+        _UniffiConverterTypeRgbCooperativeRefundResponse.check_lower(response)
+
+        _UniffiConverterTypeKeyPair.check_lower(keys)
+
+        return _UniffiConverterTypeFinalizedRgbSpend.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_complete,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeRgbCooperativeRefundResponse.lower(response),
+                _UniffiConverterTypeKeyPair.lower(keys),
+            )
+        )
+
+    def request(
+        self,
+    ) -> "RgbCooperativeRefundRequest":
+        return _UniffiConverterTypeRgbCooperativeRefundRequest.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+
+class _UniffiConverterTypeRgbCooperativeRefund:
+    @staticmethod
+    def lift(value: int):
+        return RgbCooperativeRefund._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: RgbCooperativeRefund):
+        if not isinstance(value, RgbCooperativeRefund):
+            raise TypeError(
+                "Expected RgbCooperativeRefund instance, {} found".format(
+                    type(value).__name__
+                )
+            )
+
+    @staticmethod
+    def lower(value: RgbCooperativeRefundProtocol):
+        if not isinstance(value, RgbCooperativeRefund):
+            raise TypeError(
+                "Expected RgbCooperativeRefund instance, {} found".format(
+                    type(value).__name__
+                )
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: RgbCooperativeRefundProtocol, buf: _UniffiRustBuffer):
         buf.write_u64(cls.lower(value))
 
 
@@ -10256,6 +10621,11 @@ class SwapClientProtocol(typing.Protocol):
         raise NotImplementedError
 
     def get_reverse_tx(self, id: "str"):
+        raise NotImplementedError
+
+    def get_rgb_refund_partial_sig(
+        self, swap_id: "str", request: "RgbCooperativeRefundRequest", swap_auth: "str"
+    ):
         raise NotImplementedError
 
     def get_submarine_pairs(
@@ -10745,6 +11115,31 @@ class SwapClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeReverseSwapTxResp.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_rgb_refund_partial_sig(
+        self, swap_id: "str", request: "RgbCooperativeRefundRequest", swap_auth: "str"
+    ) -> "RgbCooperativeRefundResponse":
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterTypeRgbCooperativeRefundRequest.check_lower(request)
+
+        _UniffiConverterString.check_lower(swap_auth)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_rgb_refund_partial_sig(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterTypeRgbCooperativeRefundRequest.lower(request),
+                _UniffiConverterString.lower(swap_auth),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeRgbCooperativeRefundResponse.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -11248,6 +11643,9 @@ class SwapScriptProtocol(typing.Protocol):
     def prepare_rgb_claim(self, params: "RgbPsbtParams"):
         raise NotImplementedError
 
+    def prepare_rgb_cooperative_refund(self, params: "RgbPsbtParams"):
+        raise NotImplementedError
+
     def prepare_rgb_refund(self, params: "RgbPsbtParams"):
         raise NotImplementedError
 
@@ -11443,6 +11841,25 @@ class SwapScript:
 
         return await _uniffi_rust_call_async(
             _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_claim(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeRgbPsbtParams.lower(params),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            # lift function
+            _UniffiConverterTypePreparedRgbSpend.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def prepare_rgb_cooperative_refund(
+        self, params: "RgbPsbtParams"
+    ) -> "PreparedRgbSpend":
+        _UniffiConverterTypeRgbPsbtParams.check_lower(params)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_cooperative_refund(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeRgbPsbtParams.lower(params),
             ),
@@ -11960,6 +12377,8 @@ __all__ = [
     "RfqRefusal",
     "RfqStatus",
     "RgbAllocation",
+    "RgbCooperativeRefundRequest",
+    "RgbCooperativeRefundResponse",
     "RgbLock",
     "RgbPsbtParams",
     "RgbPsbtTemplate",
@@ -11987,6 +12406,7 @@ __all__ = [
     "Preimage",
     "PreparedLiquidSpend",
     "PreparedRgbSpend",
+    "RgbCooperativeRefund",
     "SwapClient",
     "SwapMasterKey",
     "SwapScript",

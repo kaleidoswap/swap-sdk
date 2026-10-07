@@ -9,6 +9,7 @@ import initWasm, {
   BtcLikeTransaction,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
   PreparedRgbSpend as WasmPreparedRgbSpend,
+  RgbCooperativeRefund as WasmRgbCooperativeRefund,
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
@@ -190,6 +191,7 @@ export interface RgbPsbtParams {
 }
 
 export interface RgbLock {
+  cooperativeRefund?: "rgb-coop-refund-v1";
   assetId: string;
   /** Contract units, six decimals for USDT-RGB. */
   amount: bigint;
@@ -237,6 +239,55 @@ export interface FinalizedRgbSpend {
 }
 
 /** Immutable spend retained across the wallet funding and coloring steps. */
+export interface RgbCooperativeRefundRequest {
+  protocol: "rgb-coop-refund-v1";
+  psbt: string;
+  index: number;
+  pubNonce: string;
+  sessionId: string;
+}
+
+export interface RgbCooperativeRefundResponse {
+  sessionId: string;
+  requestHash: string;
+  pubNonce: string;
+  partialSignature: string;
+}
+
+/** A one-use signing session. Persist the wallet operation, never this object's secret nonce. */
+export class RgbCooperativeRefund {
+  constructor(private readonly inner: WasmRgbCooperativeRefund) {}
+
+  request(): RgbCooperativeRefundRequest {
+    return this.inner.request() as RgbCooperativeRefundRequest;
+  }
+
+  complete(
+    response: RgbCooperativeRefundResponse,
+    keysSecretHex: string,
+  ): FinalizedRgbSpend {
+    return this.inner.complete(response, keysSecretHex) as FinalizedRgbSpend;
+  }
+
+  free(): void {
+    this.inner.free();
+  }
+}
+
+/** Submit the immutable request with the credential returned at swap creation. */
+export async function getRgbRefundPartialSig(
+  client: WasmSwapClient,
+  swapId: string,
+  request: RgbCooperativeRefundRequest,
+  swapAuth: string,
+): Promise<RgbCooperativeRefundResponse> {
+  return (await client.getRgbRefundPartialSig(
+    swapId,
+    request,
+    swapAuth,
+  )) as RgbCooperativeRefundResponse;
+}
+
 export class PreparedRgbSpend {
   private constructor(private readonly inner: WasmPreparedRgbSpend) {}
 
@@ -247,6 +298,16 @@ export class PreparedRgbSpend {
   /** Returns a new spend; keep it for finalization after coloring. */
   fund(fundedPsbt: string): PreparedRgbSpend {
     return PreparedRgbSpend.wrap(this.inner.fund(fundedPsbt));
+  }
+
+  beginCooperativeRefund(
+    coloredPsbt: ColoredRgbPsbt,
+    keysSecretHex: string,
+    swapId: string,
+  ): RgbCooperativeRefund {
+    return new RgbCooperativeRefund(
+      this.inner.beginCooperativeRefund(coloredPsbt, keysSecretHex, swapId),
+    );
   }
 
   finalizeClaim(
@@ -492,6 +553,14 @@ export class SwapScript {
   async prepareRgbRefund(params: RgbPsbtParams): Promise<PreparedRgbSpend> {
     return PreparedRgbSpend.wrap(
       await this.inner.prepareRgbRefund(toWasmParams(params)),
+    );
+  }
+
+  async prepareRgbCooperativeRefund(
+    params: RgbPsbtParams,
+  ): Promise<PreparedRgbSpend> {
+    return PreparedRgbSpend.wrap(
+      await this.inner.prepareRgbCooperativeRefund(toWasmParams(params)),
     );
   }
 

@@ -863,7 +863,8 @@ impl SwapScript {
         &self,
         params: RgbPsbtParams<'_>,
     ) -> Result<PreparedRgbSpend, Error> {
-        self.prepare_rgb_spend(SwapTxKind::Claim, params).await
+        self.prepare_rgb_spend(SwapTxKind::Claim, params, false)
+            .await
     }
 
     /// Prepare the taker's refund of a USDT-RGB submarine swap's lock, valid
@@ -873,13 +874,24 @@ impl SwapScript {
         &self,
         params: RgbPsbtParams<'_>,
     ) -> Result<PreparedRgbSpend, Error> {
-        self.prepare_rgb_spend(SwapTxKind::Refund, params).await
+        self.prepare_rgb_spend(SwapTxKind::Refund, params, false)
+            .await
+    }
+
+    /// Prepare a key-path submarine refund; the maker must advertise RGB cooperation.
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: RgbPsbtParams<'_>,
+    ) -> Result<PreparedRgbSpend, Error> {
+        self.prepare_rgb_spend(SwapTxKind::Refund, params, true)
+            .await
     }
 
     async fn prepare_rgb_spend(
         &self,
         kind: SwapTxKind,
         params: RgbPsbtParams<'_>,
+        cooperative: bool,
     ) -> Result<PreparedRgbSpend, Error> {
         let script = match &self.script {
             SwapScriptImpl::Bitcoin(script) if script.is_rgb() => script.as_ref().clone(),
@@ -895,6 +907,16 @@ impl SwapScript {
             .ok_or_else(|| {
                 Error::Protocol("No RGB HTLC output in the supplied lock transaction".into())
             })?;
+        if cooperative {
+            return PreparedRgbSpend::new_cooperative_refund(
+                script,
+                &params.output_address,
+                bitcoin_client.network(),
+                utxo,
+                params.funding,
+                params.max_fee,
+            );
+        }
         PreparedRgbSpend::new(
             kind,
             script,

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import test from "node:test";
-import { init, SwapClient, SwapScript } from "../dist/index.node.js";
+import {
+  init,
+  SwapClient,
+  SwapScript,
+  getRgbRefundPartialSig,
+} from "../dist/index.node.js";
 
 // Synthetic Bitcoin/PSBT vectors. Actual RGB proof validation belongs to rgb-lib.
 const vectors = JSON.parse(
@@ -163,6 +168,12 @@ test("RGB create pins, colored claims and caller-funded refunds cross the wasm b
       let spend = reverse
         ? await script.prepareRgbClaim(params)
         : await script.prepareRgbRefund(params);
+      if (!reverse) {
+        await assert.rejects(
+          () => script.prepareRgbCooperativeRefund(params),
+          hasCode("Protocol", /advertise/),
+        );
+      }
       let finalized;
       try {
         const template = spend.template();
@@ -284,5 +295,64 @@ test("RGB create pins, colored claims and caller-funded refunds cross the wasm b
     await new Promise((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+  }
+});
+
+test("RGB refund transport sends the versioned body and per-swap credential", async () => {
+  const received = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    received.push({
+      path: req.url,
+      auth: req.headers["x-swap-auth"],
+      body: JSON.parse(body),
+    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        sessionId: "11".repeat(32),
+        requestHash: "22".repeat(32),
+        pubNonce: "33".repeat(66),
+        partialSignature: "44".repeat(32),
+      }),
+    );
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const client = new SwapClient(
+    `http://127.0.0.1:${server.address().port}/v2`,
+    undefined,
+  );
+  const request = {
+    protocol: "rgb-coop-refund-v1",
+    psbt: "colored-psbt",
+    index: 1,
+    pubNonce: "55".repeat(66),
+    sessionId: "11".repeat(32),
+  };
+  try {
+    await assert.rejects(
+      () => getRgbRefundPartialSig(client, "swap-id", request, ""),
+      /credential|swapAuth/i,
+    );
+    assert.equal(received.length, 0);
+    const response = await getRgbRefundPartialSig(
+      client,
+      "swap-id",
+      request,
+      "test-credential",
+    );
+    assert.equal(response.sessionId, request.sessionId);
+    assert.deepEqual(received, [
+      {
+        path: "/v2/swap/submarine/swap-id/refund",
+        auth: "test-credential",
+        body: request,
+      },
+    ]);
+  } finally {
+    client.free();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
   }
 });

@@ -1,0 +1,27 @@
+{
+  "protocol": "rgb-coop-refund-v1",
+  "network": "regtest",
+  "pendingPaymentRejected": true,
+  "swapId": "01M4B2THC1PJXMTTT1NNCHVPJS",
+  "amount": 102017086,
+  "beforeRgb": 897982914,
+  "afterRgb": 897982914,
+  "refund": {
+    "txid": "6ab0ee4465af1bb5761e83b6e3cd85f8c7534ee63ae3e34d54a53c967639eaa6",
+    "inputCount": 2,
+    "witnessLength": 1,
+    "feeSat": 2000,
+    "payoutSat": 1000,
+    "locktime": 0,
+    "hasRgbCommitment": true,
+    "preimageMatches": null
+  },
+  "proofTamperingRejected": true,
+  "authRejected": true,
+  "responseReplay": true,
+  "clientSessionConsumed": true,
+  "makerRestartReplay": true,
+  "lightningAuditNoUnresolvedHtlcs": true,
+  "coloredTxidPreserved": true,
+  "makerPermanentActionFence": true
+}

@@ -453,6 +453,19 @@ impl SwapClient {
             .await?)
     }
 
+    #[uniffi::method]
+    pub async fn get_rgb_refund_partial_sig(
+        &self,
+        swap_id: &str,
+        request: kaleidorg_swap_sdk::swaps::rgb::RgbCooperativeRefundRequest,
+        swap_auth: &str,
+    ) -> Result<kaleidorg_swap_sdk::swaps::rgb::RgbCooperativeRefundResponse, Error> {
+        Ok(self
+            .inner
+            .get_rgb_refund_partial_sig(swap_id, &request, swap_auth)
+            .await?)
+    }
+
     /// The maker's Lightning nodes, keyed by implementation (`LND`, `CLN`).
     #[uniffi::method]
     pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
@@ -714,6 +727,8 @@ fn rgb_contract_before_create(
 /// The RGB allocation a KaleidoSwap `USDT-RGB` HTLC carries.
 #[uniffi::remote(Record)]
 pub struct RgbLock {
+    #[uniffi(default = None)]
+    pub cooperative_refund: Option<String>,
     pub asset_id: String,
     pub amount: u64,
     pub recipient_id: String,

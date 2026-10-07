@@ -1005,6 +1005,25 @@ impl BoltzClient {
     /// Persist `swapAuth` with the swap when you create it. Nothing re-issues
     /// it — `swapRestore` authenticates with an XPUB alone and does not return
     /// it.
+    #[wasm_bindgen(js_name = getRgbRefundPartialSig)]
+    pub async fn get_rgb_refund_partial_sig(
+        &self,
+        swap_id: StringArg,
+        request: JsValue,
+        swap_auth: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        let request: RgbCooperativeRefundRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .get_rgb_refund_partial_sig(&id, &request, &auth)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
     #[wasm_bindgen(js_name = acceptQuote)]
     pub async fn accept_quote(
         &self,
@@ -1084,7 +1103,9 @@ use kaleidorg_swap_sdk::swaps::liquid::{
 };
 use kaleidorg_swap_sdk::swaps::rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
-    PreparedRgbSpend as CorePreparedRgbSpend, RgbSpendFunding as CoreRgbSpendFunding,
+    PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,
+    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbSpendFunding as CoreRgbSpendFunding,
 };
 use kaleidorg_swap_sdk::swaps::{
     BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
@@ -1479,13 +1500,21 @@ impl SwapScript {
     /// Prepare an RGB reverse claim. The RGB wallet must color it before signing.
     #[wasm_bindgen(js_name = prepareRgbClaim)]
     pub async fn prepare_rgb_claim(&self, params: JsValue) -> Result<PreparedRgbSpend, JsValue> {
-        self.prepare_rgb_spend(params, true).await
+        self.prepare_rgb_spend(params, true, false).await
     }
 
     /// Prepare an RGB submarine refund, optionally funded by wallet BTC inputs.
     #[wasm_bindgen(js_name = prepareRgbRefund)]
     pub async fn prepare_rgb_refund(&self, params: JsValue) -> Result<PreparedRgbSpend, JsValue> {
-        self.prepare_rgb_spend(params, false).await
+        self.prepare_rgb_spend(params, false, false).await
+    }
+
+    #[wasm_bindgen(js_name = prepareRgbCooperativeRefund)]
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, false, true).await
     }
 
     /// Prepare an L-USDT claim PSET. The returned object pins the swap intent
@@ -1559,6 +1588,7 @@ impl SwapScript {
         &self,
         params: JsValue,
         claim: bool,
+        cooperative: bool,
     ) -> Result<PreparedRgbSpend, JsValue> {
         let p: RgbPsbtParams = from_js(params)?;
         let chain_client = build_chain_client(
@@ -1587,6 +1617,8 @@ impl SwapScript {
         };
         let inner = if claim {
             self.inner.prepare_rgb_claim(params).await
+        } else if cooperative {
+            self.inner.prepare_rgb_cooperative_refund(params).await
         } else {
             self.inner.prepare_rgb_refund(params).await
         }
@@ -1612,6 +1644,28 @@ impl PreparedRgbSpend {
         let funded_psbt = str_arg(funded_psbt, "fundedPsbt")?;
         Ok(Self {
             inner: self.inner.fund(&funded_psbt).map_err(core_err)?,
+        })
+    }
+
+    #[wasm_bindgen(js_name = beginCooperativeRefund)]
+    pub fn begin_cooperative_refund(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+        swap_id: StringArg,
+    ) -> Result<RgbCooperativeRefund, JsValue> {
+        let colored = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let id = str_arg(swap_id, "swapId")?;
+        let session = self
+            .inner
+            .begin_cooperative_refund(colored, &keys, &id)
+            .map_err(core_err)?;
+        let request = session.request();
+        Ok(RgbCooperativeRefund {
+            inner: Some(session),
+            request,
         })
     }
 
@@ -1648,6 +1702,35 @@ impl PreparedRgbSpend {
                 .finalize_refund(colored, &keys)
                 .map_err(core_err)?,
         )
+    }
+}
+
+/// One-use MuSig2 session; secret nonces never cross the JS boundary.
+#[wasm_bindgen]
+pub struct RgbCooperativeRefund {
+    inner: Option<CoreRgbCooperativeRefund>,
+    request: RgbCooperativeRefundRequest,
+}
+
+#[wasm_bindgen]
+impl RgbCooperativeRefund {
+    pub fn request(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.request)
+    }
+
+    pub fn complete(
+        &mut self,
+        response: JsValue,
+        keys_secret_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let response: RgbCooperativeRefundResponse = from_js(response)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let session = self
+            .inner
+            .take()
+            .ok_or_else(|| JsValue::from_str("RGB signing session already consumed"))?;
+        finalized_rgb_to_js(session.complete(response, &keys).map_err(core_err)?)
     }
 }
 

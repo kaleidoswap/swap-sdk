@@ -18,6 +18,22 @@ published as a 0.10.x patch. Release preparation will synchronize package versio
 | UniFFI `CreateSubmarineRequest` / `CreateReverseRequest` Rust struct literals | gain optional `rgb_contract_id`; submarine also gains `rgb_max_htlc_sat` | add `None` for BTC/Liquid; pin the contract for RGB and choose the collateral cap locally; Python defaults remain optional |
 | UniFFI `CreateSubmarineResponse` / `CreateReverseResponse` records | gain `rgb: Option<RgbLock>` | Kotlin, Swift and Python constructors take the new field |
 
+### Added — RGB cooperative submarine refunds
+
+- Explicit prepare/begin/request/complete APIs in Rust, UniFFI/Python and
+  wasm/TypeScript sign the wallet-colored refund through MuSig2 before CLTV.
+  They require the maker's `rgb-coop-refund-v1` capability and use the existing
+  authenticated submarine `/refund` endpoint. Signing sessions are one-use;
+  peer partials and the final signature are verified locally.
+- Caller fee inputs must be native P2WPKH/P2TR with empty scriptSig, preserving
+  the colored transaction ID through wallet finalization. This also hardens
+  existing unilateral RGB spends.
+- Companion maker support requires rgb-lib's read-only colored-HTLC-spend
+  verifier, durable refund authorization and signing-response recovery.
+  Existing script-path refunds remain available for unsupported makers.
+- Rust `RgbLock` and `RgbHtlcContext` struct literals gain optional
+  `cooperative_refund`; add `None` for existing fixtures/callers.
+
 ### Security — local RGB collateral and lock outpoints
 
 - Submarine validation caps the taker's BTC collateral at 1000 sats by default.

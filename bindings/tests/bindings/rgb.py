@@ -19,11 +19,13 @@ CHAIN = sdk.Chain.BITCOIN(sdk.BitcoinChain.BITCOIN_REGTEST)
 KEYS = sdk.KeyPair.from_secret_key(VECTORS["secretKeyHex"])
 PREIMAGE = sdk.Preimage.from_bytes(bytes.fromhex(VECTORS["preimageHex"]))
 REQUESTS = []
+REQUEST_METADATA = []
 REPLY = None
 
 
 class Maker(BaseHTTPRequestHandler):
     def do_POST(self):
+        REQUEST_METADATA.append((self.path, self.headers.get("X-Swap-Auth")))
         REQUESTS.append(
             json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         )
@@ -144,6 +146,10 @@ async def main(url):
             raise AssertionError("RGB lock transaction must be required")
         params.lockup_tx = pinned_lock
         prepare = script.prepare_rgb_claim if reverse else script.prepare_rgb_refund
+        if not reverse:
+            await expect_async_error(
+                lambda: script.prepare_rgb_cooperative_refund(params), "advertise"
+            )
         spend = await prepare(params)
         template = spend.template()
         assert template.amount == 1005
@@ -216,6 +222,39 @@ async def main(url):
         lambda: client.create_chain_swap(chain_request), "unsupported"
     )
     assert len(REQUESTS) == before
+    coop_request = sdk.RgbCooperativeRefundRequest(
+        protocol="rgb-coop-refund-v1",
+        psbt="colored-psbt",
+        index=1,
+        pub_nonce="55" * 66,
+        session_id="11" * 32,
+    )
+    await expect_async_error(
+        lambda: client.get_rgb_refund_partial_sig("swap-id", coop_request, ""),
+        "swapAuth",
+    )
+    assert len(REQUESTS) == before
+    REPLY = dict(
+        sessionId="11" * 32,
+        requestHash="22" * 32,
+        pubNonce="33" * 66,
+        partialSignature="44" * 32,
+    )
+    reply = await client.get_rgb_refund_partial_sig(
+        "swap-id", coop_request, "test-credential"
+    )
+    assert reply.session_id == coop_request.session_id
+    assert REQUEST_METADATA[-1] == (
+        "/v2/swap/submarine/swap-id/refund",
+        "test-credential",
+    )
+    assert REQUESTS[-1] == dict(
+        protocol=coop_request.protocol,
+        psbt=coop_request.psbt,
+        index=1,
+        pubNonce=coop_request.pub_nonce,
+        sessionId=coop_request.session_id,
+    )
 
 
 server = ThreadingHTTPServer(("127.0.0.1", 0), Maker)

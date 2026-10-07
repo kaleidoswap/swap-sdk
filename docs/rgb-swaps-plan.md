@@ -352,3 +352,360 @@ returns the extracted transaction.
   `psbt_op_provide_receive_consignment`.
 - **Message casing.** The maker builds rgb-lib without `camel_case`. This only
   matters for the atomic swap messages, which are out of scope here.
+
+## Cooperative RGB spends: implementation and follow-up (2026-10-07)
+
+**Status: submarine cooperative refund implemented and verified locally.** The Rust,
+UniFFI/Python and wasm/TypeScript APIs now expose an explicit key-path refund.
+The companion maker implements the versioned request on its existing submarine
+refund endpoint, a durable payout fence/response cache, and confirmation tracking.
+A small read-only `Wallet::validate_htlc_spend` addition to rgb-lib verifies the
+client's colored PSBT against the maker's accepted lock history. RGB coloring,
+wallet operation recovery and consensus are unchanged; the SDK still has no
+rgb-lib dependency. The companion maker and standalone regtest example pin the validator commit
+`dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f`. The changes are prepared as
+coordinated commits for review through their respective PRs.
+
+Generic uncolored RGB spend APIs remain guarded. Cooperation for claims and
+reverse refunds below remains proposed; it is not enabled by this implementation.
+
+### Findings and boundaries
+
+The existing RGB HTLC already has a MuSig2 aggregate Taproot internal key.
+There is no need for a new lockup contract to enable cooperation. RGB's
+OP_RETURN commitment is in the spending transaction's outputs, whereas the
+choice of Taproot key path or script path changes its witness. Together with
+the current wallet implementation, this implies that a fully colored spend
+can be signed through either path. This is the basis of the explicit cooperative refund implementation; the
+remaining cooperation flows still need their own integration tests.
+See [RGB commitments](https://yellowpaper.rgb.tech/) and
+[Taproot signature rules](https://bips.dev/341/).
+
+The responsibility split should stay the same:
+
+| Component | Responsibility |
+| --- | --- |
+| SDK | Validate the swap and pinned lock; construct and freeze the unsigned transaction; validate the wallet's result; compute the Taproot sighash; manage the local MuSig2 session; verify the peer's partial and the final signature |
+| rgb-lib wallet | Validate RGB history and transitions; select BTC-only fee inputs; color the frozen transaction; retain operation payloads and recovery state; sign its BTC inputs; broadcast, reconcile and provide the receive consignment |
+| Maker | Authenticate the request; enforce swap eligibility and settlement deadlines; validate the proposed transaction and RGB proof; fence conflicting payout/refund actions; persist signing responses and observe the outcome |
+
+The maker source was inspected at `866215fb49d610cfd18168b479e5ece99822d0ca`
+on `feat/528-rgb-onchain-swaps`; the SDK at `5a18f9e`; the wallet at its
+existing `96f039d` pin. Relevant findings:
+
+- The SDK's submarine and chain partial-signature requests call `post_json`
+  without the per-swap credential. The maker authenticates these refund
+  routes with `X-Swap-Auth`. Carry the credential through Rust, native and
+  TypeScript bindings. It must remain scoped to the swap and maker origin,
+  redacted in logs and distinct from a partner API key. Authentication policy
+  varies by route: the inspected reverse-claim route verifies a preimage and
+  does not currently require this header.
+- RGB submarine co-ops are explicitly refused by the maker's `BtcL1` layer
+  gate. The existing BTC sighash helper reconstructs just one prevout and
+  uses `from_amount` as sats. For RGB that amount denotes contract units;
+  the Bitcoin prevout value is `htlcSat`, and a refund may have fee inputs.
+  The handler also accepts a caller-provided `signatureHash`. These are
+  reasons to build a validated RGB signing route rather than reuse it.
+- Maker sessions already use fresh random nonces and consume the session on
+  partial signing. The inspected HTTP handler has no durable signing-response
+  cache. Fresh random signing on retry is not itself nonce reuse, but a lost
+  reply should be recoverable without replacing an immutable signing session.
+- The wallet exposes durable `psbt_op_prepare_with_expiry`, broadcast tracking,
+  reconciliation, application and receive-consignment APIs. Its returned
+  allocations come from the committed fascia. They are appropriate for a
+  trusted local wallet adapter; a remote client's allocation list is not a
+  proof. A read-only verifier for a third-party colored spend must be exposed
+  or built in the maker's RGB adapter before enabling the route.
+- The SDK's current funding validation does not restrict added fee inputs to
+  native SegWit. Its finalizer can insert `final_script_sig`, which changes
+  the txid if a legacy or nested-SegWit input is finalized after coloring.
+  Restrict the initial funding adapter and SDK checks to native P2WPKH/P2TR
+  inputs with empty scriptSig, and verify the fully signed txid against the
+  operation's colored txid before broadcast. This hardening applies to the
+  existing script-path funding flow as well. The live harness used native
+  SegWit funding; it did not test legacy inputs.
+
+### Which cooperation to support
+
+| Spend | Transaction/proof owner | Conditions | Fallback |
+| --- | --- | --- | --- |
+| Submarine refund | Taker wallet; maker co-signs | No pending or successful LN payout; failed attempts reconciled; payout path durably fenced | Taker's existing colored CLTV refund |
+| Submarine claim | Maker wallet; taker optionally co-signs | Successful LN payout and valid maker claim allocation; no refund authorization | Maker's existing colored preimage claim |
+| Reverse refund | Maker wallet; taker optionally co-signs | Refund intent fenced against competing maker actions; sufficient LN deadline budget; hold remains accepted until the on-chain outcome resolves | Maker's existing colored CLTV refund |
+| Reverse claim | Taker wallet; maker co-signs | Validated lock and RGB proof, recoverable signed script-path claim, sufficient deadline margin; explicit preimage disclosure to maker | Taker's existing colored preimage claim |
+
+Start with **submarine refunds**. They provide the main benefit: reclaiming
+the exact RGB allocation before CLTV after a failure. Make other cooperation
+optional so an absent taker cannot prevent a maker claim or timeout refund.
+Keep reverse claims on the tested script path by default until the separate
+preimage and recovery flow below is implemented.
+
+Boltz documents immediate key-path refunds after failure, with no pending or
+successful Lightning payment, and a script-path fallback. This is a useful
+baseline policy, not a complete RGB proof or wallet recovery protocol.
+See [refund eligibility](https://api.docs.boltz.exchange/lifecycle.html) and
+[claim/refund signing](https://api.docs.boltz.exchange/claiming-swaps.html).
+
+### Submarine refund flow
+
+1. The client persists the swap response, keys, credential and accepted RGB
+   lock/proof. It requests a cooperative refund explicitly; generic RGB
+   uncolored-spend guards stay in place. The maker advertises support through
+   a versioned capability, never inferred from an ordinary BTC capability.
+2. The SDK prepares a **key-path refund** with transaction locktime zero,
+   one pinned HTLC input and the existing output layout: commitment at vout 0,
+   exact full contract allocation to the taker's receive script at vout 1.
+   Estimate fees for the key-path witness. If the BTC carrier is insufficient,
+   the caller wallet adds BTC-only native P2WPKH/P2TR inputs and BTC change
+   before freezing. Legacy and nested-SegWit fee inputs are refused in V1.
+   RGB amounts remain integers in contract units; fees remain BTC sats.
+3. The wallet freezes and colors the transaction, durably retaining the
+   operation and its proof payloads. The SDK validates the frozen inputs,
+   outputs, prevouts, commitment, allocation and fee cap. Only now does it
+   generate a signing nonce and session request.
+4. The client submits the colored PSBT (including its RGB transition/proof fields),
+   HTLC input index, client public nonce and session ID, with `X-Swap-Auth`.
+   Do not accept a bare `signatureHash` for RGB. Do not send a full wallet
+   backup, private keys or secret nonces. Proof transport must be bounded and
+   omit unrelated wallet data.
+5. The maker independently checks the pinned, unspent lock and actual chain
+   prevouts; derives the contract amount from validated RGB state; verifies
+   the transition consumes that lock and assigns exactly that amount to the
+   refund output; checks the fee and output policy. V1 supports only the RGB
+   lock allocation and no extra RGB transitions. An OP_RETURN or claimed
+   allocation list alone is insufficient. The funding wallet must select fee
+   inputs from its BTC-only inventory using its validated RGB state. The SDK
+   enforces this adapter contract; the maker checks real prevouts and the
+   submitted proof. There is no universal proof that a Bitcoin output carries
+   no RGB asset, so the maker cannot certify that absence from Bitcoin data
+   or untrusted PSBT metadata. Protection of the caller's other RGB assets
+   remains the funding wallet's responsibility.
+6. In one storage transaction, the maker locks the swap, rechecks payout
+   attempts and authoritative LN outcome, and records the refund authorization
+   and immutable request context. Payout action claims must use the same
+   fence. A pre-read followed by an ordinary state CAS is insufficient because
+   claiming a payout action need not change the swap state. `Refunding` alone
+   is also insufficient: it can follow a payment that is still in flight.
+   A node timeout is not evidence of payment failure. Once a refund partial
+   has been exposed, it cannot be revoked: a session expiry or abandoned HTTP
+   request must never reopen the payout path for that lock.
+7. The maker creates a fresh signing session, computes its partial, and
+   durably stores the response before exposing it. If it crashes between
+   authorization and response storage, it may use a fresh nonce to finish the
+   same authorized request. Authorization is serialized under the swap row lock. Concurrent retries may
+   compute fresh independent nonces, but only the winning stored public response
+   is returned.
+8. The SDK verifies the maker nonce and partial, consumes its local secret
+   nonce once, aggregates and verifies the final signature against the actual
+   Taproot output key. It inserts only the HTLC key-path witness. The wallet
+   signs its own BTC inputs without changing the unsigned transaction, saves
+   the completed spend, records the broadcast attempt before network I/O,
+   then broadcasts and reconciles the RGB operation.
+9. The client completes the receive-consignment handoff. The maker observes
+   the pinned lock's spend and records the confirmed refund outcome. Issuing
+   a partial signature authorizes the refund; confirmation and wallet recovery
+   establish completion.
+
+If the caller cannot fund BTC fees, return `RgbFeeInputRequired` as today.
+Maker-sponsored BTC inputs are a possible later feature, but require a
+separate reservation/funding round **before coloring** and wallet signing by
+the sponsor; sponsorship must not mutate an already signed transaction.
+
+### Signing sessions, retries and fallback
+
+Use the canonical existing key order: `[maker claim, taker refund]` for
+submarine, `[maker refund, taker claim]` for reverse. Derive the Taproot tweak
+from the validated swap tree. Compute `SIGHASH_DEFAULT` with all independently
+verified prevouts; it commits to every input and output. Disallow alternative
+sighash modes in the initial RGB co-op protocol.
+
+Bind the application session to the maker origin/network, swap ID and spend
+role, pinned outpoint and input index, colored unsigned transaction, all
+prevouts, ordered keys/tree, RGB proof digest and client public nonce. The
+session ID indexes this full context; reusing it with different context fails.
+Persist the maker's public nonce and partial and replay that exact response
+for an identical authorized retry. Never re-run signing with a used secret
+nonce. On the client, consume a session handle once and keep secret nonce
+material out of serializable binding records. After a restart, use a fresh
+client nonce/session if the old secret nonce is unavailable; reconcile the
+existing colored operation rather than recolor it.
+
+[BIP 327](https://bips.dev/327/) requires secure random nonce generation and
+single-use secret nonces; bind available session data as defense in depth.
+Verify both the peer partial and the final Schnorr signature. Use
+[BIP 373](https://bips.dev/373/) public nonce/partial-signature PSBT fields
+where supported, preserving RGB fields; secret nonces are never PSBT fields.
+BIP 373 support and cross-library interoperability must be tested, not assumed.
+
+Expose a typed RGB cooperative session through all bindings. For example,
+the implemented `prepareRgbCooperativeRefund`, `beginCooperativeRefund`,
+`RgbCooperativeRefund.request()` and `.complete()` reuse prepare/fund/color
+validation. Rust and UniFFI expose the corresponding snake_case methods. Native/wasm session objects must enforce one-use semantics
+as well as the Rust core. Keep proof-validation responsibilities explicit;
+the SDK need not acquire an rgb-lib dependency.
+
+Offline/refused cooperation retains the CLTV escape path. An early co-op
+refund has locktime zero; its timeout fallback changes the unsigned transaction
+and txid. It needs a new funded/frozen/colored operation, not just a witness
+replacement. Abort the first wallet operation only when it is safe to do so;
+an ambiguous broadcast requires reconciliation and retention of recovery data.
+Do not silently fall back to an uncolored transaction, change fees after
+coloring, or automatically recolor a possibly broadcast spend. Initial support
+should rebroadcast the same transaction; RBF across RGB operations is separate
+work requiring wallet conflict/recovery support.
+
+### Reverse refund and claim ordering
+
+An early reverse refund is a **maker-owned RGB return transaction**, requiring
+the taker's claim-key cooperation. It is not the existing reverse-refund API
+call that requests invoice cancellation. The maker prepares/funds/colors a
+return to its wallet; the taker verifies and co-signs that exact proposal;
+the maker completes wallet signing and broadcasts it.
+
+Do not cancel the LN hold on refund request, partial-signature exchange or
+mempool acceptance. The taker knows the preimage from swap creation and can
+still submit a competing script-path claim. Cancelling early could give it
+both the RGB and its refunded LN payment. Cancel only after the maker return
+reaches the configured confirmation policy and RGB recovery succeeds. If a
+valid claim wins instead, collect the LN payment using its revealed preimage.
+Coordinate these outcomes in the same orchestrator and preserve enough LN
+CLTV margin for confirmation and settlement; refuse unsafe late cooperation.
+Confirmation depth and reorg handling follow the existing risk policy.
+
+A reverse key-path claim does not expose its preimage in the Bitcoin witness.
+The existing Boltz-style flow discloses it in the API, allowing Lightning
+settlement before the client broadcasts; the inspected maker settles before
+returning its partial. Extending that flow needs explicit recovery semantics.
+Before disclosing the preimage, the client should durably retain a valid
+signed script-path claim, RGB operation and proof, and verify lock confirmation
+and deadline margin. A script-path and key-path claim can share the **same
+colored unsigned transaction and txid** when only the witness changes; budget
+fees for the larger fallback witness in the initial implementation. This
+preserves the RGB operation across a failed co-op exchange, though it forgoes
+some potential absolute fee savings. Witness exclusion from txid is defined
+by [BIP 141](https://bips.dev/141/); require native SegWit fee inputs so wallet
+finalization does not introduce scriptSig changes.
+
+The maker must durably retain claim authorization, preimage and signing
+response and fence its refund worker before settling LN. Both peers still
+need prompt broadcast and recovery; an application fence cannot remove the
+other party's on-chain refund key or the deadline. Record LN settlement and
+confirmed RGB delivery separately. Do not report completed delivery merely
+because a signature endpoint succeeded, or describe this preimage-disclosure
+flow as a stronger atomicity guarantee than the unilateral claim path.
+Keep it optional and script-path by default until these checks pass.
+
+### Delivery order and acceptance checks
+
+1. **A: authenticated transport and protocol contract.** Add per-swap auth
+   plumbing, route-specific tests and advertised RGB capabilities; specify
+   proof payloads, session context and typed failure/retry responses.
+2. **B: submarine early refunds.** Add key-path template/finalization and the
+   maker's read-only RGB proof verifier, transactional payout fence and durable
+   response cache. Exercise a real TypeScript refund before CLTV, including a
+   caller BTC input. Unsupported makers continue using the current CLTV path.
+3. **C: optional maker claims and reverse early refunds.** Add maker-proposed
+   colored spends and taker co-signing; keep unilateral fallbacks. Demonstrate
+   that a reverse hold stays accepted until its confirmed return, and that a
+   competing claim settles rather than releases the hold.
+4. **D: optional reverse claims.** Add the durable script-path fallback,
+   preimage-disclosure checks and separate LN/RGB completion tracking before
+   offering key-path claims in bindings.
+
+Required verification includes missing/wrong auth; forged or missing RGB
+proofs; wrong contracts, amounts, recipients, allocations and lock outpoints;
+fabricated prevout values; multiple fee inputs; excess fees; known RGB-bearing
+fee inputs; legacy/nested-SegWit fee inputs and post-signing txid changes;
+mutated commitments; wrong key order/tweak; invalid partials; nonce
+reuse attempts; session-context changes; lost responses and restarts; payout
+action races; pending versus definitively failed LN attempts; claim/refund
+competition; late deadlines; broadcast ambiguity; reorg recovery; and offline
+CLTV fallback. Live tests must reconcile exact contract units, BTC miner fees,
+LN payment outcomes and outstanding HTLCs, plus received RGB proof/state.
+The previously found one-unit reverse quote-breakdown rounding discrepancy
+is separate from spend conservation and should have its own accounting fix.
+
+
+### V1 wire contract and deployment
+
+The URL remains `POST /v2/swap/submarine/{id}/refund`, authenticated with the
+existing `X-Swap-Auth` credential. BTC request parsing remains compatible. RGB
+requests are selected by these fields:
+
+```json
+{
+  "protocol": "rgb-coop-refund-v1",
+  "psbt": "<base64 colored PSBT>",
+  "index": 0,
+  "pubNonce": "<66 bytes hex>",
+  "sessionId": "<32 bytes lowercase hex>"
+}
+```
+
+The response contains `sessionId`, `requestHash`, `pubNonce` and
+`partialSignature`. RGB rejects legacy `transaction` and `signatureHash`
+fields. The create response advertises `rgb.cooperativeRefund` only when the
+venue implements the read-only proof verifier; the SDK refuses preparation
+when that capability is absent. No full client consignment is needed: the
+maker reconstructs it from the colored PSBT and the already accepted lock
+history, validates it off-chain, and does not consume the refund transition.
+
+The application request hash is SHA256 of the domain
+`kaleidoswap/rgb-coop-refund/v1\0`, followed by u32-LE byte lengths and UTF-8
+bytes of swap ID, protocol, session ID, base64 PSBT and public nonce in that
+order, followed by the input index as u32 LE. Network/tree/keys/lock are bound
+by the immutable swap ID; the PSBT binds the proof, unsigned transaction and
+prevouts. The client session is neither cloneable nor serializable, and
+completion consumes it even when verification fails. A retry after client
+restart uses fresh nonce/session material for the same persisted colored
+transaction. V1 permits at most 16 sessions and one transaction ID per swap.
+
+The maker validates confirmed lock identity, every real unspent prevout,
+native SegWit inputs, locktime zero, fixed sequences/output positions, full
+RGB allocation, and a positive fee up to 100,000 sats. The caller's SDK fee
+cap should be substantially lower. A pending payout, unknown node outcome, successful LN payment, other active
+action or recorded preimage refuses authorization. The maker records action
+success at submission time; that record is exempted only after an authoritative
+node lookup returns terminal failure for the exact stored handle and bound
+swap hash/amount. The storage transaction rechecks that same handle and refuses
+other payout confirmations or actions. Issued authorization is
+irreversible. A row-level `rgb_refund_authorized_at` marker also fences
+`ActionAttemptRepo::claim` independently of lifecycle state, and is set in the
+same transaction as authorization. Even a stale worker or accidentally reopened
+state cannot claim another maker action. Confirmed refunds atomically retire the authorization/HTLC and
+release reservations; cached signing replies remain replayable afterward.
+
+A CLTV fallback changes locktime and requires a separate wallet operation.
+No co-op RBF, fee sponsorship, automatic recoloring after ambiguous broadcast,
+or reverse cooperative path is implemented in V1. Use the existing wallet
+operation journal and reconcile before aborting or replacing any operation.
+
+### Local verification (2026-10-07)
+
+Three real submarine refunds ran through TypeScript/WASM against the companion
+maker, real rgb-lib wallets, Bitcoin Core/Esplora and LDK nodes. The first
+resumed an existing prepared operation after a client/maker restart with a
+fresh nonce; the next two rejected valid requests while LN was pending, then
+succeeded after the holds failed. All refunded **102,017,086 units** and
+restored the taker's balance to **897,982,914 units**, before the CLTV deadline.
+Each used one native wallet fee input plus the HTLC, a single key-path witness,
+locktime zero and a 2,000-sat miner fee. The Lightning balance audit found no
+unresolved HTLCs or millisatoshi rounding loss. RGB receive-consignment handoff
+and wallet application completed. Altered commitment/proof/prevout requests,
+wrong/missing auth, mixed legacy fields, session-context changes and repeated
+local completion were refused. Identical cached replies survived maker restart
+and on-chain confirmation.
+
+Verification also passed 180 Rust core tests (4 ignored; the unrelated public
+Esplora check was excluded), 46 existing maker cooperative API tests, 11 RGB
+storage tests (including 3 new authorization/recovery/race tests), 74 TypeScript
+tests, Python RGB binding coverage, 4 existing action/lifecycle race tests,
+native/wasm SDK and maker clippy, binding parity, and native plus wasm builds. The rgb-lib regression test addition compiles with Electrum;
+its fixed-port Docker fixture was not run. Real-library proof validation and
+mutation rejection were exercised through the live bridge instead.
+
+The rgb-lib verifier is pinned at `dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f`
+in the companion maker and standalone example. Before shipping, review and
+land the coordinated changes through their PRs. Reverse co-ops,
+RGB co-op RBF, reorg fault injection and additional fallback/recovery scenarios
+remain separate work; this validation does not claim those paths are implemented.

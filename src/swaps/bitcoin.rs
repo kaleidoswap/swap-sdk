@@ -1546,16 +1546,16 @@ fn convert_xonly_key(key: secp256k1_musig::XOnlyPublicKey) -> bitcoin::XOnlyPubl
     bitcoin::XOnlyPublicKey::from_slice(&key.serialize()[..]).expect("xonly key size matches")
 }
 
-fn convert_public_key(key: bitcoin::secp256k1::PublicKey) -> secp256k1_musig::PublicKey {
+pub(crate) fn convert_public_key(key: bitcoin::secp256k1::PublicKey) -> secp256k1_musig::PublicKey {
     secp256k1_musig::PublicKey::from_slice(&key.serialize()[..]).expect("public key size matches")
 }
 
-fn convert_keypair(keys: &bitcoin::secp256k1::Keypair) -> secp256k1_musig::Keypair {
+pub(crate) fn convert_keypair(keys: &bitcoin::secp256k1::Keypair) -> secp256k1_musig::Keypair {
     secp256k1_musig::Keypair::from_seckey_byte_array(keys.secret_bytes())
         .expect("keypair size matches")
 }
 
-fn convert_schnorr_signature(
+pub(crate) fn convert_schnorr_signature(
     schnorr_sig: secp256k1_musig::schnorr::Signature,
 ) -> bitcoin::secp256k1::schnorr::Signature {
     bitcoin::secp256k1::schnorr::Signature::from_slice(schnorr_sig.as_byte_array())

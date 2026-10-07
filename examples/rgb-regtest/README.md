@@ -64,6 +64,103 @@ clients. `wallet.rs` passes **actual** rgb-lib operation allocations back to
 the SDK, rather than deriving them from the requested output map. The wallet
 must preserve the SDK's final HTLC witness when signing its own fee input.
 
+## TypeScript bindings: both directions and refunds
+
+The TypeScript driver uses the built Node facade and WebAssembly for **every
+swap create, response validation, template freeze and HTLC signature**. Its
+private JSON-line Rust child supplies real rgb-lib wallets, Bitcoin Core and
+Lightning operations; it does not create swaps or sign HTLCs. The bridge reads
+actual rgb-lib allocations after coloring and preserves the wasm HTLC witness
+when the wallet signs the refund's additional BTC input.
+
+Build the maker from `feat/528-rgb-onchain-swaps` rather than the historical
+native-run revision above. The recorded TypeScript run used `866215f`.
+The same pinned LDK image is compatible with that revision. Set
+`RGB_MAKER_BIN` to the resulting binary. With a **fresh** owned stack and run
+state, build the TypeScript package and the wallet bridge, then run:
+
+```sh
+npm --prefix typescript-sdk run build
+cargo +1.96.0 build --manifest-path examples/rgb-regtest/Cargo.toml --locked
+examples/rgb-regtest/regtest.sh up
+examples/rgb-regtest/target/debug/rgb-sdk-regtest bootstrap
+RGB_MAKER_REVISION=$(git -C /absolute/path/to/maker rev-parse HEAD) \
+RGB_SDK_REVISION=$(git rev-parse HEAD) \
+node examples/rgb-regtest/ts-run.ts
+```
+
+Node 22.18 or newer can execute the TypeScript source directly. Type checking:
+
+```sh
+typescript-sdk/node_modules/.bin/tsc -p examples/rgb-regtest/tsconfig.json
+```
+
+The driver checks submarine success, a cancelled-invoice submarine refund,
+a reverse claim from a wallet with zero BTC, and an abandoned reverse swap.
+The last case keeps the preimage private, mines past the refund deadline, and
+observes the maker's automatic colored refund plus failure of the real held
+Lightning payment. It audits settled maker inventory after stopping the daemon
+and confirms conservation of all issued RGB units. Its sanitized output is
+`run/ts-report.json`; the [recorded TypeScript report](ts-validation-report.json)
+contains all four outcomes and their transaction ids.
+
+`ts-bridge` refuses a second attempt over existing `ts-started.json`. Inspect
+and preserve recovery state after any failure. Do not reset a chain and then
+reuse its wallets. The older successful run and this run need separate fresh
+stacks and separate archived `run/` directories.
+
+After validation, keep the maker and deterministic price feed available with:
+
+```sh
+examples/rgb-regtest/target/debug/rgb-sdk-regtest serve
+```
+
+This foreground supervisor shuts down the maker on Ctrl-C or SIGTERM. It
+records its PID in private `run/server-process.json`. Stop the supervisor
+before `regtest.sh down`. The TypeScript driver itself stops its daemon after
+the final wallet audit; Docker services remain available.
+
+## Exact amount reconciliation
+
+The [amount audit report](amount-audit-report.json) independently checks the
+recorded TypeScript run in contract base units, satoshis and millisatoshis.
+It recovers the historical deterministic-feed rate by matching the persisted
+`pairHash`, recomputes quotes with integer arithmetic, reads actual rgb-lib
+transition allocations and spendable wallet UTXOs, matches both Lightning
+peers by payment hash, and accounts for every lock/spend input, output and
+miner fee. This audit does not create or pay additional swaps.
+
+Stop the owned `serve` supervisor before opening the maker wallet for the
+first command, then restart it afterward:
+
+```sh
+examples/rgb-regtest/target/debug/rgb-sdk-regtest audit-amounts
+examples/rgb-regtest/target/debug/rgb-sdk-regtest audit-lightning
+python3 examples/rgb-regtest/amount-audit.py
+```
+
+`audit-amounts` reads the isolated PostgreSQL amount/fee snapshot through
+Docker and captures actual wallet and Lightning records under ignored
+`run/`. `audit-lightning` can run with the maker up; it confirms no unresolved
+HTLC balances or msat dust loss and accounts for the channel's commitment
+fee and its two 330-sat anchor outputs. The Python check reproduces this
+recorded four-flow test's pricing configuration and writes only sanitized
+results to `amount-audit-report.json`.
+
+All four quoted RGB amounts exactly match the committed transitions. Final
+spendable RGB allocations sum to the full issuance. Both successful LN
+payments deliver 100,000,000 msat with zero routing fee; both failed payers
+release their HTLCs. The inbound failed-invoice records still read Pending
+in LDK's payment bookkeeping; the balance audit establishes that no HTLC
+funds remain encumbered.
+
+The audit also records a one-unit (0.000001 test USDT) discrepancy between
+the reverse fee breakdown's separately rounded components plus payout and
+the gross amount rounded to contract precision. The payout itself exactly
+matches the quote: it is rounded down, while each displayed fee is rounded
+up. Network allowances are estimates, not exact refunds of actual miner
+fees. Bitcoin lock and spend miner fees remain spent on the refund paths.
+
 ## State, recovery and cleanup
 
 The isolated Compose project is `rgb-sdk-regtest`; published ports are
@@ -115,3 +212,42 @@ The LDK image used for this run was
 Rebuilding from the pinned Dockerfile may produce another image id. Swap ids,
 contract id, transaction ids and the small price step vary between runs;
 the recorded report is evidence of that run, not an SDK unit-test fixture.
+
+
+### Cooperative submarine refund
+
+The cooperative refund example attaches to an existing `serve` supervisor and
+wallets, and exercises the same authenticated submarine `/refund` endpoint.
+It requires the companion maker and the rgb-lib `validate_htlc_spend` addition,
+pinned by both native components at `dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f`.
+Build the native components from the coordinated branches:
+
+```sh
+cargo +1.96.0 build --manifest-path examples/rgb-regtest/Cargo.toml
+# In the companion maker checkout:
+# cargo +1.96.0 build -p maker-bin --bin kaleidoswap-maker --features ldk-server
+make wasm-pack-build
+cd typescript-sdk && npm run build && cd ..
+RGB_MAKER_BIN=/path/to/kaleidoswap-maker examples/rgb-regtest/target/debug/rgb-sdk-regtest serve
+```
+
+With the supervisor running, in another terminal:
+
+```sh
+node --experimental-strip-types examples/rgb-regtest/ts-coop-refund.ts
+```
+
+The test creates and locks a held-invoice submarine, rejects cooperation while
+Lightning is pending, fails the hold, and then signs/mines a key-path refund
+before CLTV. It checks authenticating the request, RGB proof and prevout
+mutation rejection, stored-response replay, one-use local signing sessions,
+confirmed maker status and exact restored contract units. Only a public result
+is saved in `coop-refund-validation-report.json`; recovery and diagnostics
+remain in ignored `run/`.
+
+Each attempt uses a new `RGB_COOP_TEST_INDEX` (default 10). An interrupted test
+must be recovered deliberately. If it stopped before signing/broadcast and
+saved the request, `RGB_COOP_RECOVER=1` resumes the existing prepared operation
+with a fresh nonce/session, without recoloring. Recovery refuses operations
+that are already broadcast/applied; those require reconciliation, never a
+blind rerun. Use a fresh index only after the earlier operation is resolved.

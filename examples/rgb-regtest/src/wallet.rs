@@ -3,7 +3,7 @@ use crate::support::*;
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{Address, Amount, OutPoint, Psbt, Sequence, Transaction, TxIn, TxOut, Witness};
 use kaleidorg_swap_sdk::swaps::rgb::{
-    ColoredRgbPsbt, FinalizedRgbSpend, PreparedRgbSpend, RgbAllocation, RgbLock,
+    ColoredRgbPsbt, FinalizedRgbSpend, PreparedRgbSpend, RgbAllocation, RgbLock, RgbPsbtTemplate,
 };
 use rgb_lib::{
     utils::script_buf_from_recipient_id,
@@ -60,13 +60,21 @@ pub fn fund(
     online: Online,
     prepared: PreparedRgbSpend,
 ) -> Result<PreparedRgbSpend> {
+    let psbt = fund_template(wallet, online, &prepared.template())?;
+    sdk(prepared.fund(&psbt))
+}
+pub fn fund_template(
+    wallet: &mut Wallet,
+    online: Online,
+    template: &RgbPsbtTemplate,
+) -> Result<String> {
     let coin = wallet
         .list_unspents_vanilla(online, 1, false)?
         .into_iter()
         .filter(|u| u.txout.value.to_sat() > 10_000)
         .max_by_key(|u| u.txout.value)
         .context("confirmed wallet fee input")?;
-    let mut psbt = Psbt::from_str(&prepared.template().psbt)?;
+    let mut psbt = Psbt::from_str(&template.psbt)?;
     psbt.unsigned_tx.input.push(TxIn {
         previous_output: coin.outpoint,
         script_sig: Default::default(),
@@ -85,13 +93,18 @@ pub fn fund(
         script_pubkey: change,
     });
     psbt.outputs.push(Default::default());
-    sdk(prepared.fund(&psbt.to_string()))
+    Ok(psbt.to_string())
 }
 pub fn color(
     wallet: &mut Wallet,
     prepared: &PreparedRgbSpend,
 ) -> Result<(PsbtOpPrepareResult, ColoredRgbPsbt)> {
-    let template = prepared.template();
+    color_template(wallet, &prepared.template())
+}
+pub fn color_template(
+    wallet: &mut Wallet,
+    template: &RgbPsbtTemplate,
+) -> Result<(PsbtOpPrepareResult, ColoredRgbPsbt)> {
     let mut psbt = Psbt::from_str(&template.psbt)?;
     let operation = wallet.psbt_op_prepare_with_expiry(
         &mut psbt,
@@ -134,10 +147,15 @@ pub fn sign_wallet_inputs(
     wallet: &Wallet,
     finalized: FinalizedRgbSpend,
 ) -> Result<(Psbt, Transaction)> {
+    let frozen_tx = finalized.psbt.unsigned_tx.clone();
     let index = finalized.swap_input_index as usize;
     let witness = finalized.psbt.inputs[index].final_script_witness.clone();
     let signed = wallet.sign_psbt(finalized.psbt.to_string(), None)?;
     let psbt = Psbt::from_str(&wallet.finalize_psbt(signed, None)?)?;
+    ensure!(
+        psbt.unsigned_tx == frozen_tx,
+        "wallet changed the frozen RGB transaction"
+    );
     ensure!(
         psbt.inputs[index].final_script_witness == witness,
         "wallet changed SDK HTLC witness"
@@ -147,6 +165,10 @@ pub fn sign_wallet_inputs(
         "wallet did not finalize all inputs"
     );
     let transaction = psbt.clone().extract_tx()?;
+    ensure!(
+        transaction.compute_txid() == frozen_tx.compute_txid(),
+        "wallet finalization changed the colored transaction ID"
+    );
     Ok((psbt, transaction))
 }
 pub async fn broadcast_apply(
@@ -158,6 +180,12 @@ pub async fn broadcast_apply(
     tx: &Transaction,
 ) -> Result<()> {
     let txid = tx.compute_txid().to_string();
+    let colored = Psbt::from_str(&operation.colored_psbt)?;
+    ensure!(
+        psbt.unsigned_tx == colored.unsigned_tx
+            && tx.compute_txid() == colored.unsigned_tx.compute_txid(),
+        "broadcast differs from the persisted colored operation"
+    );
     // Durable state precedes the attempt; an uncertain broadcast is recoverable by txid.
     private_json(
         &root().join(format!("operation-{}.json", operation.operation_id)),

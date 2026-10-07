@@ -428,6 +428,47 @@ node interval) — one evidence-driven pass that claims funded receives,
 refunds matured sends, and resolves records from chain evidence. The venue
 owns no timers and trusts no relay status message.
 
+## RGB cooperative submarine refunds
+
+A maker advertising `response.rgb.cooperativeRefund === "rgb-coop-refund-v1"`
+can co-sign an early refund using the existing submarine `/refund` endpoint.
+The caller's RGB wallet owns funding, coloring and operation recovery:
+
+```ts
+import { getRgbRefundPartialSig } from "@kaleidorg/swap-sdk";
+
+const prepared = await script.prepareRgbCooperativeRefund(params);
+// Add native SegWit BTC fee inputs if required; color the frozen template
+// with your trusted RGB wallet and persist its operation before signing.
+const session = prepared.beginCooperativeRefund(
+  colored,
+  refundKey.secretKey,
+  swap.id,
+);
+const reply = await getRgbRefundPartialSig(
+  client,
+  swap.id,
+  session.request(),
+  swap.swapAuth,
+);
+const finalized = session.complete(reply, refundKey.secretKey);
+// Wallet signs remaining fee inputs, persists the signed PSBT/transaction,
+// broadcasts and reconciles the RGB operation and receive consignment.
+```
+
+`complete` permits one completion; a cryptographic verification failure also
+consumes the session. An identical request can
+recover the maker's stored reply; after a client restart, create a fresh session
+for the same persisted colored transaction. Secret nonce material is never
+serialized. The SDK verifies allocations from the trusted local wallet; the
+maker independently validates the actual RGB proof and chain prevouts.
+
+The SDK refuses this path when the capability is absent. The existing colored
+CLTV refund remains the escape path; changing locktime creates another
+transaction and requires a new wallet operation after safe reconciliation.
+V1 supports submarine refunds only, one colored transaction per swap, and no
+cooperative RBF or automatic fallback after ambiguous broadcast.
+
 ## Development checks
 
 Build fresh WASM bindings from the repository root before running the package
