@@ -1,2 +1,0 @@
-# Unified diffs require a space on empty context lines.
-tests/fixtures/rgb-v1/maker-compatibility.patch whitespace=-blank-at-eol

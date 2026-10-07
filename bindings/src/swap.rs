@@ -39,8 +39,7 @@ pub struct RgbPsbtParams {
     pub swap_id: String,
     pub chain_client: Arc<ChainClient>,
     pub boltz_api: Arc<SwapClient>,
-    #[uniffi(default = None)]
-    pub lockup_tx: Option<Arc<BtcLikeTransaction>>,
+    pub lockup_tx: Arc<BtcLikeTransaction>,
 }
 
 #[uniffi::remote(Enum)]
@@ -136,15 +135,10 @@ impl<'a> TryFrom<&'a RgbPsbtParams> for swaps_bitcoin::RgbPsbtParams<'a> {
     type Error = Error;
 
     fn try_from(params: &'a RgbPsbtParams) -> Result<Self, Error> {
-        let lockup_tx = params
-            .lockup_tx
-            .as_ref()
-            .map(|tx| {
-                tx.0.as_bitcoin().cloned().ok_or_else(|| {
-                    Error::Generic("RGB lockup_tx must be a Bitcoin transaction".into())
-                })
-            })
-            .transpose()?;
+        let lockup_tx =
+            params.lockup_tx.0.as_bitcoin().cloned().ok_or_else(|| {
+                Error::Generic("RGB lockup_tx must be a Bitcoin transaction".into())
+            })?;
         Ok(Self {
             output_address: params.output_address.clone(),
             funding: params.funding,

@@ -253,7 +253,18 @@ caller inputs instead.
 
 See [the wallet adapter example](examples/05-rgb-spend.ts) and
 [the RGB design](../docs/rgb-swaps-plan.md). The adapter is a coordination example;
-a real rgb-lib regtest run remains planned.
+the [native regtest example](../examples/rgb-regtest/README.md) records actual RGB wallet validation.
+
+Submarine BTC collateral is capped at 1000 sats by default, independently of
+`maxFee`/`max_fee`. The maker receives all of it on a successful claim. Choose
+any larger cap locally before reading the response: pass `rgbMaxHtlcSat` as the fourth argument to `createSubmarineSwap`.
+The cap is never sent to the maker. RGB spend preparation requires the actual
+colored lock transaction; address discovery can select unrelated BTC outputs.
+Before paying a reverse invoice, compare its `claimFeeRate` with your current
+fee estimates and remaining timeout; reject an inadequate quote. If fees rise,
+use a higher spend rate and wallet BTC inputs when needed. A maker fee quote
+does not guarantee confirmation before the timeout. Contract-id chunk dashes
+are cosmetic; pin a valid id from your trusted wallet or asset registry.
 
 ## Partner attribution — `createKaleidoMakerClient`
 

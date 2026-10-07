@@ -82,6 +82,44 @@ test("RGB create pins, colored claims and caller-funded refunds cross the wasm b
         false,
         "the pin is local",
       );
+      if (!reverse) {
+        for (const invalid of [-1n, 1n << 64n, "5000000", 5000000]) {
+          const before = requests.length;
+          await assert.rejects(
+            () =>
+              client.createSubmarineSwap(
+                "regtest",
+                request,
+                vectors.contractId,
+                invalid,
+              ),
+            hasCode("InvalidArgument", /rgbMaxHtlcSat/),
+          );
+          assert.equal(
+            requests.length,
+            before,
+            "invalid cap must fail before POST",
+          );
+        }
+        reply.rgb.htlcSat = 5000000;
+        await assert.rejects(
+          () => create(vectors.contractId),
+          hasCode("Protocol", /collateral cap/),
+        );
+        const approved = await client.createSubmarineSwap(
+          "regtest",
+          request,
+          vectors.contractId,
+          5000000n,
+        );
+        assert.equal(approved.rgb.htlcSat, 5000000n);
+        assert.equal(
+          "rgbMaxHtlcSat" in requests.at(-1),
+          false,
+          "collateral cap is local",
+        );
+        reply = structuredClone(vector.response);
+      }
       reply.rgb.assetId = "rgb:substituted-contract";
       await assert.rejects(
         () => create(vectors.contractId),
@@ -113,6 +151,15 @@ test("RGB create pins, colored claims and caller-funded refunds cross the wasm b
         bitcoinEsploraUrl: url,
         lockupTxHex: vector.lockTxHex,
       };
+      const { lockupTxHex, ...unpinned } = params;
+      await assert.rejects(
+        () =>
+          reverse
+            ? script.prepareRgbClaim(unpinned)
+            : script.prepareRgbRefund(unpinned),
+        hasCode("InvalidArgument", /lockupTxHex/),
+      );
+      assert.equal(lockupTxHex, vector.lockTxHex);
       let spend = reverse
         ? await script.prepareRgbClaim(params)
         : await script.prepareRgbRefund(params);

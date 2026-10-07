@@ -1866,7 +1866,8 @@ impl CreateSubmarineResponse {
     /// address), the `rgb` lock must name `expected_contract_id` and exactly
     /// `expectedAmount` of it, and its script and recipient id must be this
     /// swap's HTLC. The contract id has to come from the caller: the pair card
-    /// does not carry one.
+    /// does not carry one. Submarine BTC collateral defaults to a 1000-sat cap;
+    /// use `validate_rgb_with_max_htlc_sat` for a deliberate local override.
     pub fn validate_rgb(
         &self,
         invoice: &str,
@@ -1874,6 +1875,36 @@ impl CreateSubmarineResponse {
         chain: BitcoinChain,
         expected_contract_id: &str,
     ) -> Result<(), Error> {
+        self.validate_rgb_with_max_htlc_sat(
+            invoice,
+            our_pubkey,
+            chain,
+            expected_contract_id,
+            crate::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT,
+        )
+    }
+
+    /// Validate with a caller-approved BTC collateral cap, in sats.
+    /// This cap is local and must be chosen before reading the maker response.
+    /// On success the maker receives the entire HTLC value, not just its fee.
+    pub fn validate_rgb_with_max_htlc_sat(
+        &self,
+        invoice: &str,
+        our_pubkey: &PublicKey,
+        chain: BitcoinChain,
+        expected_contract_id: &str,
+        max_htlc_sat: u64,
+    ) -> Result<(), Error> {
+        let htlc_sat = self
+            .rgb
+            .as_ref()
+            .ok_or_else(|| Error::Protocol("USDT-RGB swap response has no RGB lock".into()))?
+            .htlc_sat;
+        if htlc_sat > max_htlc_sat {
+            return Err(Error::Protocol(format!(
+                "RGB submarine HTLC of {htlc_sat} sat exceeds the {max_htlc_sat} sat collateral cap"
+            )));
+        }
         let preimage = Preimage::from_invoice_str(invoice)?;
         let script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
         script.validate_rgb_response_tree(&self.swap_tree)?;

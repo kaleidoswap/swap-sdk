@@ -320,11 +320,11 @@ pub struct RgbPsbtParams<'a> {
     pub swap_id: String,
     pub chain_client: &'a ChainClient,
     pub boltz_api: &'a BoltzApiClientV2,
-    /// The lock transaction, when the caller has it: the taker's own lock for
-    /// a refund (rgb-lib's `send` returns it), or the maker's from
-    /// `get_reverse_tx` for a claim. Pins the spend to that outpoint rather
-    /// than to whatever pays the HTLC address.
-    pub lockup_tx: Option<BtcTransaction>,
+    /// Required colored lock transaction: the taker's own lock for a refund
+    /// (rgb-lib's `send` returns it), or the maker's from `get_reverse_tx` for
+    /// a claim. Address discovery cannot distinguish a third-party BTC output
+    /// from the output carrying the accepted RGB allocation.
+    pub lockup_tx: BtcTransaction,
 }
 
 impl SwapScriptImpl {
@@ -891,14 +891,10 @@ impl SwapScript {
         };
         let bitcoin_client = params.chain_client.require_bitcoin_client()?;
         let utxo = script
-            .fetch_swap_utxo(
-                params.lockup_tx.as_ref(),
-                bitcoin_client,
-                params.boltz_api,
-                &params.swap_id,
-                kind.clone(),
-            )
-            .await?;
+            .find_utxo(&params.lockup_tx, bitcoin_client.network(), kind.clone())?
+            .ok_or_else(|| {
+                Error::Protocol("No RGB HTLC output in the supplied lock transaction".into())
+            })?;
         PreparedRgbSpend::new(
             kind,
             script,

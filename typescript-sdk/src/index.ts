@@ -185,8 +185,8 @@ export interface RgbPsbtParams {
   network: Network;
   bitcoinEsploraUrl: string;
   esploraTimeoutSecs?: number;
-  /** Pin the lock transaction, particularly for submarine refunds. */
-  lockupTxHex?: string;
+  /** Required colored lock transaction; prevents third-party output selection. */
+  lockupTxHex: string;
 }
 
 export interface RgbLock {

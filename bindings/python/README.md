@@ -143,6 +143,18 @@ confirmations using the chain and rgb-lib: there is no reverse
 `transaction.confirmed` event. Refunds wait for the timeout; claims must confirm
 before it. Asset amounts use contract units; `htlc_sat` and fees use sats.
 
+
+Submarine BTC collateral is capped at 1000 sats by default, independently of
+`maxFee`/`max_fee`. The maker receives all of it on a successful claim. Choose
+any larger cap locally before reading the response: set `rgb_max_htlc_sat` on `CreateSubmarineRequest`.
+The cap is never sent to the maker. RGB spend preparation requires the actual
+colored lock transaction; address discovery can select unrelated BTC outputs.
+Before paying a reverse invoice, compare its `claimFeeRate` with your current
+fee estimates and remaining timeout; reject an inadequate quote. If fees rise,
+use a higher spend rate and wallet BTC inputs when needed. A maker fee quote
+does not guarantee confirmation before the timeout. Contract-id chunk dashes
+are cosmetic; pin a valid id from your trusted wallet or asset registry.
+
 [The adapter example](examples/rgb_spend.py) demonstrates both spend directions.
-It requires an application-provided RGB wallet adapter; live rgb-lib validation
-is the next integration phase.
+It requires an application-provided RGB wallet adapter. Actual RGB wallet validation
+is recorded in the [native regtest example](../../examples/rgb-regtest/README.md).

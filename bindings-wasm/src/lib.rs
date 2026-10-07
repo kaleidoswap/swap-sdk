@@ -110,6 +110,9 @@ extern "C" {
     /// emitted into the TS surface.
     #[wasm_bindgen(typescript_type = "string")]
     pub type StringArg;
+    /// Keep local collateral caps as raw JS values until range validation.
+    #[wasm_bindgen(typescript_type = "bigint")]
+    pub type BigIntArg;
 }
 
 /// Convert a required string argument, naming it if it is not a string.
@@ -122,6 +125,21 @@ fn str_arg(v: StringArg, param: &str) -> Result<String, JsValue> {
 /// Convert an optional string argument. `null`/`undefined` stay `None`.
 fn opt_str_arg(v: Option<StringArg>, param: &str) -> Result<Option<String>, JsValue> {
     v.map(|v| str_arg(v, param)).transpose()
+}
+
+fn opt_u64_arg(v: Option<BigIntArg>, param: &str) -> Result<Option<u64>, JsValue> {
+    v.map(|v| {
+        let invalid = || {
+            arg_err(format!(
+                "argument `{param}` must be a nonnegative bigint within 64 bits"
+            ))
+        };
+        let value = JsValue::from(v)
+            .dyn_into::<js_sys::BigInt>()
+            .map_err(|_| invalid())?;
+        u64::try_from(value).map_err(|_| invalid())
+    })
+    .transpose()
 }
 
 // ============================================================================
@@ -747,9 +765,11 @@ impl BoltzClient {
         network: StringArg,
         req: JsValue,
         rgb_contract_id: Option<StringArg>,
+        rgb_max_htlc_sat: Option<BigIntArg>,
     ) -> Result<JsValue, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
+        let rgb_max_htlc_sat = opt_u64_arg(rgb_max_htlc_sat, "rgbMaxHtlcSat")?;
         let req: CreateSubmarineRequest = from_js(req)?;
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
@@ -778,8 +798,15 @@ impl BoltzClient {
             let Chain::Bitcoin(chain) = from_chain else {
                 unreachable!("RGB is Bitcoin only")
             };
-            resp.validate_rgb(&req.invoice, &req.refund_public_key, chain, contract_id)
-                .map_err(core_err)?;
+            resp.validate_rgb_with_max_htlc_sat(
+                &req.invoice,
+                &req.refund_public_key,
+                chain,
+                contract_id,
+                rgb_max_htlc_sat
+                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+            )
+            .map_err(core_err)?;
         } else {
             resp.validate_with_currency_and_asset_context(
                 &req.invoice,
@@ -1248,7 +1275,7 @@ struct RgbPsbtParams {
     network: String,
     bitcoin_esplora_url: String,
     esplora_timeout_secs: Option<u64>,
-    lockup_tx_hex: Option<String>,
+    lockup_tx_hex: String,
 }
 
 /// A reconstructed swap script; builds the claim/refund transactions.
@@ -1544,13 +1571,11 @@ impl SwapScript {
             p.boltz_base_url,
             p.boltz_timeout_secs.map(std::time::Duration::from_secs),
         );
-        let lockup_tx = p
-            .lockup_tx_hex
-            .as_deref()
-            .map(CoreBtcLikeTransaction::from_hex_bitcoin)
-            .transpose()
+        let lockup_tx = CoreBtcLikeTransaction::from_hex_bitcoin(&p.lockup_tx_hex)
             .map_err(core_err)?
-            .and_then(|tx| tx.as_bitcoin().cloned());
+            .as_bitcoin()
+            .cloned()
+            .expect("Bitcoin decoder returns a Bitcoin transaction");
         let params = CoreRgbPsbtParams {
             output_address: p.output_address,
             funding: p.funding.into(),

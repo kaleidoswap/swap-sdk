@@ -6,14 +6,28 @@ All notable changes to this project will be documented in this file.
 
 ### BREAKING — Rust core: RGB-aware Bitcoin swap scripts
 
+These changes require the next minor release, **0.11.0**, and must not be
+published as a 0.10.x patch. Release preparation will synchronize package versions.
+
 | Was | Now | Migration |
 |---|---|---|
 | `BtcSwapScript { .. }` struct literals | new public field `rgb: Option<RgbHtlcContext>` | add `rgb: None`; the constructors set it from the response |
 | `Currency` had three variants | adds `Currency::UsdtRgb` (`"USDT-RGB"`, Bitcoin only) | cover it in exhaustive matches |
 | `CreateSubmarineResponse` / `CreateReverseResponse` struct literals | new field `rgb: Option<RgbLock>` | add `rgb: None` |
 | The Bitcoin branch of `validate_with_currency*` ignored `currency` | resolves it and refuses anything but BTC, and refuses a BTC response that carries an RGB lock | pass `None` or `Some(Currency::Btc)` for BTC swaps; validate USDT-RGB swaps with `validate_rgb` |
-| UniFFI `CreateSubmarineRequest` / `CreateReverseRequest` Rust struct literals | gain optional `rgb_contract_id` | add `rgb_contract_id: None` for BTC/Liquid, or a pinned contract for RGB; generated Python constructors default to `None` |
+| UniFFI `CreateSubmarineRequest` / `CreateReverseRequest` Rust struct literals | gain optional `rgb_contract_id`; submarine also gains `rgb_max_htlc_sat` | add `None` for BTC/Liquid; pin the contract for RGB and choose the collateral cap locally; Python defaults remain optional |
 | UniFFI `CreateSubmarineResponse` / `CreateReverseResponse` records | gain `rgb: Option<RgbLock>` | Kotlin, Swift and Python constructors take the new field |
+
+### Security — local RGB collateral and lock outpoints
+
+- Submarine validation caps the taker's BTC collateral at 1000 sats by default.
+  `validate_rgb_with_max_htlc_sat`, Python `rgb_max_htlc_sat` and the wasm create
+  method's fourth argument allow a deliberate local cap. Caps are never sent to
+  the maker. A successful maker claim takes all locked sats, so spend fee caps
+  do not substitute for this check.
+- RGB PSBT preparation requires the colored lock transaction in Rust, UniFFI
+  and wasm/TypeScript. It never discovers an input from an address UTXO list,
+  where a third-party uncolored output could prevent wallet coloring.
 
 ### Added — USDT-RGB submarine and reverse swaps (Rust core)
 
@@ -73,7 +87,7 @@ L-USDT flow; see `docs/rgb-swaps-plan.md`.
 - Frozen maker API requests, pair cards and create responses, generated through
   the maker router at `49c6ce2`; six-network recipient vectors use pinned rgb-lib.
 - SDK contract tests check response bindings, tampering and the maker's reference
-  claim PSBT/fee budget. A verified maker companion patch checks the same vectors
+  claim PSBT/fee budget. A separate maker companion PR checks the same vectors
   in its CI. Fixtures use mocked wallet/chain state; the separate native regtest
   example validates live RGB transfers.
 - RGB validation now rejects noncanonical leaf scripts and leaf versions; the

@@ -100,6 +100,15 @@ async def main(url):
         assert response.rgb.asset_id == VECTORS["contractId"]
         assert "rgbContractId" not in REQUESTS[-1]
         assert "rgb_contract_id" not in REQUESTS[-1]
+        if not reverse:
+            REPLY["rgb"]["htlcSat"] = 5000000
+            await expect_async_error(lambda: create(request), "collateral cap")
+            request.rgb_max_htlc_sat = 5000000
+            approved = await create(request)
+            assert approved.rgb.htlc_sat == 5000000
+            assert "rgbMaxHtlcSat" not in REQUESTS[-1]
+            request.rgb_max_htlc_sat = None
+            REPLY = copy.deepcopy(vector["response"])
         REPLY["rgb"]["assetId"] = "rgb:substituted-contract"
         await expect_async_error(lambda: create(request), "contract")
 
@@ -121,6 +130,19 @@ async def main(url):
             boltz_api=client,
             lockup_tx=sdk.BtcLikeTransaction.from_hex_bitcoin(vector["lockTxHex"]),
         )
+        pinned_lock = params.lockup_tx
+        params.lockup_tx = None
+        try:
+            await (
+                script.prepare_rgb_claim(params)
+                if reverse
+                else script.prepare_rgb_refund(params)
+            )
+        except (TypeError, AttributeError):
+            pass
+        else:
+            raise AssertionError("RGB lock transaction must be required")
+        params.lockup_tx = pinned_lock
         prepare = script.prepare_rgb_claim if reverse else script.prepare_rgb_refund
         spend = await prepare(params)
         template = spend.template()

@@ -40,16 +40,23 @@ up to 31 RGB units; the submarine card reports 470 BTC sats.
 BITCOIND_SKIP_DOWNLOAD=1 ELEMENTSD_SKIP_DOWNLOAD=1 cargo test --test rgb_contract
 ```
 
-## Apply and run the maker companion
+## Run the maker companion
 
-`maker-compatibility.patch` contains the same JSON fixtures, four regression
-tests, an explicit ignored capture test, and a test-mock encoder hook. It was
-applied and tested in an isolated maker checkout at the pinned revision.
-It has not been committed or published to the maker PR. From that revision:
+The four regression tests, ignored router capture and test-mock encoder hook
+now live in [maker PR #668](https://github.com/kaleidoswap/kaleidoswap-maker-rs/pull/668),
+targeting the RGB branch for inclusion in #551. The SDK retains only the shared
+JSON fixtures; the cross-repository patch artifact has been removed.
+
+Compatibility was re-confirmed on 2026-10-07 against #551's current head,
+`b98883d553635e352c0affa8a3815e03a911ce80`: all four maker tests pass and both JSON
+files are byte-identical. The one commit after the original capture changes
+admin wallet fee caps, not the swap wire contract. Capture provenance and the
+live-run report retain their original revision rather than claiming a new run.
+
+From the companion branch:
 
 ```sh
-git apply /path/to/swap-sdk/tests/fixtures/rgb-v1/maker-compatibility.patch
-cargo test -p maker-api --test rgb_wire_contract
+cargo test -p maker-api --test rgb_wire_contract --locked
 ```
 
 The normal maker contract tests need no database or wallet initialization. Its

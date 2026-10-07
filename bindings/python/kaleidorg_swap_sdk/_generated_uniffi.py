@@ -3782,6 +3782,11 @@ class CreateSubmarineRequest:
     Expected RGB contract, pinned locally and never sent to the maker.
     """
 
+    rgb_max_htlc_sat: "typing.Optional[int]"
+    """
+    Local BTC collateral cap; defaults to 1000 sats. Never sent to the maker.
+    """
+
     def __init__(
         self,
         *,
@@ -3794,6 +3799,7 @@ class CreateSubmarineRequest:
         pair_hash: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
         rgb_contract_id: "typing.Optional[str]" = _DEFAULT,
+        rgb_max_htlc_sat: "typing.Optional[int]" = _DEFAULT,
     ):
         self._from = _from
         self.to = to
@@ -3819,9 +3825,13 @@ class CreateSubmarineRequest:
             self.rgb_contract_id = None
         else:
             self.rgb_contract_id = rgb_contract_id
+        if rgb_max_htlc_sat is _DEFAULT:
+            self.rgb_max_htlc_sat = None
+        else:
+            self.rgb_max_htlc_sat = rgb_max_htlc_sat
 
     def __str__(self):
-        return "CreateSubmarineRequest(_from={}, to={}, from_currency={}, to_currency={}, invoice={}, refund_public_key={}, pair_hash={}, referral_id={}, rgb_contract_id={})".format(
+        return "CreateSubmarineRequest(_from={}, to={}, from_currency={}, to_currency={}, invoice={}, refund_public_key={}, pair_hash={}, referral_id={}, rgb_contract_id={}, rgb_max_htlc_sat={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -3831,6 +3841,7 @@ class CreateSubmarineRequest:
             self.pair_hash,
             self.referral_id,
             self.rgb_contract_id,
+            self.rgb_max_htlc_sat,
         )
 
     def __eq__(self, other):
@@ -3852,6 +3863,8 @@ class CreateSubmarineRequest:
             return False
         if self.rgb_contract_id != other.rgb_contract_id:
             return False
+        if self.rgb_max_htlc_sat != other.rgb_max_htlc_sat:
+            return False
         return True
 
 
@@ -3868,6 +3881,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
             pair_hash=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
             rgb_contract_id=_UniffiConverterOptionalString.read(buf),
+            rgb_max_htlc_sat=_UniffiConverterOptionalUInt64.read(buf),
         )
 
     @staticmethod
@@ -3881,6 +3895,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.pair_hash)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
         _UniffiConverterOptionalString.check_lower(value.rgb_contract_id)
+        _UniffiConverterOptionalUInt64.check_lower(value.rgb_max_htlc_sat)
 
     @staticmethod
     def write(value, buf):
@@ -3893,6 +3908,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.pair_hash, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
         _UniffiConverterOptionalString.write(value.rgb_contract_id, buf)
+        _UniffiConverterOptionalUInt64.write(value.rgb_max_htlc_sat, buf)
 
 
 class CreateSubmarineResponse:
@@ -6154,7 +6170,7 @@ class RgbPsbtParams:
     swap_id: "str"
     chain_client: "ChainClient"
     boltz_api: "SwapClient"
-    lockup_tx: "typing.Optional[BtcLikeTransaction]"
+    lockup_tx: "BtcLikeTransaction"
 
     def __init__(
         self,
@@ -6165,7 +6181,7 @@ class RgbPsbtParams:
         swap_id: "str",
         chain_client: "ChainClient",
         boltz_api: "SwapClient",
-        lockup_tx: "typing.Optional[BtcLikeTransaction]" = _DEFAULT,
+        lockup_tx: "BtcLikeTransaction",
     ):
         self.output_address = output_address
         self.funding = funding
@@ -6173,10 +6189,7 @@ class RgbPsbtParams:
         self.swap_id = swap_id
         self.chain_client = chain_client
         self.boltz_api = boltz_api
-        if lockup_tx is _DEFAULT:
-            self.lockup_tx = None
-        else:
-            self.lockup_tx = lockup_tx
+        self.lockup_tx = lockup_tx
 
     def __str__(self):
         return "RgbPsbtParams(output_address={}, funding={}, max_fee={}, swap_id={}, chain_client={}, boltz_api={}, lockup_tx={})".format(
@@ -6217,7 +6230,7 @@ class _UniffiConverterTypeRgbPsbtParams(_UniffiConverterRustBuffer):
             swap_id=_UniffiConverterString.read(buf),
             chain_client=_UniffiConverterTypeChainClient.read(buf),
             boltz_api=_UniffiConverterTypeSwapClient.read(buf),
-            lockup_tx=_UniffiConverterOptionalTypeBtcLikeTransaction.read(buf),
+            lockup_tx=_UniffiConverterTypeBtcLikeTransaction.read(buf),
         )
 
     @staticmethod
@@ -6228,7 +6241,7 @@ class _UniffiConverterTypeRgbPsbtParams(_UniffiConverterRustBuffer):
         _UniffiConverterString.check_lower(value.swap_id)
         _UniffiConverterTypeChainClient.check_lower(value.chain_client)
         _UniffiConverterTypeSwapClient.check_lower(value.boltz_api)
-        _UniffiConverterOptionalTypeBtcLikeTransaction.check_lower(value.lockup_tx)
+        _UniffiConverterTypeBtcLikeTransaction.check_lower(value.lockup_tx)
 
     @staticmethod
     def write(value, buf):
@@ -6238,7 +6251,7 @@ class _UniffiConverterTypeRgbPsbtParams(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.swap_id, buf)
         _UniffiConverterTypeChainClient.write(value.chain_client, buf)
         _UniffiConverterTypeSwapClient.write(value.boltz_api, buf)
-        _UniffiConverterOptionalTypeBtcLikeTransaction.write(value.lockup_tx, buf)
+        _UniffiConverterTypeBtcLikeTransaction.write(value.lockup_tx, buf)
 
 
 class RgbPsbtTemplate:

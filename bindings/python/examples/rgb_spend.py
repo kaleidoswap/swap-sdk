@@ -2,7 +2,9 @@
 
 The caller first creates a swap with rgb_contract_id pinned. Before claiming,
 rgb-lib must accept the maker's lock consignment and enforce min_confirmations.
-For refunds, supply the original wallet lock transaction in params.lockup_tx.
+Supply the accepted colored lock transaction in params.lockup_tx for both routes.
+Choose the submarine BTC collateral cap locally; compare reverse fees with the
+remaining timeout before paying the invoice.
 """
 
 from typing import Protocol

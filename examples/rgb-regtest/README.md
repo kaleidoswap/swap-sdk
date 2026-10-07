@@ -20,6 +20,9 @@ Requirements: Docker Compose, OpenSSL, Rust 1.96, a native maker binary with
 checkout at `49c6ce2e9554eea0d819fd3bbd267af6db45b1c0`:
 
 ```sh
+git clone https://github.com/kaleidoswap/kaleidoswap-maker-rs.git maker-rgb-regtest
+cd maker-rgb-regtest
+git checkout --detach 49c6ce2e9554eea0d819fd3bbd267af6db45b1c0
 cargo +1.96.0 build --locked -p maker-bin --bin kaleidoswap-maker --features ldk-server
 docker build -f e2e/Dockerfile.ldk-server -t km-e2e/ldk-server:pinned .
 ```

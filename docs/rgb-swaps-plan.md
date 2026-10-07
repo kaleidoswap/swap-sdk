@@ -103,7 +103,11 @@ The response is rejected unless all of these hold:
    0.11.1-rc.11 pin it.
 5. `rgb.amount == expectedAmount` (2a) or `onchainAmount` (2b), and is
    positive.
-6. `htlcSat ≥ 546`. On a reverse swap, `claimFeeRate` is present and
+6. `546 ≤ htlcSat ≤ 1000` on submarines by default. These BTC sats are paid
+   to the maker on success; `max_fee` only caps a later claim/refund fee. A
+   deliberate local override uses `validate_rgb_with_max_htlc_sat`, native
+   `rgb_max_htlc_sat`, or the wasm submarine create method's fourth argument.
+   Never derive the cap from the response. On a reverse swap, `claimFeeRate` is present and
    `htlcSat` funds a self-funded claim at that rate with ≥ 546 sat left over.
 7. `minConfirmations ≥ 1`, and every transport endpoint is `rpc://` or
    `rpcs://`.
@@ -186,6 +190,16 @@ returns the extracted transaction.
   it.
 - The claim must confirm before `timeoutBlockHeight`, when the maker's refund
   becomes valid.
+- `claimFeeRate` is a quote, not a confirmation guarantee. Before paying the
+  invoice, compare it with a locally chosen minimum from current fee estimates
+  and the remaining timeout. Reject an inadequate quote. If fees rise later,
+  select a higher local spend rate; use `CallerInputs` when the HTLC cannot fund
+  it, and monitor confirmation until settlement. The SDK does not set a static
+  network fee floor.
+- RGB spends require the actual accepted colored lock transaction. Never use
+  address discovery to choose a colored outpoint; unrelated BTC can pay the
+  same address. Contract comparison ignores only cosmetic chunk dashes; callers
+  must pin an actual contract id from their trusted wallet or asset registry.
 
 ## Phases
 
@@ -212,10 +226,10 @@ returns the extracted transaction.
    maker router requests, pair cards and both create responses at `49c6ce2`.
    The mock venue calls the pinned rgb-lib encoder. Golden vectors cover six
    networks and the maker's reference claim PSBT. `tests/rgb_contract.rs`
-   validates the SDK; a verified maker companion patch pins its schemas, trees,
+   validates the SDK; [maker companion PR #668](https://github.com/kaleidoswap/kaleidoswap-maker-rs/pull/668) pins its schemas, trees,
    MuSig order, recipient codec and fee model. See the fixture README for capture
-   provenance and reproduction. The companion patch still needs to land in the
-   maker repository through its own PR.
+   provenance and reproduction. The companion PR targets the maker RGB branch
+   for inclusion in #551.
 4. **Live validation (implemented).** The standalone native crate
    [`examples/rgb-regtest`](../examples/rgb-regtest/README.md) drives real
    rgb-lib wallets against the maker daemon, Bitcoin/Esplora, an RGB proxy and
@@ -260,7 +274,7 @@ returns the extracted transaction.
 - Maker companion tests reconstruct both trees and MuSig addresses, encode
   every recipient with rgb-lib, freeze response schema serialization and
   compare the reference PSBT and maker fee formulas. These run in the maker's
-  existing workspace CI once the companion patch lands.
+  existing workspace CI once the companion PR lands.
 - A failing fixture mutation test exposed ignored RGB wire leaf versions/bytes.
   `validate_rgb` now requires the exact canonical tree for both directions.
 - Amount documentation now distinguishes input/output asset units, including
@@ -300,6 +314,31 @@ returns the extracted transaction.
   with `-D warnings`, shell syntax and whitespace checks pass. Live execution is opt-in; it is not added to ordinary SDK CI.
   See the [reproduction guide](../examples/rgb-regtest/README.md) and
   [sanitized run report](../examples/rgb-regtest/validation-report.json).
+
+## Review fixes and compatibility re-confirmation (2026-10-07)
+
+- Submarine BTC collateral is capped at 1000 sats by default, with explicit
+  local overrides in Rust, UniFFI/Python and wasm. Negative, overflowing and
+  mistyped wasm caps are rejected before posting. Caps are not sent to the maker.
+- RGB spend parameters require the accepted colored lock transaction across
+  every binding. Preparation uses only that transaction, even when an address
+  UTXO list contains a third-party output. Missing locks are rejected at the
+  binding boundary; a supplied transaction without the HTLC is rejected too.
+- SDK validation passes: 178 library tests (4 ignored), 9 RGB contract tests,
+  7 Liquid contract tests, generated and fallback Python RGB flows, and 73
+  TypeScript tests. Native/wasm/example Clippy, formats, types, binding parity
+  and version consistency pass. Three daemon-backed Python tests require the
+  separate stopped regtest services; their connection failures do not affect
+  the offline RGB checks. The earlier live run is not claimed as re-executed.
+- Maker fixtures were re-confirmed at #551 head `b98883d`: all 4 contract tests,
+  both target Clippy checks and formatting pass. The intervening commit only
+  changes RGB admin fee caps. The tests and capture hook have moved to
+  [maker PR #668](https://github.com/kaleidoswap/kaleidoswap-maker-rs/pull/668);
+  the SDK patch artifact is removed. Historical capture/live-run pins remain accurate.
+- The next release containing the documented breaking changes must be 0.11.0.
+  This PR leaves release preparation and synchronized version updates to that
+  release. Image build instructions, reverse fee/deadline policy and cosmetic
+  contract-id dash normalization are documented.
 
 ## Open questions
 

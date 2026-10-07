@@ -47,6 +47,10 @@ use crate::util::secrets::Preimage;
 /// The smallest colored output the maker locks to or accepts, in sats.
 pub const MIN_COLORED_OUTPUT_SAT: u64 = 546;
 
+/// Default maximum BTC collateral the taker authorizes for a submarine RGB lock.
+/// The maker receives these sats on a successful claim; this is not a miner fee.
+pub const DEFAULT_MAX_SUBMARINE_HTLC_SAT: u64 = 1_000;
+
 /// Sequence of the HTLC input of every RGB spend, claim or refund: the same
 /// as the maker's own spends.
 pub const RGB_SPEND_SEQUENCE: Sequence = Sequence::ENABLE_RBF_NO_LOCKTIME;

@@ -197,11 +197,14 @@ impl SwapClient {
             let Chain::Bitcoin(chain) = swap_request.from else {
                 unreachable!("USDT-RGB resolves only on Bitcoin")
             };
-            response.validate_rgb(
+            response.validate_rgb_with_max_htlc_sat(
                 &swap_request.invoice,
                 &swap_request.refund_public_key,
                 chain,
                 contract_id,
+                swap_request
+                    .rgb_max_htlc_sat
+                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
             )?;
         } else {
             response.validate_with_currency_and_asset_context(
@@ -637,6 +640,9 @@ pub struct CreateSubmarineRequest {
     /// Expected RGB contract, pinned locally and never sent to the maker.
     #[uniffi(default = None)]
     pub rgb_contract_id: Option<String>,
+    /// Local BTC collateral cap; defaults to 1000 sats. Never sent to the maker.
+    #[uniffi(default = None)]
+    pub rgb_max_htlc_sat: Option<u64>,
 }
 
 #[derive(Debug, Record)]

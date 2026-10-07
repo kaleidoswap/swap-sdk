@@ -283,3 +283,164 @@ fn rgb_responses_require_canonical_leaf_versions_and_script_bytes() {
         );
     }
 }
+
+struct ReviewCoins(Vec<(OutPoint, bitcoin::TxOut)>);
+#[async_trait::async_trait]
+impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
+    async fn get_address_balance(&self, _: &Address) -> Result<(u64, i64), Error> {
+        unreachable!()
+    }
+    async fn get_address_utxos(
+        &self,
+        _: &Address,
+    ) -> Result<Vec<(OutPoint, bitcoin::TxOut)>, Error> {
+        Ok(self.0.clone())
+    }
+    async fn get_tx(&self, _: bitcoin::Txid) -> Result<bitcoin::Transaction, Error> {
+        unreachable!()
+    }
+    async fn broadcast_tx(&self, _: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error> {
+        unreachable!()
+    }
+    fn network(&self) -> BitcoinChain {
+        CHAIN
+    }
+}
+#[tokio::test]
+async fn rgb_spends_ignore_address_candidates_and_require_the_pinned_lock() {
+    use kaleidorg_swap_sdk::swaps::boltz::BoltzApiClientV2;
+    use kaleidorg_swap_sdk::swaps::{ChainClient, RgbPsbtParams, SwapScript};
+    let f = wire();
+    let g: Value = serde_json::from_str(GOLDEN).unwrap();
+    let dest = Address::from_script(
+        &ScriptBuf::from_hex(text(&g["takerClaim"]["destinationScript"])).unwrap(),
+        bitcoin::Network::Regtest,
+    )
+    .unwrap()
+    .to_string();
+    let api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".into(), None);
+    for direction in ["submarine", "reverse"] {
+        let req = &f["create"][direction]["request"];
+        let script = if direction == "submarine" {
+            BtcSwapScript::submarine_from_swap_resp(
+                &serde_json::from_value::<CreateSubmarineResponse>(
+                    f["create"][direction]["response"].clone(),
+                )
+                .unwrap(),
+                PublicKey::from_str(text(&req["refundPublicKey"])).unwrap(),
+            )
+            .unwrap()
+        } else {
+            BtcSwapScript::reverse_from_swap_resp(
+                &serde_json::from_value::<CreateReverseResponse>(
+                    f["create"][direction]["response"].clone(),
+                )
+                .unwrap(),
+                PublicKey::from_str(text(&req["claimPublicKey"])).unwrap(),
+            )
+            .unwrap()
+        };
+        let c = script.rgb.as_ref().unwrap();
+        let real = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![],
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(c.htlc_sat),
+                script_pubkey: c.script_pubkey.clone(),
+            }],
+        };
+        let rp = OutPoint::new(real.compute_txid(), 0);
+        let fake = OutPoint::new(bitcoin::Txid::from_str(&"11".repeat(32)).unwrap(), 0);
+        let fo = bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(if direction == "submarine" {
+                546
+            } else {
+                c.htlc_sat
+            }),
+            script_pubkey: c.script_pubkey.clone(),
+        };
+        let chain = ChainClient::new()
+            .with_bitcoin(ReviewCoins(vec![(fake, fo), (rp, real.output[0].clone())]));
+        let swap = SwapScript::from_bitcoin(script);
+        for pin in [
+            real.clone(),
+            bitcoin::Transaction {
+                output: vec![],
+                ..real.clone()
+            },
+        ] {
+            let has_htlc = !pin.output.is_empty();
+            let params = RgbPsbtParams {
+                output_address: dest.clone(),
+                funding: RgbSpendFunding::CallerInputs,
+                max_fee: 10_000,
+                swap_id: "review-probe".into(),
+                chain_client: &chain,
+                boltz_api: &api,
+                lockup_tx: pin,
+            };
+            let prepared = if direction == "submarine" {
+                swap.prepare_rgb_refund(params).await
+            } else {
+                swap.prepare_rgb_claim(params).await
+            };
+            if has_htlc {
+                assert_eq!(prepared.unwrap().template().swap_outpoint, rp.to_string());
+            } else {
+                assert!(prepared
+                    .unwrap_err()
+                    .message()
+                    .contains("supplied lock transaction"));
+            }
+        }
+    }
+}
+
+#[test]
+fn submarine_collateral_is_capped_before_locking() {
+    let f = wire();
+    let request = &f["create"]["submarine"]["request"];
+    let key = PublicKey::from_str(text(&request["refundPublicKey"])).unwrap();
+    for amount in [1_001, 5_000_000, u64::MAX] {
+        let mut value = f["create"]["submarine"]["response"].clone();
+        value["rgb"]["htlcSat"] = json!(amount);
+        let response: CreateSubmarineResponse = serde_json::from_value(value.clone()).unwrap();
+        assert!(validate(&f, "submarine", value)
+            .unwrap_err()
+            .message()
+            .contains("collateral cap"));
+        response
+            .validate_rgb_with_max_htlc_sat(
+                text(&request["invoice"]),
+                &key,
+                CHAIN,
+                text(&f["contractId"]),
+                amount,
+            )
+            .unwrap();
+        assert!(response
+            .validate_rgb_with_max_htlc_sat(
+                text(&request["invoice"]),
+                &key,
+                CHAIN,
+                text(&f["contractId"]),
+                amount - 1
+            )
+            .is_err());
+    }
+    validate(
+        &f,
+        "submarine",
+        f["create"]["submarine"]["response"].clone(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn contract_chunk_dashes_do_not_change_the_pinned_asset() {
+    let f = wire();
+    let mut response = f["create"]["submarine"]["response"].clone();
+    response["rgb"]["assetId"] = json!(text(&response["rgb"]["assetId"]).replace('-', ""));
+    validate(&f, "submarine", response).unwrap();
+}
