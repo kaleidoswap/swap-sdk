@@ -285,7 +285,7 @@ fn rgb_responses_require_canonical_leaf_versions_and_script_bytes() {
 }
 
 struct ReviewCoins(Vec<(OutPoint, bitcoin::TxOut)>);
-#[async_trait::async_trait]
+#[macros::async_trait]
 impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
     async fn get_address_balance(&self, _: &Address) -> Result<(u64, i64), Error> {
         unreachable!()
