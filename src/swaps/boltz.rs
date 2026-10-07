@@ -56,7 +56,7 @@ pub const KALEIDOSWAP_SIGNET_URL_V2: &str = "https://maker.signet.kaleidoswap.co
 /// as `swapAuth` on a create response.
 ///
 /// See [`CreateChainResponse::swap_auth`] for what the credential is and
-/// [`BoltzApiClientV2::accept_quote`] for the one route that needs it.
+/// [`BoltzApiClientV2::accept_quote`] for re-quote authorization; cooperative refunds also require it.
 pub const SWAP_AUTH_HEADER: &str = "X-Swap-Auth";
 
 #[cfg(feature = "ws")]
@@ -1466,6 +1466,25 @@ impl BoltzApiClientV2 {
         pub_nonce: &musig::PublicNonce,
         refund_tx_hex: &String,
     ) -> Result<PartialSig, Error> {
+        self.get_submarine_partial_sig_with_swap_auth(
+            id,
+            input_index,
+            pub_nonce,
+            refund_tx_hex,
+            None,
+        )
+        .await
+    }
+
+    /// Request a cooperative refund signature with the per-swap taker credential.
+    pub async fn get_submarine_partial_sig_with_swap_auth(
+        &self,
+        id: &String,
+        input_index: usize,
+        pub_nonce: &musig::PublicNonce,
+        refund_tx_hex: &String,
+        swap_auth: Option<&str>,
+    ) -> Result<PartialSig, Error> {
         let data = json!(
             {
                 "pubNonce": pub_nonce.serialize().to_lower_hex_string(),
@@ -1475,7 +1494,8 @@ impl BoltzApiClientV2 {
         );
 
         let endpoint = format!("swap/submarine/{id}/refund");
-        self.post_json(&endpoint, data).await
+        self.post_json_with_swap_auth(&endpoint, data, swap_auth)
+            .await
     }
 
     pub async fn get_chain_partial_sig(
@@ -1484,6 +1504,19 @@ impl BoltzApiClientV2 {
         input_index: usize,
         pub_nonce: &musig::PublicNonce,
         refund_tx_hex: &String,
+    ) -> Result<PartialSig, Error> {
+        self.get_chain_partial_sig_with_swap_auth(id, input_index, pub_nonce, refund_tx_hex, None)
+            .await
+    }
+
+    /// Request a cooperative refund signature with the per-swap taker credential.
+    pub async fn get_chain_partial_sig_with_swap_auth(
+        &self,
+        id: &String,
+        input_index: usize,
+        pub_nonce: &musig::PublicNonce,
+        refund_tx_hex: &String,
+        swap_auth: Option<&str>,
     ) -> Result<PartialSig, Error> {
         let data = json!(
             {
@@ -1494,7 +1527,8 @@ impl BoltzApiClientV2 {
         );
 
         let endpoint = format!("swap/chain/{id}/refund");
-        self.post_json(&endpoint, data).await
+        self.post_json_with_swap_auth(&endpoint, data, swap_auth)
+            .await
     }
 
     pub async fn get_mrh_bip21(&self, invoice: &str) -> Result<MrhResponse, Error> {
@@ -1608,9 +1642,8 @@ impl BoltzApiClientV2 {
     ///
     /// Pass `None` for a maker that issues no credential (upstream Boltz
     /// declares no auth on this route). A stored `swapAuth` for a swap created
-    /// against KaleidoSwap must be passed, and cannot be recovered from the
-    /// SDK: `POST /v2/swap/restore` does not re-issue it, so a lost credential
-    /// is an operator recovery, not a client one.
+    /// against KaleidoSwap must be passed. XPUB restore does not return it;
+    /// use [`Self::recover_swap_auth`] with a restored taker key to recover it.
     pub async fn accept_quote(
         &self,
         swap_id: &str,
@@ -1633,6 +1666,28 @@ impl BoltzApiClientV2 {
     pub async fn get_swap(&self, swap_id: &str) -> Result<GetSwapResponse, Error> {
         let end_point = format!("swap/{swap_id}");
         self.get_json(&end_point).await
+    }
+
+    /// Recover the existing credential after restoring a swap from the wallet seed.
+    /// `keys` must be a taker refund key (submarine/chain) or claim key (reverse/chain).
+    /// This signs a domain-separated recovery challenge, never an arbitrary digest.
+    pub async fn recover_swap_auth(
+        &self,
+        swap_id: &str,
+        keys: &secp256k1::Keypair,
+    ) -> Result<String, Error> {
+        validate_recovery_swap_id(swap_id)?;
+        let challenge: SwapAuthRecoveryChallenge = self
+            .post_json(&format!("swap/{swap_id}/auth/challenge"), json!({}))
+            .await?;
+        let signature = sign_auth_recovery_challenge(swap_id, &challenge, keys)?;
+        let response: SwapAuthRecoveryResponse = self
+            .post_json(
+                &format!("swap/{swap_id}/auth/recover"),
+                json!({ "challenge": challenge.challenge, "signature": signature }),
+            )
+            .await?;
+        Ok(response.swap_auth)
     }
 
     /// Restore swaps from an xpub.
@@ -1677,6 +1732,63 @@ impl BoltzApiClientV2 {
 
         self.post_json("swap/restore/index", data).await
     }
+}
+
+const AUTH_RECOVERY_DOMAIN: &[u8] = b"kaleidoswap/swap-auth-recovery/v1\0";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SwapAuthRecoveryChallenge {
+    challenge: String,
+    expires_at: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SwapAuthRecoveryResponse {
+    swap_auth: String,
+}
+
+fn validate_recovery_swap_id(id: &str) -> Result<(), Error> {
+    if id.len() != 26
+        || !id
+            .bytes()
+            .all(|b| b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(&b))
+        || id.as_bytes()[0] > b'7'
+    {
+        return Err(Error::Protocol(
+            "Recovery requires a canonical uppercase ULID swap ID".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn sign_auth_recovery_challenge(
+    id: &str,
+    challenge: &SwapAuthRecoveryChallenge,
+    keys: &secp256k1::Keypair,
+) -> Result<String, Error> {
+    use bitcoin::hashes::{Hash, HashEngine};
+    validate_recovery_swap_id(id)?;
+    let invalid = || Error::Protocol("Invalid swap-auth recovery challenge".into());
+    if challenge.challenge.len() != 144 {
+        return Err(invalid());
+    }
+    let mut bytes = [0u8; 72];
+    hex::decode_to_slice(&challenge.challenge, &mut bytes).map_err(|_| invalid())?;
+    let expiry = i64::from_be_bytes(bytes[..8].try_into().map_err(|_| invalid())?);
+    if expiry != challenge.expires_at || expiry <= 0 {
+        return Err(invalid());
+    }
+    let mut engine = sha256::Hash::engine();
+    engine.input(AUTH_RECOVERY_DOMAIN);
+    engine.input(id.as_bytes());
+    engine.input(&bytes);
+    let message =
+        secp256k1::Message::from_digest(sha256::Hash::from_engine(engine).to_byte_array());
+    Ok(secp256k1::Secp256k1::new()
+        .sign_schnorr_no_aux_rand(&message, keys)
+        .to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1764,10 +1876,11 @@ pub struct CreateSubmarineResponse {
     pub asset_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_asset_id: Option<String>,
-    /// Per-swap taker credential, returned **once** on creation by the
-    /// KaleidoSwap maker. No submarine-swap route needs it today; it is captured
-    /// so a caller can persist it with the swap rather than lose it. See
-    /// [`CreateChainResponse::swap_auth`].
+    /// Per-swap taker credential, returned on creation by the
+    /// KaleidoSwap maker. Pass it to cooperative refunds through
+    /// [`crate::swaps::TransactionOptions::with_swap_auth`]. Persist it with
+    /// the swap, or recover it with [`BoltzApiClientV2::recover_swap_auth`].
+    /// See [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
 }
@@ -2170,7 +2283,7 @@ pub struct CreateReverseResponse {
     pub asset_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_asset_id: Option<String>,
-    /// Per-swap taker credential, returned **once** on creation by the
+    /// Per-swap taker credential, returned on creation by the
     /// KaleidoSwap maker. No reverse-swap route needs it today; it is captured
     /// so a caller can persist it with the swap rather than lose it. See
     /// [`CreateChainResponse::swap_auth`].
@@ -2334,7 +2447,7 @@ pub struct CreateChainResponse {
     pub id: String,
     pub claim_details: ChainSwapDetails,
     pub lockup_details: ChainSwapDetails,
-    /// Per-swap taker credential, returned **once** on creation by the
+    /// Per-swap taker credential, returned on creation by the
     /// KaleidoSwap maker and required to accept a chain re-quote — pass it to
     /// [`BoltzApiClientV2::accept_quote`], which sends it in
     /// [`SWAP_AUTH_HEADER`].
@@ -2342,10 +2455,9 @@ pub struct CreateChainResponse {
     /// It is `HMAC-SHA256` of the swap id under a key only the maker holds,
     /// and it is the taker's full capability over that swap: treat it as secret
     /// material, and persist it alongside the swap so a re-quote created in one
-    /// session can still be accepted in the next. Nothing re-issues it —
-    /// `POST /v2/swap/restore` authenticates with an XPUB alone and does not
-    /// hand it back, so losing it means the swap can only run out its refund
-    /// path unless an operator recovers the credential.
+    /// session can still be accepted in the next. XPUB restore does not return
+    /// it; [`BoltzApiClientV2::recover_swap_auth`] recovers it after proof of
+    /// taker-key ownership.
     ///
     /// `None` against a maker that issues none: this is a KaleidoSwap
     /// extension, and upstream Boltz declares no auth on the accept route.
@@ -2568,13 +2680,25 @@ pub struct ToSign {
     pub index: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Cooperative<'a> {
     pub boltz_api: &'a BoltzApiClientV2,
     pub swap_id: String,
     /// The signature (partial_sig + pub_nonce) is needed to post the claim tx details of the Chain swap
     /// It may be omitted for a chain swap if we've already sent the signature to Boltz
     pub signature: Option<(musig::PartialSignature, musig::PublicNonce)>,
+    /// Credential for cooperative refund requests; omitted for upstream Boltz.
+    pub swap_auth: Option<String>,
+}
+
+impl std::fmt::Debug for Cooperative<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cooperative")
+            .field("swap_id", &self.swap_id)
+            .field("signature", &self.signature)
+            .field("swap_auth", &RedactedSwapAuth(&self.swap_auth))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3413,6 +3537,101 @@ mod tests {
             matches!(&err, Error::Protocol(msg) if msg.contains("empty")),
             "expected an empty-credential error, got {err:?}",
         );
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn cooperative_refund_routes_forward_swap_auth_and_preserve_boltz_compatibility() {
+        let point = "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2";
+        let nonce = musig::PublicNonce::from_str(&format!("{point}{point}")).unwrap();
+        let auth = "a1".repeat(32);
+        let id = "01KZZYB138E7C3HZX7Q1YBGAQG".to_string();
+        for chain in [false, true] {
+            for credential in [Some(auth.as_str()), None] {
+                let body = serde_json::to_string(
+                    &json!({"pubNonce": nonce.to_string(), "partialSignature": "00".repeat(32)}),
+                )
+                .unwrap();
+                let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}", body.len(), body).into_bytes();
+                let (url, maker) = capture_one_request_answering(response);
+                let client = BoltzApiClientV2::new(url, None);
+                if chain {
+                    client
+                        .get_chain_partial_sig_with_swap_auth(
+                            &id,
+                            2,
+                            &nonce,
+                            &"deadbeef".into(),
+                            credential,
+                        )
+                        .await
+                        .unwrap();
+                } else {
+                    client
+                        .get_submarine_partial_sig_with_swap_auth(
+                            &id,
+                            2,
+                            &nonce,
+                            &"deadbeef".into(),
+                            credential,
+                        )
+                        .await
+                        .unwrap();
+                }
+                let request = maker.join().unwrap();
+                let lower = request.to_lowercase();
+                let kind = if chain { "chain" } else { "submarine" };
+                assert!(lower.starts_with(&format!(
+                    "post /v2/swap/{kind}/{}/refund ",
+                    id.to_lowercase()
+                )));
+                assert_eq!(lower.contains("x-swap-auth:"), credential.is_some());
+                if credential.is_some() {
+                    assert!(lower.contains(&format!("x-swap-auth: {auth}")));
+                }
+                let body: Value =
+                    serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+                assert_eq!(body["index"], 2);
+                assert_eq!(body["transaction"], "deadbeef");
+                assert!(body.get("swapAuth").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn recovery_signs_the_protocol_message_and_rejects_arbitrary_challenges() {
+        use bitcoin::hashes::{Hash, HashEngine};
+        let secp = secp256k1::Secp256k1::new();
+        let keys = secp256k1::Keypair::from_secret_key(
+            &secp,
+            &secp256k1::SecretKey::from_slice(&[21; 32]).unwrap(),
+        );
+        let id = "01KZZYB138E7C3HZX7Q1YBGAQG";
+        let mut bytes = [42u8; 72];
+        bytes[..8].copy_from_slice(&1_800_000_300i64.to_be_bytes());
+        let mut challenge = SwapAuthRecoveryChallenge {
+            challenge: hex::encode(bytes),
+            expires_at: 1_800_000_300,
+        };
+        let signature = sign_auth_recovery_challenge(id, &challenge, &keys).unwrap();
+        let mut engine = sha256::Hash::engine();
+        engine.input(b"kaleidoswap/swap-auth-recovery/v1\0");
+        engine.input(id.as_bytes());
+        engine.input(&bytes);
+        let message =
+            secp256k1::Message::from_digest(sha256::Hash::from_engine(engine).to_byte_array());
+        secp.verify_schnorr(
+            &secp256k1::schnorr::Signature::from_str(&signature).unwrap(),
+            &message,
+            &keys.x_only_public_key().0,
+        )
+        .unwrap();
+        challenge.expires_at += 1;
+        assert!(sign_auth_recovery_challenge(id, &challenge, &keys).is_err());
+        challenge.challenge = "00".repeat(32);
+        assert!(sign_auth_recovery_challenge(id, &challenge, &keys).is_err());
+        assert!(validate_recovery_swap_id("../admin").is_err());
+        assert!(validate_recovery_swap_id(&id.to_lowercase()).is_err());
     }
 
     /// A single-request stand-in for the maker: binds an ephemeral port, hands

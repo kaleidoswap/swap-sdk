@@ -582,7 +582,7 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote() != 43473:
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote() != 65325:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -708,6 +708,13 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send()
         != 56372
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_recover_swap_auth()
+        != 55894
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1445,6 +1452,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_send.a
     _UniffiRustBuffer,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_send.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_recover_swap_auth.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_recover_swap_auth.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_rfq_status.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -2009,6 +2024,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_recover_swap_auth.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_recover_swap_auth.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_rfq_status.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_rfq_status.restype = (
     ctypes.c_uint16
@@ -6511,12 +6528,17 @@ class _UniffiConverterTypeTransactionInfo(_UniffiConverterRustBuffer):
 class TransactionOptions:
     cooperative: "bool"
     chain_claim: "typing.Optional[ChainClaim]"
+    swap_auth: "typing.Optional[str]"
+    """
+    Per-swap credential returned on creation or signed recovery.
+    """
 
     def __init__(
         self,
         *,
         cooperative: "bool" = _DEFAULT,
         chain_claim: "typing.Optional[ChainClaim]" = _DEFAULT,
+        swap_auth: "typing.Optional[str]" = _DEFAULT,
     ):
         if cooperative is _DEFAULT:
             self.cooperative = True
@@ -6526,16 +6548,24 @@ class TransactionOptions:
             self.chain_claim = None
         else:
             self.chain_claim = chain_claim
+        if swap_auth is _DEFAULT:
+            self.swap_auth = None
+        else:
+            self.swap_auth = swap_auth
 
     def __str__(self):
-        return "TransactionOptions(cooperative={}, chain_claim={})".format(
-            self.cooperative, self.chain_claim
+        return (
+            "TransactionOptions(cooperative={}, chain_claim={}, swap_auth={})".format(
+                self.cooperative, self.chain_claim, self.swap_auth
+            )
         )
 
     def __eq__(self, other):
         if self.cooperative != other.cooperative:
             return False
         if self.chain_claim != other.chain_claim:
+            return False
+        if self.swap_auth != other.swap_auth:
             return False
         return True
 
@@ -6546,17 +6576,20 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
         return TransactionOptions(
             cooperative=_UniffiConverterBool.read(buf),
             chain_claim=_UniffiConverterOptionalTypeChainClaim.read(buf),
+            swap_auth=_UniffiConverterOptionalString.read(buf),
         )
 
     @staticmethod
     def check_lower(value):
         _UniffiConverterBool.check_lower(value.cooperative)
         _UniffiConverterOptionalTypeChainClaim.check_lower(value.chain_claim)
+        _UniffiConverterOptionalString.check_lower(value.swap_auth)
 
     @staticmethod
     def write(value, buf):
         _UniffiConverterBool.write(value.cooperative, buf)
         _UniffiConverterOptionalTypeChainClaim.write(value.chain_claim, buf)
+        _UniffiConverterOptionalString.write(value.swap_auth, buf)
 
 
 class TransactionOut:
@@ -9159,7 +9192,7 @@ class SwapClientProtocol(typing.Protocol):
         with `401 invalid_swap_auth` and no other route resolves the re-quote,
         so the swap runs out its refund path instead.
 
-        Persist `swap_auth` with the swap when you create it. Nothing re-issues
+        Persist `swap_auth` with the swap when you create it. Signed recovery can re-issue
         it — [`Self::swap_restore`] authenticates with an XPUB alone and does
         not return it.
         """
@@ -9292,6 +9325,13 @@ class SwapClientProtocol(typing.Protocol):
         """
         Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup
         for the maker to pay the invoice from.
+        """
+
+        raise NotImplementedError
+
+    def recover_swap_auth(self, swap_id: "str", keys: "KeyPair"):
+        """
+        Recover a swap credential using the wallet's restored taker key.
         """
 
         raise NotImplementedError
@@ -9459,7 +9499,7 @@ class SwapClient:
         with `401 invalid_swap_auth` and no other route resolves the re-quote,
         so the swap runs out its refund path instead.
 
-        Persist `swap_auth` with the swap when you create it. Nothing re-issues
+        Persist `swap_auth` with the swap when you create it. Signed recovery can re-issue
         it — [`Self::swap_restore`] authenticates with an XPUB alone and does
         not return it.
         """
@@ -9865,6 +9905,30 @@ class SwapClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeRfqAnswer.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def recover_swap_auth(self, swap_id: "str", keys: "KeyPair") -> "str":
+        """
+        Recover a swap credential using the wallet's restored taker key.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterTypeKeyPair.check_lower(keys)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_recover_swap_auth(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterTypeKeyPair.lower(keys),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterString.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )

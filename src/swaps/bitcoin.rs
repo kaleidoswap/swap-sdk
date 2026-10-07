@@ -793,6 +793,7 @@ impl BtcSwapTx {
             boltz_api,
             swap_id,
             signature,
+            ..
         }) = is_cooperative
         {
             let secp = Secp256k1::new();
@@ -1087,7 +1088,10 @@ impl BtcSwapTx {
         )?;
 
         if let Some(Cooperative {
-            boltz_api, swap_id, ..
+            boltz_api,
+            swap_id,
+            swap_auth,
+            ..
         }) = is_cooperative
         {
             let secp = Secp256k1::new();
@@ -1138,21 +1142,23 @@ impl BtcSwapTx {
                 let partial_sig_resp = match self.swap_script.swap_type {
                     SwapType::Chain => {
                         boltz_api
-                            .get_chain_partial_sig(
+                            .get_chain_partial_sig_with_swap_auth(
                                 &swap_id,
                                 input_index,
                                 &pub_nonce,
                                 &refund_tx_hex,
+                                swap_auth.as_deref(),
                             )
                             .await
                     }
                     SwapType::Submarine => {
                         boltz_api
-                            .get_submarine_partial_sig(
+                            .get_submarine_partial_sig_with_swap_auth(
                                 &swap_id,
                                 input_index,
                                 &pub_nonce,
                                 &refund_tx_hex,
+                                swap_auth.as_deref(),
                             )
                             .await
                     }

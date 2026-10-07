@@ -145,10 +145,12 @@ export interface TxParams {
    * cannot carry the lockup script the cooperative chain claim signs against.
    * Use `constructCooperativeClaim` instead to get the cheaper keyspend.
    *
-   * Refunds need nothing extra: a cooperative refund is co-signed by the server
-   * and spends with no locktime, so it does not wait for the timeout.
+   * Cooperative refunds require `swapAuth` against KaleidoSwap maker. Once
+   * authorized, they spend with no locktime and do not wait for the timeout.
    */
   cooperative?: boolean;
+  /** Per-swap credential from create or signed recovery. Required for maker cooperative refunds. */
+  swapAuth?: string;
 }
 
 /** Parameters for the caller-funded L-USDT PSET prepare methods. */

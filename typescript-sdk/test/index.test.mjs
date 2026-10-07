@@ -672,3 +672,63 @@ test("makerBaseUrl reaches the binding under the name it deserializes", async ()
     /`makerBaseUrl` is required.*named `boltzBaseUrl` before 0\.9\.0/s,
   );
 });
+
+test("restored keys recover swapAuth through WASM and authorize a re-quote", async () => {
+  const { createServer } = await import("node:http");
+  const id = "01KZZYB138E7C3HZX7Q1YBGAQG";
+  const challenge = Buffer.alloc(72, 42);
+  challenge.writeBigInt64BE(1800000300n);
+  const auth = "a1".repeat(32);
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    requests.push({
+      url: req.url,
+      headers: req.headers,
+      body: JSON.parse(body),
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.url.endsWith("/auth/challenge")) {
+      res.end(
+        JSON.stringify({
+          challenge: challenge.toString("hex"),
+          expiresAt: 1800000300,
+        }),
+      );
+    } else if (req.url.endsWith("/auth/recover")) {
+      res.end(JSON.stringify({ swapAuth: auth }));
+    } else {
+      res.end("{}");
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const client = new SwapClient(`http://127.0.0.1:${server.address().port}/v2`);
+  try {
+    const keys = SwapMasterKey.fromWalletMnemonic(
+      MNEMONIC,
+      "regtest",
+    ).deriveSwapKey(3n);
+    const recovered = await client.recoverSwapAuth(id, keys.secretKey);
+    assert.equal(recovered, auth);
+    await client.acceptQuote(id, 93500n, recovered);
+    assert.deepEqual(
+      requests.map((r) => r.url),
+      [
+        `/v2/swap/${id}/auth/challenge`,
+        `/v2/swap/${id}/auth/recover`,
+        `/v2/swap/chain/${id}/quote`,
+      ],
+    );
+    assert.equal(requests[1].body.challenge, challenge.toString("hex"));
+    assert.match(requests[1].body.signature, /^[0-9a-f]{128}$/);
+    assert.equal(requests[2].headers["x-swap-auth"], recovered);
+    assert.equal(requests[2].body.amount, 93500);
+    assert.ok(
+      requests.every((r) => !JSON.stringify(r.body).includes(keys.secretKey)),
+    );
+  } finally {
+    client.free();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

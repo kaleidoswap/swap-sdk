@@ -32,3 +32,9 @@ fn submarine() {
 fn kaleido_auth() {
     run_test("tests/bindings/kaleido_auth.py");
 }
+
+#[test]
+#[serial]
+fn auth_recovery() {
+    run_test("tests/bindings/auth_recovery.py");
+}

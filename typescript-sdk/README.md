@@ -386,3 +386,28 @@ elsewhere (on macOS,
 `/Applications/Firefox.app/Contents/MacOS/firefox`). Both smoke scripts pack a
 throwaway tarball when given no argument, or check a supplied one:
 `npm run smoke:package -- path/to/package.tgz`.
+
+### Recovering swap authorization
+
+Save `swapAuth` from the create response with the swap receipt. KaleidoSwap
+cooperative refunds require it in `TxParams`:
+
+```ts
+await script.constructRefund({ ...params, swapAuth: receipt.swapAuth });
+```
+
+After seed-based recovery, `swapRestore` discovers records but does not return
+credentials to an xpub holder. Recover each credential with a restored taker
+key, then save it in the receipt:
+
+```ts
+const keys = master.deriveSwapKey(restored.refundDetails.keyIndex);
+const swapAuth = await client.recoverSwapAuth(restored.id, keys.secretKey);
+await script.constructRefund({ ...params, swapAuth });
+// For a restored chain swap, the same credential authorizes acceptQuote:
+await client.acceptQuote(restored.id, quote.amount, swapAuth);
+```
+
+Use the refund key for submarine swaps, the claim key for reverse swaps, or
+either taker key for chain swaps. This requires maker's signed recovery
+endpoints; upstream Boltz does not implement them and needs no `swapAuth`.

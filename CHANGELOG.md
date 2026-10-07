@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Cooperative refund authorization and signed credential recovery
+
+Cooperative Bitcoin/Liquid submarine and chain refunds now forward the per-swap
+`swapAuth` credential through `TxParams.swapAuth` in TypeScript/WASM and
+`TransactionOptions.swap_auth` in UniFFI (`with_swap_auth` in Rust). Upstream
+Boltz calls can still omit it. Low-level Rust refund methods keep their existing
+signatures; authenticated variants add `_with_swap_auth`. Rust callers building
+`Cooperative` literals must add `swap_auth: None` or their saved credential.
+
+`SwapClient.recoverSwapAuth(swapId, keysSecretHex)` (Rust/UniFFI:
+`recover_swap_auth`) requests a short-lived maker challenge and signs a
+purpose-specific message with a restored taker key, recovering the existing
+credential without revealing it to XPUB-only restore callers. Requires maker's
+new `/auth/challenge` and `/auth/recover` endpoints. Save the returned credential
+and pass it to cooperative refunds or `acceptQuote`.
+
 ### Fixed — the Arkade venue accepts and runs on `@arkade-os/swap` 0.0.21–0.0.24
 
 The `@arkade-os/swap` peer was `^0.0.20`, which on a 0.0.x version admits
