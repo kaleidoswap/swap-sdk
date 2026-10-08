@@ -710,6 +710,28 @@ export class SwapMasterKey {
   masterXpub(): string {
     return this.inner.masterXpub();
   }
+  /**
+   * Discover swaps using this account's xpub and direct child keys (`m/index`).
+   * The maker's default path is for a root xpub and would miss these keys.
+   * This is read-only discovery; recover each swap's authorization separately.
+   */
+  restore(
+    client: WasmSwapClient,
+    gapLimit?: number,
+  ): ReturnType<WasmSwapClient["swapRestore"]> {
+    return client.swapRestore(this.masterXpub(), "m", gapLimit);
+  }
+  /**
+   * Find the highest known swap-key index using the same path as {@link restore}.
+   * A scan is bounded by its gap limit; retain the wallet's local high-water
+   * mark as well rather than treating an empty scan as permission to reuse keys.
+   */
+  restoreIndex(
+    client: WasmSwapClient,
+    gapLimit?: number,
+  ): ReturnType<WasmSwapClient["swapRestoreIndex"]> {
+    return client.swapRestoreIndex(this.masterXpub(), "m", gapLimit);
+  }
   deriveSwapKey(index: bigint): DerivedKey {
     return this.inner.deriveSwapKey(index);
   }

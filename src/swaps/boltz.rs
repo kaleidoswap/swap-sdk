@@ -1694,8 +1694,9 @@ impl BoltzApiClientV2 {
     ///
     /// `derivation_path` is the path boltz appends `/{index}` to when deriving
     /// child keys from `xpub`. Pass `"m"` when `xpub` is already the
-    /// swap-account key (`m/44/0/0/0`), so boltz derives `xpub/{index}` to match
-    /// our per-swap keys. Omitting the path makes boltz apply its own default
+    /// swap-account key returned by `SwapMasterKey::get_master_xpub`
+    /// (`m/26589'/0'/0'`), so boltz derives `xpub/{index}` to match our per-swap
+    /// keys. Omitting the path makes boltz apply its own default
     /// and find nothing.
     pub async fn post_swap_restore(
         &self,
