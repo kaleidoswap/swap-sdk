@@ -110,6 +110,9 @@ extern "C" {
     /// emitted into the TS surface.
     #[wasm_bindgen(typescript_type = "string")]
     pub type StringArg;
+    /// Keep local collateral caps as raw JS values until range validation.
+    #[wasm_bindgen(typescript_type = "bigint")]
+    pub type BigIntArg;
 }
 
 /// Convert a required string argument, naming it if it is not a string.
@@ -122,6 +125,21 @@ fn str_arg(v: StringArg, param: &str) -> Result<String, JsValue> {
 /// Convert an optional string argument. `null`/`undefined` stay `None`.
 fn opt_str_arg(v: Option<StringArg>, param: &str) -> Result<Option<String>, JsValue> {
     v.map(|v| str_arg(v, param)).transpose()
+}
+
+fn opt_u64_arg(v: Option<BigIntArg>, param: &str) -> Result<Option<u64>, JsValue> {
+    v.map(|v| {
+        let invalid = || {
+            arg_err(format!(
+                "argument `{param}` must be a nonnegative bigint within 64 bits"
+            ))
+        };
+        let value = JsValue::from(v)
+            .dyn_into::<js_sys::BigInt>()
+            .map_err(|_| invalid())?;
+        u64::try_from(value).map_err(|_| invalid())
+    })
+    .transpose()
 }
 
 // ============================================================================
@@ -294,6 +312,7 @@ fn asset_from_boltz(
     let net = parse_network(network)?;
     match s {
         "BTC" => Ok((Chain::Bitcoin(net.into()), Currency::Btc)),
+        "USDT-RGB" => Ok((Chain::Bitcoin(net.into()), Currency::UsdtRgb)),
         "L-BTC" => Ok((Chain::Liquid(net.into()), Currency::LBtc)),
         "L-USDT" => Ok((Chain::Liquid(net.into()), Currency::LUsdt)),
         // Named rather than falling through: the maker does publish this
@@ -307,6 +326,33 @@ fn asset_from_boltz(
              claim the lockup",
         )),
         other => Err(arg_err(format!("unsupported Boltz asset '{other}'"))),
+    }
+}
+
+/// Require an explicit local contract pin before any RGB create request.
+fn rgb_contract_before_create(
+    from: kaleidorg_swap_sdk::network::Currency,
+    to: kaleidorg_swap_sdk::network::Currency,
+    reverse: bool,
+    contract_id: Option<&str>,
+) -> Result<Option<&str>, JsValue> {
+    use kaleidorg_swap_sdk::network::Currency;
+    if from != Currency::UsdtRgb && to != Currency::UsdtRgb {
+        return Ok(None);
+    }
+    let expected = if reverse {
+        (Currency::Btc, Currency::UsdtRgb)
+    } else {
+        (Currency::UsdtRgb, Currency::Btc)
+    };
+    if (from, to) != expected {
+        return Err(arg_err("unsupported USDT-RGB swap direction"));
+    }
+    match contract_id {
+        Some(id) if !id.trim().is_empty() => Ok(Some(id)),
+        _ => Err(arg_err(
+            "USDT-RGB swaps require rgbContractId before creation",
+        )),
     }
 }
 
@@ -718,11 +764,21 @@ impl BoltzClient {
         &self,
         network: StringArg,
         req: JsValue,
+        rgb_contract_id: Option<StringArg>,
+        rgb_max_htlc_sat: Option<BigIntArg>,
     ) -> Result<JsValue, JsValue> {
         let network = str_arg(network, "network")?;
+        let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
+        let rgb_max_htlc_sat = opt_u64_arg(rgb_max_htlc_sat, "rgbMaxHtlcSat")?;
         let req: CreateSubmarineRequest = from_js(req)?;
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let rgb_contract_id = rgb_contract_before_create(
+            from_currency,
+            to_currency,
+            false,
+            rgb_contract_id.as_deref(),
+        )?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
             (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
@@ -738,14 +794,29 @@ impl BoltzClient {
             None
         };
         let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
-        resp.validate_with_currency_and_asset_context(
-            &req.invoice,
-            &req.refund_public_key,
-            from_chain,
-            Some(from_currency),
-            expected_asset_context,
-        )
-        .map_err(core_err)?;
+        if let Some(contract_id) = rgb_contract_id {
+            let Chain::Bitcoin(chain) = from_chain else {
+                unreachable!("RGB is Bitcoin only")
+            };
+            resp.validate_rgb_with_max_htlc_sat(
+                &req.invoice,
+                &req.refund_public_key,
+                chain,
+                contract_id,
+                rgb_max_htlc_sat
+                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+            )
+            .map_err(core_err)?;
+        } else {
+            resp.validate_with_currency_and_asset_context(
+                &req.invoice,
+                &req.refund_public_key,
+                from_chain,
+                Some(from_currency),
+                expected_asset_context,
+            )
+            .map_err(core_err)?;
+        }
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
@@ -753,8 +824,10 @@ impl BoltzClient {
         &self,
         network: StringArg,
         req: JsValue,
+        rgb_contract_id: Option<StringArg>,
     ) -> Result<JsValue, JsValue> {
         let network = str_arg(network, "network")?;
+        let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
         let req: CreateReverseRequest = from_js(req)?;
         let claim_pk = req.claim_public_key;
         let to = req.to.clone();
@@ -762,6 +835,12 @@ impl BoltzClient {
         let invoice = req.invoice.clone();
         let (_, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (to_chain, to_currency) = asset_from_boltz(&to, &network)?;
+        let rgb_contract_id = rgb_contract_before_create(
+            from_currency,
+            to_currency,
+            true,
+            rgb_contract_id.as_deref(),
+        )?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
             (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
@@ -776,7 +855,6 @@ impl BoltzClient {
         } else {
             None
         };
-        let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
         // Validate the returned tree/address regardless of request form: derive
         // the payment hash from `preimage_hash` or, in the invoice form, from the
         // invoice itself. Never hand back an unvalidated response to fund.
@@ -790,14 +868,23 @@ impl BoltzClient {
                 "reverse swap request needs preimageHash or invoice",
             ));
         };
-        resp.validate_with_currency_and_asset_context(
-            &preimage,
-            &claim_pk,
-            to_chain,
-            Some(to_currency),
-            expected_asset_context,
-        )
-        .map_err(core_err)?;
+        let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
+        if let Some(contract_id) = rgb_contract_id {
+            let Chain::Bitcoin(chain) = to_chain else {
+                unreachable!("RGB is Bitcoin only")
+            };
+            resp.validate_rgb(&preimage, &claim_pk, chain, contract_id)
+                .map_err(core_err)?;
+        } else {
+            resp.validate_with_currency_and_asset_context(
+                &preimage,
+                &claim_pk,
+                to_chain,
+                Some(to_currency),
+                expected_asset_context,
+            )
+            .map_err(core_err)?;
+        }
         to_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
@@ -823,6 +910,11 @@ impl BoltzClient {
         };
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
+        if from_currency == kaleidorg_swap_sdk::network::Currency::UsdtRgb
+            || to_currency == kaleidorg_swap_sdk::network::Currency::UsdtRgb
+        {
+            return Err(arg_err("USDT-RGB chain swaps are unsupported"));
+        }
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
             (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
@@ -913,6 +1005,25 @@ impl BoltzClient {
     /// Persist `swapAuth` with the swap when you create it. Nothing re-issues
     /// it — `swapRestore` authenticates with an XPUB alone and does not return
     /// it.
+    #[wasm_bindgen(js_name = getRgbRefundPartialSig)]
+    pub async fn get_rgb_refund_partial_sig(
+        &self,
+        swap_id: StringArg,
+        request: JsValue,
+        swap_auth: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        let request: RgbCooperativeRefundRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .get_rgb_refund_partial_sig(&id, &request, &auth)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
     #[wasm_bindgen(js_name = acceptQuote)]
     pub async fn accept_quote(
         &self,
@@ -990,10 +1101,16 @@ use kaleidorg_swap_sdk::network::Chain;
 use kaleidorg_swap_sdk::swaps::liquid::{
     FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
 };
+use kaleidorg_swap_sdk::swaps::rgb::{
+    ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
+    PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,
+    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbSpendFunding as CoreRgbSpendFunding,
+};
 use kaleidorg_swap_sdk::swaps::{
     BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
-    LiquidPsetParams as CoreLiquidPsetParams, SwapScript as CoreSwapScript, SwapTransactionParams,
-    TransactionOptions,
+    LiquidPsetParams as CoreLiquidPsetParams, RgbPsbtParams as CoreRgbPsbtParams,
+    SwapScript as CoreSwapScript, SwapTransactionParams, TransactionOptions,
 };
 use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
 use std::str::FromStr as _;
@@ -1145,6 +1262,41 @@ impl LiquidPsetParams {
             self.boltz_timeout_secs.map(std::time::Duration::from_secs),
         )
     }
+}
+
+/// Funding mode of an RGB PSBT, represented by a discriminated JS object.
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum RgbSpendFunding {
+    #[serde(rename_all = "camelCase")]
+    HtlcValue {
+        fee_rate_sat_vb: u64,
+    },
+    CallerInputs,
+}
+
+impl From<RgbSpendFunding> for CoreRgbSpendFunding {
+    fn from(funding: RgbSpendFunding) -> Self {
+        match funding {
+            RgbSpendFunding::HtlcValue { fee_rate_sat_vb } => Self::HtlcValue { fee_rate_sat_vb },
+            RgbSpendFunding::CallerInputs => Self::CallerInputs,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RgbPsbtParams {
+    output_address: String,
+    funding: RgbSpendFunding,
+    max_fee: u64,
+    swap_id: String,
+    boltz_base_url: String,
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    bitcoin_esplora_url: String,
+    esplora_timeout_secs: Option<u64>,
+    lockup_tx_hex: String,
 }
 
 /// A reconstructed swap script; builds the claim/refund transactions.
@@ -1345,6 +1497,26 @@ impl SwapScript {
         Ok(BtcLikeTransaction { inner: tx })
     }
 
+    /// Prepare an RGB reverse claim. The RGB wallet must color it before signing.
+    #[wasm_bindgen(js_name = prepareRgbClaim)]
+    pub async fn prepare_rgb_claim(&self, params: JsValue) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, true, false).await
+    }
+
+    /// Prepare an RGB submarine refund, optionally funded by wallet BTC inputs.
+    #[wasm_bindgen(js_name = prepareRgbRefund)]
+    pub async fn prepare_rgb_refund(&self, params: JsValue) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, false, false).await
+    }
+
+    #[wasm_bindgen(js_name = prepareRgbCooperativeRefund)]
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, false, true).await
+    }
+
     /// Prepare an L-USDT claim PSET. The returned object pins the swap intent
     /// and must be retained until `finalizeClaim` is called.
     #[wasm_bindgen(js_name = prepareLiquidClaim)]
@@ -1409,6 +1581,181 @@ impl SwapScript {
             .map_err(core_err)?;
         Ok(PreparedLiquidSpend { inner: prepared })
     }
+}
+
+impl SwapScript {
+    async fn prepare_rgb_spend(
+        &self,
+        params: JsValue,
+        claim: bool,
+        cooperative: bool,
+    ) -> Result<PreparedRgbSpend, JsValue> {
+        let p: RgbPsbtParams = from_js(params)?;
+        let chain_client = build_chain_client(
+            &p.network,
+            &Some(p.bitcoin_esplora_url),
+            &None,
+            p.esplora_timeout_secs,
+        )?;
+        let boltz = BoltzApiClientV2::new(
+            p.boltz_base_url,
+            p.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        );
+        let lockup_tx = CoreBtcLikeTransaction::from_hex_bitcoin(&p.lockup_tx_hex)
+            .map_err(core_err)?
+            .as_bitcoin()
+            .cloned()
+            .expect("Bitcoin decoder returns a Bitcoin transaction");
+        let params = CoreRgbPsbtParams {
+            output_address: p.output_address,
+            funding: p.funding.into(),
+            max_fee: p.max_fee,
+            swap_id: p.swap_id,
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            lockup_tx,
+        };
+        let inner = if claim {
+            self.inner.prepare_rgb_claim(params).await
+        } else if cooperative {
+            self.inner.prepare_rgb_cooperative_refund(params).await
+        } else {
+            self.inner.prepare_rgb_refund(params).await
+        }
+        .map_err(core_err)?;
+        Ok(PreparedRgbSpend { inner })
+    }
+}
+
+/// Immutable RGB spend intent: funding is frozen before RGB coloring.
+#[wasm_bindgen]
+pub struct PreparedRgbSpend {
+    inner: CorePreparedRgbSpend,
+}
+
+#[wasm_bindgen]
+impl PreparedRgbSpend {
+    pub fn template(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.template())
+    }
+
+    /// Return a new spend that pins the wallet's funded, still uncolored PSBT.
+    pub fn fund(&self, funded_psbt: StringArg) -> Result<PreparedRgbSpend, JsValue> {
+        let funded_psbt = str_arg(funded_psbt, "fundedPsbt")?;
+        Ok(Self {
+            inner: self.inner.fund(&funded_psbt).map_err(core_err)?,
+        })
+    }
+
+    #[wasm_bindgen(js_name = beginCooperativeRefund)]
+    pub fn begin_cooperative_refund(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+        swap_id: StringArg,
+    ) -> Result<RgbCooperativeRefund, JsValue> {
+        let colored = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let id = str_arg(swap_id, "swapId")?;
+        let session = self
+            .inner
+            .begin_cooperative_refund(colored, &keys, &id)
+            .map_err(core_err)?;
+        let request = session.request();
+        Ok(RgbCooperativeRefund {
+            inner: Some(session),
+            request,
+        })
+    }
+
+    #[wasm_bindgen(js_name = finalizeClaim)]
+    pub fn finalize_claim(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+        preimage_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let colored: ColoredRgbPsbt = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let preimage = str_arg(preimage_hex, "preimageHex")?;
+        let preimage = parse_preimage_arg(&preimage, "preimageHex")?;
+        finalized_rgb_to_js(
+            self.inner
+                .finalize_claim(colored, &keys, &preimage)
+                .map_err(core_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = finalizeRefund)]
+    pub fn finalize_refund(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let colored: ColoredRgbPsbt = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        finalized_rgb_to_js(
+            self.inner
+                .finalize_refund(colored, &keys)
+                .map_err(core_err)?,
+        )
+    }
+}
+
+/// One-use MuSig2 session; secret nonces never cross the JS boundary.
+#[wasm_bindgen]
+pub struct RgbCooperativeRefund {
+    inner: Option<CoreRgbCooperativeRefund>,
+    request: RgbCooperativeRefundRequest,
+}
+
+#[wasm_bindgen]
+impl RgbCooperativeRefund {
+    pub fn request(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.request)
+    }
+
+    pub fn complete(
+        &mut self,
+        response: JsValue,
+        keys_secret_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let response: RgbCooperativeRefundResponse = from_js(response)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let session = self
+            .inner
+            .take()
+            .ok_or_else(|| JsValue::from_str("RGB signing session already consumed"))?;
+        finalized_rgb_to_js(session.complete(response, &keys).map_err(core_err)?)
+    }
+}
+
+fn finalized_rgb_to_js(spend: CoreFinalizedRgbSpend) -> Result<JsValue, JsValue> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Metadata {
+        psbt: String,
+        swap_input_index: u32,
+    }
+    let result = to_js(&Metadata {
+        psbt: spend.psbt.to_string(),
+        swap_input_index: spend.swap_input_index,
+    })?;
+    let transaction = spend
+        .transaction
+        .map(|tx| {
+            JsValue::from(BtcLikeTransaction {
+                inner: CoreBtcLikeTransaction::bitcoin(tx),
+            })
+        })
+        .unwrap_or(JsValue::NULL);
+    js_sys::Reflect::set(&result, &JsValue::from_str("transaction"), &transaction)
+        .map_err(|e| internal_err(format!("RGB finalized transaction: {e:?}")))?;
+    Ok(result)
 }
 
 /// Immutable L-USDT spend intent returned by `prepareLiquidClaim` or

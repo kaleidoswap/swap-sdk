@@ -21,6 +21,7 @@ use crate::swaps::fees::estimate_claim_fee;
 use crate::swaps::liquid::{
     decode_swap_output, LiquidSwapScript, LiquidSwapTx, PreparedLiquidSpend,
 };
+use crate::swaps::rgb::{PreparedRgbSpend, RgbSpendFunding};
 use crate::util::fees::Fee;
 use crate::util::invoice::LightningInvoice;
 use crate::util::secrets::Preimage;
@@ -306,6 +307,26 @@ pub struct LiquidPsetParams<'a> {
     pub options: Option<TransactionOptions>,
 }
 
+/// Inputs to [`SwapScript::prepare_rgb_claim`] and
+/// [`SwapScript::prepare_rgb_refund`].
+#[derive(Clone)]
+pub struct RgbPsbtParams<'a> {
+    /// The colored payout: the address of the script an rgb-lib
+    /// `witness_receive` returned (`script_buf_from_recipient_id`).
+    pub output_address: String,
+    pub funding: RgbSpendFunding,
+    /// The highest fee the SDK will sign, in sats.
+    pub max_fee: u64,
+    pub swap_id: String,
+    pub chain_client: &'a ChainClient,
+    pub boltz_api: &'a BoltzApiClientV2,
+    /// Required colored lock transaction: the taker's own lock for a refund
+    /// (rgb-lib's `send` returns it), or the maker's from `get_reverse_tx` for
+    /// a claim. Address discovery cannot distinguish a third-party BTC output
+    /// from the output carrying the accepted RGB allocation.
+    pub lockup_tx: BtcTransaction,
+}
+
 impl SwapScriptImpl {
     pub fn bitcoin(script: BtcSwapScript) -> Self {
         Self::Bitcoin(Arc::new(script))
@@ -389,7 +410,12 @@ impl SwapScript {
         };
 
         let script = script?;
-        let boltz_lockup = Amount::from_sat(reverse_response.onchain_amount);
+        // An RGB HTLC's on-chain value is its `htlcSat`; `onchainAmount` is
+        // the asset amount, in the contract's units.
+        let boltz_lockup = Amount::from_sat(match &script {
+            SwapScriptImpl::Bitcoin(script) => script.expected_amount,
+            SwapScriptImpl::Liquid(_) => reverse_response.onchain_amount,
+        });
         let mrh_amount = match (&script, chain) {
             (SwapScriptImpl::Liquid(script), _) if !script.requires_caller_funded_pset() => {
                 Some(boltz_lockup - estimate_claim_fee(chain, 0.1))
@@ -719,13 +745,7 @@ impl SwapScript {
         preimage: &Preimage,
         params: SwapTransactionParams<'_>,
     ) -> Result<BtcLikeTransaction, Error> {
-        if let SwapScriptImpl::Liquid(script) = &self.script {
-            if script.requires_caller_funded_pset() {
-                return Err(Error::Protocol(
-                    "L-USDT spends require the caller-funded PSET flow".to_string(),
-                ));
-            }
-        }
+        self.ensure_uncolored_spend()?;
 
         let additional_outputs =
             self.parse_additional_outputs(params.chain_client, params.options.as_ref())?;
@@ -817,6 +837,95 @@ impl SwapScript {
                     .map(BtcLikeTransaction::liquid)
             }
         }
+    }
+
+    /// Refuse the plain claim/refund builders for swaps they would get wrong:
+    /// an L-USDT HTLC needs a caller-funded fee, and an RGB HTLC spent without
+    /// its commitment burns the asset.
+    fn ensure_uncolored_spend(&self) -> Result<(), Error> {
+        match &self.script {
+            SwapScriptImpl::Liquid(script) if script.requires_caller_funded_pset() => Err(
+                Error::Protocol("L-USDT spends require the caller-funded PSET flow".to_string()),
+            ),
+            SwapScriptImpl::Bitcoin(script) => script.ensure_not_rgb(),
+            SwapScriptImpl::Liquid(_) => Ok(()),
+        }
+    }
+
+    /// Prepare the taker's claim of a USDT-RGB reverse swap's lock.
+    ///
+    /// Run once the lock has `minConfirmations` (the maker sends no
+    /// `transaction.confirmed` for it) and the wallet has accepted the lock
+    /// consignment. Then color the template in the wallet and finish with
+    /// [`PreparedRgbSpend::finalize_claim`]. The claim must confirm before
+    /// the swap's timeout block, when the maker's refund becomes valid.
+    pub async fn prepare_rgb_claim(
+        &self,
+        params: RgbPsbtParams<'_>,
+    ) -> Result<PreparedRgbSpend, Error> {
+        self.prepare_rgb_spend(SwapTxKind::Claim, params, false)
+            .await
+    }
+
+    /// Prepare the taker's refund of a USDT-RGB submarine swap's lock, valid
+    /// from the swap's timeout block on. Finish with
+    /// [`PreparedRgbSpend::finalize_refund`].
+    pub async fn prepare_rgb_refund(
+        &self,
+        params: RgbPsbtParams<'_>,
+    ) -> Result<PreparedRgbSpend, Error> {
+        self.prepare_rgb_spend(SwapTxKind::Refund, params, false)
+            .await
+    }
+
+    /// Prepare a key-path submarine refund; the maker must advertise RGB cooperation.
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: RgbPsbtParams<'_>,
+    ) -> Result<PreparedRgbSpend, Error> {
+        self.prepare_rgb_spend(SwapTxKind::Refund, params, true)
+            .await
+    }
+
+    async fn prepare_rgb_spend(
+        &self,
+        kind: SwapTxKind,
+        params: RgbPsbtParams<'_>,
+        cooperative: bool,
+    ) -> Result<PreparedRgbSpend, Error> {
+        let script = match &self.script {
+            SwapScriptImpl::Bitcoin(script) if script.is_rgb() => script.as_ref().clone(),
+            _ => {
+                return Err(Error::Protocol(
+                    "Colored RGB spends are only for USDT-RGB swaps".to_string(),
+                ))
+            }
+        };
+        let bitcoin_client = params.chain_client.require_bitcoin_client()?;
+        let utxo = script
+            .find_utxo(&params.lockup_tx, bitcoin_client.network(), kind.clone())?
+            .ok_or_else(|| {
+                Error::Protocol("No RGB HTLC output in the supplied lock transaction".into())
+            })?;
+        if cooperative {
+            return PreparedRgbSpend::new_cooperative_refund(
+                script,
+                &params.output_address,
+                bitcoin_client.network(),
+                utxo,
+                params.funding,
+                params.max_fee,
+            );
+        }
+        PreparedRgbSpend::new(
+            kind,
+            script,
+            &params.output_address,
+            bitcoin_client.network(),
+            utxo,
+            params.funding,
+            params.max_fee,
+        )
     }
 
     /// Prepare an L-USDT claim template for caller-provided policy-asset fees.
@@ -926,13 +1035,7 @@ impl SwapScript {
         &self,
         params: SwapTransactionParams<'_>,
     ) -> Result<BtcLikeTransaction, Error> {
-        if let SwapScriptImpl::Liquid(script) = &self.script {
-            if script.requires_caller_funded_pset() {
-                return Err(Error::Protocol(
-                    "L-USDT spends require the caller-funded PSET flow".to_string(),
-                ));
-            }
-        }
+        self.ensure_uncolored_spend()?;
 
         let additional_outputs =
             self.parse_additional_outputs(params.chain_client, params.options.as_ref())?;
@@ -1207,6 +1310,7 @@ mod tests {
                 locktime: LockTime::from_consensus(200),
                 sender_pubkey: public_key(&sender_keys),
                 expected_amount: 0,
+                rgb: None,
             }),
             None,
             None,

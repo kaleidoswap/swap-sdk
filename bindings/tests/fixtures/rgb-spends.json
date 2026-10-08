@@ -1,0 +1,84 @@
+{
+  "contractId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
+  "invoice": "lnbcrt1pnwp2uqdp2wdukuargv46xjceq2fr5ygrzd9hxg6twvus8getnwspp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5qurswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurs9qrsgqcqzys00ngxmtpk2f0x4sx9r995xuzy3vw868p72m3aj737envflkty89qkwjvk8xrkjyq89kch8q6m39mhaa5lkje9eh306ty5cqcw3624csqunrzwp",
+  "note": "Synthetic Bitcoin/PSBT binding vectors, not real RGB proofs or maker wire fixtures.",
+  "payoutAddress": "bcrt1pqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqn4zdly",
+  "preimageHash": "648aa5c579fb30f38af744d97d6ec840c7a91277a499a0d780f3e7314eca090b",
+  "preimageHex": "0303030303030303030303030303030303030303030303030303030303030303",
+  "publicKeyHex": "02989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6f",
+  "secretKeyHex": "0707070707070707070707070707070707070707070707070707070707070707",
+  "swaps": {
+    "reverse": {
+      "coloredPsbt": "cHNidP8BAIkCAAAAAbfiauaOqf+7/oaHXCb3LPVFF35L614bR3aUn6zG1c/QAAAAAAD9////AgAAAAAAAAAAImogq6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq6siAgAAAAAAACJRIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAAAAAAABASvxBQAAAAAAACJRIKkf8YeK/bx0YncGZxoKgPNDh3DIer7R8aOAPidxK4fMAAAA",
+      "fundedPsbt": null,
+      "lockTxHex": "020000000105050505050505050505050505050505050505050505050505050505050505050000000000ffffffff01f105000000000000225120a91ff1878afdbc74627706671a0a80f3438770c87abed1f1a3803e27712b87cc00000000",
+      "response": {
+        "id": "rgb-reverse",
+        "invoice": null,
+        "lockupAddress": "bcrt1p4y0lrpu2lk78gcnhqen35z5q7dpcwuxg02ldrudrsqlzwuftslxqkw6qlf",
+        "onchainAmount": 1005,
+        "refundPublicKey": "0256b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967",
+        "rgb": {
+          "amount": 1005,
+          "assetId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
+          "blinding": "42",
+          "claimFeeRate": 5,
+          "htlcSat": 1521,
+          "minConfirmations": 1,
+          "recipientId": "bcrt:wvout:Bakf8YeK-~bx0Ync-GZxoKgP-NDh3DIe-r7R8aOA-PidxK4f-M5E1Nug",
+          "scriptPubkey": "5120a91ff1878afdbc74627706671a0a80f3438770c87abed1f1a3803e27712b87cc",
+          "transportEndpoints": [
+            "rpc://127.0.0.1:3000/json-rpc"
+          ]
+        },
+        "swapTree": {
+          "claimLeaf": {
+            "output": "82012088a9148a486ff2e31d6158bf39e2608864d63fefd09d5b8820989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6fac",
+            "version": 192
+          },
+          "refundLeaf": {
+            "output": "2056b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967ad02f401b1",
+            "version": 192
+          }
+        },
+        "timeoutBlockHeight": 500
+      }
+    },
+    "submarine": {
+      "coloredPsbt": "cHNidP8BAN0CAAAAAggICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAAAAAD/////wVY27Ocj/1/N21JBBKjfbGZTH/c1kcknFgMhl3R2fwcAAAAAAP3///8DAAAAAAAAAAAiaiCrq6urq6urq6urq6urq6urq6urq6urq6urq6urq6urq+gDAAAAAAAAIlEgAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI4SgAAAAAAACJRIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIC9AEAAAABASsgTgAAAAAAACJRIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAAEBK+gDAAAAAAAAIlEg1rfJx+pgTa7UiiCVDTZF3ksC9z1RQ7aFg33/rCUNjN4AAAAA",
+      "fundedPsbt": "cHNidP8BAL0CAAAAAggICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAAAAAAD/////wVY27Ocj/1/N21JBBKjfbGZTH/c1kcknFgMhl3R2fwcAAAAAAP3///8DAAAAAAAAAAACagDoAwAAAAAAACJRIAICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICOEoAAAAAAAAiUSACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAvQBAAAAAQErIE4AAAAAAAAiUSACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgABASvoAwAAAAAAACJRINa3ycfqYE2u1IoglQ02Rd5LAvc9UUO2hYN9/6wlDYzeAAAAAA==",
+      "lockTxHex": "020000000105050505050505050505050505050505050505050505050505050505050505050000000000ffffffff01e803000000000000225120d6b7c9c7ea604daed48a20950d3645de4b02f73d5143b685837dffac250d8cde00000000",
+      "response": {
+        "acceptZeroConf": false,
+        "address": "bcrt1p66mun3l2vpx6a4y2yz2s6dj9me9s9aea29pmdpvr0hl6cfgd3n0q983xvy",
+        "bip21": "",
+        "claimPublicKey": "0256b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967",
+        "expectedAmount": 1005,
+        "id": "rgb-submarine",
+        "rgb": {
+          "amount": 1005,
+          "assetId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
+          "blinding": "42",
+          "htlcSat": 1000,
+          "minConfirmations": 1,
+          "recipientId": "bcrt:wvout:Bda3ycfq-YE2u1Io-glQ02Rd-5LAvc9U-UO2hYN9-~6wlDYz-eIkJCjA",
+          "scriptPubkey": "5120d6b7c9c7ea604daed48a20950d3645de4b02f73d5143b685837dffac250d8cde",
+          "transportEndpoints": [
+            "rpc://127.0.0.1:3000/json-rpc"
+          ]
+        },
+        "swapTree": {
+          "claimLeaf": {
+            "output": "a9148a486ff2e31d6158bf39e2608864d63fefd09d5b882056b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967ac",
+            "version": 192
+          },
+          "refundLeaf": {
+            "output": "20989c0b76cb563971fdc9bef31ec06c3560f3249d6ee9e5d83c57625596e05f6fad02f401b1",
+            "version": 192
+          }
+        },
+        "timeoutBlockHeight": 500
+      }
+    }
+  }
+}

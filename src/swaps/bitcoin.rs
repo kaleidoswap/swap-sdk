@@ -29,8 +29,9 @@ use bitcoin::{blockdata::locktime::absolute::LockTime, hashes::hash160};
 
 use super::boltz::{
     BoltzApiClientV2, ChainSwapDetails, Cooperative, CreateReverseResponse,
-    CreateSubmarineResponse, Side, SwapTxKind, SwapType, ToSign,
+    CreateSubmarineResponse, Side, SwapTree, SwapTxKind, SwapType, ToSign,
 };
+use super::rgb::RgbHtlcContext;
 use super::wrappers::SwapScriptCommon;
 
 use crate::network::{BitcoinChain, BitcoinClient};
@@ -57,8 +58,14 @@ pub struct BtcSwapScript {
     pub receiver_pubkey: PublicKey,
     pub locktime: LockTime,
     pub sender_pubkey: PublicKey,
-    /// Exact amount expected at the swap HTLC output.
+    /// Exact amount expected at the swap HTLC output, in sats. For an RGB
+    /// swap this is the HTLC's `htlcSat`, not the asset amount.
     pub expected_amount: u64,
+    /// The RGB allocation the HTLC carries, for a USDT-RGB swap. While it is
+    /// set, every uncolored spend path refuses this script: only
+    /// [`crate::swaps::rgb::PreparedRgbSpend`] spends it without burning the
+    /// asset.
+    pub rgb: Option<RgbHtlcContext>,
 }
 
 impl BtcSwapScript {
@@ -120,6 +127,11 @@ impl BtcSwapScript {
         }
 
         let funding_addrs = Address::from_str(&create_swap_response.address)?.assume_checked();
+        let rgb = create_swap_response
+            .rgb
+            .as_ref()
+            .map(RgbHtlcContext::from_lock)
+            .transpose()?;
 
         Ok(BtcSwapScript {
             swap_type: SwapType::Submarine,
@@ -130,7 +142,10 @@ impl BtcSwapScript {
             receiver_pubkey: create_swap_response.claim_public_key,
             locktime: timelock,
             sender_pubkey: our_pubkey,
-            expected_amount: create_swap_response.expected_amount,
+            expected_amount: rgb
+                .as_ref()
+                .map_or(create_swap_response.expected_amount, |rgb| rgb.htlc_sat),
+            rgb,
         })
     }
 
@@ -207,6 +222,11 @@ impl BtcSwapScript {
         }
 
         let funding_addrs = Address::from_str(&reverse_response.lockup_address)?.assume_checked();
+        let rgb = reverse_response
+            .rgb
+            .as_ref()
+            .map(RgbHtlcContext::from_lock)
+            .transpose()?;
 
         Ok(BtcSwapScript {
             swap_type: SwapType::ReverseSubmarine,
@@ -217,7 +237,10 @@ impl BtcSwapScript {
             receiver_pubkey: our_pubkey,
             locktime: timelock,
             sender_pubkey: reverse_response.refund_public_key,
-            expected_amount: reverse_response.onchain_amount,
+            expected_amount: rgb
+                .as_ref()
+                .map_or(reverse_response.onchain_amount, |rgb| rgb.htlc_sat),
+            rgb,
         })
     }
 
@@ -295,10 +318,30 @@ impl BtcSwapScript {
             locktime: timelock,
             sender_pubkey,
             expected_amount: chain_swap_details.amount,
+            rgb: None,
         })
     }
 
-    fn claim_script(&self) -> ScriptBuf {
+    /// RGB wire leaves must match the tree the SDK will spend, including version
+    /// and every script byte; parsing only the hash and timeout is insufficient.
+    pub(crate) fn validate_rgb_response_tree(&self, tree: &SwapTree) -> Result<(), Error> {
+        let version = LeafVersion::TapScript.to_consensus();
+        if tree.claim_leaf.version != version || tree.refund_leaf.version != version {
+            return Err(Error::Protocol(format!(
+                "RGB swap tree must use leaf version {version:#04x}"
+            )));
+        }
+        if ScriptBuf::from_hex(&tree.claim_leaf.output)? != self.claim_script()
+            || ScriptBuf::from_hex(&tree.refund_leaf.output)? != self.refund_script()
+        {
+            return Err(Error::Protocol(
+                "RGB swap tree contains non-canonical claim or refund script".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn claim_script(&self) -> ScriptBuf {
         match self.swap_type {
             SwapType::Submarine => Builder::new()
                 .push_opcode(OP_HASH160)
@@ -321,7 +364,7 @@ impl BtcSwapScript {
         }
     }
 
-    fn refund_script(&self) -> ScriptBuf {
+    pub(crate) fn refund_script(&self) -> ScriptBuf {
         // Refund scripts are same for all swap types
         Builder::new()
             .push_x_only_key(&self.sender_pubkey.inner.x_only_public_key().0)
@@ -332,7 +375,7 @@ impl BtcSwapScript {
     }
 
     /// Internally used to convert struct into a bitcoin::Script type
-    fn taproot_spendinfo(&self) -> Result<TaprootSpendInfo, Error> {
+    pub(crate) fn taproot_spendinfo(&self) -> Result<TaprootSpendInfo, Error> {
         let secp = Secp256k1::new();
 
         // Setup Key Aggregation cache
@@ -411,6 +454,101 @@ impl BtcSwapScript {
         } else {
             Err(Error::Protocol("Script/LockupAddress Mismatch".to_string()))
         }
+    }
+
+    /// Whether the HTLC carries an RGB allocation.
+    pub fn is_rgb(&self) -> bool {
+        self.rgb.is_some()
+    }
+
+    /// Refuse an uncolored spend of an RGB HTLC: it would burn the asset.
+    pub(crate) fn ensure_not_rgb(&self) -> Result<(), Error> {
+        if self.is_rgb() {
+            return Err(Error::Protocol(
+                "RGB HTLCs are spent only through the colored PSBT flow \
+                 (prepare_rgb_claim / prepare_rgb_refund): an uncolored spend burns the asset"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// The script-path witness for input `input_index` of `tx`, a colored RGB
+    /// spend of this HTLC, signed over every input's previous output.
+    ///
+    /// A claim takes the preimage and the receiver's key, a refund the
+    /// sender's key; anything else is refused before signing.
+    pub(crate) fn rgb_leaf_witness(
+        &self,
+        kind: SwapTxKind,
+        tx: &Transaction,
+        input_index: usize,
+        prevouts: &[TxOut],
+        keys: &Keypair,
+        preimage: Option<&Preimage>,
+    ) -> Result<Witness, Error> {
+        if prevouts.len() != tx.input.len() {
+            return Err(Error::Protocol(
+                "Every input's previous output is needed to sign".to_string(),
+            ));
+        }
+        let (leaf, signer, preimage_bytes) = match kind {
+            SwapTxKind::Claim => {
+                let preimage = preimage.ok_or_else(|| {
+                    Error::Protocol("No preimage provided while signing.".to_string())
+                })?;
+                if preimage.hash160 != self.hashlock {
+                    return Err(Error::Protocol(
+                        "Preimage does not match the swap's hashlock".to_string(),
+                    ));
+                }
+                let bytes = preimage.bytes.ok_or_else(|| {
+                    Error::Protocol("No preimage provided while signing.".to_string())
+                })?;
+                (self.claim_script(), self.receiver_pubkey, Some(bytes))
+            }
+            SwapTxKind::Refund => (self.refund_script(), self.sender_pubkey, None),
+        };
+        if keys.public_key() != signer.inner {
+            return Err(Error::Protocol(format!(
+                "The key does not sign this swap's {kind:?} leaf"
+            )));
+        }
+        if kind == SwapTxKind::Refund
+            && (tx.lock_time != self.locktime || tx.input[input_index].sequence == Sequence::MAX)
+        {
+            return Err(Error::Protocol(
+                "A refund must lock to the swap timeout with a non-final sequence".to_string(),
+            ));
+        }
+
+        let leaf_hash = TapLeafHash::from_script(&leaf, LeafVersion::TapScript);
+        let sighash = SighashCache::new(tx).taproot_script_spend_signature_hash(
+            input_index,
+            &Prevouts::All(prevouts),
+            leaf_hash,
+            TapSighashType::Default,
+        )?;
+        let msg = Message::from_digest_slice(sighash.as_byte_array())?;
+        let signature = Signature {
+            signature: Secp256k1::new().sign_schnorr(&msg, keys),
+            sighash_type: TapSighashType::Default,
+        };
+        let control_block = self
+            .taproot_spendinfo()?
+            .control_block(&(leaf.clone(), LeafVersion::TapScript))
+            .ok_or(Error::Taproot(
+                "Control block calculation failed".to_string(),
+            ))?;
+
+        let mut witness = Witness::new();
+        witness.push(signature.to_vec());
+        if let Some(bytes) = preimage_bytes {
+            witness.push(bytes);
+        }
+        witness.push(leaf.as_bytes());
+        witness.push(control_block.serialize());
+        Ok(witness)
     }
 
     /// Get the balance of the script
@@ -629,6 +767,7 @@ impl BtcSwapTx {
         kaleidorg_swap_sdk: &BoltzApiClientV2,
         swap_id: String,
     ) -> Result<BtcSwapTx, Error> {
+        swap_script.ensure_not_rgb()?;
         let utxo = swap_script
             .fetch_swap_utxo(
                 None,
@@ -647,6 +786,7 @@ impl BtcSwapTx {
         bitcoin_client: &BC,
         utxo: (OutPoint, TxOut),
     ) -> Result<BtcSwapTx, Error> {
+        swap_script.ensure_not_rgb()?;
         if swap_script.swap_type == SwapType::Submarine {
             return Err(Error::Protocol(
                 "Claim transactions cannot be constructed for Submarine swaps.".to_string(),
@@ -689,6 +829,7 @@ impl BtcSwapTx {
         kaleidorg_swap_sdk: &BoltzApiClientV2,
         swap_id: String,
     ) -> Result<BtcSwapTx, Error> {
+        swap_script.ensure_not_rgb()?;
         if swap_script.swap_type == SwapType::ReverseSubmarine {
             return Err(Error::Protocol(
                 "Refund Txs cannot be constructed for Reverse Submarine Swaps.".to_string(),
@@ -753,6 +894,7 @@ impl BtcSwapTx {
         fee: Fee,
         is_cooperative: Option<Cooperative<'_>>,
     ) -> Result<Transaction, Error> {
+        self.swap_script.ensure_not_rgb()?;
         if self.swap_script.swap_type == SwapType::Submarine {
             return Err(Error::Protocol(
                 "Claim Tx signing is not applicable for Submarine Swaps".to_string(),
@@ -1068,6 +1210,7 @@ impl BtcSwapTx {
         fee: Fee,
         is_cooperative: Option<Cooperative<'_>>,
     ) -> Result<Transaction, Error> {
+        self.swap_script.ensure_not_rgb()?;
         if self.swap_script.swap_type == SwapType::ReverseSubmarine {
             return Err(Error::Protocol(
                 "Refund Tx signing is not applicable for Reverse Submarine Swaps".to_string(),
@@ -1350,6 +1493,10 @@ impl SwapScriptCommon for BtcSwapScript {
         pub_nonce: &str,
         transaction_hash: &str,
     ) -> Result<(musig::PartialSignature, musig::PublicNonce), Error> {
+        // The maker refuses cooperative spends of RGB HTLCs, and a key-path
+        // spend it would co-sign carries no RGB commitment.
+        self.ensure_not_rgb()?;
+
         // Step 1: Start with a Musig KeyAgg Cache
 
         let mut key_agg_cache = self.musig_keyagg_cache();
@@ -1399,16 +1546,16 @@ fn convert_xonly_key(key: secp256k1_musig::XOnlyPublicKey) -> bitcoin::XOnlyPubl
     bitcoin::XOnlyPublicKey::from_slice(&key.serialize()[..]).expect("xonly key size matches")
 }
 
-fn convert_public_key(key: bitcoin::secp256k1::PublicKey) -> secp256k1_musig::PublicKey {
+pub(crate) fn convert_public_key(key: bitcoin::secp256k1::PublicKey) -> secp256k1_musig::PublicKey {
     secp256k1_musig::PublicKey::from_slice(&key.serialize()[..]).expect("public key size matches")
 }
 
-fn convert_keypair(keys: &bitcoin::secp256k1::Keypair) -> secp256k1_musig::Keypair {
+pub(crate) fn convert_keypair(keys: &bitcoin::secp256k1::Keypair) -> secp256k1_musig::Keypair {
     secp256k1_musig::Keypair::from_seckey_byte_array(keys.secret_bytes())
         .expect("keypair size matches")
 }
 
-fn convert_schnorr_signature(
+pub(crate) fn convert_schnorr_signature(
     schnorr_sig: secp256k1_musig::schnorr::Signature,
 ) -> bitcoin::secp256k1::schnorr::Signature {
     bitcoin::secp256k1::schnorr::Signature::from_slice(schnorr_sig.as_byte_array())
@@ -1440,6 +1587,7 @@ mod tests {
                 inner: sender.public_key(),
             },
             expected_amount,
+            rgb: None,
         }
     }
 
@@ -1589,6 +1737,7 @@ mod tests {
                 inner: sender_keypair.public_key(),
             },
             expected_amount: FUNDING_SAT,
+            rgb: None,
         };
 
         let utxo = (
@@ -1796,6 +1945,7 @@ mod tests {
             locktime: LockTime::from_consensus(timeout_block_height),
             sender_pubkey,
             expected_amount: 10_000,
+            rgb: None,
         };
 
         ChainSwapDetails {
@@ -1952,6 +2102,7 @@ mod tests {
                 locktime: LockTime::from_consensus(200),
                 sender_pubkey: public_key(&sender_keys),
                 expected_amount: 0,
+                rgb: None,
             },
             output_address,
             utxos: vec![(OutPoint::default(), TxOut::NULL)],
@@ -1980,6 +2131,7 @@ mod tests {
                 locktime: LockTime::from_height(200).unwrap(),
                 sender_pubkey: public_key(&sender_keys),
                 expected_amount: 10_000,
+                rgb: None,
             },
             output_address: Address::p2tr(
                 &secp,

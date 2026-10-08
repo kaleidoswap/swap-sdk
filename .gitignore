@@ -15,3 +15,5 @@ typescript-sdk/vendor/
 # Swap state the examples persist before funding — real refund material.
 typescript-sdk/examples/swaps/
 .DS_Store
+# Native RGB regtest wallets, node keys and swap recovery state.
+examples/rgb-regtest/run/

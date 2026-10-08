@@ -11,6 +11,7 @@ use kaleidorg_swap_sdk::error::Error as CoreError;
 use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 use kaleidorg_swap_sdk::network::{Chain, Currency, Network};
 use kaleidorg_swap_sdk::swaps::boltz::*;
+use kaleidorg_swap_sdk::swaps::RgbLock;
 use kaleidorg_swap_sdk::util::secrets::Preimage;
 use kaleidorg_swap_sdk::LiquidAssetContext;
 use std::collections::HashMap;
@@ -32,6 +33,9 @@ pub enum Error {
 
     #[error("{0}")]
     Generic(String),
+
+    #[error("A caller-provided Bitcoin fee input is required for this RGB spend")]
+    RgbFeeInputRequired,
 }
 
 impl From<CoreError> for Error {
@@ -43,6 +47,7 @@ impl From<CoreError> for Error {
             // below reqwest's own layer.
             CoreError::HTTP(_) => Error::Http(err.message_with_causes()),
             CoreError::LiquidFeeAssetRequired => Error::LiquidFeeAssetRequired,
+            CoreError::RgbFeeInputRequired => Error::RgbFeeInputRequired,
             _ => Error::Generic(err.message()),
         }
     }
@@ -159,6 +164,12 @@ impl SwapClient {
             .from
             .resolve_currency(swap_request.from_currency)?;
         let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
+        let rgb_contract_id = rgb_contract_before_create(
+            from_currency,
+            to_currency,
+            false,
+            swap_request.rgb_contract_id.as_deref(),
+        )?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
             (Currency::LUsdt, _) | (_, Currency::LUsdt)
@@ -182,13 +193,28 @@ impl SwapClient {
                 webhook: None,
             })
             .await?;
-        response.validate_with_currency_and_asset_context(
-            &swap_request.invoice,
-            &swap_request.refund_public_key,
-            swap_request.from,
-            Some(from_currency),
-            expected_asset_context,
-        )?;
+        if let Some(contract_id) = rgb_contract_id {
+            let Chain::Bitcoin(chain) = swap_request.from else {
+                unreachable!("USDT-RGB resolves only on Bitcoin")
+            };
+            response.validate_rgb_with_max_htlc_sat(
+                &swap_request.invoice,
+                &swap_request.refund_public_key,
+                chain,
+                contract_id,
+                swap_request
+                    .rgb_max_htlc_sat
+                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+            )?;
+        } else {
+            response.validate_with_currency_and_asset_context(
+                &swap_request.invoice,
+                &swap_request.refund_public_key,
+                swap_request.from,
+                Some(from_currency),
+                expected_asset_context,
+            )?;
+        }
         Ok(response)
     }
 
@@ -201,6 +227,12 @@ impl SwapClient {
             .from
             .resolve_currency(swap_request.from_currency)?;
         let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
+        let rgb_contract_id = rgb_contract_before_create(
+            from_currency,
+            to_currency,
+            true,
+            swap_request.rgb_contract_id.as_deref(),
+        )?;
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
             (Currency::LUsdt, _) | (_, Currency::LUsdt)
@@ -235,13 +267,25 @@ impl SwapClient {
                 webhook: None,
             })
             .await?;
-        response.validate_with_currency_and_asset_context(
-            &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
-            &swap_request.claim_public_key,
-            swap_request.to,
-            Some(to_currency),
-            expected_asset_context,
-        )?;
+        if let Some(contract_id) = rgb_contract_id {
+            let Chain::Bitcoin(chain) = swap_request.to else {
+                unreachable!("USDT-RGB resolves only on Bitcoin")
+            };
+            response.validate_rgb(
+                &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
+                &swap_request.claim_public_key,
+                chain,
+                contract_id,
+            )?;
+        } else {
+            response.validate_with_currency_and_asset_context(
+                &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
+                &swap_request.claim_public_key,
+                swap_request.to,
+                Some(to_currency),
+                expected_asset_context,
+            )?;
+        }
         Ok(response)
     }
 
@@ -254,6 +298,11 @@ impl SwapClient {
             .from
             .resolve_currency(swap_request.from_currency)?;
         let to_currency = swap_request.to.resolve_currency(swap_request.to_currency)?;
+        if from_currency == Currency::UsdtRgb || to_currency == Currency::UsdtRgb {
+            return Err(Error::Generic(
+                "USDT-RGB chain swaps are unsupported".into(),
+            ));
+        }
         let expected_asset_context = if matches!(
             (from_currency, to_currency),
             (Currency::LUsdt, _) | (_, Currency::LUsdt)
@@ -401,6 +450,19 @@ impl SwapClient {
         Ok(self
             .inner
             .accept_quote(swap_id, amount_sat, swap_auth.as_deref())
+            .await?)
+    }
+
+    #[uniffi::method]
+    pub async fn get_rgb_refund_partial_sig(
+        &self,
+        swap_id: &str,
+        request: kaleidorg_swap_sdk::swaps::rgb::RgbCooperativeRefundRequest,
+        swap_auth: &str,
+    ) -> Result<kaleidorg_swap_sdk::swaps::rgb::RgbCooperativeRefundResponse, Error> {
+        Ok(self
+            .inner
+            .get_rgb_refund_partial_sig(swap_id, &request, swap_auth)
             .await?)
     }
 
@@ -588,6 +650,12 @@ pub struct CreateSubmarineRequest {
     pub pair_hash: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// Expected RGB contract, pinned locally and never sent to the maker.
+    #[uniffi(default = None)]
+    pub rgb_contract_id: Option<String>,
+    /// Local BTC collateral cap; defaults to 1000 sats. Never sent to the maker.
+    #[uniffi(default = None)]
+    pub rgb_max_htlc_sat: Option<u64>,
 }
 
 #[derive(Debug, Record)]
@@ -614,6 +682,9 @@ pub struct CreateReverseRequest {
     pub address_signature: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// Expected RGB contract, pinned locally and never sent to the maker.
+    #[uniffi(default = None)]
+    pub rgb_contract_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -626,6 +697,47 @@ pub struct Leaf {
 pub struct SwapTree {
     pub claim_leaf: Leaf,
     pub refund_leaf: Leaf,
+}
+
+fn rgb_contract_before_create(
+    from: Currency,
+    to: Currency,
+    reverse: bool,
+    contract_id: Option<&str>,
+) -> Result<Option<&str>, Error> {
+    if from != Currency::UsdtRgb && to != Currency::UsdtRgb {
+        return Ok(None);
+    }
+    let expected = if reverse {
+        (Currency::Btc, Currency::UsdtRgb)
+    } else {
+        (Currency::UsdtRgb, Currency::Btc)
+    };
+    if (from, to) != expected {
+        return Err(Error::Generic("Unsupported USDT-RGB swap direction".into()));
+    }
+    match contract_id {
+        Some(id) if !id.trim().is_empty() => Ok(Some(id)),
+        _ => Err(Error::Generic(
+            "USDT-RGB swaps require rgb_contract_id before creation".into(),
+        )),
+    }
+}
+
+/// The RGB allocation a KaleidoSwap `USDT-RGB` HTLC carries.
+#[uniffi::remote(Record)]
+pub struct RgbLock {
+    #[uniffi(default = None)]
+    pub cooperative_refund: Option<String>,
+    pub asset_id: String,
+    pub amount: u64,
+    pub recipient_id: String,
+    pub blinding: String,
+    pub htlc_sat: u64,
+    pub claim_fee_rate: Option<u64>,
+    pub script_pubkey: String,
+    pub transport_endpoints: Vec<String>,
+    pub min_confirmations: u8,
 }
 
 #[uniffi::remote(Record)]
@@ -645,6 +757,8 @@ pub struct CreateSubmarineResponse {
     /// Per-swap taker credential the KaleidoSwap maker issues once on
     /// creation. No submarine-swap route needs it today; persist it anyway.
     pub swap_auth: Option<String>,
+    /// The RGB allocation to lock, on a `USDT-RGB` route.
+    pub rgb: Option<RgbLock>,
 }
 
 #[uniffi::remote(Record)]
@@ -663,6 +777,8 @@ pub struct CreateReverseResponse {
     /// Per-swap taker credential the KaleidoSwap maker issues once on
     /// creation. No reverse-swap route needs it today; persist it anyway.
     pub swap_auth: Option<String>,
+    /// The RGB allocation the maker locks, on a `USDT-RGB` route.
+    pub rgb: Option<RgbLock>,
 }
 
 #[derive(Debug, Record)]
