@@ -4,10 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-09
+
 ### BREAKING — Rust core: RGB-aware Bitcoin swap scripts
 
-These changes require the next minor release, **0.11.0**, and must not be
-published as a 0.10.x patch. Release preparation will synchronize package versions.
+This release adds USDT-RGB submarine and reverse swaps for KaleidoSwap Maker
+0.8.0, authenticated cooperative refunds and signed credential recovery.
+Rust, Python, TypeScript and React Native packages share version **0.11.0**.
+RGB chain swaps remain unsupported by the SDK; the maker ships atomic-chain
+pairs disabled pending production sign-off.
 
 | Was | Now | Migration |
 |---|---|---|
