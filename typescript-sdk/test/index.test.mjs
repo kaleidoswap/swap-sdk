@@ -672,3 +672,117 @@ test("makerBaseUrl reaches the binding under the name it deserializes", async ()
     /`makerBaseUrl` is required.*named `boltzBaseUrl` before 0\.9\.0/s,
   );
 });
+
+test("account restore discovers records and indices through WASM without applying the root path", async () => {
+  const { createServer } = await import("node:http");
+  const master = SwapMasterKey.fromWalletMnemonic(MNEMONIC, "regtest");
+  const requests = [];
+  const restored = {
+    id: "01KZZYB138E7C3HZX7Q1YBGAQG",
+    type: "submarine",
+    status: "invoice.set",
+    createdAt: 1800000000,
+    from: "BTC",
+    to: "BTC",
+  };
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const request = JSON.parse(body);
+    requests.push(request);
+    // Model the maker's discovery boundary: an account xpub only finds its
+    // direct child keys with "m"; the root-xpub default finds nothing.
+    const found =
+      request.xpub === master.masterXpub() && request.derivationPath === "m";
+    res.setHeader("content-type", "application/json");
+    res.end(
+      JSON.stringify(
+        req.url.endsWith("/index")
+          ? { index: found ? 3 : -1 }
+          : found
+            ? [restored]
+            : [],
+      ),
+    );
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const client = new SwapClient(`http://127.0.0.1:${server.address().port}/v2`);
+  try {
+    assert.deepEqual(await client.swapRestore(master.masterXpub()), []);
+    const swaps = await master.restore(client, 50);
+    assert.equal(swaps[0].id, restored.id);
+    assert.equal(swaps[0].createdAt, 1800000000n);
+    assert.equal((await master.restoreIndex(client, 50)).index, 3n);
+    assert.equal((await master.restore(client)).length, 1);
+    assert.equal((await master.restoreIndex(client)).index, 3n);
+    assert.ok(requests.slice(1).every((r) => r.derivationPath === "m"));
+    assert.equal(requests[1].gapLimit, 50);
+    assert.equal(requests[2].gapLimit, 50);
+    assert.equal(requests[3].gapLimit, undefined);
+    assert.equal(requests[4].gapLimit, undefined);
+    assert.ok(requests.every((r) => !JSON.stringify(r).includes(MNEMONIC)));
+  } finally {
+    client.free();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("restored keys recover swapAuth through WASM and authorize a re-quote", async () => {
+  const { createServer } = await import("node:http");
+  const id = "01KZZYB138E7C3HZX7Q1YBGAQG";
+  const challenge = Buffer.alloc(72, 42);
+  challenge.writeBigInt64BE(1800000300n);
+  const auth = "a1".repeat(32);
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    requests.push({
+      url: req.url,
+      headers: req.headers,
+      body: JSON.parse(body),
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.url.endsWith("/auth/challenge")) {
+      res.end(
+        JSON.stringify({
+          challenge: challenge.toString("hex"),
+          expiresAt: 1800000300,
+        }),
+      );
+    } else if (req.url.endsWith("/auth/recover")) {
+      res.end(JSON.stringify({ swapAuth: auth }));
+    } else {
+      res.end("{}");
+    }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const client = new SwapClient(`http://127.0.0.1:${server.address().port}/v2`);
+  try {
+    const keys = SwapMasterKey.fromWalletMnemonic(
+      MNEMONIC,
+      "regtest",
+    ).deriveSwapKey(3n);
+    const recovered = await client.recoverSwapAuth(id, keys.secretKey);
+    assert.equal(recovered, auth);
+    await client.acceptQuote(id, 93500n, recovered);
+    assert.deepEqual(
+      requests.map((r) => r.url),
+      [
+        `/v2/swap/${id}/auth/challenge`,
+        `/v2/swap/${id}/auth/recover`,
+        `/v2/swap/chain/${id}/quote`,
+      ],
+    );
+    assert.equal(requests[1].body.challenge, challenge.toString("hex"));
+    assert.match(requests[1].body.signature, /^[0-9a-f]{128}$/);
+    assert.equal(requests[2].headers["x-swap-auth"], recovered);
+    assert.equal(requests[2].body.amount, 93500);
+    assert.ok(
+      requests.every((r) => !JSON.stringify(r.body).includes(keys.secretKey)),
+    );
+  } finally {
+    client.free();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

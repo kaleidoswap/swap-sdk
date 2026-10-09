@@ -437,7 +437,7 @@ impl SwapClient {
     /// with `401 invalid_swap_auth` and no other route resolves the re-quote,
     /// so the swap runs out its refund path instead.
     ///
-    /// Persist `swap_auth` with the swap when you create it. Nothing re-issues
+    /// Persist `swap_auth` with the swap when you create it. Signed recovery can re-issue
     /// it — [`Self::swap_restore`] authenticates with an XPUB alone and does
     /// not return it.
     #[uniffi::method]
@@ -470,6 +470,16 @@ impl SwapClient {
     #[uniffi::method]
     pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
         Ok(self.inner.get_nodes().await?)
+    }
+
+    /// Recover a swap credential using the wallet's restored taker key.
+    #[uniffi::method]
+    pub async fn recover_swap_auth(
+        &self,
+        swap_id: String,
+        keys: Arc<crate::swap::KeyPair>,
+    ) -> Result<String, Error> {
+        Ok(self.inner.recover_swap_auth(&swap_id, &keys.inner).await?)
     }
 
     /// Every swap the maker has seen for `xpub` — the recovery entry point

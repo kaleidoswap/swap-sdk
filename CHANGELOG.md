@@ -11,6 +11,8 @@ published as a 0.10.x patch. Release preparation will synchronize package versio
 
 | Was | Now | Migration |
 |---|---|---|
+| Rust `Cooperative { .. }` struct literals | new optional `swap_auth` field | add `swap_auth: None` for makers without auth, or the saved credential for KaleidoSwap refunds |
+| UniFFI `TransactionOptions { .. }` Rust struct literals | new optional `swap_auth` field | add `swap_auth: None` or the saved credential; Python defaults remain optional |
 | `BtcSwapScript { .. }` struct literals | new public field `rgb: Option<RgbHtlcContext>` | add `rgb: None`; the constructors set it from the response |
 | `Currency` had three variants | adds `Currency::UsdtRgb` (`"USDT-RGB"`, Bitcoin only) | cover it in exhaustive matches |
 | `CreateSubmarineResponse` / `CreateReverseResponse` struct literals | new field `rgb: Option<RgbLock>` | add `rgb: None` |
@@ -128,6 +130,29 @@ L-USDT flow; see `docs/rgb-swaps-plan.md`.
 - Synthetic Python and JavaScript binding tests cover both RGB directions,
   local contract pins, wrong allocations and caller-funded refunds. These do not
   validate RGB consignments or replace the separate live rgb-lib regtest tests.
+
+### Fixed — account-key restore path
+
+TypeScript `SwapMasterKey.restore(client, gapLimit?)` and
+`restoreIndex(client, gapLimit?)` explicitly use `"m"` with the account xpub, so
+discovery searches the same child keys as `deriveSwapKey`. Low-level restore
+methods retain their explicit path option for callers using root xpubs.
+
+### Cooperative refund authorization and signed credential recovery
+
+Cooperative Bitcoin/Liquid submarine and chain refunds now forward the per-swap
+`swapAuth` credential through `TxParams.swapAuth` in TypeScript/WASM and
+`TransactionOptions.swap_auth` in UniFFI (`with_swap_auth` in Rust). Upstream
+Boltz calls can still omit it. Low-level Rust refund methods keep their existing
+signatures; authenticated variants add `_with_swap_auth`. Rust callers building
+`Cooperative` literals must add `swap_auth: None` or their saved credential.
+
+`SwapClient.recoverSwapAuth(swapId, keysSecretHex)` (Rust/UniFFI:
+`recover_swap_auth`) requests a short-lived maker challenge and signs a
+purpose-specific message with a restored taker key, recovering the existing
+credential without revealing it to XPUB-only restore callers. Requires maker's
+new `/auth/challenge` and `/auth/recover` endpoints. Save the returned credential
+and pass it to cooperative refunds or `acceptQuote`.
 
 ### Fixed — the Arkade venue accepts and runs on `@arkade-os/swap` 0.0.21–0.0.24
 

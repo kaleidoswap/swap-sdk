@@ -59,6 +59,7 @@ impl DirectTxOptions {
 #[derive(Clone)]
 pub struct TransactionOptions {
     cooperative: bool,
+    swap_auth: Option<String>,
     chain_claim: Option<ChainClaim>,
     lockup_tx: Option<BtcLikeTransaction>,
     additional_outputs: Vec<(String, u64)>,
@@ -78,6 +79,7 @@ impl Default for TransactionOptions {
     fn default() -> Self {
         Self {
             cooperative: true,
+            swap_auth: None,
             chain_claim: None,
             lockup_tx: None,
             additional_outputs: Vec::new(),
@@ -89,6 +91,12 @@ impl TransactionOptions {
     /// Whether a cooperative claim with boltz should be attempted
     pub fn with_cooperative(mut self, cooperative: bool) -> Self {
         self.cooperative = cooperative;
+        self
+    }
+
+    /// Credential returned on create or recovered with proof of swap-key ownership.
+    pub fn with_swap_auth(mut self, swap_auth: String) -> Self {
+        self.swap_auth = Some(swap_auth);
         self
     }
 
@@ -533,6 +541,7 @@ impl SwapScript {
             boltz_api,
             swap_id: swap_id.clone(),
             signature,
+            swap_auth: None,
         })
     }
 
@@ -573,6 +582,7 @@ impl SwapScript {
                     boltz_api,
                     swap_id,
                     signature: None,
+                    swap_auth: o.swap_auth,
                 })),
             },
             false => Ok(None),

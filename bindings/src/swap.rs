@@ -338,6 +338,9 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
             options: params.options.clone().map(|o| {
                 let mut options =
                     swaps_bitcoin::TransactionOptions::default().with_cooperative(o.cooperative);
+                if let Some(auth) = o.swap_auth {
+                    options = options.with_swap_auth(auth);
+                }
                 if let Some(chain_claim) = o.chain_claim {
                     options = options.with_chain_claim(
                         chain_claim.keys.inner,
@@ -513,6 +516,9 @@ pub struct TransactionOptions {
     pub cooperative: bool,
     #[uniffi(default = None)]
     pub chain_claim: Option<ChainClaim>,
+    /// Per-swap credential returned on creation or signed recovery.
+    #[uniffi(default = None)]
+    pub swap_auth: Option<String>,
 }
 
 #[uniffi::remote(Enum)]
@@ -559,7 +565,7 @@ impl BtcLikeTransaction {
 
 #[derive(uniffi::Object)]
 pub struct KeyPair {
-    inner: Keypair,
+    pub(crate) inner: Keypair,
 }
 
 #[uniffi::export]

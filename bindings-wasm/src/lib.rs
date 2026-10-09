@@ -992,19 +992,7 @@ impl BoltzClient {
         let swap_id = str_arg(swap_id, "swapId")?;
         to_js(&self.inner.get_quote(&swap_id).await.map_err(core_err)?)
     }
-    /// Accept a chain-swap re-quote at `amountSat`.
-    ///
-    /// `swapAuth` is the per-swap credential the KaleidoSwap maker returned as
-    /// `swapAuth` on the create response. Accepting commits the maker's payout,
-    /// so the maker authorizes it with that credential rather than with the
-    /// swap id — which is not a secret. Omit it only for a maker that issues
-    /// none (upstream Boltz); against KaleidoSwap the call is rejected with
-    /// `401 invalid_swap_auth` and no other route resolves the re-quote, so the
-    /// swap runs out its refund path instead.
-    ///
-    /// Persist `swapAuth` with the swap when you create it. Nothing re-issues
-    /// it — `swapRestore` authenticates with an XPUB alone and does not return
-    /// it.
+    /// Request an authenticated cooperative signature for a colored RGB refund.
     #[wasm_bindgen(js_name = getRgbRefundPartialSig)]
     pub async fn get_rgb_refund_partial_sig(
         &self,
@@ -1024,6 +1012,19 @@ impl BoltzClient {
         )
     }
 
+    /// Accept a chain-swap re-quote at `amountSat`.
+    ///
+    /// `swapAuth` is the per-swap credential the KaleidoSwap maker returned as
+    /// `swapAuth` on the create response. Accepting commits the maker's payout,
+    /// so the maker authorizes it with that credential rather than with the
+    /// swap id — which is not a secret. Omit it only for a maker that issues
+    /// none (upstream Boltz); against KaleidoSwap the call is rejected with
+    /// `401 invalid_swap_auth` and no other route resolves the re-quote, so the
+    /// swap runs out its refund path instead.
+    ///
+    /// Persist `swapAuth` with the swap when you create it. Signed recovery can re-issue
+    /// it — `swapRestore` authenticates with an XPUB alone and does not return
+    /// it.
     #[wasm_bindgen(js_name = acceptQuote)]
     pub async fn accept_quote(
         &self,
@@ -1044,6 +1045,25 @@ impl BoltzClient {
 
     // ---- Recovery ----------------------------------------------------------
 
+    /// Recover a credential by signing with the restored per-swap taker key.
+    #[wasm_bindgen(js_name = recoverSwapAuth)]
+    pub async fn recover_swap_auth(
+        &self,
+        swap_id: StringArg,
+        keys_secret_hex: StringArg,
+    ) -> Result<String, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        self.inner
+            .recover_swap_auth(&swap_id, &keys)
+            .await
+            .map_err(core_err)
+    }
+
+    /// Discover swaps from an xpub. Pass `"m"` as `derivationPath` when using
+    /// `WasmSwapMasterKey.masterXpub()`; the maker's omitted-path default is
+    /// intended for a root xpub and will not match this account's child keys.
     #[wasm_bindgen(js_name = swapRestore)]
     pub async fn swap_restore(
         &self,
@@ -1061,6 +1081,8 @@ impl BoltzClient {
                 .map_err(core_err)?,
         )
     }
+    /// Find the highest known key index. Use the same explicit `"m"` path as
+    /// `swapRestore` for account xpubs. Results are bounded by the gap limit.
     #[wasm_bindgen(js_name = swapRestoreIndex)]
     pub async fn swap_restore_index(
         &self,
@@ -1200,6 +1222,8 @@ struct TxParams {
     fee_absolute_sat: Option<u64>,
     #[serde(default = "default_true")]
     cooperative: bool,
+    #[serde(default)]
+    swap_auth: Option<String>,
 }
 
 impl TxParams {
@@ -1400,7 +1424,13 @@ impl SwapScript {
             swap_id: p.swap_id.clone(),
             chain_client: &chain_client,
             boltz_api: &boltz,
-            options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
+            options: Some({
+                let options = TransactionOptions::default().with_cooperative(p.cooperative);
+                match p.swap_auth {
+                    Some(auth) => options.with_swap_auth(auth),
+                    None => options,
+                }
+            }),
         };
         let tx = self
             .inner
@@ -1487,7 +1517,13 @@ impl SwapScript {
             swap_id: p.swap_id.clone(),
             chain_client: &chain_client,
             boltz_api: &boltz,
-            options: Some(TransactionOptions::default().with_cooperative(p.cooperative)),
+            options: Some({
+                let options = TransactionOptions::default().with_cooperative(p.cooperative);
+                match p.swap_auth {
+                    Some(auth) => options.with_swap_auth(auth),
+                    None => options,
+                }
+            }),
         };
         let tx = self
             .inner

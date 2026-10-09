@@ -33,6 +33,12 @@ fn kaleido_auth() {
     run_test("tests/bindings/kaleido_auth.py");
 }
 
+#[test]
+#[serial]
+fn auth_recovery() {
+    run_test("tests/bindings/auth_recovery.py");
+}
+
 /// RGB create and spend bindings use a local HTTP stub, without regtest daemons.
 #[test]
 #[serial]
