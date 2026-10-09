@@ -282,6 +282,21 @@ invoice. The reverse example covers response validation and the wallet-neutral,
 caller-funded PSET claim flow required to receive L-USDT while paying Liquid
 fees in L-BTC.
 
+## USDT-RGB wallet integration
+
+The Rust core, UniFFI/Python and wasm/TypeScript expose RGB-on-Bitcoin submarine
+and reverse swaps. The caller pins the RGB contract when creating the swap.
+The SDK validates the HTLC and prepares/signs claim or refund PSBTs; the caller's
+rgb-lib wallet transfers the asset, validates consignments, funds fees if needed,
+colors the PSBT and completes its wallet operation after broadcast.
+
+See [the RGB design and integration status](docs/rgb-swaps-plan.md),
+[Python bindings](bindings/python/README.md#usdt-rgb-swaps) and
+[TypeScript bindings](typescript-sdk/README.md#usdt-rgb-swaps). The
+[Python](bindings/python/examples/rgb_spend.py) and
+[TypeScript](typescript-sdk/examples/05-rgb-spend.ts) examples demonstrate the
+wallet adapter boundary. Live rgb-lib regtest validation is recorded in [the native example](examples/rgb-regtest/README.md).
+
 ---
 
 # The swap engine (Boltz protocol)

@@ -1,0 +1,43 @@
+name: rgb-sdk-regtest
+services:
+  bitcoind:
+    image: polarlightning/bitcoind:27.0
+    command: ["bitcoind", "-regtest=1", "-server=1", "-rpcbind=0.0.0.0", "-rpcallowip=0.0.0.0/0", "-rpcuser=user", "-rpcpassword=pass", "-txindex=1", "-fallbackfee=0.0002", "-rpcworkqueue=512"]
+    ports: ["127.0.0.1:23443:18443"]
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-regtest", "-rpcuser=user", "-rpcpassword=pass", "getblockchaininfo"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  electrs:
+    image: ghcr.io/vulpemventures/electrs@sha256:999a2218f423c0fb167ee53b282aa7929a9d4abba38ef16f67f407acd00589d4
+    depends_on:
+      bitcoind: {condition: service_healthy}
+    command: ["--network=regtest", "--daemon-rpc-addr=bitcoind:18443", "--cookie=user:pass", "--http-addr=0.0.0.0:3002", "--electrum-rpc-addr=0.0.0.0:50001", "--jsonrpc-import"]
+    ports: ["127.0.0.1:23002:3002"]
+  proxy:
+    image: ghcr.io/rgb-tools/rgb-proxy-server:0.3.0
+    ports: ["127.0.0.1:23000:3000"]
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: maker}
+    ports: ["127.0.0.1:25433:5432"]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "maker"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  ldk-maker:
+    image: km-e2e/ldk-server:pinned
+    command: ["/config/ldk-maker.toml"]
+    depends_on:
+      bitcoind: {condition: service_healthy}
+    volumes: ["./run/ldk-maker.toml:/config/ldk-maker.toml:ro", "./run/certs:/certs:ro", "./run/ldk-maker:/data"]
+    ports: ["127.0.0.1:23636:13636"]
+  ldk-taker:
+    image: km-e2e/ldk-server:pinned
+    command: ["/config/ldk-taker.toml"]
+    depends_on:
+      bitcoind: {condition: service_healthy}
+    volumes: ["./run/ldk-taker.toml:/config/ldk-taker.toml:ro", "./run/certs:/certs:ro", "./run/ldk-taker:/data"]
+    ports: ["127.0.0.1:23646:13646"]

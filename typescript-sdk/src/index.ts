@@ -8,6 +8,8 @@ import initWasm, {
   BoltzClient as WasmSwapClient,
   BtcLikeTransaction,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
+  PreparedRgbSpend as WasmPreparedRgbSpend,
+  RgbCooperativeRefund as WasmRgbCooperativeRefund,
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
@@ -170,6 +172,177 @@ export interface LiquidPsetParams {
   lockupTxHex?: string;
 }
 
+/** Bitcoin fee funding for an RGB claim or refund. */
+export type RgbSpendFunding =
+  { kind: "htlcValue"; feeRateSatVb: bigint } | { kind: "callerInputs" };
+
+/** Parameters for an RGB script-path spend. */
+export interface RgbPsbtParams {
+  /** Address from the RGB wallet's witness receive; not an arbitrary BTC address. */
+  outputAddress: string;
+  funding: RgbSpendFunding;
+  maxFee: bigint;
+  swapId: string;
+  makerBaseUrl: string;
+  makerTimeoutSecs?: number;
+  network: Network;
+  bitcoinEsploraUrl: string;
+  esploraTimeoutSecs?: number;
+  /** Required colored lock transaction; prevents third-party output selection. */
+  lockupTxHex: string;
+}
+
+export interface RgbLock {
+  cooperativeRefund?: "rgb-coop-refund-v1";
+  assetId: string;
+  /** Contract units, six decimals for USDT-RGB. */
+  amount: bigint;
+  recipientId: string;
+  blinding: string;
+  htlcSat: bigint;
+  claimFeeRate?: bigint;
+  scriptPubkey: string;
+  transportEndpoints: string[];
+  minConfirmations: number;
+}
+
+/** Base64 unsigned PSBT and the RGB allocation the wallet must construct. */
+export interface RgbPsbtTemplate {
+  psbt: string;
+  swapOutpoint: string;
+  swapInputIndex: number;
+  commitmentOutputIndex: number;
+  paymentOutputIndex: number;
+  assetId: string;
+  amount: bigint;
+  paymentValue: bigint;
+  maxFee: bigint;
+  requiresFunding: boolean;
+}
+
+export interface RgbAllocation {
+  assetId: string;
+  vout?: number | null;
+  amount: bigint;
+}
+
+/** PSBT and allocations returned by the caller's RGB wallet after coloring. */
+export interface ColoredRgbPsbt {
+  psbt: string;
+  allocations: RgbAllocation[];
+}
+
+export interface FinalizedRgbSpend {
+  /** HTLC input finalized; the wallet must still sign any BTC fee inputs. */
+  psbt: string;
+  swapInputIndex: number;
+  /** Present only when every input is final. Free this handle after use. */
+  transaction: BtcLikeTransaction | null;
+}
+
+/** Immutable spend retained across the wallet funding and coloring steps. */
+export interface RgbCooperativeRefundRequest {
+  protocol: "rgb-coop-refund-v1";
+  psbt: string;
+  index: number;
+  pubNonce: string;
+  sessionId: string;
+}
+
+export interface RgbCooperativeRefundResponse {
+  sessionId: string;
+  requestHash: string;
+  pubNonce: string;
+  partialSignature: string;
+}
+
+/** A one-use signing session. Persist the wallet operation, never this object's secret nonce. */
+export class RgbCooperativeRefund {
+  constructor(private readonly inner: WasmRgbCooperativeRefund) {}
+
+  request(): RgbCooperativeRefundRequest {
+    return this.inner.request() as RgbCooperativeRefundRequest;
+  }
+
+  complete(
+    response: RgbCooperativeRefundResponse,
+    keysSecretHex: string,
+  ): FinalizedRgbSpend {
+    return this.inner.complete(response, keysSecretHex) as FinalizedRgbSpend;
+  }
+
+  free(): void {
+    this.inner.free();
+  }
+}
+
+/** Submit the immutable request with the credential returned at swap creation. */
+export async function getRgbRefundPartialSig(
+  client: WasmSwapClient,
+  swapId: string,
+  request: RgbCooperativeRefundRequest,
+  swapAuth: string,
+): Promise<RgbCooperativeRefundResponse> {
+  return (await client.getRgbRefundPartialSig(
+    swapId,
+    request,
+    swapAuth,
+  )) as RgbCooperativeRefundResponse;
+}
+
+export class PreparedRgbSpend {
+  private constructor(private readonly inner: WasmPreparedRgbSpend) {}
+
+  template(): RgbPsbtTemplate {
+    return this.inner.template() as RgbPsbtTemplate;
+  }
+
+  /** Returns a new spend; keep it for finalization after coloring. */
+  fund(fundedPsbt: string): PreparedRgbSpend {
+    return PreparedRgbSpend.wrap(this.inner.fund(fundedPsbt));
+  }
+
+  beginCooperativeRefund(
+    coloredPsbt: ColoredRgbPsbt,
+    keysSecretHex: string,
+    swapId: string,
+  ): RgbCooperativeRefund {
+    return new RgbCooperativeRefund(
+      this.inner.beginCooperativeRefund(coloredPsbt, keysSecretHex, swapId),
+    );
+  }
+
+  finalizeClaim(
+    coloredPsbt: ColoredRgbPsbt,
+    keysSecretHex: string,
+    preimageHex: string,
+  ): FinalizedRgbSpend {
+    return this.inner.finalizeClaim(
+      coloredPsbt,
+      keysSecretHex,
+      preimageHex,
+    ) as FinalizedRgbSpend;
+  }
+
+  finalizeRefund(
+    coloredPsbt: ColoredRgbPsbt,
+    keysSecretHex: string,
+  ): FinalizedRgbSpend {
+    return this.inner.finalizeRefund(
+      coloredPsbt,
+      keysSecretHex,
+    ) as FinalizedRgbSpend;
+  }
+
+  free(): void {
+    this.inner.free();
+  }
+
+  static wrap(inner: WasmPreparedRgbSpend): PreparedRgbSpend {
+    return new PreparedRgbSpend(inner);
+  }
+}
+
 /** Base64 PSET template and immutable swap intent. */
 export interface LiquidPsetTemplate {
   pset: string;
@@ -263,7 +436,7 @@ export class PreparedLiquidSpend {
  * Renaming them for callers means mapping them back here rather than editing
  * the binding, which keeps the rename in the layer that can be typechecked.
  */
-function toWasmParams<T extends TxParams | LiquidPsetParams>(
+function toWasmParams<T extends TxParams | LiquidPsetParams | RgbPsbtParams>(
   params: T,
 ): Record<string, unknown> {
   const { makerBaseUrl, makerTimeoutSecs, ...rest } = params;
@@ -371,6 +544,26 @@ export class SwapScript {
 
   constructRefund(params: TxParams): Promise<BtcLikeTransaction> {
     return this.inner.constructRefund(toWasmParams(params));
+  }
+
+  async prepareRgbClaim(params: RgbPsbtParams): Promise<PreparedRgbSpend> {
+    return PreparedRgbSpend.wrap(
+      await this.inner.prepareRgbClaim(toWasmParams(params)),
+    );
+  }
+
+  async prepareRgbRefund(params: RgbPsbtParams): Promise<PreparedRgbSpend> {
+    return PreparedRgbSpend.wrap(
+      await this.inner.prepareRgbRefund(toWasmParams(params)),
+    );
+  }
+
+  async prepareRgbCooperativeRefund(
+    params: RgbPsbtParams,
+  ): Promise<PreparedRgbSpend> {
+    return PreparedRgbSpend.wrap(
+      await this.inner.prepareRgbCooperativeRefund(toWasmParams(params)),
+    );
   }
 
   async prepareLiquidClaim(

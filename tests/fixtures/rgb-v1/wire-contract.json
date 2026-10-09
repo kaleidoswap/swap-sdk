@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "makerRevision": "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0",
+    "rgbLibRevision": "96f039d975cf2a83712c3c0a90e703621d445425",
+    "rgbInvoicingVersion": "0.11.1-rc.11",
+    "capture": "maker-api axum router; isolated PostgreSQL; mock node, chain and wallet; real rgb-lib recipient encoder",
+    "network": "regtest",
+    "assetPrecision": 6,
+    "assetIssued": false
+  },
+  "contractId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
+  "preimage": "0303030303030303030303030303030303030303030303030303030303030303",
+  "amountSemantics": {
+    "limits": "inputAssetBaseUnits",
+    "rate": "outputAssetBaseUnitsPerInputAssetBaseUnit",
+    "quotedFees": "outputAssetBaseUnits",
+    "rgbAmount": "contractUnits",
+    "htlcSat": "bitcoinSatoshis"
+  },
+  "pairResponses": {
+    "submarine": {
+      "BTC": {},
+      "L-BTC": {},
+      "L-USDT": {},
+      "ARKD": {},
+      "USDT-RGB": {
+        "BTC": {
+          "pairId": "USDT-RGB/BTC@LN",
+          "hash": "8de43622c150d7e0b0bed2c7a99ad13352dce2851dfc127f3ce7a33803ae95e8",
+          "rate": 100.0,
+          "limits": {
+            "minimal": 10,
+            "maximal": 10000,
+            "maximalZeroConf": 0
+          },
+          "fees": {
+            "percentage": 0.0,
+            "minerFees": 470
+          }
+        }
+      }
+    },
+    "reverse": {
+      "BTC": {
+        "USDT-RGB": {
+          "pairId": "BTC@LN/USDT-RGB",
+          "hash": "8de43622c150d7e0b0bed2c7a99ad13352dce2851dfc127f3ce7a33803ae95e8",
+          "rate": 0.01,
+          "limits": {
+            "minimal": 1000,
+            "maximal": 1000000
+          },
+          "fees": {
+            "percentage": 0.0,
+            "minerFees": {
+              "lockup": 0,
+              "claim": 31
+            }
+          }
+        }
+      },
+      "L-BTC": {},
+      "L-USDT": {},
+      "ARKD": {}
+    }
+  },
+  "create": {
+    "submarine": {
+      "request": {
+        "from": "USDT-RGB",
+        "to": "BTC",
+        "pairId": "USDT-RGB/BTC@LN",
+        "refundPublicKey": "02d4e4d88e467ce9e1991d5d0125b39ba5ca6ca53e45c69135d7d862e689daea02",
+        "invoice": "lnbcrt1m1p4vfmrldq8d4hkx6cpp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzys9zmv38345s4fygpmhwyjcvnvcppfdnddzs07g8l25r9ermd7gv6ydykgs9rgecxmemduuc6rg4gvhndfx729h92500hmeh0xke25auspm8zmsu"
+      },
+      "response": {
+        "id": "01M48KQM920RFMR2V4K9H1W2WP",
+        "claimPublicKey": "02b459e397884574edcb90214723a86621072fb27c2817b8243a816d1608e97a00",
+        "address": "bcrt1p5pjferapnjzfsl4uwlq996l0nrk8hmkzcfujqr0dhsyvaqmnv77qldqzjc",
+        "swapTree": {
+          "claimLeaf": {
+            "version": 192,
+            "output": "a9148a486ff2e31d6158bf39e2608864d63fefd09d5b8820b459e397884574edcb90214723a86621072fb27c2817b8243a816d1608e97a00ac"
+          },
+          "refundLeaf": {
+            "version": 192,
+            "output": "20d4e4d88e467ce9e1991d5d0125b39ba5ca6ca53e45c69135d7d862e689daea02ad029000b1"
+          }
+        },
+        "timeoutBlockHeight": 144,
+        "expectedAmount": 1005,
+        "acceptZeroConf": false,
+        "bip21": "",
+        "referralId": null,
+        "swapAuth": "6301e289997bab9280aa03a2e08dcd616112d7c90f6ce9252905703c2256f3e2",
+        "rgb": {
+          "assetId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
+          "amount": 1005,
+          "recipientId": "bcrt:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA",
+          "blinding": "4420872638298704050",
+          "htlcSat": 1000,
+          "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+          "transportEndpoints": [
+            "rpc://proxy.test/json-rpc"
+          ],
+          "minConfirmations": 1
+        }
+      }
+    },
+    "reverse": {
+      "request": {
+        "from": "BTC",
+        "to": "USDT-RGB",
+        "pairId": "BTC@LN/USDT-RGB",
+        "claimPublicKey": "03b0f78f9879c37d49c96f12c73b6601d362862c8c8dddd530addc661e19fbe141",
+        "preimageHash": "648aa5c579fb30f38af744d97d6ec840c7a91277a499a0d780f3e7314eca090b",
+        "invoiceAmount": 100000
+      },
+      "response": {
+        "id": "01M48KQNJPMSR41ZDQGE94456J",
+        "invoice": "lnbcrt1m1p4vfmyqdq8d4hkx6cpp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysqlxdc3xg0kvms2lpvnuy0d5zactccr096xlw89dt4eq0sdatpcznq43yl99wrjtmzhaf0dca3vhzjdywsgvpfp88jmvnmpehr8x8zzqp6eh3z4",
+        "refundPublicKey": "0342fda8e9951f85317524d74e033458090032ea9e359fd55448e70915b18d9a64",
+        "lockupAddress": "bcrt1p06rvg6chjtm9z2kp7ttr049xg4mmy2lf8nukkyc3z3y6w0r5un6ssh0fmv",
+        "swapTree": {
+          "claimLeaf": {
+            "version": 192,
+            "output": "82012088a9148a486ff2e31d6158bf39e2608864d63fefd09d5b8820b0f78f9879c37d49c96f12c73b6601d362862c8c8dddd530addc661e19fbe141ac"
+          },
+          "refundLeaf": {
+            "version": 192,
+            "output": "2042fda8e9951f85317524d74e033458090032ea9e359fd55448e70915b18d9a64ad0118b1"
+          }
+        },
+        "timeoutBlockHeight": 24,
+        "onchainAmount": 969,
+        "swapAuth": "5fc31f17e370014ead7feff80329d5544c9fc795c3893ba876229de8d97b6f5f",
+        "rgb": {
+          "assetId": "rgb:WM~4iI3a-IIHtpsc-UoTNdky-~aYnGmB-~KF3h4r-BBd0zqQ",
+          "amount": 969,
+          "recipientId": "bcrt:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ",
+          "blinding": "2054954119320635677",
+          "htlcSat": 1521,
+          "claimFeeRate": 5,
+          "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+          "transportEndpoints": [
+            "rpc://proxy.test/json-rpc"
+          ],
+          "minConfirmations": 1
+        }
+      }
+    }
+  }
+}
