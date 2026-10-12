@@ -896,6 +896,13 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex()
+        != 14142
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin()
         != 59607
     ):
@@ -1201,6 +1208,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex.restype = ctypes.c_void_p
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex_bitcoin.argtypes = (
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2288,6 +2301,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next.argtypes
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new.argtypes = ()
@@ -9714,6 +9729,25 @@ class BtcLikeTransaction:
         inst = cls.__new__(cls)
         inst._pointer = pointer
         return inst
+
+    @classmethod
+    def from_hex(cls, hex: "str", chain: "Chain"):
+        """
+        Rebuild a saved Bitcoin/Liquid transaction without signing or broadcasting.
+        """
+
+        _UniffiConverterString.check_lower(hex)
+
+        _UniffiConverterTypeChain.check_lower(chain)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex,
+            _UniffiConverterString.lower(hex),
+            _UniffiConverterTypeChain.lower(chain),
+        )
+        return cls._make_instance_(pointer)
 
     @classmethod
     def from_hex_bitcoin(cls, hex: "str"):

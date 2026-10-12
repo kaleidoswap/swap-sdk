@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — transaction recovery from saved hex
+
+`BtcLikeTransaction.fromHex(hex, "bitcoin" | "liquid")` rebuilds a saved
+transaction in WASM/TypeScript without signing or broadcasting. It preserves
+the transaction bytes, witnesses and txid, rejects malformed or noncanonical
+encodings, and uses the existing `broadcast()` method for explicit retries.
+Native bindings expose the corresponding `from_hex(hex, chain)` constructor.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

@@ -147,6 +147,40 @@ at runtime rather than at build time, so reach for this before you ship a bundle
 SDK operations also require the web APIs used by the selected client, including
 `fetch` and WebSocket. Node 22 and newer provide both.
 
+## Recovering a saved transaction
+
+Persist the signed transaction's hex, chain, network and Esplora endpoint
+**before** broadcasting. After a restart or a lost broadcast response, rebuild
+the transaction and explicitly rebroadcast the same bytes:
+
+```ts
+import { BtcLikeTransaction, init } from "@kaleidorg/swap-sdk";
+
+await init();
+// Load these from the receipt saved before the original broadcast.
+const tx = BtcLikeTransaction.fromHex(receipt.hex, receipt.chain);
+const txid = await tx.broadcast(
+  receipt.network,
+  receipt.chain === "bitcoin" ? receipt.esploraUrl : undefined,
+  receipt.chain === "liquid" ? receipt.esploraUrl : undefined,
+);
+```
+
+`receipt.chain` is `"bitcoin" | "liquid"`; network selection is separate.
+The factory performs local decoding only: it does not sign, select fees or
+inputs, query the maker, or broadcast. Malformed, truncated, trailing-byte and
+noncanonical encodings raise an `InvalidArgument` error. It preserves all
+accepted transaction bytes, including witnesses; uppercase hex is accepted
+and `hex()` returns lowercase. Store the original txid too if you want to
+verify the recovered receipt before sending it.
+
+There is no automatic retry. A lost response does not prove broadcast failed;
+check the original txid at the same chain backend and retain the original
+transaction. Rebroadcasting identical bytes cannot create another transaction,
+but a backend may report that it already knows the transaction. This helper
+does not turn that rejection into success or validate that a transaction is
+spendable. Never construct a new claim/refund just to retry an uncertain send.
+
 ## Swap keys
 
 Swap keys and preimages derive client-side from a wallet mnemonic via BIP85

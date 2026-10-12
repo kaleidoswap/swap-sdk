@@ -534,6 +534,18 @@ pub struct BtcLikeTransaction(pub(crate) swaps_bitcoin::BtcLikeTransaction);
 
 #[uniffi::export]
 impl BtcLikeTransaction {
+    /// Rebuild a saved Bitcoin/Liquid transaction without signing or broadcasting.
+    #[uniffi::constructor]
+    pub fn from_hex(hex: &str, chain: Chain) -> Result<Self, Error> {
+        let restored = Self(swaps_bitcoin::BtcLikeTransaction::from_hex(chain, hex)?);
+        if !hex.eq_ignore_ascii_case(&restored.hex()) {
+            return Err(Error::Generic(
+                "hex must use canonical transaction encoding".into(),
+            ));
+        }
+        Ok(restored)
+    }
+
     /// Parse a wallet or maker lock transaction for local RGB UTXO discovery.
     #[uniffi::constructor]
     pub fn from_hex_bitcoin(hex: &str) -> Result<Self, Error> {
