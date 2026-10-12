@@ -90,6 +90,47 @@ fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
     })
 }
 
+// The card uses the maker's snake_case wire names and decimal amount strings.
+// Keep the direct client method typed, as well as the TypeScript facade.
+#[wasm_bindgen(typescript_custom_section)]
+const CORRIDOR_CARD_TYPES: &str = r#"
+export interface CorridorCard {
+  version: number;
+  name: string;
+  discovery_pubkey: string;
+  transports: { nostr: { relays: string[] } };
+  markets: CorridorCardMarket[];
+  sig: string;
+}
+
+export interface CorridorCardAsset {
+  id: string;
+  name: string;
+  ticker: string;
+  decimals: number;
+}
+
+export interface CorridorCardMarket {
+  pair: string;
+  base_asset: CorridorCardAsset;
+  quote_asset: CorridorCardAsset;
+  quote_corridor: string;
+  fee_bps: number;
+  /** Decimal strings in the asset's smallest unit, matching the maker wire. */
+  min_base_amount: string;
+  max_base_amount: string;
+  min_quote_amount: string;
+  max_quote_amount: string;
+}
+
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CorridorCard | null")]
+    pub type CorridorCardResult;
+}
+
 // ---- String arguments -------------------------------------------------------
 
 #[wasm_bindgen]
@@ -702,6 +743,16 @@ impl BoltzClient {
     #[wasm_bindgen(getter, js_name = corridorUrl)]
     pub fn corridor_url(&self) -> Result<String, JsValue> {
         self.inner.corridor_root().map_err(core_err)
+    }
+
+    /// Fetch the signed discovery document. Null means no live card (404).
+    /// Signature verification and trust decisions remain the caller's responsibility.
+    #[wasm_bindgen(js_name = corridorCard)]
+    pub async fn corridor_card(&self) -> Result<CorridorCardResult, JsValue> {
+        match self.inner.corridor_card().await.map_err(core_err)? {
+            Some(card) => Ok(to_js(&card)?.unchecked_into()),
+            None => Ok(JsValue::NULL.unchecked_into()),
+        }
     }
 
     /// `POST /v1/swap` with an envelope already built. Resolves to an

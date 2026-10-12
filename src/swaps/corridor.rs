@@ -66,6 +66,51 @@ pub const MIN_HEADROOM_SECONDS: u64 = 90 * 60;
 /// can pay and the maker's refund deadline — `MIN_CLAIM_WINDOW_SECONDS`.
 pub const MIN_CLAIM_WINDOW_SECONDS: u64 = 30 * 60;
 
+/// Signed discovery document served by `GET /v1/card`.
+///
+/// Fetching/deserializing this document does not verify its signature or trust
+/// its advertised identity. Amount strings are preserved without rounding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CorridorCard {
+    pub version: u32,
+    pub name: String,
+    pub discovery_pubkey: String,
+    pub transports: CardTransports,
+    pub markets: Vec<CardMarket>,
+    pub sig: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardTransports {
+    pub nostr: CardNostrTransport,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardNostrTransport {
+    pub relays: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardAsset {
+    pub id: String,
+    pub name: String,
+    pub ticker: String,
+    pub decimals: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CardMarket {
+    pub pair: String,
+    pub base_asset: CardAsset,
+    pub quote_asset: CardAsset,
+    pub quote_corridor: String,
+    pub fee_bps: u32,
+    pub min_base_amount: String,
+    pub max_base_amount: String,
+    pub min_quote_amount: String,
+    pub max_quote_amount: String,
+}
+
 /// Which leg of the pair `amount` names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

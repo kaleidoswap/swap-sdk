@@ -7,6 +7,7 @@
 import initWasm, {
   BoltzClient as WasmSwapClient,
   BtcLikeTransaction,
+  type CorridorCard,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
   PreparedRgbSpend as WasmPreparedRgbSpend,
   RgbCooperativeRefund as WasmRgbCooperativeRefund,
@@ -34,6 +35,11 @@ export const wasmUrl = new URL(
 export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
 export { BtcLikeTransaction };
+export type {
+  CorridorCard,
+  CorridorCardAsset,
+  CorridorCardMarket,
+} from "../vendor/bindings_wasm.js";
 
 /** Options for {@link createKaleidoMakerClient}. */
 export interface KaleidoMakerClientOptions {
@@ -774,6 +780,12 @@ export class IntentsCorridor {
    * suffix. Same rule as {@link corridorRootFromMakerUrl}. */
   get url(): string {
     return this.client.corridorUrl as string;
+  }
+
+  /** Signed discovery card; null when unavailable or withdrawn (404).
+   * Does not verify the signature or establish trust in the advertised identity. */
+  card(): Promise<CorridorCard | null> {
+    return this.client.corridorCard();
   }
 
   quoteLightningSend(request: LightningSendRfqRequest): Promise<RfqAnswer> {

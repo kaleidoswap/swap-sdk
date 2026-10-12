@@ -1288,6 +1288,23 @@ impl BoltzApiClientV2 {
         corridor::corridor_root_from_maker_url(&self.base_url)
     }
 
+    /// Fetch the signed discovery card from the sibling `GET /v1/card` route.
+    /// `None` means the maker has no live card (HTTP 404). Other HTTP, transport
+    /// and decoding failures remain errors. This does not verify the signature.
+    pub async fn corridor_card(&self) -> Result<Option<corridor::CorridorCard>, Error> {
+        let url = format!("{}/v1/card", self.corridor_root()?);
+        let response = self.get_response_at(url).await?;
+        match Self::parse_json_response(response).await {
+            Ok(card) => Ok(Some(card)),
+            Err(Error::HTTPStatusNotSuccess(status, _))
+                if status == reqwest::StatusCode::NOT_FOUND =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// `POST /v1/swap` — ask the maker for a binding quote.
     ///
     /// A refusal is a `200` carrying `rfq_refusal`, so it comes back as

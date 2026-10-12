@@ -39,6 +39,12 @@ fn auth_recovery() {
     run_test("tests/bindings/auth_recovery.py");
 }
 
+#[test]
+#[serial]
+fn corridor_card() {
+    run_test("tests/bindings/corridor_card.py");
+}
+
 /// RGB create and spend bindings use a local HTTP stub, without regtest daemons.
 #[test]
 #[serial]
