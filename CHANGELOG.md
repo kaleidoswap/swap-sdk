@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — pay-through idempotency keys
+
+`PayThroughClient.create(request, { idempotencyKey, signal })` accepts a
+caller-generated secret key and sends it in `Idempotency-Key`. Keys must be
+1–128 visible ASCII characters and are validated before any request. Persist
+a random UUIDv4 (or at least 128 random bits) with the payment intent before
+sending, then reuse it with the same input, maker and partner attribution to
+recover the original swap after a lost response or process restart.
+
+Safe retries require maker support (companion
+[maker PR #712](https://github.com/kaleidoswap/kaleidoswap-maker-rs/pull/712));
+older makers may ignore the header. The SDK does not retry automatically or
+generate replacement keys. `409 idempotency_in_flight` leaves the original
+outcome pending or uncertain and can require operator reconciliation;
+`409 idempotency_mismatch` signals changed input. A `4xx` status alone no longer
+implies that no swap exists. Unkeyed creation keeps its existing behavior.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

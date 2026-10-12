@@ -60,10 +60,14 @@ import { PayThroughClient } from "@kaleidorg/swap-sdk/pay-through";
 const pay = new PayThroughClient({
   makerUrl: "https://maker.signet.kaleidoswap.com/v2",
 });
-const order = await pay.create({
+const request = {
   destination: recipientAddress,
   invoiceAmount: 100_000,
-});
+};
+const idempotencyKey = crypto.randomUUID();
+// Persist the request, key, maker URL and partner attribution before sending.
+// A retry after a timeout or restart must load that same payment intent.
+const order = await pay.create(request, { idempotencyKey });
 // Show order.invoice, order.payoutAsset, and order.payoutAmount for approval.
 // After the wallet explicitly pays order.invoice:
 const status = await pay.status(order.id);
@@ -82,9 +86,33 @@ hash differs from `invoiceAmount` and `paymentHash`. Amounts use safe JS
 integers, and a larger response is rejected rather than rounded.
 
 Requests time out after `timeoutMs` (30 s by default) and take an optional
-`signal`. A `PayThroughApiError` with a 4xx status means nothing was created;
-a 5xx, a timeout or a network error leaves the outcome unknown. There is no
-idempotency key, so do not blindly retry creation or pay a second invoice.
+`signal`. `create(request, { idempotencyKey, signal })` sends the key as an
+`Idempotency-Key` header. The key is optional and must be 1–128 visible ASCII
+characters; use a random UUIDv4 or at least 128 random bits. Treat it as a
+bearer secret, since anonymous replay can recover `swapAuth`.
+
+Safe retries require a maker with
+[pay-through idempotency support](https://github.com/kaleidoswap/kaleidoswap-maker-rs/pull/712).
+Older makers may ignore the header, so confirm support before relying on it.
+On a supporting maker, retry a lost response, timeout or `5xx` with the same
+persisted key and unchanged request, maker URL and partner organisation:
+
+```ts
+// Load request and idempotencyKey from the payment intent saved before sending.
+const recovered = await pay.create(request, { idempotencyKey });
+// This is the original swap, invoice, expiry and swapAuth, not another payment.
+```
+
+The SDK makes one request per call and never retries automatically or generates
+a replacement key. A `PayThroughApiError` with `409 idempotency_mismatch` means
+the key was already used with different input; `409 idempotency_in_flight`
+means the original attempt is still running or its outcome is uncertain.
+Keep the original key. Abandoned reservations after an ambiguous mint require
+operator reconciliation and do not expire automatically. Other handler client
+errors can be cached too; submit corrected input as a new payment intent after
+resolving the original outcome. Without a key, a timeout, network error or
+`5xx` leaves creation unknown and must not be retried blindly. Never pay a
+second invoice to recover an uncertain creation.
 
 ## Arkade Intents corridor
 

@@ -48,8 +48,9 @@ export interface PayThroughStatus {
   };
 }
 
-/** The maker answered with an error. A 4xx means nothing was created; a 5xx
- * or gateway error leaves the outcome of a create unknown. */
+/** The maker answered with an error. Status alone does not prove that no swap
+ * exists: 409 idempotency_in_flight means the original attempt is pending or
+ * uncertain, and a 5xx or gateway error can follow a committed creation. */
 export class PayThroughApiError extends Error {
   constructor(
     public readonly status: number,
@@ -79,6 +80,14 @@ export interface PayThroughClientOptions {
 
 export interface PayThroughCallOptions {
   signal?: AbortSignal;
+}
+
+export interface PayThroughCreateOptions extends PayThroughCallOptions {
+  /** Secret, caller-generated key: 1–128 visible ASCII characters. Persist a
+   * random UUIDv4 (or at least 128 random bits) with the request before sending.
+   * Reuse it with identical input and partner attribution after a lost response.
+   * Safe retries require a maker that supports Idempotency-Key. */
+  idempotencyKey?: string;
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -256,12 +265,26 @@ export class PayThroughClient {
   }
 
   /** Create the hold invoice and check the maker's terms against the request
-   * and the invoice itself. A transport failure or 5xx may leave creation
-   * unknown; do not blindly repeat the call or pay a second invoice. */
+   * and the invoice itself. To recover a lost response on a supporting maker,
+   * repeat with the same persisted idempotencyKey, input and partner attribution.
+   * Never switch keys after an uncertain outcome or pay a second invoice.
+   * Each call makes one request; retries are controlled by the caller. */
   async create(
     input: PayThroughRequest,
-    options: PayThroughCallOptions = {},
+    options: PayThroughCreateOptions = {},
   ): Promise<PayThroughCreated> {
+    const { idempotencyKey } = options;
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== "string" ||
+        idempotencyKey.length < 1 ||
+        idempotencyKey.length > 128 ||
+        /[^\x21-\x7e]/.test(idempotencyKey))
+    ) {
+      throw new TypeError(
+        "idempotencyKey must contain 1–128 visible ASCII characters",
+      );
+    }
     const destination = input.destination?.trim();
     if (!destination) throw new TypeError("destination is required");
     requestedAmount(input.invoiceAmount, "invoiceAmount");
@@ -289,6 +312,7 @@ export class PayThroughClient {
         method: "POST",
         body: JSON.stringify(body),
         signal: options.signal,
+        idempotencyKey,
       }),
     );
     const fees = object(raw.fees);
@@ -417,11 +441,19 @@ export class PayThroughClient {
 
   private async call(
     path: string,
-    options: { method: "GET" | "POST"; body?: string; signal?: AbortSignal },
+    options: {
+      method: "GET" | "POST";
+      body?: string;
+      signal?: AbortSignal;
+      idempotencyKey?: string;
+    },
   ): Promise<unknown> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (options.body) headers["Content-Type"] = "application/json";
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+    if (options.idempotencyKey !== undefined) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(
