@@ -2041,7 +2041,7 @@ impl CreateSubmarineResponse {
         }
         let preimage = Preimage::from_invoice_str(invoice)?;
         let script = BtcSwapScript::submarine_from_swap_resp(self, *our_pubkey)?;
-        script.validate_rgb_response_tree(&self.swap_tree)?;
+        script.validate_response_tree(&self.swap_tree)?;
         ensure_hashlock(&script.hashlock, &preimage.hash160)?;
         script.validate_address(chain, self.address.clone())?;
         script
@@ -2475,7 +2475,7 @@ impl CreateReverseResponse {
     ) -> Result<(), Error> {
         self.validate_invoice_hash(preimage)?;
         let script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
-        script.validate_rgb_response_tree(&self.swap_tree)?;
+        script.validate_response_tree(&self.swap_tree)?;
         ensure_hashlock(&script.hashlock, &preimage.hash160)?;
         script.validate_address(chain, self.lockup_address.clone())?;
         script

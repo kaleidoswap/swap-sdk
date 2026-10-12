@@ -1331,6 +1331,30 @@ pub struct SwapScript {
 
 #[wasm_bindgen]
 impl SwapScript {
+    /// Rebuild from a swapRestore entry and the key derived at its keyIndex.
+    /// Chain swaps require `side` ("lockup" | "claim"); omit it otherwise.
+    #[wasm_bindgen(js_name = fromRestored)]
+    pub fn from_restored(
+        restored_swap: JsValue,
+        our_pubkey_hex: StringArg,
+        network: StringArg,
+        side: Option<StringArg>,
+    ) -> Result<SwapScript, JsValue> {
+        let network = parse_network(&str_arg(network, "network")?)?;
+        let pk = parse_pubkey_arg(&str_arg(our_pubkey_hex, "ourPubkeyHex")?, "ourPubkeyHex")?;
+        let side = opt_str_arg(side, "side")?
+            .map(|side| match side.as_str() {
+                "lockup" => Ok(Side::Lockup),
+                "claim" => Ok(Side::Claim),
+                other => Err(arg_err(format!("unknown side: {other}"))),
+            })
+            .transpose()?;
+        let restored = from_js(restored_swap)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::from_restored(network, &restored, pk, side).map_err(core_err)?,
+        })
+    }
+
     /// Reconstruct from a submarine-swap create response.
     /// `chainKind` is "bitcoin" | "liquid"; `ourPubkeyHex` is the refund pubkey.
     #[wasm_bindgen(js_name = fromSubmarine)]

@@ -463,6 +463,22 @@ function toWasmParams<T extends TxParams | LiquidPsetParams | RgbPsbtParams>(
 export class SwapScript {
   private constructor(private readonly inner: WasmSwapScript) {}
 
+  /**
+   * Rebuild from a `swapRestore()` entry using the public key derived at the
+   * selected details' `keyIndex`. Chain swaps require an explicit side.
+   * BTC and L-BTC are supported; token restores lack the required asset context.
+   */
+  static fromRestored(
+    restoredSwap: unknown,
+    ourPubkeyHex: string,
+    network: Network,
+    side?: "lockup" | "claim",
+  ): SwapScript {
+    return new SwapScript(
+      WasmSwapScript.fromRestored(restoredSwap, ourPubkeyHex, network, side),
+    );
+  }
+
   static fromSubmarine(
     chainKind: "bitcoin" | "liquid",
     network: Network,

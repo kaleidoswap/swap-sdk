@@ -6,9 +6,11 @@ use bitcoin::hex::DisplayHex;
 use bitcoin::key::{rand, Keypair, PublicKey};
 use bitcoin::secp256k1::SecretKey;
 use kaleidorg_swap_sdk::boltz::ChainSwapDetails;
-use kaleidorg_swap_sdk::boltz::{CreateReverseResponse, CreateSubmarineResponse, Side};
+use kaleidorg_swap_sdk::boltz::{
+    CreateReverseResponse, CreateSubmarineResponse, Side, SwapRestoreResponse,
+};
 use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::Chain;
+use kaleidorg_swap_sdk::network::{Chain, Network};
 use kaleidorg_swap_sdk::swaps::rgb::{
     ColoredRgbPsbt, RgbAllocation, RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
     RgbPsbtTemplate, RgbSpendFunding,
@@ -357,6 +359,21 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
 
 #[uniffi::export(async_runtime = "tokio")]
 impl SwapScript {
+    #[uniffi::constructor]
+    pub fn from_restored(
+        network: Network,
+        restored_swap: &SwapRestoreResponse,
+        our_pubkey: PublicKey,
+        side: Option<Side>,
+    ) -> Result<Self, Error> {
+        Ok(Self(swaps_bitcoin::SwapScript::from_restored(
+            network,
+            restored_swap,
+            our_pubkey,
+            side,
+        )?))
+    }
+
     #[uniffi::constructor]
     pub fn from_submarine(
         chain: Chain,

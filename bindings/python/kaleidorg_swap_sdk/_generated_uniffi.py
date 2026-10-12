@@ -965,6 +965,13 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_restored()
+        != 30988
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse()
         != 40951
     ):
@@ -1733,6 +1740,16 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_chain.argtyp
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_chain.restype = (
     ctypes.c_void_p
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_restored.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_restored.restype = (
+    ctypes.c_void_p
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_reverse.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
@@ -2322,6 +2339,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wal
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_restored.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_restored.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_submarine.argtypes = ()
@@ -9242,6 +9261,32 @@ class _UniffiConverterOptionalTypeCurrency(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeSide(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeSide.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeSide.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeSide.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalSequenceString(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -11772,6 +11817,33 @@ class SwapScript:
             _UniffiConverterTypeSide.lower(side),
             _UniffiConverterTypeChainSwapDetails.lower(chain_swap_details),
             _UniffiConverterTypePublicKey.lower(our_pubkey),
+        )
+        return cls._make_instance_(pointer)
+
+    @classmethod
+    def from_restored(
+        cls,
+        network: "Network",
+        restored_swap: "SwapRestoreResponse",
+        our_pubkey: "PublicKey",
+        side: "typing.Optional[Side]",
+    ):
+        _UniffiConverterTypeNetwork.check_lower(network)
+
+        _UniffiConverterTypeSwapRestoreResponse.check_lower(restored_swap)
+
+        _UniffiConverterTypePublicKey.check_lower(our_pubkey)
+
+        _UniffiConverterOptionalTypeSide.check_lower(side)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_restored,
+            _UniffiConverterTypeNetwork.lower(network),
+            _UniffiConverterTypeSwapRestoreResponse.lower(restored_swap),
+            _UniffiConverterTypePublicKey.lower(our_pubkey),
+            _UniffiConverterOptionalTypeSide.lower(side),
         )
         return cls._make_instance_(pointer)
 

@@ -322,20 +322,20 @@ impl BtcSwapScript {
         })
     }
 
-    /// RGB wire leaves must match the tree the SDK will spend, including version
+    /// Wire leaves must match the tree the SDK will spend, including version
     /// and every script byte; parsing only the hash and timeout is insufficient.
-    pub(crate) fn validate_rgb_response_tree(&self, tree: &SwapTree) -> Result<(), Error> {
+    pub(crate) fn validate_response_tree(&self, tree: &SwapTree) -> Result<(), Error> {
         let version = LeafVersion::TapScript.to_consensus();
         if tree.claim_leaf.version != version || tree.refund_leaf.version != version {
             return Err(Error::Protocol(format!(
-                "RGB swap tree must use leaf version {version:#04x}"
+                "Bitcoin swap tree must use leaf version {version:#04x}"
             )));
         }
         if ScriptBuf::from_hex(&tree.claim_leaf.output)? != self.claim_script()
             || ScriptBuf::from_hex(&tree.refund_leaf.output)? != self.refund_script()
         {
             return Err(Error::Protocol(
-                "RGB swap tree contains non-canonical claim or refund script".to_string(),
+                "Bitcoin swap tree contains non-canonical claim or refund script".to_string(),
             ));
         }
         Ok(())

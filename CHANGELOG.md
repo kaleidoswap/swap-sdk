@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — rebuild swap scripts from recovery results
+
+`SwapScript.fromRestored()` rebuilds BTC and L-BTC submarine, reverse and
+chain-swap scripts directly from `swapRestore()` entries, with explicit side
+selection for chain swaps. WASM/TypeScript and native bindings share canonical
+tree/address validation and preserve amounts and Liquid blinding keys. Token
+restores without the required asset context are rejected explicitly.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

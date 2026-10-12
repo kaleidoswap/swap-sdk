@@ -505,7 +505,7 @@ impl LiquidSwapScript {
     /// trailing opcodes, alternate encodings, or a different leaf version can
     /// preserve those pushes while committing the server address to a tree the
     /// SDK would not actually spend.
-    fn validate_response_tree(&self, response_tree: &SwapTree) -> Result<(), Error> {
+    pub(crate) fn validate_response_tree(&self, response_tree: &SwapTree) -> Result<(), Error> {
         let leaf_version = LeafVersion::default().as_u8();
         if response_tree.claim_leaf.version != leaf_version
             || response_tree.refund_leaf.version != leaf_version
