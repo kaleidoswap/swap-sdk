@@ -296,6 +296,38 @@ test("pay-through validates idempotency keys without trimming or sending invalid
   assert.equal(calls, 4);
 });
 
+test("pay-through can reuse its key after a temporary preflight rejection", async () => {
+  const request = { destination: "bcrt1test", invoiceAmount: 100000 };
+  const idempotencyKey = "retry-after-inventory-recovers";
+  let attempts = 0;
+  const client = new PayThroughClient({
+    makerUrl: "https://maker.example/v2",
+    fetch: async (_url, init) => {
+      attempts++;
+      assert.equal(init.headers["Idempotency-Key"], idempotencyKey);
+      assert.deepEqual(JSON.parse(init.body), request);
+      if (attempts === 1) {
+        return Response.json(
+          { error: "insufficient_inventory" },
+          { status: 422 },
+        );
+      }
+      return Response.json(created, { status: 201 });
+    },
+  });
+  await assert.rejects(
+    client.create(request, { idempotencyKey }),
+    (error) =>
+      error instanceof PayThroughApiError &&
+      error.status === 422 &&
+      error.code === "insufficient_inventory",
+  );
+  assert.equal(attempts, 1, "retrying is the caller's decision");
+  const recovered = await client.create(request, { idempotencyKey });
+  assert.deepEqual(recovered, created);
+  assert.equal(attempts, 2);
+});
+
 test("pay-through exposes idempotency conflicts without retrying or replacing the key", async () => {
   const idempotencyKey = "keep-the-original-key";
   for (const code of ["idempotency_in_flight", "idempotency_mismatch"]) {

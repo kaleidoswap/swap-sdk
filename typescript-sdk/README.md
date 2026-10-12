@@ -107,12 +107,16 @@ The SDK makes one request per call and never retries automatically or generates
 a replacement key. A `PayThroughApiError` with `409 idempotency_mismatch` means
 the key was already used with different input; `409 idempotency_in_flight`
 means the original attempt is still running or its outcome is uncertain.
-Keep the original key. Abandoned reservations after an ambiguous mint require
-operator reconciliation and do not expire automatically. Other handler client
-errors can be cached too; submit corrected input as a new payment intent after
-resolving the original outcome. Without a key, a timeout, network error or
-`5xx` leaves creation unknown and must not be retried blindly. Never pay a
-second invoice to recover an uncertain creation.
+Keep the original key. The supporting maker does not cache rejections as final
+outcomes: disabled routes, invalid input, and pricing/inventory preflight
+failures leave the key unused. Retry the same payment intent when the condition
+clears. Once minting has been attempted, even a later admission rejection
+(including a rolling-budget `429`) leaves the key reserved for reconciliation.
+A `4xx` status alone therefore does not prove that it is safe to switch keys.
+Abandoned reservations after an ambiguous mint require operator reconciliation
+and do not expire automatically. Without a key, a timeout, network error or
+`5xx` leaves creation unknown and must not be retried blindly. Never pay a second
+invoice to recover an uncertain creation.
 
 ## Arkade Intents corridor
 

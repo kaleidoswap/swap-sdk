@@ -20,6 +20,10 @@ generate replacement keys. `409 idempotency_in_flight` leaves the original
 outcome pending or uncertain and can require operator reconciliation;
 `409 idempotency_mismatch` signals changed input. A `4xx` status alone no longer
 implies that no swap exists. Unkeyed creation keeps its existing behavior.
+On the companion maker, preflight rejections do not consume the key and may be
+retried under the same payment intent when the condition clears. After minting
+has been attempted, even a later admission rejection leaves the key reserved
+for reconciliation; errors are not durably cached as final rejections.
 
 ### Fixed — wait for a complete PyPI inventory after publication
 
