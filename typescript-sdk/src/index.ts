@@ -34,6 +34,13 @@ export const wasmUrl = new URL(
 export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
 export { BtcLikeTransaction };
+export {
+  EsploraDataError,
+  esploraFeeEstimates,
+  esploraTipHeight,
+  type EsploraDataOptions,
+  type EsploraFeeEstimates,
+} from "./chain-data.js";
 
 /** Options for {@link createKaleidoMakerClient}. */
 export interface KaleidoMakerClientOptions {

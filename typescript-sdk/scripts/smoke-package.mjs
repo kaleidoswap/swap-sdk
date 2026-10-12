@@ -25,6 +25,8 @@ const requiredPaths = [
   "dist/arkade/index.js",
   "dist/pay-through.d.ts",
   "dist/pay-through.js",
+  "dist/chain-data.d.ts",
+  "dist/chain-data.js",
   "package.json",
   "vendor/bindings_wasm.d.ts",
   "vendor/bindings_wasm.js",
@@ -193,6 +195,15 @@ try {
     join(consumerRoot, "smoke.mjs"),
     `
       import { SwapMasterKey, init, toJson } from "@kaleidorg/swap-sdk";
+      import { esploraFeeEstimates, esploraTipHeight } from "@kaleidorg/swap-sdk/chain-data";
+
+      const fees = await esploraFeeEstimates("https://esplora.example/api", {
+        fetch: async () => new Response('{"2":0.1}'),
+      });
+      const tip = await esploraTipHeight("https://esplora.example/api", {
+        fetch: async () => new Response("123"),
+      });
+      if (fees[2] !== 0.1 || tip !== 123) throw new Error("packaged chain data helpers failed");
 
       // Zero-argument init is the call a consumer actually writes, and the only
       // one that behaves identically in Node and the browser. Asserting the
