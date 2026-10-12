@@ -35,6 +35,78 @@ cd examples && npm install && node 01-pairs.ts
 `"regtest"` resolves to `http://localhost:9001/v2` and needs this
 repository's local harness.
 
+## Stateless claim/refund reconciliation
+
+The TypeScript helpers `canRefund`, `canClaim`, `refundSubmarineSwap`,
+`refundChainSwap`, `claimReverseSwap` and `claimChainSwap` compose the existing
+validated `SwapScript` constructors. They return a signed transaction or
+`{ kind: "not-yet", reason }`; they keep no state, run no timers and do not
+broadcast. Rust/native retain the lower-level constructors.
+
+```ts
+import { refundSubmarineSwap } from "@kaleidorg/swap-sdk";
+
+const result = await refundSubmarineSwap({
+  status, // fresh maker status for this swap
+  tipHeight, // trusted tip of the chain being refunded
+  createResponse, // original verified response / timeout
+  script, // validated submarine script for this same swap
+  params: {
+    outputAddress,
+    swapId,
+    keysSecretHex,
+    swapAuth,
+    network,
+    makerBaseUrl,
+    bitcoinEsploraUrl,
+    feeSatPerVb: 2, // choose explicitly; fractional Liquid rates work
+  },
+});
+if (result.kind === "signed") {
+  // Persist { swapId, action, path, hex, txid, chain } BEFORE broadcasting.
+  // Store secrets separately. Application storage/scheduling are your own.
+  const hex = result.transaction.hex();
+  const txid = result.transaction.txid();
+  // await saveSpend(...);
+  // await result.transaction.broadcast(network, bitcoinEsploraUrl, liquidEsploraUrl);
+}
+```
+
+Refund `mode: "auto"` attempts authenticated cooperation on failed/expired swaps
+before the timeout, and uses the script path on a later reconciliation once the
+lockup chain tip reaches `timeoutBlockHeight`. `mode: "script"` waits for that
+boundary; `mode: "cooperative"` always requires cooperation. Maker errors reject
+unchanged: a refusal never triggers an automatic fallback or an implicit retry.
+Local eligibility is advisory and cannot authorize a maker signature or bypass
+its financial/confirmation rules (#674).
+
+Claims require a confirmed receiving-side lockup by default, and stop at the
+claim timeout. `allowZeroConf: true` explicitly accepts mempool risk. Chain swaps
+use **lockup** tip/timeouts for refunds and **claim** tip/timeouts for claims;
+pass the full response with `lockupDetails`/`claimDetails` or the appropriate
+side's details. A client lockup confirmation is not a maker lockup confirmation.
+Unknown, completed, already-spending and in-flight payment states fail closed.
+Snapshots can be stale or reorged: verify current status, chain, UTXO and policy
+before broadcasting; construction/broadcast errors still propagate.
+
+Reverse claims default to cooperative. Chain claims use the script path unless
+both `lockupScript` and the distinct `refundKeysSecretHex` are provided, in which
+case they call `constructCooperativeClaim`. Explicit cooperative mode with
+missing context returns `not-yet`. Each construction needs exactly one positive
+`feeSatPerVb` or integer `feeAbsoluteSat`; no maker fee default is assumed. Fetch
+fees from the application's chosen chain source and apply its fee limits.
+
+To retry a lost broadcast, pass the saved/recovered `SignedSwapSpend` as
+`previous`. The helper returns that exact transaction before inspecting new
+status, height or fees, and rejects a different swap ID/action. After restart,
+rebuild the transaction from the stored hex using the transaction recovery API
+(#648), retaining the recorded chain/action/path. Never re-sign simply because
+a broadcast response was lost. Apps must serialize concurrent operations per
+swap and durably retain the first signed result; a stateless helper cannot
+deduplicate two concurrent calls without shared saved state. Treat duplicate
+broadcast responses as successful only after independently checking that the
+original txid is known on the intended chain.
+
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.
 

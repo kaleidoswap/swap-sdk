@@ -192,7 +192,12 @@ try {
   writeFileSync(
     join(consumerRoot, "smoke.mjs"),
     `
-      import { SwapMasterKey, init, toJson } from "@kaleidorg/swap-sdk";
+      import { SwapMasterKey, init, toJson, canClaim, canRefund,
+        refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap } from "@kaleidorg/swap-sdk";
+
+      for (const helper of [canClaim, canRefund, refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap]) {
+        if (typeof helper !== "function") throw new Error("packaged reconciliation export missing");
+      }
 
       // Zero-argument init is the call a consumer actually writes, and the only
       // one that behaves identically in Node and the browser. Asserting the

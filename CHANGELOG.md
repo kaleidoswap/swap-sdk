@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Stateless TypeScript eligibility and claim/refund helpers with conservative
+  confirmation/CLTV checks and reuse of saved signed transactions on retries.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit
