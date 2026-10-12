@@ -173,6 +173,13 @@ that provenance is recorded in the
 [root README](../README.md#the-swap-engine-boltz-protocol) and the LICENSE,
 which is where it belongs rather than in a symbol an integrator types.
 
+See the [maker/upstream support matrix](../docs/compatibility.md) for the
+deliberately retained Rust-only raw routes and the existing native submarine
+co-sign helper. `constructCooperativeClaim` is a chain-claim constructor; it does
+not expose submarine co-signing. Maker-mediated raw broadcast and Boltz-shaped
+BOLT12 management are not exported here and are absent from the KaleidoSwap
+public router.
+
 - `SwapClient` — the swap API (create submarine/reverse/chain swaps, pairs,
   fees, quotes, restore).
 - `SwapWsApi` / `SwapWsUpdates` — WebSocket swap-status stream.

@@ -38,6 +38,9 @@ validate-release-readiness: validate-release-version
 check-binding-parity:
 	@python3 scripts/check_binding_parity.py
 
+check-compatibility-boundary:
+	@python3 scripts/check_compatibility_boundary.py
+
 check-release-workflow:
 	@python3 scripts/check_release_workflow.py
 

@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Documented — maker and upstream compatibility boundary
+
+Record the deliberate Rust/WASM/native support matrix for upstream submarine
+claim co-signing, public maker raw broadcast and BOLT12 routes. Existing Rust
+compatibility methods and native submarine co-signing remain available; the
+current maker does not register their exact public routes. Correct the parity
+alias for WASM cooperative chain claims to native `construct_claim`, and check
+the route/export policy in CI against a pinned maker router inventory.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit
