@@ -47,6 +47,18 @@ pub fn validate_lnurl(string: &str) -> bool {
     LnUrl::from_str(&string).is_ok() || LightningAddress::from_str(&string).is_ok()
 }
 
+/// Resolve a Lightning address or encoded LNURL-pay request to a fixed-amount
+/// invoice. Amount is whole satoshis, unlike [`fetch_invoice`]'s millisatoshis.
+pub async fn resolve_lightning_address(address: &str, amount_sat: u64) -> Result<String, Error> {
+    let amount_msats = amount_sat
+        .checked_mul(1_000)
+        .filter(|amount| *amount > 0)
+        .ok_or_else(|| {
+            Error::Protocol("amountSat must be positive and fit in millisatoshis".into())
+        })?;
+    fetch_invoice(address, amount_msats).await
+}
+
 pub async fn fetch_invoice(address: &str, amount_msats: u64) -> Result<String, Error> {
     let address = address.to_lowercase();
     let lnurl = match LnUrl::from_str(&address) {

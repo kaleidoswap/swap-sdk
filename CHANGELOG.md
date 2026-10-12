@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — Lightning-address and LNURL-pay lookup in bindings
+
+WASM/TypeScript exports `resolveLightningAddress(address, amountSat)` and native
+bindings export `resolve_lightning_address`. Both use whole satoshis, reuse the
+Rust LNURL resolver and require the returned invoice amount to match the request.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

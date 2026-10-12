@@ -34,6 +34,7 @@ export const wasmUrl = new URL(
 export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
 export { BtcLikeTransaction };
+export { resolveLightningAddress } from "../vendor/bindings_wasm.js";
 
 /** Options for {@link createKaleidoMakerClient}. */
 export interface KaleidoMakerClientOptions {

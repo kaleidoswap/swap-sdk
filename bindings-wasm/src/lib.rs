@@ -142,6 +142,23 @@ fn opt_u64_arg(v: Option<BigIntArg>, param: &str) -> Result<Option<u64>, JsValue
     .transpose()
 }
 
+/// Resolve a Lightning address or encoded LNURL-pay request to a fixed-amount
+/// BOLT11 invoice. amountSat is a positive bigint in whole satoshis. Contacts
+/// the provider and its advertised callback; does not pay or create a swap.
+#[wasm_bindgen(js_name = resolveLightningAddress)]
+pub async fn resolve_lightning_address(
+    address: StringArg,
+    amount_sat: BigIntArg,
+) -> Result<String, JsValue> {
+    let address = str_arg(address, "address")?;
+    let amount_sat = opt_u64_arg(Some(amount_sat), "amountSat")?
+        .filter(|amount| *amount > 0 && amount.checked_mul(1_000).is_some())
+        .ok_or_else(|| arg_err("amountSat must be positive and fit in millisatoshis"))?;
+    kaleidorg_swap_sdk::util::lnurl::resolve_lightning_address(&address, amount_sat)
+        .await
+        .map_err(core_err)
+}
+
 // ============================================================================
 // Swap key management (client-side crypto). This is the browser entry point for
 // deriving per-swap keys and preimages; swap-script/tx construction is exposed

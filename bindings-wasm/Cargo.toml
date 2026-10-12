@@ -31,4 +31,4 @@ serde = { version = "1", features = ["derive"] }
 # `sync` names the broadcast::Receiver / Mutex used by the WS status stream.
 tokio = { version = "1", default-features = false, features = ["sync"] }
 # `ws` enables the Boltz WebSocket swap-status stream (BoltzWsApi).
-kaleidorg-swap-sdk = { path = "..", default-features = false, features = ["esplora", "ws"] }
+kaleidorg-swap-sdk = { path = "..", default-features = false, features = ["esplora", "ws", "lnurl"] }
