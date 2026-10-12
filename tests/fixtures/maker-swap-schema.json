@@ -1,0 +1,1135 @@
+{
+  "source": {
+    "repository": "kaleidoswap/kaleidoswap-maker-rs",
+    "revision": "c106f395c2326b4d43a1e1529a2847234808c3ef",
+    "file": "openapi.yaml"
+  },
+  "routes": {
+    "/v2/swap/chain": {
+      "request": {
+        "$ref": "#/components/schemas/CreateChainRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/ChainCreateResponse"
+        }
+      }
+    },
+    "/v2/swap/restore": {
+      "request": {
+        "$ref": "#/components/schemas/SwapRestoreRequest"
+      },
+      "responses": {
+        "200": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/RestoredSwap"
+          }
+        }
+      }
+    },
+    "/v2/swap/restore/index": {
+      "request": {
+        "$ref": "#/components/schemas/SwapRestoreRequest"
+      },
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/SwapRestoreIndexResponse"
+        }
+      }
+    },
+    "/v2/swap/reverse": {
+      "request": {
+        "$ref": "#/components/schemas/CreateReverseRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/ReverseCreateResponse"
+        }
+      }
+    },
+    "/v2/swap/submarine": {
+      "request": {
+        "$ref": "#/components/schemas/CreateSubmarineRequest"
+      },
+      "responses": {
+        "201": {
+          "$ref": "#/components/schemas/SubmarineCreateResponse"
+        }
+      }
+    },
+    "/v2/swap/{id}": {
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/SwapStatus"
+        }
+      }
+    }
+  },
+  "schemas": {
+    "ChainCreateResponse": {
+      "type": "object",
+      "required": [
+        "id",
+        "swapAuth"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "claimDetails": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/ChainSwapDetailsResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "claimPublicKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expectedAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "id": {
+          "type": "string"
+        },
+        "lockupDetails": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/ChainSwapDetailsResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payoutAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "serverLockup": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/ChainServerLockup"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "swapAuth": {
+          "type": "string"
+        },
+        "swapTree": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/SwapTree"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeoutBlockHeight": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "minimum": 0
+        },
+        "userAddress": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ChainServerLockup": {
+      "type": "object",
+      "required": [
+        "address",
+        "timeoutBlockHeight",
+        "refundPublicKey",
+        "amount"
+      ],
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "refundPublicKey": {
+          "type": "string"
+        },
+        "swapTree": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/SwapTree"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeoutBlockHeight": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      }
+    },
+    "ChainSwapDetailsResponse": {
+      "type": "object",
+      "required": [
+        "swapTree",
+        "lockupAddress",
+        "serverPublicKey",
+        "timeoutBlockHeight",
+        "amount"
+      ],
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blindingKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "feeAssetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lockupAddress": {
+          "type": "string"
+        },
+        "serverPublicKey": {
+          "type": "string"
+        },
+        "swapTree": {
+          "$ref": "#/components/schemas/SwapTree"
+        },
+        "timeoutBlockHeight": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      }
+    },
+    "CreateChainRequest": {
+      "type": "object",
+      "required": [
+        "preimageHash",
+        "refundPublicKey"
+      ],
+      "properties": {
+        "claimPublicKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fromAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "pairHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preimageHash": {
+          "type": "string"
+        },
+        "refundPublicKey": {
+          "type": "string"
+        },
+        "serverLockAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userAddress": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userLockAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "webhook": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/WebhookConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "CreateReverseRequest": {
+      "type": "object",
+      "required": [
+        "invoiceAmount"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "addressSignature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "beneficiary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bolt12Refund": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "claimPublicKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "invoiceAmount": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "pairHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preimageHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "webhook": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/WebhookConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "CreateSubmarineRequest": {
+      "type": "object",
+      "required": [
+        "refundPublicKey"
+      ],
+      "properties": {
+        "beneficiary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "from": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fromAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "invoice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "invoiceAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "offer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preimageHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refundPublicKey": {
+          "type": "string"
+        },
+        "to": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "webhook": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/WebhookConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "PayoutStatus": {
+      "type": "object",
+      "required": [
+        "mode",
+        "destination"
+      ],
+      "properties": {
+        "destination": {
+          "type": "string"
+        },
+        "layer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mode": {
+          "type": "string"
+        },
+        "reference": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RestoreClaimDetails": {
+      "type": "object",
+      "required": [
+        "type",
+        "tree",
+        "keyIndex",
+        "lockupAddress",
+        "serverPublicKey",
+        "timeoutBlockHeight",
+        "preimageHash"
+      ],
+      "properties": {
+        "amount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "blindingKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keyIndex": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        },
+        "lockupAddress": {
+          "type": "string"
+        },
+        "preimageHash": {
+          "type": "string"
+        },
+        "serverPublicKey": {
+          "type": "string"
+        },
+        "timeoutBlockHeight": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        },
+        "transaction": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/RestoreTransaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tree": {
+          "$ref": "#/components/schemas/SwapTree"
+        },
+        "type": {
+          "$ref": "#/components/schemas/RestoreDetailType"
+        }
+      }
+    },
+    "RestoreDetailType": {
+      "type": "string",
+      "enum": [
+        "utxo"
+      ]
+    },
+    "RestoreRefundDetails": {
+      "type": "object",
+      "required": [
+        "type",
+        "tree",
+        "keyIndex",
+        "lockupAddress",
+        "serverPublicKey",
+        "timeoutBlockHeight"
+      ],
+      "properties": {
+        "amount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "blindingKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keyIndex": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        },
+        "lockupAddress": {
+          "type": "string"
+        },
+        "serverPublicKey": {
+          "type": "string"
+        },
+        "timeoutBlockHeight": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        },
+        "transaction": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/RestoreTransaction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tree": {
+          "$ref": "#/components/schemas/SwapTree"
+        },
+        "type": {
+          "$ref": "#/components/schemas/RestoreDetailType"
+        }
+      }
+    },
+    "RestoreTransaction": {
+      "type": "object",
+      "required": [
+        "id",
+        "vout"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "vout": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      }
+    },
+    "RestoredSwap": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "status",
+        "createdAt",
+        "from",
+        "to",
+        "preimageHash"
+      ],
+      "properties": {
+        "claimDetails": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/RestoreClaimDetails"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "createdAt": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "from": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "invoice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preimageHash": {
+          "type": "string"
+        },
+        "refundDetails": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/RestoreRefundDetails"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/components/schemas/RestoredSwapType"
+        }
+      }
+    },
+    "RestoredSwapType": {
+      "type": "string",
+      "enum": [
+        "submarine",
+        "reverse",
+        "chain"
+      ]
+    },
+    "ReverseCreateResponse": {
+      "type": "object",
+      "required": [
+        "id",
+        "swapAuth",
+        "invoice",
+        "refundPublicKey",
+        "lockupAddress",
+        "swapTree",
+        "timeoutBlockHeight",
+        "onchainAmount"
+      ],
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "blindingKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "feeAssetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "invoice": {
+          "type": "string"
+        },
+        "lockupAddress": {
+          "type": "string"
+        },
+        "onchainAmount": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "refundPublicKey": {
+          "type": "string"
+        },
+        "rgb": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/RgbLock"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "swapAuth": {
+          "type": "string"
+        },
+        "swapTree": {
+          "$ref": "#/components/schemas/SwapTree"
+        },
+        "timeoutBlockHeight": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "RgbLock": {
+      "type": "object",
+      "required": [
+        "assetId",
+        "amount",
+        "recipientId",
+        "blinding",
+        "htlcSat",
+        "scriptPubkey",
+        "transportEndpoints",
+        "minConfirmations"
+      ],
+      "properties": {
+        "amount": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "assetId": {
+          "type": "string"
+        },
+        "blinding": {
+          "type": "string"
+        },
+        "claimFeeRate": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "cooperativeRefund": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "htlcSat": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "minConfirmations": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        },
+        "recipientId": {
+          "type": "string"
+        },
+        "scriptPubkey": {
+          "type": "string"
+        },
+        "transportEndpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "SubmarineCreateResponse": {
+      "type": "object",
+      "required": [
+        "id",
+        "swapAuth",
+        "claimPublicKey",
+        "address",
+        "swapTree",
+        "timeoutBlockHeight",
+        "expectedAmount",
+        "acceptZeroConf",
+        "bip21"
+      ],
+      "properties": {
+        "acceptZeroConf": {
+          "type": "boolean"
+        },
+        "address": {
+          "type": "string"
+        },
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bip21": {
+          "type": "string"
+        },
+        "claimPublicKey": {
+          "type": "string"
+        },
+        "expectedAmount": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": 0
+        },
+        "feeAssetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "invoiceAmount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64",
+          "minimum": 0
+        },
+        "preimageHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "referralId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rgb": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/RgbLock"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "swapAuth": {
+          "type": "string"
+        },
+        "swapTree": {
+          "$ref": "#/components/schemas/SwapTree"
+        },
+        "timeoutBlockHeight": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      }
+    },
+    "SwapEventEntry": {
+      "type": "object",
+      "required": [
+        "ts",
+        "kind"
+      ],
+      "properties": {
+        "data": {},
+        "kind": {
+          "type": "string"
+        },
+        "ts": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "SwapLeaf": {
+      "type": "object",
+      "required": [
+        "version",
+        "output"
+      ],
+      "properties": {
+        "output": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      }
+    },
+    "SwapRestoreIndexResponse": {
+      "type": "object",
+      "required": [
+        "index"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "format": "int64",
+          "minimum": -1
+        }
+      }
+    },
+    "SwapRestoreRequest": {
+      "type": "object",
+      "required": [
+        "xpub"
+      ],
+      "properties": {
+        "derivationPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "gapLimit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32",
+          "maximum": 150,
+          "minimum": 1
+        },
+        "xpub": {
+          "type": "string"
+        }
+      }
+    },
+    "SwapStatus": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "status",
+        "paymentStatus",
+        "events"
+      ],
+      "properties": {
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/components/schemas/SwapEventEntry"
+          }
+        },
+        "failureDetails": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "failureReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "paymentStatus": {
+          "type": "string"
+        },
+        "payout": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/PayoutStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      }
+    },
+    "SwapTree": {
+      "type": "object",
+      "required": [
+        "claimLeaf",
+        "refundLeaf"
+      ],
+      "properties": {
+        "claimLeaf": {
+          "$ref": "#/components/schemas/SwapLeaf"
+        },
+        "refundLeaf": {
+          "$ref": "#/components/schemas/SwapLeaf"
+        }
+      }
+    },
+    "WebhookConfig": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "hashSwapId": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

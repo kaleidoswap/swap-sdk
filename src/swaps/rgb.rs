@@ -86,6 +86,8 @@ const MAX_RGB_PSBT_OUTPUTS: usize = 64;
 /// except `htlc_sat`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct RgbLock {
     /// Versioned early-refund protocol advertised by the maker; absent on older makers.
     #[serde(default, skip_serializing_if = "Option::is_none")]

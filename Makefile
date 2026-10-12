@@ -51,6 +51,14 @@ sync-version:
 	fi
 	@python3 scripts/release_version.py sync "$(VERSION)"
 
+# Generate serde-derived public WASM/TypeScript swap DTO declarations.
+generate-swap-types:
+	cargo run --features typescript --bin generate-typescript --locked > bindings-wasm/src/swap_types.ts.tmp
+	mv bindings-wasm/src/swap_types.ts.tmp bindings-wasm/src/swap_types.ts
+
+check-swap-types: generate-swap-types
+	git diff --exit-code -- bindings-wasm/src/swap_types.ts
+
 # --- Generated sources -------------------------------------------------------
 # Generate the committed platform-independent UniFFI Python glue fallback.
 # Maturin normally creates the same files while building a wheel. The package

@@ -29,6 +29,12 @@ fn submarine() {
 
 #[test]
 #[serial]
+fn typed_swap_dtos() {
+    run_test("tests/bindings/typed_swap_dtos.py");
+}
+
+#[test]
+#[serial]
 fn kaleido_auth() {
     run_test("tests/bindings/kaleido_auth.py");
 }

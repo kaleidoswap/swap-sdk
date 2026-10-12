@@ -3133,6 +3133,7 @@ class _UniffiConverterTypeChannelInfo(_UniffiConverterRustBuffer):
 
 
 class ClaimDetails:
+    detail_type: "typing.Optional[str]"
     tree: "SwapTree"
     amount: "typing.Optional[int]"
     key_index: "int"
@@ -3146,6 +3147,7 @@ class ClaimDetails:
     def __init__(
         self,
         *,
+        detail_type: "typing.Optional[str]" = _DEFAULT,
         tree: "SwapTree",
         amount: "typing.Optional[int]",
         key_index: "int",
@@ -3156,6 +3158,10 @@ class ClaimDetails:
         blinding_key: "typing.Optional[str]",
         preimage_hash: "str",
     ):
+        if detail_type is _DEFAULT:
+            self.detail_type = None
+        else:
+            self.detail_type = detail_type
         self.tree = tree
         self.amount = amount
         self.key_index = key_index
@@ -3167,7 +3173,8 @@ class ClaimDetails:
         self.preimage_hash = preimage_hash
 
     def __str__(self):
-        return "ClaimDetails(tree={}, amount={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={}, preimage_hash={})".format(
+        return "ClaimDetails(detail_type={}, tree={}, amount={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={}, preimage_hash={})".format(
+            self.detail_type,
             self.tree,
             self.amount,
             self.key_index,
@@ -3180,6 +3187,8 @@ class ClaimDetails:
         )
 
     def __eq__(self, other):
+        if self.detail_type != other.detail_type:
+            return False
         if self.tree != other.tree:
             return False
         if self.amount != other.amount:
@@ -3205,6 +3214,7 @@ class _UniffiConverterTypeClaimDetails(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return ClaimDetails(
+            detail_type=_UniffiConverterOptionalString.read(buf),
             tree=_UniffiConverterTypeSwapTree.read(buf),
             amount=_UniffiConverterOptionalUInt64.read(buf),
             key_index=_UniffiConverterUInt32.read(buf),
@@ -3218,6 +3228,7 @@ class _UniffiConverterTypeClaimDetails(_UniffiConverterRustBuffer):
 
     @staticmethod
     def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.detail_type)
         _UniffiConverterTypeSwapTree.check_lower(value.tree)
         _UniffiConverterOptionalUInt64.check_lower(value.amount)
         _UniffiConverterUInt32.check_lower(value.key_index)
@@ -3230,6 +3241,7 @@ class _UniffiConverterTypeClaimDetails(_UniffiConverterRustBuffer):
 
     @staticmethod
     def write(value, buf):
+        _UniffiConverterOptionalString.write(value.detail_type, buf)
         _UniffiConverterTypeSwapTree.write(value.tree, buf)
         _UniffiConverterOptionalUInt64.write(value.amount, buf)
         _UniffiConverterUInt32.write(value.key_index, buf)
@@ -4636,6 +4648,8 @@ class GetSwapResponse:
     The swap's history, oldest first.
     """
 
+    payout: "typing.Optional[SwapPayoutStatus]"
+
     def __init__(
         self,
         *,
@@ -4648,6 +4662,7 @@ class GetSwapResponse:
         failure_reason: "typing.Optional[str]",
         failure_details: "typing.Optional[str]",
         events: "typing.Optional[typing.List[SwapEvent]]",
+        payout: "typing.Optional[SwapPayoutStatus]" = _DEFAULT,
     ):
         self.status = status
         self.zero_conf_rejected = zero_conf_rejected
@@ -4658,9 +4673,13 @@ class GetSwapResponse:
         self.failure_reason = failure_reason
         self.failure_details = failure_details
         self.events = events
+        if payout is _DEFAULT:
+            self.payout = None
+        else:
+            self.payout = payout
 
     def __str__(self):
-        return "GetSwapResponse(status={}, zero_conf_rejected={}, transaction={}, id={}, swap_type={}, payment_status={}, failure_reason={}, failure_details={}, events={})".format(
+        return "GetSwapResponse(status={}, zero_conf_rejected={}, transaction={}, id={}, swap_type={}, payment_status={}, failure_reason={}, failure_details={}, events={}, payout={})".format(
             self.status,
             self.zero_conf_rejected,
             self.transaction,
@@ -4670,6 +4689,7 @@ class GetSwapResponse:
             self.failure_reason,
             self.failure_details,
             self.events,
+            self.payout,
         )
 
     def __eq__(self, other):
@@ -4691,6 +4711,8 @@ class GetSwapResponse:
             return False
         if self.events != other.events:
             return False
+        if self.payout != other.payout:
+            return False
         return True
 
 
@@ -4707,6 +4729,7 @@ class _UniffiConverterTypeGetSwapResponse(_UniffiConverterRustBuffer):
             failure_reason=_UniffiConverterOptionalString.read(buf),
             failure_details=_UniffiConverterOptionalString.read(buf),
             events=_UniffiConverterOptionalSequenceTypeSwapEvent.read(buf),
+            payout=_UniffiConverterOptionalTypeSwapPayoutStatus.read(buf),
         )
 
     @staticmethod
@@ -4720,6 +4743,7 @@ class _UniffiConverterTypeGetSwapResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.failure_reason)
         _UniffiConverterOptionalString.check_lower(value.failure_details)
         _UniffiConverterOptionalSequenceTypeSwapEvent.check_lower(value.events)
+        _UniffiConverterOptionalTypeSwapPayoutStatus.check_lower(value.payout)
 
     @staticmethod
     def write(value, buf):
@@ -4732,6 +4756,7 @@ class _UniffiConverterTypeGetSwapResponse(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.failure_reason, buf)
         _UniffiConverterOptionalString.write(value.failure_details, buf)
         _UniffiConverterOptionalSequenceTypeSwapEvent.write(value.events, buf)
+        _UniffiConverterOptionalTypeSwapPayoutStatus.write(value.payout, buf)
 
 
 class HeightResponse:
@@ -5486,6 +5511,7 @@ class _UniffiConverterTypeQuoteProfile(_UniffiConverterRustBuffer):
 
 
 class RefundDetails:
+    detail_type: "typing.Optional[str]"
     tree: "SwapTree"
     amount: "typing.Optional[int]"
     key_index: "int"
@@ -5498,6 +5524,7 @@ class RefundDetails:
     def __init__(
         self,
         *,
+        detail_type: "typing.Optional[str]" = _DEFAULT,
         tree: "SwapTree",
         amount: "typing.Optional[int]",
         key_index: "int",
@@ -5507,6 +5534,10 @@ class RefundDetails:
         timeout_block_height: "int",
         blinding_key: "typing.Optional[str]",
     ):
+        if detail_type is _DEFAULT:
+            self.detail_type = None
+        else:
+            self.detail_type = detail_type
         self.tree = tree
         self.amount = amount
         self.key_index = key_index
@@ -5517,7 +5548,8 @@ class RefundDetails:
         self.blinding_key = blinding_key
 
     def __str__(self):
-        return "RefundDetails(tree={}, amount={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={})".format(
+        return "RefundDetails(detail_type={}, tree={}, amount={}, key_index={}, transaction={}, lockup_address={}, server_public_key={}, timeout_block_height={}, blinding_key={})".format(
+            self.detail_type,
             self.tree,
             self.amount,
             self.key_index,
@@ -5529,6 +5561,8 @@ class RefundDetails:
         )
 
     def __eq__(self, other):
+        if self.detail_type != other.detail_type:
+            return False
         if self.tree != other.tree:
             return False
         if self.amount != other.amount:
@@ -5552,6 +5586,7 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return RefundDetails(
+            detail_type=_UniffiConverterOptionalString.read(buf),
             tree=_UniffiConverterTypeSwapTree.read(buf),
             amount=_UniffiConverterOptionalUInt64.read(buf),
             key_index=_UniffiConverterUInt32.read(buf),
@@ -5564,6 +5599,7 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
 
     @staticmethod
     def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.detail_type)
         _UniffiConverterTypeSwapTree.check_lower(value.tree)
         _UniffiConverterOptionalUInt64.check_lower(value.amount)
         _UniffiConverterUInt32.check_lower(value.key_index)
@@ -5575,6 +5611,7 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
 
     @staticmethod
     def write(value, buf):
+        _UniffiConverterOptionalString.write(value.detail_type, buf)
         _UniffiConverterTypeSwapTree.write(value.tree, buf)
         _UniffiConverterOptionalUInt64.write(value.amount, buf)
         _UniffiConverterUInt32.write(value.key_index, buf)
@@ -6957,17 +6994,33 @@ class SwapEvent:
     Unix seconds.
     """
 
-    def __init__(self, *, kind: "str", ts: "int"):
+    data: "typing.Optional[SwapEventData]"
+
+    def __init__(
+        self,
+        *,
+        kind: "str",
+        ts: "int",
+        data: "typing.Optional[SwapEventData]" = _DEFAULT,
+    ):
         self.kind = kind
         self.ts = ts
+        if data is _DEFAULT:
+            self.data = None
+        else:
+            self.data = data
 
     def __str__(self):
-        return "SwapEvent(kind={}, ts={})".format(self.kind, self.ts)
+        return "SwapEvent(kind={}, ts={}, data={})".format(
+            self.kind, self.ts, self.data
+        )
 
     def __eq__(self, other):
         if self.kind != other.kind:
             return False
         if self.ts != other.ts:
+            return False
+        if self.data != other.data:
             return False
         return True
 
@@ -6978,17 +7031,89 @@ class _UniffiConverterTypeSwapEvent(_UniffiConverterRustBuffer):
         return SwapEvent(
             kind=_UniffiConverterString.read(buf),
             ts=_UniffiConverterInt64.read(buf),
+            data=_UniffiConverterOptionalTypeSwapEventData.read(buf),
         )
 
     @staticmethod
     def check_lower(value):
         _UniffiConverterString.check_lower(value.kind)
         _UniffiConverterInt64.check_lower(value.ts)
+        _UniffiConverterOptionalTypeSwapEventData.check_lower(value.data)
 
     @staticmethod
     def write(value, buf):
         _UniffiConverterString.write(value.kind, buf)
         _UniffiConverterInt64.write(value.ts, buf)
+        _UniffiConverterOptionalTypeSwapEventData.write(value.data, buf)
+
+
+class SwapPayoutStatus:
+    mode: "str"
+    destination: "str"
+    layer: "typing.Optional[str]"
+    reference: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        mode: "str",
+        destination: "str",
+        layer: "typing.Optional[str]" = _DEFAULT,
+        reference: "typing.Optional[str]" = _DEFAULT,
+    ):
+        self.mode = mode
+        self.destination = destination
+        if layer is _DEFAULT:
+            self.layer = None
+        else:
+            self.layer = layer
+        if reference is _DEFAULT:
+            self.reference = None
+        else:
+            self.reference = reference
+
+    def __str__(self):
+        return (
+            "SwapPayoutStatus(mode={}, destination={}, layer={}, reference={})".format(
+                self.mode, self.destination, self.layer, self.reference
+            )
+        )
+
+    def __eq__(self, other):
+        if self.mode != other.mode:
+            return False
+        if self.destination != other.destination:
+            return False
+        if self.layer != other.layer:
+            return False
+        if self.reference != other.reference:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSwapPayoutStatus(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SwapPayoutStatus(
+            mode=_UniffiConverterString.read(buf),
+            destination=_UniffiConverterString.read(buf),
+            layer=_UniffiConverterOptionalString.read(buf),
+            reference=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.mode)
+        _UniffiConverterString.check_lower(value.destination)
+        _UniffiConverterOptionalString.check_lower(value.layer)
+        _UniffiConverterOptionalString.check_lower(value.reference)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.mode, buf)
+        _UniffiConverterString.write(value.destination, buf)
+        _UniffiConverterOptionalString.write(value.layer, buf)
+        _UniffiConverterOptionalString.write(value.reference, buf)
 
 
 class SwapRestoreIndexResponse:
@@ -7029,6 +7154,7 @@ class SwapRestoreResponse:
     created_at: "int"
     _from: "str"
     to: "str"
+    preimage_hash: "typing.Optional[str]"
     invoice: "typing.Optional[str]"
     """
     Lightning invoice; boltz only returns it for submarine/reverse swaps.
@@ -7046,6 +7172,7 @@ class SwapRestoreResponse:
         created_at: "int",
         _from: "str",
         to: "str",
+        preimage_hash: "typing.Optional[str]" = _DEFAULT,
         invoice: "typing.Optional[str]",
         claim_details: "typing.Optional[ClaimDetails]",
         refund_details: "typing.Optional[RefundDetails]",
@@ -7056,18 +7183,23 @@ class SwapRestoreResponse:
         self.created_at = created_at
         self._from = _from
         self.to = to
+        if preimage_hash is _DEFAULT:
+            self.preimage_hash = None
+        else:
+            self.preimage_hash = preimage_hash
         self.invoice = invoice
         self.claim_details = claim_details
         self.refund_details = refund_details
 
     def __str__(self):
-        return "SwapRestoreResponse(id={}, swap_type={}, status={}, created_at={}, _from={}, to={}, invoice={}, claim_details={}, refund_details={})".format(
+        return "SwapRestoreResponse(id={}, swap_type={}, status={}, created_at={}, _from={}, to={}, preimage_hash={}, invoice={}, claim_details={}, refund_details={})".format(
             self.id,
             self.swap_type,
             self.status,
             self.created_at,
             self._from,
             self.to,
+            self.preimage_hash,
             self.invoice,
             self.claim_details,
             self.refund_details,
@@ -7085,6 +7217,8 @@ class SwapRestoreResponse:
         if self._from != other._from:
             return False
         if self.to != other.to:
+            return False
+        if self.preimage_hash != other.preimage_hash:
             return False
         if self.invoice != other.invoice:
             return False
@@ -7105,6 +7239,7 @@ class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
             created_at=_UniffiConverterUInt64.read(buf),
             _from=_UniffiConverterString.read(buf),
             to=_UniffiConverterString.read(buf),
+            preimage_hash=_UniffiConverterOptionalString.read(buf),
             invoice=_UniffiConverterOptionalString.read(buf),
             claim_details=_UniffiConverterOptionalTypeClaimDetails.read(buf),
             refund_details=_UniffiConverterOptionalTypeRefundDetails.read(buf),
@@ -7118,6 +7253,7 @@ class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.check_lower(value.created_at)
         _UniffiConverterString.check_lower(value._from)
         _UniffiConverterString.check_lower(value.to)
+        _UniffiConverterOptionalString.check_lower(value.preimage_hash)
         _UniffiConverterOptionalString.check_lower(value.invoice)
         _UniffiConverterOptionalTypeClaimDetails.check_lower(value.claim_details)
         _UniffiConverterOptionalTypeRefundDetails.check_lower(value.refund_details)
@@ -7130,6 +7266,7 @@ class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.write(value.created_at, buf)
         _UniffiConverterString.write(value._from, buf)
         _UniffiConverterString.write(value.to, buf)
+        _UniffiConverterOptionalString.write(value.preimage_hash, buf)
         _UniffiConverterOptionalString.write(value.invoice, buf)
         _UniffiConverterOptionalTypeClaimDetails.write(value.claim_details, buf)
         _UniffiConverterOptionalTypeRefundDetails.write(value.refund_details, buf)
@@ -9086,6 +9223,32 @@ class _UniffiConverterOptionalTypeRgbLock(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeSwapPayoutStatus(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeSwapPayoutStatus.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeSwapPayoutStatus.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeSwapPayoutStatus.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeTransactionInfo(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -9290,6 +9453,32 @@ class _UniffiConverterOptionalSequenceTypeSwapEvent(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterSequenceTypeSwapEvent.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeSwapEventData(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeSwapEventData.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeSwapEventData.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeSwapEventData.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -9651,6 +9840,28 @@ class _UniffiConverterTypeSecp256k1PublicKey:
 
 
 class _UniffiConverterTypeSecretKey:
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value, buf)
+
+    @staticmethod
+    def read(buf):
+        return _UniffiConverterString.read(buf)
+
+    @staticmethod
+    def lift(value):
+        return _UniffiConverterString.lift(value)
+
+    @staticmethod
+    def check_lower(value):
+        return _UniffiConverterString.check_lower(value)
+
+    @staticmethod
+    def lower(value):
+        return _UniffiConverterString.lower(value)
+
+
+class _UniffiConverterTypeSwapEventData:
     @staticmethod
     def write(value, buf):
         _UniffiConverterString.write(value, buf)
@@ -12261,6 +12472,7 @@ class _UniffiConverterTypeSwapWsUpdates:
 PublicKey = str
 Secp256k1PublicKey = str
 SecretKey = str
+SwapEventData = str
 
 # Async support# RustFuturePoll values
 _UNIFFI_RUST_FUTURE_POLL_READY = 0
@@ -12452,6 +12664,7 @@ __all__ = [
     "SubmarineSwapPreimageResp",
     "SubmarineSwapTxResp",
     "SwapEvent",
+    "SwapPayoutStatus",
     "SwapRestoreIndexResponse",
     "SwapRestoreResponse",
     "SwapStatus",

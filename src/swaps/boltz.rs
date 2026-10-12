@@ -1851,6 +1851,8 @@ pub struct MrhResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields = nullable))]
 pub struct Webhook<T> {
     pub url: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1861,10 +1863,13 @@ pub struct Webhook<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields = nullable))]
 pub struct CreateSubmarineRequest {
     pub from: String,
     pub to: String,
     pub invoice: String,
+    #[cfg_attr(feature = "typescript", ts(as = "String"))]
     pub refund_public_key: PublicKey,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pair_hash: Option<String>,
@@ -1893,10 +1898,13 @@ impl std::fmt::Debug for RedactedSwapAuth<'_> {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct CreateSubmarineResponse {
     pub accept_zero_conf: bool,
     pub address: String,
     pub bip21: String,
+    #[cfg_attr(feature = "typescript", ts(as = "String"))]
     pub claim_public_key: PublicKey,
     pub expected_amount: u64,
     pub id: String,
@@ -2114,6 +2122,8 @@ impl CreateSubmarineResponse {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct SwapTree {
     pub claim_leaf: Leaf,
     pub refund_leaf: Leaf,
@@ -2121,6 +2131,8 @@ pub struct SwapTree {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct Leaf {
     pub output: String,
     pub version: u8,
@@ -2128,7 +2140,12 @@ pub struct Leaf {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct ClaimDetails {
+    /// Canonical maker restore discriminator; older servers may omit it.
+    #[serde(rename = "type", default)]
+    pub detail_type: Option<String>,
     pub tree: SwapTree,
     pub amount: Option<u64>,
     pub key_index: u32,
@@ -2142,7 +2159,12 @@ pub struct ClaimDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct RefundDetails {
+    /// Canonical maker restore discriminator; older servers may omit it.
+    #[serde(rename = "type", default)]
+    pub detail_type: Option<String>,
     pub tree: SwapTree,
     pub amount: Option<u64>,
     pub key_index: u32,
@@ -2155,6 +2177,7 @@ pub struct RefundDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum SwapRestoreType {
     Reverse,
     Submarine,
@@ -2163,6 +2186,8 @@ pub enum SwapRestoreType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct SwapRestoreResponse {
     pub id: String,
     #[serde(rename = "type")]
@@ -2171,6 +2196,9 @@ pub struct SwapRestoreResponse {
     pub created_at: u64,
     pub from: String,
     pub to: String,
+    /// Payment hash retained by the maker for submarine refund recovery.
+    #[serde(default)]
+    pub preimage_hash: Option<String>,
     /// Lightning invoice; boltz only returns it for submarine/reverse swaps.
     pub invoice: Option<String>,
     pub claim_details: Option<ClaimDetails>,
@@ -2179,6 +2207,8 @@ pub struct SwapRestoreResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct SwapRestoreIndexResponse {
     pub index: i64,
 }
@@ -2356,9 +2386,12 @@ pub enum WsResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields = nullable))]
 pub struct CreateReverseRequest {
     pub from: String,
     pub to: String,
+    #[cfg_attr(feature = "typescript", ts(as = "String"))]
     pub claim_public_key: PublicKey,
     /// The BOLT12 invoice
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2368,6 +2401,7 @@ pub struct CreateReverseRequest {
     pub invoice_amount: Option<u64>,
     /// The preimage hash if the invoice is not provided
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<String>"))]
     pub preimage_hash: Option<sha256::Hash>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -2394,11 +2428,14 @@ pub struct CreateReverseRequest {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct CreateReverseResponse {
     pub id: String,
     pub invoice: Option<String>,
     pub swap_tree: SwapTree,
     pub lockup_address: String,
+    #[cfg_attr(feature = "typescript", ts(as = "String"))]
     pub refund_public_key: PublicKey,
     pub timeout_block_height: u32,
     pub onchain_amount: u64,
@@ -2571,9 +2608,12 @@ pub enum Side {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct ChainSwapDetails {
     pub swap_tree: SwapTree,
     pub lockup_address: String,
+    #[cfg_attr(feature = "typescript", ts(as = "String"))]
     pub server_public_key: PublicKey,
     pub timeout_block_height: u32,
     pub amount: u64,
@@ -2593,13 +2633,18 @@ pub struct ChainSwapDetails {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields = nullable))]
 pub struct CreateChainRequest {
     pub from: String,
     pub to: String,
+    #[cfg_attr(feature = "typescript", ts(as = "String"))]
     pub preimage_hash: sha256::Hash,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<String>"))]
     pub claim_public_key: Option<PublicKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<String>"))]
     pub refund_public_key: Option<PublicKey>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_lock_amount: Option<u64>,
@@ -2615,6 +2660,8 @@ pub struct CreateChainRequest {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct CreateChainResponse {
     pub id: String,
     pub claim_details: ChainSwapDetails,
@@ -2898,6 +2945,7 @@ pub enum SwapTxKind {
 ///
 /// See <https://docs.boltz.exchange/v/api/lifecycle#normal-submarine-swaps>
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum SubSwapStates {
     /// Initial state of the swap; optionally the initial state can also be `invoice.set` in case
     /// the invoice was already specified in the request that created the swap.
@@ -2987,6 +3035,7 @@ impl FromStr for SubSwapStates {
 ///
 /// See <https://docs.boltz.exchange/v/api/lifecycle#reverse-submarine-swaps>
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum RevSwapStates {
     /// Initial state of a newly created Reverse Submarine Swap.
     #[serde(rename = "swap.created")]
@@ -3067,6 +3116,7 @@ impl FromStr for RevSwapStates {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 pub enum ChainSwapStates {
     /// The initial state of the chain swap.
     #[serde(rename = "swap.created")]
@@ -3296,6 +3346,8 @@ pub struct GetQuoteResponse {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct TransactionResponse {
     pub id: String,
     pub hex: String,
@@ -3303,22 +3355,35 @@ pub struct TransactionResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct TransactionOut {
     pub id: String,
     pub vout: u32,
 }
 
+/// Open JSON audit payload, exposed as JSON text by the native bindings.
+pub type SwapEventData = serde_json::Value;
+
 /// One entry of a swap's history, as served in [`GetSwapResponse::events`].
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct SwapEvent {
     /// What happened, e.g. `invoice_issued`, `expired`.
     pub kind: String,
     /// Unix seconds.
     pub ts: i64,
+    /// Maker payment audit details. Consumers must narrow this open JSON value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "typescript", ts(type = "unknown"))]
+    pub data: Option<SwapEventData>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct GetSwapResponse {
     pub status: String,
     pub zero_conf_rejected: Option<bool>,
@@ -3341,6 +3406,20 @@ pub struct GetSwapResponse {
     /// The swap's history, oldest first.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<SwapEvent>>,
+    /// Direct payout progress on maker pay-through swaps.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payout: Option<SwapPayoutStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+#[cfg_attr(feature = "typescript", ts(optional_fields))]
+pub struct SwapPayoutStatus {
+    pub mode: String,
+    pub destination: String,
+    pub layer: Option<String>,
+    pub reference: Option<String>,
 }
 
 #[cfg(test)]
@@ -3455,6 +3534,7 @@ mod tests {
                 [SwapEvent {
                     kind: "invoice_issued".to_owned(),
                     ts: 1_786_704_659,
+                    data: None,
                 }]
                 .as_slice()
             ),

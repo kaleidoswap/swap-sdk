@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — serde-derived TypeScript swap DTOs
+
+Create, status and restore methods now expose public Rust-derived DTOs in Node,
+browser and raw WASM declarations. Tests cover consumer compilation, exact
+64-bit response integers and rejection of unsafe create amounts. Restore hashes
+and detail types, payout status and payment audit payloads are preserved across
+WASM and native bindings. Package CI checks declaration generation and supported
+maker schema compatibility; live private-maker drift detection requires the
+documented read token.
+
+Rust struct literals for `ClaimDetails`, `RefundDetails`, `SwapRestoreResponse`,
+`GetSwapResponse` and `SwapEvent` must initialize their new optional metadata
+fields; use `None` when absent. Generated Python constructors default those new
+fields to `None`.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit
