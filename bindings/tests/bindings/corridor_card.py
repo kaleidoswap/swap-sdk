@@ -9,7 +9,9 @@ from pathlib import Path
 import kaleidorg_swap_sdk as sdk
 
 card = json.loads(
-    (Path(__file__).resolve().parents[3] / "tests/fixtures/corridor-v1/card.json").read_text()
+    (
+        Path(__file__).resolve().parents[3] / "tests/fixtures/corridor-v1/card.json"
+    ).read_text()
 )
 requests = []
 status = 200
@@ -33,7 +35,9 @@ async def run():
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        client = sdk.SwapClient(f"http://127.0.0.1:{server.server_port}/prefix/v2/", None)
+        client = sdk.SwapClient(
+            f"http://127.0.0.1:{server.server_port}/prefix/v2/", None
+        )
         result = await client.corridor_card()
         assert result.name == card["name"]
         assert result.transports.nostr.relays == card["transports"]["nostr"]["relays"]
@@ -47,7 +51,9 @@ async def run():
             except sdk.Error:
                 pass
             else:
-                raise AssertionError("a failed or malformed response must remain an error")
+                raise AssertionError(
+                    "a failed or malformed response must remain an error"
+                )
         assert requests == ["/prefix/v1/card"] * 5
     finally:
         server.shutdown()
