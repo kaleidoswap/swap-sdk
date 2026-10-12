@@ -43,9 +43,9 @@ PYTHON_ARTIFACT_COUNT = PACKAGE_COUNT - NPM_PACKAGE_COUNT - len(NATIVE_ARCHIVES)
 NPM_ATTEMPTS = 11
 NPM_DELAY = 10.0
 NPM_MAX_DELAY = 60.0
-# PyPI serves its JSON API from the upload transaction, so a version that just
-# published reads back immediately. This budget covers a transient fault on the
-# way to the registry, not propagation.
+# PyPI may return a successful but incomplete inventory immediately after a
+# multi-file upload. Spend the same bounded metadata budget waiting for missing
+# files; unexpected files and checksum mismatches remain fatal.
 PYPI_ATTEMPTS = 8
 PYPI_DELAY = 5.0
 PYPI_MAX_DELAY = 20.0
@@ -86,6 +86,10 @@ T = TypeVar("T")
 
 class TruncatedBody(Exception):
     """A body that ended before the bytes Content-Length promised."""
+
+
+class IncompleteInventory(ValueError):
+    """Registry metadata has not yet listed every sealed Python artifact."""
 
 
 def retryable_status(code: int) -> bool:
@@ -153,6 +157,7 @@ def fetch(
             urllib.error.URLError,
             json.JSONDecodeError,
             TruncatedBody,
+            IncompleteInventory,
         ) as error:
             reason = str(error)
             fatal = False
@@ -181,6 +186,7 @@ def request_json(
     delay: float,
     *,
     max_delay: float | None = None,
+    validate: Callable[[dict], None] | None = None,
 ) -> dict:
     """Read registry JSON, waiting out a version that has yet to propagate."""
 
@@ -188,6 +194,8 @@ def request_json(
         payload = json.load(response)
         if not isinstance(payload, dict):
             raise ValueError(f"registry response is not an object: {url}")
+        if validate is not None:
+            validate(payload)
         return payload
 
     return fetch(
@@ -327,25 +335,38 @@ def download_python_index(
         for name, entry in entries.items()
         if name.endswith(".whl") or name.endswith(".tar.gz")
     }
+
+    def validate_inventory(metadata: dict) -> None:
+        if metadata.get("info", {}).get("version") != version:
+            raise ValueError("PyPI package version mismatch")
+        urls = metadata.get("urls")
+        if not isinstance(urls, list):
+            raise ValueError("PyPI registry metadata has no artifact list")
+        published = {entry.get("filename"): entry for entry in urls}
+        unexpected = set(published) - set(expected)
+        if unexpected or len(published) != len(urls):
+            raise ValueError(
+                "PyPI artifact inventory contains unexpected or duplicate files"
+            )
+        for name in published:
+            digest = published[name].get("digests", {}).get("sha256")
+            if digest != expected[name].get("sha256"):
+                raise ValueError(f"PyPI checksum mismatch: {name}")
+        missing = set(expected) - set(published)
+        if missing:
+            raise IncompleteInventory(
+                "PyPI artifact inventory is incomplete; missing: "
+                + ", ".join(sorted(missing))
+            )
+
     metadata = request_json(
         pypi_metadata_url(registry, PYTHON_PACKAGE, version),
         attempts,
         delay,
         max_delay=max_delay,
+        validate=validate_inventory,
     )
-    info = metadata.get("info", {})
-    if info.get("version") != version:
-        raise ValueError("PyPI package version mismatch")
-    urls = metadata.get("urls")
-    if not isinstance(urls, list):
-        raise ValueError("PyPI registry metadata has no artifact list")
-    published = {entry.get("filename"): entry for entry in urls}
-    if set(published) != set(expected):
-        raise ValueError("PyPI artifact inventory does not match release manifest")
-    for name, expected_entry in expected.items():
-        digest = published[name].get("digests", {}).get("sha256")
-        if digest != expected_entry.get("sha256"):
-            raise ValueError(f"PyPI checksum mismatch: {name}")
+    published = {entry["filename"]: entry for entry in metadata["urls"]}
 
     # Download and hash *every* artifact. The digest comparison above trusts
     # PyPI's self-reported metadata, so a registry or intermediary serving

@@ -464,9 +464,7 @@ class ArtifactDownloadTests(unittest.TestCase):
                     max_delay=1.0,
                 )
             finally:
-                self.leftovers = sorted(
-                    path.name for path in Path(temp.name).iterdir()
-                )
+                self.leftovers = sorted(path.name for path in Path(temp.name).iterdir())
         return destination, sleep
 
     def test_transient_registry_answer_is_waited_out(self) -> None:
@@ -644,7 +642,11 @@ class PublishedArtifactTests(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as temp:
             with (
-                mock.patch.object(published, "request_json", return_value=payload),
+                mock.patch.object(
+                    published.urllib.request,
+                    "urlopen",
+                    return_value=io.BytesIO(json.dumps(payload).encode()),
+                ),
                 mock.patch.object(
                     published,
                     "download",
@@ -680,17 +682,109 @@ class PublishedArtifactTests(unittest.TestCase):
             ],
         }
         with (
-            mock.patch.object(published, "request_json", return_value=payload),
-            self.assertRaisesRegex(ValueError, "inventory"),
+            mock.patch.object(
+                published.urllib.request,
+                "urlopen",
+                side_effect=[io.BytesIO(json.dumps(payload).encode()) for _ in range(3)],
+            ) as request,
+            mock.patch.object(published.time, "sleep") as sleep,
+            mock.patch.object(published, "download") as download,
+            self.assertRaisesRegex(ValueError, "after 3 attempts.*inventory.*missing"),
         ):
             published.download_python_index(
                 entries,
                 Path("/unused"),
                 "0.1.0",
                 registry="https://registry.example",
-                attempts=1,
-                delay=0,
+                attempts=3,
+                delay=5,
             )
+        self.assertEqual(request.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 5])
+        download.assert_not_called()
+
+    def test_pypi_partial_inventory_retries_then_verifies_every_file(self) -> None:
+        names = [
+            "sdk-py3-none-manylinux_2_28_x86_64.whl",
+            "sdk.tar.gz",
+            "sdk-arm.whl",
+            "sdk-macos-arm.whl",
+            "sdk-macos-intel.whl",
+            "sdk-win.whl",
+        ]
+        entries = {name: self.entry(b"artifact") for name in names}
+        urls = [
+            {
+                "filename": name,
+                "digests": {"sha256": entries[name]["sha256"]},
+                "url": f"https://registry.example/{name}",
+            }
+            for name in names
+        ]
+        partial = {"info": {"version": "0.1.0"}, "urls": urls[:-1]}
+        complete = {"info": {"version": "0.1.0"}, "urls": urls}
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            mock.patch.object(
+                published.urllib.request,
+                "urlopen",
+                side_effect=[
+                    io.BytesIO(json.dumps(p).encode()) for p in (partial, complete)
+                ],
+            ) as request,
+            mock.patch.object(published.time, "sleep") as sleep,
+            mock.patch.object(
+                published,
+                "download",
+                side_effect=lambda _url, path: path.write_bytes(b"artifact"),
+            ) as download,
+        ):
+            published.download_python_index(
+                entries,
+                Path(temp),
+                "0.1.0",
+                registry="https://registry.example",
+                attempts=2,
+                delay=5,
+            )
+        self.assertEqual(request.call_count, 2)
+        sleep.assert_called_once_with(5)
+        self.assertEqual(download.call_count, 6)
+
+    def test_pypi_unexpected_files_and_bad_hashes_do_not_retry(self) -> None:
+        name = "sdk.tar.gz"
+        entries = {name: self.entry(b"artifact"), "missing.whl": self.entry(b"artifact")}
+        for filename, digest, error in (
+            ("unexpected.whl", entries[name]["sha256"], "unexpected"),
+            (name, "0" * 64, "checksum mismatch"),
+            (name, entries[name]["sha256"], "duplicate"),
+        ):
+            payload = {
+                "info": {"version": "0.1.0"},
+                "urls": [{"filename": filename, "digests": {"sha256": digest}}],
+            }
+            if error == "duplicate":
+                payload["urls"] *= 2
+            with (
+                self.subTest(filename=filename),
+                mock.patch.object(
+                    published.urllib.request,
+                    "urlopen",
+                    return_value=io.BytesIO(json.dumps(payload).encode()),
+                ) as request,
+                mock.patch.object(published.time, "sleep") as sleep,
+                self.assertRaisesRegex(ValueError, error),
+            ):
+                published.download_python_index(
+                    entries,
+                    Path("/unused"),
+                    "0.1.0",
+                    registry="https://registry.example",
+                    attempts=8,
+                    delay=5,
+                )
+            self.assertEqual(request.call_count, 1)
+            sleep.assert_not_called()
 
 
 class ReleaseArtifactTests(unittest.TestCase):
