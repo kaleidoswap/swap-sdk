@@ -24,7 +24,7 @@ use rgb_lib::{
     AssetSchema, Assignment, BitcoinNetwork, Wallet,
 };
 use serde_json::{json, Value};
-use std::{fs, str::FromStr, time::Duration};
+use std::{fs, time::Duration};
 use support::*;
 macro_rules! rgb {
     ($expression:expr) => {
@@ -112,25 +112,6 @@ async fn bootstrap() -> Result<()> {
     )?;
     println!("RGB asset issued and maker inventory settled");
     Ok(())
-}
-async fn outpoint(address: &str) -> Result<(OutPoint, TxOut)> {
-    for _ in 0..60 {
-        let unspents: Value = reqwest::get(format!("{ESPLORA}/address/{address}/utxo"))
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
-        if let Some(u) = unspents.as_array().context("UTXOs")?.first() {
-            let op = OutPoint::new(
-                bitcoin::Txid::from_str(u["txid"].as_str().context("txid")?)?,
-                u["vout"].as_u64().context("vout")? as u32,
-            );
-            let tx = transaction(&op.txid.to_string()).await?;
-            return Ok((op, tx.output[op.vout as usize].clone()));
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    bail!("lock output not found")
 }
 async fn submarine(
     api: &BoltzApiClientV2,
@@ -338,7 +319,13 @@ async fn run() -> Result<()> {
         })
         .await?;
     wait_status(&reverse.id, "transaction.mempool", false).await?;
-    let (cop, cprev) = outpoint(&reverse.lockup_address).await?;
+    let script = sdk(BtcSwapScript::reverse_from_swap_resp(&reverse, pk))?;
+    // Fetch only this swap's lock transaction, checking its txid and HTLC output.
+    // Unrelated BTC sent to the address must never select the RGB allocation.
+    let (cop, cprev) = sdk(script
+        .fetch_lockup_utxo_boltz(CHAIN, &api, &reverse.id, SwapTxKind::Claim)
+        .await)?
+    .context("reverse RGB lock output")?;
     mine(1).await?;
     let lock = reverse.rgb.as_ref().context("reverse RGB")?;
     let blinding = lock.blinding.parse()?;
@@ -361,7 +348,6 @@ async fn run() -> Result<()> {
     );
     rgb!(receiver.save_new_asset(ro, consignment, cop.txid.to_string()))?;
     let destination = rgb!(wallet::destination(&mut receiver))?;
-    let script = sdk(BtcSwapScript::reverse_from_swap_resp(&reverse, pk))?;
     let prepared = sdk(PreparedRgbSpend::new(
         SwapTxKind::Claim,
         script,

@@ -4,7 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.11.0] - 2026-10-09
+## [0.11.0] - 2026-10-12
+
+### Fixed — React Native peer compatibility and RGB example lock selection
+
+The React Native package accepts `@kaleidorg/swap-sdk >=0.9.0 <0.12.0`,
+including the coordinated 0.11.0 release. Its Arkade peer remains `^0.0.20`
+because older supported SDK versions require that version.
+
+The native RGB regtest example fetches the reverse swap's lock transaction
+through the swap-specific maker endpoint and verifies its transaction id and
+HTLC output before saving the consignment and preparing the claim. It no longer
+selects the first UTXO at the lockup address, which could be unrelated BTC.
 
 ### BREAKING — Rust core: RGB-aware Bitcoin swap scripts
 
