@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — wait for a complete PyPI inventory after publication
+
+Release verification retries successful PyPI metadata responses that omit
+expected files, within the existing bounded retry budget. Unexpected files,
+duplicate filenames and checksum mismatches still fail immediately. The
+0.11.0 release exposed this race: a later registry read listed all six sealed
+Python artifacts with matching hashes, allowing verification to be retried
+without publishing again.
+
 ## [0.11.0] - 2026-10-12
 
 ### Fixed — React Native peer compatibility and RGB example lock selection

@@ -303,8 +303,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-    # PyPI answers its metadata read straight away, but every one of the six
-    # published artifacts is downloaded and re-hashed, and each of those
+    # PyPI metadata may briefly omit files after a multi-file upload. Once its
+    # inventory is complete, all six artifacts are downloaded and re-hashed. Those
     # downloads now carries the same bounded retry budget as npm's: about 31
     # minutes in the worst case, which this has to clear with room for the two
     # clean installs. The same test holds this and the script's budget together.
