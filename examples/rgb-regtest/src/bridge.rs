@@ -391,10 +391,7 @@ pub async fn attach() -> Result<()> {
         operations: HashMap::new(),
     };
     let mut lines = std::io::stdin().lock().lines();
-    loop {
-        let Some(line) = tokio::task::block_in_place(|| lines.next()) else {
-            break;
-        };
+    while let Some(line) = tokio::task::block_in_place(|| lines.next()) {
         let value: Value = serde_json::from_str(&line?)?;
         let reply = match bridge.command(&value).await {
             Ok(result) => json!({"id":value["id"],"result":result}),
