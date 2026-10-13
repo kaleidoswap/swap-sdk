@@ -644,6 +644,132 @@ test("the renamed client carries the static constructors", () => {
 // `makerBaseUrl` is renamed in this layer only — the wasm boundary still
 // deserializes `boltzBaseUrl`, so the mapping is load-bearing and silent when
 // wrong: a dropped field would surface as a confusing error from a later step.
+// A BTC reverse swap built from fixed test keys (`11…`, ours; `22…`, the
+// maker's) and preimage `33…`; the same values as the Rust test
+// `btc_claim_spends_the_supplied_lockup_tx`. Its lockup pays an unrelated
+// output first and the 50,000-sat swap output second.
+const LOCKUP_REVERSE = {
+  id: "reverse",
+  swapTree: {
+    claimLeaf: {
+      version: 192,
+      output:
+        "82012088a914cfb21d36b8551e32a32a4331a394460d7c43a90a88204f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aaac",
+    },
+    refundLeaf: {
+      version: 192,
+      output:
+        "20466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27ad02c800b1",
+    },
+  },
+  lockupAddress:
+    "bcrt1ppm80f8gx33wmfw4m233axe9tmrsvawh7ser8y9m7q973hd89khhsz6v2q0",
+  refundPublicKey:
+    "02466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+  timeoutBlockHeight: 200,
+  onchainAmount: 50000n,
+};
+const LOCKUP_OUR_PUBKEY =
+  "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+const LOCKUP_TXID =
+  "90c0533cd7108084f09d7f6fb7f9eef9f36a99489e2a533a7a38d2acebe70119";
+const LOCKUP_TX_HEX =
+  "020000000144444444444444444444444444444444444444444444444444444444444444440000000000ffffffff027011010000000000160014555555555555555555555555555555555555555550c30000000000002251200ecef49d068c5db4babb5463d364abd8e0cebafe864672177e017d1bb4e5b5ef00000000";
+
+/** The first input's previous outpoint of a serialized segwit transaction. */
+function firstPrevout(txHex) {
+  // version (4 bytes), segwit marker and flag (2), input count (1).
+  const txid = txHex.slice(14, 78).match(/../g).reverse().join("");
+  const vout = Buffer.from(txHex.slice(78, 86), "hex").readUInt32LE(0);
+  return `${txid}:${vout}`;
+}
+
+test("constructClaim spends the supplied lockup and asks nobody where it is", async () => {
+  const { createServer } = await import("node:http");
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    req.resume();
+    req.on("end", () => {
+      if (req.method === "POST" && req.url === "/tx") {
+        res.end(LOCKUP_TXID);
+      } else {
+        res.statusCode = 500;
+        res.end("unexpected request");
+      }
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const script = SwapScript.fromReverse(
+      "bitcoin",
+      "regtest",
+      LOCKUP_REVERSE,
+      LOCKUP_OUR_PUBKEY,
+    );
+    const claim = await script.constructClaim("33".repeat(32), {
+      ...CLAIM_PARAMS,
+      swapId: "reverse",
+      // Nothing listens here: a maker request fails the claim.
+      makerBaseUrl: "http://127.0.0.1:1/v2",
+      bitcoinEsploraUrl: `http://127.0.0.1:${server.address().port}`,
+      cooperative: false,
+      feeAbsoluteSat: 500n,
+      lockupTxHex: LOCKUP_TX_HEX,
+    });
+
+    assert.equal(firstPrevout(claim.hex()), `${LOCKUP_TXID}:1`);
+    assert.deepEqual(requests, ["POST /tx"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("a lockupTxHex in the other chain's encoding is rejected by name", async () => {
+  // A Liquid reverse swap from the wire contract. It is L-USDT, which
+  // constructClaim refuses later; the lockup is decoded before that.
+  const { readFile } = await import("node:fs/promises");
+  const contract = JSON.parse(
+    await readFile(
+      new URL(
+        "../../tests/fixtures/lusdt-v1/wire-contract.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const { request, response } = contract.create.reverse;
+  const script = SwapScript.fromReverse(
+    "liquid",
+    "regtest",
+    response,
+    request.claimPublicKey,
+  );
+  await assertInvalidArgument(
+    () =>
+      script.constructClaim("33".repeat(32), {
+        ...CLAIM_PARAMS,
+        liquidEsploraUrl: "https://example.invalid",
+        lockupTxHex: LOCKUP_TX_HEX,
+      }),
+    /lockupTxHex is not a lockup transaction for this swap's chain/,
+  );
+});
+
+test("constructRefund refuses lockupTxHex rather than ignoring it", async () => {
+  const script = SwapScript.fromSubmarine(
+    "bitcoin",
+    "regtest",
+    SUBMARINE_RESPONSE,
+    PUBKEY,
+  );
+  await assertInvalidArgument(
+    () =>
+      script.constructRefund({ ...CLAIM_PARAMS, lockupTxHex: LOCKUP_TX_HEX }),
+    /constructRefund does not take lockupTxHex/,
+  );
+});
+
 test("makerBaseUrl reaches the binding under the name it deserializes", async () => {
   const script = SwapScript.fromSubmarine(
     "bitcoin",

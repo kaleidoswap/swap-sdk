@@ -1224,11 +1224,31 @@ struct TxParams {
     cooperative: bool,
     #[serde(default)]
     swap_auth: Option<String>,
+    /// Serialized lockup transaction the wallet has already verified. Claims
+    /// spend its swap output instead of looking the lockup up.
+    #[serde(default)]
+    lockup_tx_hex: Option<String>,
 }
 
 impl TxParams {
     fn keypair(&self) -> Result<Keypair, JsValue> {
         Self::keypair_from(&self.keys_secret_hex, "keysSecretHex")
+    }
+    /// Add `lockupTxHex`, decoded for `script`'s chain, to claim options.
+    fn with_lockup_tx(
+        &self,
+        script: &CoreSwapScript,
+        options: TransactionOptions,
+    ) -> Result<TransactionOptions, JsValue> {
+        let Some(hex) = &self.lockup_tx_hex else {
+            return Ok(options);
+        };
+        let tx = script.lockup_tx_from_hex(hex).map_err(|e| {
+            arg_err(format!(
+                "lockupTxHex is not a lockup transaction for this swap's chain: {e}"
+            ))
+        })?;
+        Ok(options.with_lockup_tx(tx))
     }
     fn keypair_from(secret_hex: &str, param: &str) -> Result<Keypair, JsValue> {
         let sk = parse_secret_key_arg(secret_hex, param)?;
@@ -1406,6 +1426,12 @@ impl SwapScript {
     /// cheaper MuSig2 keyspend through `constructCooperativeClaim` rather than
     /// through this method. Submarine and reverse cooperative claims need
     /// nothing extra and work with the default `cooperative = true`.
+    ///
+    /// `params.lockupTxHex` is the lockup transaction the wallet has already
+    /// verified. The claim spends that transaction's swap output, which must
+    /// match the script and the expected amount, instead of finding the lockup
+    /// through Esplora or the maker. The transaction is rebroadcast first; an
+    /// "already in block chain" response is accepted.
     #[wasm_bindgen(js_name = constructClaim)]
     pub async fn construct_claim(
         &self,
@@ -1424,13 +1450,13 @@ impl SwapScript {
             swap_id: p.swap_id.clone(),
             chain_client: &chain_client,
             boltz_api: &boltz,
-            options: Some({
+            options: Some(p.with_lockup_tx(&self.inner, {
                 let options = TransactionOptions::default().with_cooperative(p.cooperative);
-                match p.swap_auth {
+                match p.swap_auth.clone() {
                     Some(auth) => options.with_swap_auth(auth),
                     None => options,
                 }
-            }),
+            })?),
         };
         let tx = self
             .inner
@@ -1462,6 +1488,9 @@ impl SwapScript {
     /// `params.cooperative` is rejected if set to `false`: this method is the
     /// cooperative path by construction, and honoring the flag is what
     /// `constructClaim` is for.
+    ///
+    /// `params.lockupTxHex` works as it does for `constructClaim`; it is the
+    /// lockup on the side this swap claims.
     #[wasm_bindgen(js_name = constructCooperativeClaim)]
     pub async fn construct_cooperative_claim(
         &self,
@@ -1492,8 +1521,11 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some(
-                TransactionOptions::default()
-                    .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                p.with_lockup_tx(
+                    &self.inner,
+                    TransactionOptions::default()
+                        .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                )?,
             ),
         };
         let tx = self
@@ -1508,6 +1540,13 @@ impl SwapScript {
     #[wasm_bindgen(js_name = constructRefund)]
     pub async fn construct_refund(&self, params: JsValue) -> Result<BtcLikeTransaction, JsValue> {
         let p: TxParams = from_js(params)?;
+        if p.lockup_tx_hex.is_some() {
+            // The core refund builder finds the lockup itself; refusing the
+            // field is better than letting a caller believe it was used.
+            return Err(arg_err(
+                "constructRefund does not take lockupTxHex; it is used by claims only",
+            ));
+        }
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
         let tx_params = SwapTransactionParams {

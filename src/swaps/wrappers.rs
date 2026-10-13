@@ -365,6 +365,15 @@ impl SwapScript {
         }
     }
 
+    /// Decode a serialized lockup transaction with this swap's chain encoding,
+    /// for [`TransactionOptions::with_lockup_tx`].
+    pub fn lockup_tx_from_hex(&self, hex: &str) -> Result<BtcLikeTransaction, Error> {
+        match &self.script {
+            SwapScriptImpl::Bitcoin(_) => BtcLikeTransaction::from_hex_bitcoin(hex),
+            SwapScriptImpl::Liquid(_) => BtcLikeTransaction::from_hex_liquid(hex),
+        }
+    }
+
     /// Build from an already-reconstructed Bitcoin swap script (a swap
     /// restored from storage rather than freshly created), so the validated
     /// helpers — notably `submarine_cooperative_claim`, which verifies the
@@ -1564,5 +1573,209 @@ mod tests {
         let invoice = signed_test_invoice(sha256::Hash::hash(&preimage));
 
         assert!(verify_submarine_preimage(&invoice, "not-hex").is_err());
+    }
+
+    /// Serve a minimal Esplora that answers `POST /tx` with `txid` and fails
+    /// every other request, recording each request line.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn broadcast_only_esplora(
+        txid: String,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 4096];
+                loop {
+                    let read = stream.read(&mut buf).unwrap_or(0);
+                    if read == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buf[..read]);
+                    let Some(head_end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let body_len: usize = String::from_utf8_lossy(&raw[..head_end])
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().ok())?
+                        })
+                        .unwrap_or(0);
+                    if raw.len() >= head_end + 4 + body_len {
+                        break;
+                    }
+                }
+                let request = String::from_utf8_lossy(&raw);
+                let line = request.lines().next().unwrap_or_default().to_string();
+                let (status, body) = if line.starts_with("POST /tx ") {
+                    ("200 OK", txid.clone())
+                } else {
+                    (
+                        "500 Internal Server Error",
+                        "unexpected request".to_string(),
+                    )
+                };
+                seen.lock().unwrap().push(line);
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {status}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        (url, requests)
+    }
+
+    /// A claim given the verified lockup transaction spends that transaction's
+    /// swap output. It rebroadcasts the lockup and asks neither Esplora nor the
+    /// maker where the lockup is.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn btc_claim_spends_the_supplied_lockup_tx() {
+        use crate::network::esplora::EsploraBitcoinClient;
+        use crate::util::secrets::Preimage;
+
+        let secp = Secp256k1::new();
+        let our_keys = Keypair::from_seckey_slice(&secp, &[0x11; 32]).unwrap();
+        let maker_keys = Keypair::from_seckey_slice(&secp, &[0x22; 32]).unwrap();
+        let preimage = Preimage::from_vec(vec![0x33; 32]).unwrap();
+        let amount = 50_000;
+        let btc_script = BtcSwapScript {
+            swap_type: SwapType::ReverseSubmarine,
+            side: None,
+            funding_addrs: None,
+            hashlock: preimage.hash160,
+            receiver_pubkey: PublicKey::new(our_keys.public_key()),
+            locktime: LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey::new(maker_keys.public_key()),
+            expected_amount: amount,
+            rgb: None,
+        };
+        let chain = crate::network::BitcoinChain::BitcoinRegtest;
+        let swap_spk = btc_script.to_address(chain).unwrap().script_pubkey();
+        let script = SwapScript::new(
+            SwapScriptImpl::bitcoin(btc_script),
+            Some(Amount::from_sat(amount)),
+            None,
+        );
+        // An unrelated output first, so a claim that picked by position
+        // rather than by script would spend the wrong one.
+        let lockup = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![bitcoin::TxIn {
+                previous_output: bitcoin::OutPoint::new(
+                    bitcoin::Txid::from_byte_array([0x44; 32]),
+                    0,
+                ),
+                ..Default::default()
+            }],
+            output: vec![
+                bitcoin::TxOut {
+                    value: Amount::from_sat(70_000),
+                    script_pubkey: bitcoin::ScriptBuf::new_p2wpkh(
+                        &bitcoin::WPubkeyHash::from_byte_array([0x55; 20]),
+                    ),
+                },
+                bitcoin::TxOut {
+                    value: Amount::from_sat(amount),
+                    script_pubkey: swap_spk,
+                },
+            ],
+        };
+        let lockup_txid = lockup.compute_txid();
+        let lockup_hex = bitcoin::consensus::encode::serialize_hex(&lockup);
+
+        let (esplora_url, requests) = broadcast_only_esplora(lockup_txid.to_string());
+        let chain_client =
+            ChainClient::new().with_bitcoin(EsploraBitcoinClient::new(chain, &esplora_url, 5));
+        // Nothing listens here: any maker request fails the claim.
+        let boltz_api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".to_string(), None);
+        let payout = bitcoin::Address::p2wpkh(
+            &bitcoin::CompressedPublicKey(our_keys.public_key()),
+            bitcoin::Network::Regtest,
+        );
+
+        let claim = script
+            .construct_claim(
+                &preimage,
+                SwapTransactionParams {
+                    keys: our_keys,
+                    output_address: payout.to_string(),
+                    fee: Fee::Absolute(500),
+                    swap_id: "reverse".to_string(),
+                    chain_client: &chain_client,
+                    boltz_api: &boltz_api,
+                    options: Some(
+                        TransactionOptions::default()
+                            .with_cooperative(false)
+                            .with_lockup_tx(script.lockup_tx_from_hex(&lockup_hex).unwrap()),
+                    ),
+                },
+            )
+            .await
+            .unwrap();
+
+        let claim = claim.as_bitcoin().unwrap();
+        assert_eq!(claim.input.len(), 1);
+        assert_eq!(
+            claim.input[0].previous_output,
+            bitcoin::OutPoint::new(lockup_txid, 1)
+        );
+        assert_eq!(claim.output[0].value, Amount::from_sat(amount - 500));
+        assert_eq!(claim.output[0].script_pubkey, payout.script_pubkey());
+        assert_eq!(*requests.lock().unwrap(), vec!["POST /tx HTTP/1.1"]);
+    }
+
+    /// The lockup encoding follows the swap's chain, so a Bitcoin
+    /// transaction is not accepted as an L-BTC lockup.
+    #[test]
+    fn lockup_tx_hex_is_decoded_for_the_swap_chain() {
+        let secp = Secp256k1::new();
+        let keys = Keypair::from_seckey_slice(&secp, &[0x11; 32]).unwrap();
+        let liquid = SwapScript::new(
+            SwapScriptImpl::liquid(LiquidSwapScript {
+                swap_type: SwapType::ReverseSubmarine,
+                side: None,
+                funding_addrs: None,
+                hashlock: hash160::Hash::hash(&[0; 32]),
+                receiver_pubkey: PublicKey::new(keys.public_key()),
+                locktime: elements::LockTime::from_height(200).unwrap(),
+                sender_pubkey: PublicKey::new(keys.public_key()),
+                blinding_key: None,
+                asset_context: None,
+                expected_amount: 50_000,
+            }),
+            None,
+            None,
+        );
+        let btc_tx = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![bitcoin::TxIn::default()],
+            output: vec![bitcoin::TxOut {
+                value: Amount::from_sat(1_000),
+                script_pubkey: bitcoin::ScriptBuf::new(),
+            }],
+        };
+        let btc_hex = bitcoin::consensus::encode::serialize_hex(&btc_tx);
+        assert!(liquid.lockup_tx_from_hex(&btc_hex).is_err());
+
+        let liquid_tx = create_liquid_tx_explicit(&generate_regtest_address(), 50_000);
+        let BtcLikeTransaction::Liquid(liquid_tx) = liquid_tx else {
+            unreachable!()
+        };
+        let decoded = liquid
+            .lockup_tx_from_hex(&elements::encode::serialize_hex(&liquid_tx))
+            .unwrap();
+        assert_eq!(decoded.as_liquid().unwrap().txid(), liquid_tx.txid());
     }
 }

@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — claims from a verified lockup transaction in TypeScript
+
+`TxParams.lockupTxHex` lets `constructClaim` and `constructCooperativeClaim`
+spend the BTC or L-BTC lockup transaction the wallet has already verified, as
+`prepareLiquidClaim` and `prepareLiquidRefund` already could. The claim takes the
+output that matches the swap script and amount, and asks neither Esplora nor the
+maker where the lockup is. It rebroadcasts the transaction first. The hex is
+decoded for the swap's chain. `constructRefund` rejects the field because the
+refund builder does not use it. Rust's `TransactionOptions::with_lockup_tx` and
+the UniFFI `lockup_tx` claim parameter already did this; the new
+`SwapScript::lockup_tx_from_hex` decodes the hex for the swap's chain.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

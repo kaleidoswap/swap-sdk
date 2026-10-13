@@ -235,8 +235,10 @@ test("RGB create pins, colored claims and caller-funded refunds cross the wasm b
         }
         await assert.rejects(
           () =>
+            // The plain builder takes no lockupTxHex; without it, the
+            // rejection under test is the RGB one.
             script.constructRefund({
-              ...params,
+              ...unpinned,
               keysSecretHex: vectors.secretKeyHex,
               feeAbsoluteSat: 100n,
             }),

@@ -153,6 +153,14 @@ export interface TxParams {
   cooperative?: boolean;
   /** Per-swap credential from create or signed recovery. Required for maker cooperative refunds. */
   swapAuth?: string;
+  /**
+   * Serialized lockup transaction the wallet has already verified, for
+   * `constructClaim` and `constructCooperativeClaim`. The claim spends its swap
+   * output, which must match the script and amount, instead of looking the
+   * lockup up through Esplora or the maker, and rebroadcasts it first. Bitcoin
+   * or Liquid encoding follows the swap's chain. `constructRefund` rejects it.
+   */
+  lockupTxHex?: string;
 }
 
 /** Parameters for the caller-funded L-USDT PSET prepare methods. */
