@@ -120,6 +120,49 @@ fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
     })
 }
 
+// The card uses the maker's snake_case wire names and decimal amount strings.
+// Keep the direct client method typed, as well as the TypeScript facade.
+#[wasm_bindgen(typescript_custom_section)]
+const CORRIDOR_CARD_TYPES: &str = r#"
+/** Unverified: sig has NOT been checked against discovery_pubkey. */
+export interface CorridorCard {
+  version: number;
+  name: string;
+  discovery_pubkey: string;
+  transports: { nostr: { relays: string[] } };
+  markets: CorridorCardMarket[];
+  /** Unverified signature; does not establish authenticity or trust. */
+  sig: string;
+}
+
+export interface CorridorCardAsset {
+  id: string;
+  name: string;
+  ticker: string;
+  decimals: number;
+}
+
+export interface CorridorCardMarket {
+  pair: string;
+  base_asset: CorridorCardAsset;
+  quote_asset: CorridorCardAsset;
+  quote_corridor: string;
+  fee_bps: number;
+  /** Decimal strings in the asset's smallest unit, matching the maker wire. */
+  min_base_amount: string;
+  max_base_amount: string;
+  min_quote_amount: string;
+  max_quote_amount: string;
+}
+
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CorridorCard | null")]
+    pub type CorridorCardResult;
+}
+
 // ---- String arguments -------------------------------------------------------
 
 #[wasm_bindgen]
@@ -143,6 +186,9 @@ extern "C" {
     /// Keep local collateral caps as raw JS values until range validation.
     #[wasm_bindgen(typescript_type = "bigint")]
     pub type BigIntArg;
+    /// Transaction encoding is independent of the network used to broadcast.
+    #[wasm_bindgen(typescript_type = "\"bitcoin\" | \"liquid\"")]
+    pub type TransactionChainArg;
 }
 
 /// Convert a required string argument, naming it if it is not a string.
@@ -170,6 +216,23 @@ fn opt_u64_arg(v: Option<BigIntArg>, param: &str) -> Result<Option<u64>, JsValue
         u64::try_from(value).map_err(|_| invalid())
     })
     .transpose()
+}
+
+/// Resolve a Lightning address or encoded LNURL-pay request to a fixed-amount
+/// BOLT11 invoice. amountSat is a positive bigint in whole satoshis. Contacts
+/// the provider and its advertised callback; does not pay or create a swap.
+#[wasm_bindgen(js_name = resolveLightningAddress)]
+pub async fn resolve_lightning_address(
+    address: StringArg,
+    amount_sat: BigIntArg,
+) -> Result<String, JsValue> {
+    let address = str_arg(address, "address")?;
+    let amount_sat = opt_u64_arg(Some(amount_sat), "amountSat")?
+        .filter(|amount| *amount > 0 && amount.checked_mul(1_000).is_some())
+        .ok_or_else(|| arg_err("amountSat must be positive and fit in millisatoshis"))?;
+    kaleidorg_swap_sdk::util::lnurl::resolve_lightning_address(&address, amount_sat)
+        .await
+        .map_err(core_err)
 }
 
 // ============================================================================
@@ -732,6 +795,23 @@ impl BoltzClient {
     #[wasm_bindgen(getter, js_name = corridorUrl)]
     pub fn corridor_url(&self) -> Result<String, JsValue> {
         self.inner.corridor_root().map_err(core_err)
+    }
+
+    /// Fetch the signed discovery document. Null means no live card (404).
+    /// Signature verification and trust decisions remain the caller's responsibility.
+    #[wasm_bindgen(js_name = corridorCard)]
+    pub async fn corridor_card(&self) -> Result<CorridorCardResult, JsValue> {
+        match self.inner.corridor_card().await.map_err(core_err)? {
+            Some(card) => Ok(to_js(&card)?.unchecked_into()),
+            None => Ok(JsValue::NULL.unchecked_into()),
+        }
+    }
+
+    /// Exact unverified card JSON for lossless verification. 404 is undefined.
+    /// Hash the maker's compact ordered JSON without sig, preserving all fields.
+    #[wasm_bindgen(js_name = corridorCardRaw)]
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, JsValue> {
+        self.inner.corridor_card_raw().await.map_err(core_err)
     }
 
     /// `POST /v1/swap` with an envelope already built. Resolves to an
@@ -1361,6 +1441,30 @@ pub struct SwapScript {
 
 #[wasm_bindgen]
 impl SwapScript {
+    /// Rebuild from a swapRestore entry and the key derived at its keyIndex.
+    /// Chain swaps require `side` ("lockup" | "claim"); omit it otherwise.
+    #[wasm_bindgen(js_name = fromRestored)]
+    pub fn from_restored(
+        restored_swap: JsValue,
+        our_pubkey_hex: StringArg,
+        network: StringArg,
+        side: Option<StringArg>,
+    ) -> Result<SwapScript, JsValue> {
+        let network = parse_network(&str_arg(network, "network")?)?;
+        let pk = parse_pubkey_arg(&str_arg(our_pubkey_hex, "ourPubkeyHex")?, "ourPubkeyHex")?;
+        let side = opt_str_arg(side, "side")?
+            .map(|side| match side.as_str() {
+                "lockup" => Ok(Side::Lockup),
+                "claim" => Ok(Side::Claim),
+                other => Err(arg_err(format!("unknown side: {other}"))),
+            })
+            .transpose()?;
+        let restored = from_js(restored_swap)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::from_restored(network, &restored, pk, side).map_err(core_err)?,
+        })
+    }
+
     /// Reconstruct from a submarine-swap create response.
     /// `chainKind` is "bitcoin" | "liquid"; `ourPubkeyHex` is the refund pubkey.
     #[wasm_bindgen(js_name = fromSubmarine)]
@@ -1890,6 +1994,39 @@ pub struct BtcLikeTransaction {
 
 #[wasm_bindgen]
 impl BtcLikeTransaction {
+    /// Rebuild a saved transaction without signing, changing fees or broadcasting.
+    /// Pass the chain saved with the hex; the encoding is never auto-detected.
+    /// Keep the original network and Esplora endpoint for a later `broadcast`.
+    #[wasm_bindgen(js_name = fromHex)]
+    pub fn from_hex(
+        hex: StringArg,
+        chain: TransactionChainArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let hex = str_arg(hex, "hex")?;
+        let chain = JsValue::from(chain)
+            .as_string()
+            .ok_or_else(|| arg_err("argument `chain` must be 'bitcoin' or 'liquid'"))?;
+        let inner = match chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&hex),
+            _ => return Err(arg_err("argument `chain` must be 'bitcoin' or 'liquid'")),
+        }
+        .map_err(|error| {
+            arg_err(format!(
+                "argument `hex` is not a valid {chain} transaction: {error}"
+            ))
+        })?;
+        let restored = Self { inner };
+        // Refuse encodings that the parser would normalize. Safe rebroadcast
+        // requires the serialized bytes (including witnesses) to stay identical.
+        if !hex.eq_ignore_ascii_case(&restored.hex()) {
+            return Err(arg_err(
+                "argument `hex` must use canonical transaction encoding",
+            ));
+        }
+        Ok(restored)
+    }
+
     /// The transaction serialized as hex.
     pub fn hex(&self) -> String {
         match &self.inner {

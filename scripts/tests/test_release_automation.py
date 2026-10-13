@@ -685,7 +685,9 @@ class PublishedArtifactTests(unittest.TestCase):
             mock.patch.object(
                 published.urllib.request,
                 "urlopen",
-                side_effect=[io.BytesIO(json.dumps(payload).encode()) for _ in range(3)],
+                side_effect=[
+                    io.BytesIO(json.dumps(payload).encode()) for _ in range(3)
+                ],
             ) as request,
             mock.patch.object(published.time, "sleep") as sleep,
             mock.patch.object(published, "download") as download,
@@ -753,7 +755,10 @@ class PublishedArtifactTests(unittest.TestCase):
 
     def test_pypi_unexpected_files_and_bad_hashes_do_not_retry(self) -> None:
         name = "sdk.tar.gz"
-        entries = {name: self.entry(b"artifact"), "missing.whl": self.entry(b"artifact")}
+        entries = {
+            name: self.entry(b"artifact"),
+            "missing.whl": self.entry(b"artifact"),
+        }
         for filename, digest, error in (
             ("unexpected.whl", entries[name]["sha256"], "unexpected"),
             (name, "0" * 64, "checksum mismatch"),
@@ -822,7 +827,11 @@ class ReleaseArtifactTests(unittest.TestCase):
             "schema": 1,
             "version": version,
             "artifacts": {
-                name: {"sha256": hashlib.sha256((directory / name).read_bytes()).hexdigest()}
+                name: {
+                    "sha256": hashlib.sha256(
+                        (directory / name).read_bytes()
+                    ).hexdigest()
+                }
                 for name in release_metadata.NATIVE_ARCHIVES
             },
         }
@@ -885,7 +894,9 @@ class ReleaseArtifactTests(unittest.TestCase):
             (directory / release_metadata.NATIVE_MANIFEST).write_bytes(
                 self.make_native_archives(directory, "0.1.0", contents=b"rebuilt")
             )
-            with self.assertRaisesRegex(ValueError, "does not match the digest|differs"):
+            with self.assertRaisesRegex(
+                ValueError, "does not match the digest|differs"
+            ):
                 assemble_release.collect_artifacts(directory, "0.1.0")
 
     def test_react_native_tarball_must_not_carry_compiled_code(self) -> None:
@@ -1086,6 +1097,34 @@ class ReleaseRefTests(unittest.TestCase):
 
 
 class WorkflowInvariantTests(unittest.TestCase):
+    def test_npm_consumer_requires_locked_tooling_before_smoke(self) -> None:
+        production = (ROOT / ".github/workflows/release.yaml").read_text()
+        build = (ROOT / ".github/workflows/release-build.yaml").read_text()
+        install = (
+            "      - name: Install locked tooling for npm consumer type checks\n"
+            "        working-directory: typescript-sdk\n"
+            "        run: npm ci --ignore-scripts --no-audit --no-fund\n"
+        )
+        for name, job in [
+            ("verify-npm", workflow.production_jobs(production)["verify-npm"]),
+            (
+                "release-ready",
+                workflow.job_section(build, "release-ready", "rehearsal-complete"),
+            ),
+        ]:
+            with self.subTest(job=name):
+                workflow.require_npm_consumer_tooling(job, name)
+                without = job.replace(install, "")
+                self.assertNotEqual(without, job)
+                with self.assertRaisesRegex(ValueError, "before smoke"):
+                    workflow.require_npm_consumer_tooling(without, name)
+                with self.assertRaisesRegex(ValueError, "before smoke"):
+                    workflow.require_npm_consumer_tooling(without + install, name)
+        with self.assertRaisesRegex(ValueError, "verify-npm.*before smoke"):
+            workflow.validate(production.replace(install, ""))
+        with self.assertRaisesRegex(ValueError, "release-ready.*before smoke"):
+            workflow.validate(production, build_contents=build.replace(install, ""))
+
     def test_committed_workflow_passes(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         workflow.validate(contents)
@@ -1149,7 +1188,9 @@ class WorkflowInvariantTests(unittest.TestCase):
         payload["publishConfig"].pop("provenance", None)
         try:
             manifest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "packages/react-native/package.json"):
+            with self.assertRaisesRegex(
+                ValueError, "packages/react-native/package.json"
+            ):
                 workflow.validate(contents)
         finally:
             manifest.write_text(original, encoding="utf-8")

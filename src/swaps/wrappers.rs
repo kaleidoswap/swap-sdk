@@ -285,9 +285,9 @@ pub enum SwapScriptImpl {
 
 #[derive(Clone, Debug)]
 pub struct SwapScript {
-    script: SwapScriptImpl,
-    boltz_lockup: Option<Amount>,
-    mrh_amount: Option<Amount>,
+    pub(super) script: SwapScriptImpl,
+    pub(super) boltz_lockup: Option<Amount>,
+    pub(super) mrh_amount: Option<Amount>,
 }
 
 #[derive(Clone)]
@@ -353,7 +353,7 @@ impl SwapScriptImpl {
 }
 
 impl SwapScript {
-    fn new(
+    pub(super) fn new(
         script: SwapScriptImpl,
         boltz_lockup: Option<Amount>,
         mrh_amount: Option<Amount>,
