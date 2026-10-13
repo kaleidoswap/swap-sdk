@@ -116,6 +116,25 @@ def production_jobs(contents: str) -> dict[str, str]:
     return jobs
 
 
+def require_npm_consumer_tooling(job: str, name: str) -> None:
+    """Every smoke caller must install locked tooling before consumer compilation."""
+    steps = re.split(r"(?m)^      - name: ", job)
+    smoke = next(
+        (i for i, step in enumerate(steps) if "node scripts/smoke-package.mjs" in step),
+        None,
+    )
+    if smoke is None:
+        raise ValueError(f"{name} must run the npm consumer smoke")
+    if not any(
+        "working-directory: typescript-sdk" in step
+        and "npm ci --ignore-scripts --no-audit --no-fund" in step
+        for step in steps[:smoke]
+    ):
+        raise ValueError(
+            f"{name} must install locked npm consumer tooling before smoke"
+        )
+
+
 def job_dependencies(job: str) -> set[str]:
     """Return the direct dependencies from a scalar or list-style needs key."""
     lines = job.splitlines()
@@ -128,9 +147,7 @@ def job_dependencies(job: str) -> set[str]:
 
         dependencies: set[str] = set()
         for dependency_line in lines[index + 1 :]:
-            dependency = re.fullmatch(
-                r"      - ([a-z][a-z0-9-]*)", dependency_line
-            )
+            dependency = re.fullmatch(r"      - ([a-z][a-z0-9-]*)", dependency_line)
             if dependency is None:
                 break
             dependencies.add(dependency.group(1))
@@ -143,9 +160,7 @@ def workflow_job_graph(contents: str) -> dict[str, set[str]]:
     # Split at `jobs:` first: `on:` carries two-space keys of its own, and those
     # are not jobs.
     body = "\n" + contents.split("\njobs:\n", 1)[-1].lstrip("\n")
-    return {
-        name: job_dependencies(job) for name, job in production_jobs(body).items()
-    }
+    return {name: job_dependencies(job) for name, job in production_jobs(body).items()}
 
 
 def documented_publication_order(runbook: str) -> list[str]:
@@ -413,7 +428,9 @@ def validate(
             # unused privilege the PyPI job's comment condemns, and nothing else
             # would notice.
             for manifest_path in NPM_MANIFESTS:
-                manifest = json.loads((ROOT / manifest_path).read_text(encoding="utf-8"))
+                manifest = json.loads(
+                    (ROOT / manifest_path).read_text(encoding="utf-8")
+                )
                 if manifest.get("publishConfig", {}).get("provenance") is not True:
                     raise ValueError(
                         f"npm publisher holds id-token: write, but {manifest_path} "
@@ -460,6 +477,7 @@ def validate(
         raise ValueError(
             "npm verifier must smoke-test the published React Native tarball"
         )
+    require_npm_consumer_tooling(jobs["verify-npm"], "verify-npm")
 
     # The one job that runs the React Native package's postinstall for real:
     # after the GitHub release exists, a clean consumer installs the published
@@ -556,6 +574,7 @@ def validate(
     release_ready_job = job_section(
         build_contents, "release-ready", "rehearsal-complete"
     )
+    require_npm_consumer_tooling(release_ready_job, "release-ready")
     if (
         "needs:" not in release_ready_job
         or "- typescript-package" not in release_ready_job

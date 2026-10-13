@@ -405,6 +405,9 @@ jobs:
           mkdir sdist-smoke
           cp release-artifacts/*.tar.gz sdist-smoke/
           python3 bindings/python/scripts/smoke_artifact.py sdist --dist sdist-smoke
+      - name: Install locked tooling for npm consumer type checks
+        working-directory: typescript-sdk
+        run: npm ci --ignore-scripts --no-audit --no-fund
       # By name: the bundle holds two npm tarballs and each smoke test takes
       # exactly one.
       - name: Clean-install exact npm tarball
