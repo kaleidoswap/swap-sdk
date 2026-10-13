@@ -2,14 +2,44 @@
 //!
 //! Exposes the Boltz swap surface and the swap key-management surface to
 //! JavaScript/TypeScript via `wasm-bindgen`. Request/response values cross to JS
-//! as plain objects through `serde-wasm-bindgen`; the TS SDK adds hand-written
-//! types on top of that boundary.
+//! as plain objects through `serde-wasm-bindgen`; swap DTO declarations are
+//! generated from their Rust/serde definitions and embedded below.
 //!
 //! Build with `wasm-pack build` (see `make wasm-pack-build`), which emits a JS
 //! package with generated `.d.ts` under `bindings-wasm/pkg/`.
 
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
+
+// Public DTO declarations share the same serde-derived source as native Rust.
+#[wasm_bindgen(typescript_custom_section)]
+const SWAP_TYPES: &str = include_str!("swap_types.ts");
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CreateSubmarineRequest")]
+    pub type CreateSubmarineRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateReverseRequest")]
+    pub type CreateReverseRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateChainRequest")]
+    pub type CreateChainRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateSubmarineResponse")]
+    pub type CreateSubmarineResponseJs;
+    #[wasm_bindgen(typescript_type = "CreateReverseResponse")]
+    pub type CreateReverseResponseJs;
+    #[wasm_bindgen(typescript_type = "CreateChainResponse")]
+    pub type CreateChainResponseJs;
+    #[wasm_bindgen(typescript_type = "GetSwapResponse")]
+    pub type GetSwapResponseJs;
+    #[wasm_bindgen(typescript_type = "SwapRestoreResponse[]")]
+    pub type SwapRestoreResponsesJs;
+    #[wasm_bindgen(typescript_type = "SwapRestoreIndexResponse")]
+    pub type SwapRestoreIndexResponseJs;
+}
+
+fn to_typed_js<T: serde::Serialize, J: JsCast>(value: &T) -> Result<J, JsValue> {
+    Ok(to_js(value)?.unchecked_into())
+}
 
 // ---- Errors -----------------------------------------------------------------
 //
@@ -90,6 +120,49 @@ fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
     })
 }
 
+// The card uses the maker's snake_case wire names and decimal amount strings.
+// Keep the direct client method typed, as well as the TypeScript facade.
+#[wasm_bindgen(typescript_custom_section)]
+const CORRIDOR_CARD_TYPES: &str = r#"
+/** Unverified: sig has NOT been checked against discovery_pubkey. */
+export interface CorridorCard {
+  version: number;
+  name: string;
+  discovery_pubkey: string;
+  transports: { nostr: { relays: string[] } };
+  markets: CorridorCardMarket[];
+  /** Unverified signature; does not establish authenticity or trust. */
+  sig: string;
+}
+
+export interface CorridorCardAsset {
+  id: string;
+  name: string;
+  ticker: string;
+  decimals: number;
+}
+
+export interface CorridorCardMarket {
+  pair: string;
+  base_asset: CorridorCardAsset;
+  quote_asset: CorridorCardAsset;
+  quote_corridor: string;
+  fee_bps: number;
+  /** Decimal strings in the asset's smallest unit, matching the maker wire. */
+  min_base_amount: string;
+  max_base_amount: string;
+  min_quote_amount: string;
+  max_quote_amount: string;
+}
+
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CorridorCard | null")]
+    pub type CorridorCardResult;
+}
+
 // ---- String arguments -------------------------------------------------------
 
 #[wasm_bindgen]
@@ -113,6 +186,9 @@ extern "C" {
     /// Keep local collateral caps as raw JS values until range validation.
     #[wasm_bindgen(typescript_type = "bigint")]
     pub type BigIntArg;
+    /// Transaction encoding is independent of the network used to broadcast.
+    #[wasm_bindgen(typescript_type = "\"bitcoin\" | \"liquid\"")]
+    pub type TransactionChainArg;
 }
 
 /// Convert a required string argument, naming it if it is not a string.
@@ -140,6 +216,23 @@ fn opt_u64_arg(v: Option<BigIntArg>, param: &str) -> Result<Option<u64>, JsValue
         u64::try_from(value).map_err(|_| invalid())
     })
     .transpose()
+}
+
+/// Resolve a Lightning address or encoded LNURL-pay request to a fixed-amount
+/// BOLT11 invoice. amountSat is a positive bigint in whole satoshis. Contacts
+/// the provider and its advertised callback; does not pay or create a swap.
+#[wasm_bindgen(js_name = resolveLightningAddress)]
+pub async fn resolve_lightning_address(
+    address: StringArg,
+    amount_sat: BigIntArg,
+) -> Result<String, JsValue> {
+    let address = str_arg(address, "address")?;
+    let amount_sat = opt_u64_arg(Some(amount_sat), "amountSat")?
+        .filter(|amount| *amount > 0 && amount.checked_mul(1_000).is_some())
+        .ok_or_else(|| arg_err("amountSat must be positive and fit in millisatoshis"))?;
+    kaleidorg_swap_sdk::util::lnurl::resolve_lightning_address(&address, amount_sat)
+        .await
+        .map_err(core_err)
 }
 
 // ============================================================================
@@ -704,6 +797,23 @@ impl BoltzClient {
         self.inner.corridor_root().map_err(core_err)
     }
 
+    /// Fetch the signed discovery document. Null means no live card (404).
+    /// Signature verification and trust decisions remain the caller's responsibility.
+    #[wasm_bindgen(js_name = corridorCard)]
+    pub async fn corridor_card(&self) -> Result<CorridorCardResult, JsValue> {
+        match self.inner.corridor_card().await.map_err(core_err)? {
+            Some(card) => Ok(to_js(&card)?.unchecked_into()),
+            None => Ok(JsValue::NULL.unchecked_into()),
+        }
+    }
+
+    /// Exact unverified card JSON for lossless verification. 404 is undefined.
+    /// Hash the maker's compact ordered JSON without sig, preserving all fields.
+    #[wasm_bindgen(js_name = corridorCardRaw)]
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, JsValue> {
+        self.inner.corridor_card_raw().await.map_err(core_err)
+    }
+
     /// `POST /v1/swap` with an envelope already built. Resolves to an
     /// `rfq_quote` **or** an `rfq_refusal` — read `type`; a refusal is the
     /// maker's answer, not a failure.
@@ -763,14 +873,14 @@ impl BoltzClient {
     pub async fn create_submarine_swap(
         &self,
         network: StringArg,
-        req: JsValue,
+        req: CreateSubmarineRequestJs,
         rgb_contract_id: Option<StringArg>,
         rgb_max_htlc_sat: Option<BigIntArg>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<CreateSubmarineResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
         let rgb_max_htlc_sat = opt_u64_arg(rgb_max_htlc_sat, "rgbMaxHtlcSat")?;
-        let req: CreateSubmarineRequest = from_js(req)?;
+        let req: CreateSubmarineRequest = from_js(req.into())?;
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
         let rgb_contract_id = rgb_contract_before_create(
@@ -817,18 +927,18 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
-        to_js(&resp)
+        to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
     pub async fn create_reverse_swap(
         &self,
         network: StringArg,
-        req: JsValue,
+        req: CreateReverseRequestJs,
         rgb_contract_id: Option<StringArg>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<CreateReverseResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
-        let req: CreateReverseRequest = from_js(req)?;
+        let req: CreateReverseRequest = from_js(req.into())?;
         let claim_pk = req.claim_public_key;
         let to = req.to.clone();
         let preimage_hash = req.preimage_hash;
@@ -885,16 +995,16 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
-        to_js(&resp)
+        to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
     pub async fn create_chain_swap(
         &self,
         network: StringArg,
-        req: JsValue,
-    ) -> Result<JsValue, JsValue> {
+        req: CreateChainRequestJs,
+    ) -> Result<CreateChainResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
-        let req: CreateChainRequest = from_js(req)?;
+        let req: CreateChainRequest = from_js(req.into())?;
         // Both keys are required so the returned lockup script/tree can be
         // checked against the request — never hand back an unvalidated
         // response to fund (same guarantee as the reverse path). Reject (and
@@ -948,7 +1058,7 @@ impl BoltzClient {
             to_asset_context,
         )
         .map_err(core_err)?;
-        to_js(&resp)
+        to_typed_js(&resp)
     }
 
     // ---- Status / lookups --------------------------------------------------
@@ -984,9 +1094,9 @@ impl BoltzClient {
         let invoice = str_arg(invoice, "invoice")?;
         to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
     }
-    pub async fn swap(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+    pub async fn swap(&self, swap_id: StringArg) -> Result<GetSwapResponseJs, JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;
-        to_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
+        to_typed_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
     }
     pub async fn quote(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;
@@ -1070,10 +1180,10 @@ impl BoltzClient {
         xpub: StringArg,
         derivation_path: Option<StringArg>,
         gap_limit: Option<u32>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<SwapRestoreResponsesJs, JsValue> {
         let xpub = str_arg(xpub, "xpub")?;
         let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
-        to_js(
+        to_typed_js(
             &self
                 .inner
                 .post_swap_restore(&xpub, derivation_path, gap_limit)
@@ -1089,10 +1199,10 @@ impl BoltzClient {
         xpub: StringArg,
         derivation_path: Option<StringArg>,
         gap_limit: Option<u32>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<SwapRestoreIndexResponseJs, JsValue> {
         let xpub = str_arg(xpub, "xpub")?;
         let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
-        to_js(
+        to_typed_js(
             &self
                 .inner
                 .post_swap_restore_index(&xpub, derivation_path, gap_limit)
@@ -1224,9 +1334,43 @@ struct TxParams {
     cooperative: bool,
     #[serde(default)]
     swap_auth: Option<String>,
+    #[serde(default)]
+    claim_lockup: Option<ClaimLockup>,
+}
+
+#[derive(serde::Deserialize)]
+struct ClaimLockup {
+    chain: String,
+    hex: String,
+    txid: String,
+}
+
+impl ClaimLockup {
+    fn transaction(&self) -> Result<CoreBtcLikeTransaction, JsValue> {
+        let tx = match self.chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&self.hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&self.hex),
+            _ => return Err(arg_err("claimLockup.chain must be bitcoin or liquid")),
+        }
+        .map_err(core_err)?;
+        let txid = match &tx {
+            CoreBtcLikeTransaction::Bitcoin(tx) => tx.compute_txid().to_string(),
+            CoreBtcLikeTransaction::Liquid(tx) => tx.txid().to_string(),
+        };
+        if txid != self.txid {
+            return Err(arg_err("claimLockup hex does not match its trusted txid"));
+        }
+        Ok(tx)
+    }
 }
 
 impl TxParams {
+    fn claim_options(&self, options: TransactionOptions) -> Result<TransactionOptions, JsValue> {
+        match &self.claim_lockup {
+            Some(lockup) => Ok(options.with_existing_lockup_tx(lockup.transaction()?)),
+            None => Ok(options),
+        }
+    }
     fn keypair(&self) -> Result<Keypair, JsValue> {
         Self::keypair_from(&self.keys_secret_hex, "keysSecretHex")
     }
@@ -1331,6 +1475,30 @@ pub struct SwapScript {
 
 #[wasm_bindgen]
 impl SwapScript {
+    /// Rebuild from a swapRestore entry and the key derived at its keyIndex.
+    /// Chain swaps require `side` ("lockup" | "claim"); omit it otherwise.
+    #[wasm_bindgen(js_name = fromRestored)]
+    pub fn from_restored(
+        restored_swap: JsValue,
+        our_pubkey_hex: StringArg,
+        network: StringArg,
+        side: Option<StringArg>,
+    ) -> Result<SwapScript, JsValue> {
+        let network = parse_network(&str_arg(network, "network")?)?;
+        let pk = parse_pubkey_arg(&str_arg(our_pubkey_hex, "ourPubkeyHex")?, "ourPubkeyHex")?;
+        let side = opt_str_arg(side, "side")?
+            .map(|side| match side.as_str() {
+                "lockup" => Ok(Side::Lockup),
+                "claim" => Ok(Side::Claim),
+                other => Err(arg_err(format!("unknown side: {other}"))),
+            })
+            .transpose()?;
+        let restored = from_js(restored_swap)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::from_restored(network, &restored, pk, side).map_err(core_err)?,
+        })
+    }
+
     /// Reconstruct from a submarine-swap create response.
     /// `chainKind` is "bitcoin" | "liquid"; `ourPubkeyHex` is the refund pubkey.
     #[wasm_bindgen(js_name = fromSubmarine)]
@@ -1425,9 +1593,10 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some({
-                let options = TransactionOptions::default().with_cooperative(p.cooperative);
-                match p.swap_auth {
-                    Some(auth) => options.with_swap_auth(auth),
+                let options =
+                    p.claim_options(TransactionOptions::default().with_cooperative(p.cooperative))?;
+                match &p.swap_auth {
+                    Some(auth) => options.with_swap_auth(auth.clone()),
                     None => options,
                 }
             }),
@@ -1492,8 +1661,10 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some(
-                TransactionOptions::default()
-                    .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                p.claim_options(
+                    TransactionOptions::default()
+                        .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                )?,
             ),
         };
         let tx = self
@@ -1860,6 +2031,39 @@ pub struct BtcLikeTransaction {
 
 #[wasm_bindgen]
 impl BtcLikeTransaction {
+    /// Rebuild a saved transaction without signing, changing fees or broadcasting.
+    /// Pass the chain saved with the hex; the encoding is never auto-detected.
+    /// Keep the original network and Esplora endpoint for a later `broadcast`.
+    #[wasm_bindgen(js_name = fromHex)]
+    pub fn from_hex(
+        hex: StringArg,
+        chain: TransactionChainArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let hex = str_arg(hex, "hex")?;
+        let chain = JsValue::from(chain)
+            .as_string()
+            .ok_or_else(|| arg_err("argument `chain` must be 'bitcoin' or 'liquid'"))?;
+        let inner = match chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&hex),
+            _ => return Err(arg_err("argument `chain` must be 'bitcoin' or 'liquid'")),
+        }
+        .map_err(|error| {
+            arg_err(format!(
+                "argument `hex` is not a valid {chain} transaction: {error}"
+            ))
+        })?;
+        let restored = Self { inner };
+        // Refuse encodings that the parser would normalize. Safe rebroadcast
+        // requires the serialized bytes (including witnesses) to stay identical.
+        if !hex.eq_ignore_ascii_case(&restored.hex()) {
+            return Err(arg_err(
+                "argument `hex` must use canonical transaction encoding",
+            ));
+        }
+        Ok(restored)
+    }
+
     /// The transaction serialized as hex.
     pub fn hex(&self) -> String {
         match &self.inner {

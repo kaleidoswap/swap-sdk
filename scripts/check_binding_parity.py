@@ -58,7 +58,10 @@ ALIASES = {
     ("BoltzClient", "swap"): "get_swap",
     ("BoltzClient", "quote"): "get_quote",
     ("BoltzClient", "nodes"): "get_nodes",
-    ("SwapScript", "construct_cooperative_claim"): "submarine_cooperative_claim",
+    # WASM constructs a chain claim with the taker's refund key/lockup script;
+    # UniFFI expresses that through construct_claim's chain_claim option.
+    # submarine_cooperative_claim instead co-signs the server's submarine claim.
+    ("SwapScript", "construct_cooperative_claim"): "construct_claim",
 }
 
 # Capabilities the UniFFI binding intentionally does not mirror. Each entry is a

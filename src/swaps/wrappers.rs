@@ -62,6 +62,7 @@ pub struct TransactionOptions {
     swap_auth: Option<String>,
     chain_claim: Option<ChainClaim>,
     lockup_tx: Option<BtcLikeTransaction>,
+    broadcast_lockup_tx: bool,
     additional_outputs: Vec<(String, u64)>,
 }
 
@@ -82,6 +83,7 @@ impl Default for TransactionOptions {
             swap_auth: None,
             chain_claim: None,
             lockup_tx: None,
+            broadcast_lockup_tx: true,
             additional_outputs: Vec::new(),
         }
     }
@@ -113,6 +115,16 @@ impl TransactionOptions {
 
     pub fn with_lockup_tx(mut self, lockup_tx: BtcLikeTransaction) -> Self {
         self.lockup_tx = Some(lockup_tx);
+        self.broadcast_lockup_tx = true;
+        self
+    }
+
+    /// Pin claim input discovery to an already observed lockup, without
+    /// rebroadcasting it. The caller verifies its chain confirmation separately;
+    /// ordinary script/address/amount validation still runs before signing.
+    pub fn with_existing_lockup_tx(mut self, lockup_tx: BtcLikeTransaction) -> Self {
+        self.lockup_tx = Some(lockup_tx);
+        self.broadcast_lockup_tx = false;
         self
     }
 
@@ -285,9 +297,9 @@ pub enum SwapScriptImpl {
 
 #[derive(Clone, Debug)]
 pub struct SwapScript {
-    script: SwapScriptImpl,
-    boltz_lockup: Option<Amount>,
-    mrh_amount: Option<Amount>,
+    pub(super) script: SwapScriptImpl,
+    pub(super) boltz_lockup: Option<Amount>,
+    pub(super) mrh_amount: Option<Amount>,
 }
 
 #[derive(Clone)]
@@ -353,7 +365,7 @@ impl SwapScriptImpl {
 }
 
 impl SwapScript {
-    fn new(
+    pub(super) fn new(
         script: SwapScriptImpl,
         boltz_lockup: Option<Amount>,
         mrh_amount: Option<Amount>,
@@ -768,8 +780,14 @@ impl SwapScript {
             )
             .await?;
         let lockup_tx = params.options.clone().and_then(|o| o.lockup_tx);
-        if let Some(lockup_tx) = lockup_tx.clone() {
-            params.chain_client.try_broadcast_tx(&lockup_tx).await?;
+        if params
+            .options
+            .as_ref()
+            .is_none_or(|o| o.broadcast_lockup_tx)
+        {
+            if let Some(lockup_tx) = lockup_tx.clone() {
+                params.chain_client.try_broadcast_tx(&lockup_tx).await?;
+            }
         }
         match self.script.clone() {
             SwapScriptImpl::Bitcoin(script) => {
@@ -997,9 +1015,15 @@ impl SwapScript {
                 ))
             },
         )?;
+        let broadcast_lockup_tx = params
+            .options
+            .as_ref()
+            .is_none_or(|o| o.broadcast_lockup_tx);
         let lockup_tx = params.options.and_then(|options| options.lockup_tx);
-        if let Some(lockup_tx) = &lockup_tx {
-            params.chain_client.try_broadcast_tx(lockup_tx).await?;
+        if broadcast_lockup_tx {
+            if let Some(lockup_tx) = &lockup_tx {
+                params.chain_client.try_broadcast_tx(lockup_tx).await?;
+            }
         }
         let utxo = script
             .fetch_swap_utxo(

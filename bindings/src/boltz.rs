@@ -1043,7 +1043,17 @@ pub struct SwapEvent {
     pub kind: String,
     /// Unix seconds.
     pub ts: i64,
+    #[uniffi(default = None)]
+    pub data: Option<SwapEventData>,
 }
+
+// Native callers receive open audit data as JSON text; WASM retains JSON values.
+uniffi::custom_type!(SwapEventData, String, {
+    remote,
+    lower: |value| value.to_string(),
+    try_lift: |value| serde_json::from_str(&value)
+        .map_err(|error| Error::Generic(error.to_string()).into()),
+});
 
 #[uniffi::remote(Record)]
 pub struct GetSwapResponse {
@@ -1063,6 +1073,18 @@ pub struct GetSwapResponse {
     /// The swap's history, oldest first.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub events: Option<Vec<SwapEvent>>,
+    #[uniffi(default = None)]
+    pub payout: Option<SwapPayoutStatus>,
+}
+
+#[uniffi::remote(Record)]
+pub struct SwapPayoutStatus {
+    pub mode: String,
+    pub destination: String,
+    #[uniffi(default = None)]
+    pub layer: Option<String>,
+    #[uniffi(default = None)]
+    pub reference: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -1112,6 +1134,8 @@ pub enum SwapRestoreType {
 
 #[uniffi::remote(Record)]
 pub struct ClaimDetails {
+    #[uniffi(default = None)]
+    pub detail_type: Option<String>,
     pub tree: SwapTree,
     pub amount: Option<u64>,
     pub key_index: u32,
@@ -1125,6 +1149,8 @@ pub struct ClaimDetails {
 
 #[uniffi::remote(Record)]
 pub struct RefundDetails {
+    #[uniffi(default = None)]
+    pub detail_type: Option<String>,
     pub tree: SwapTree,
     pub amount: Option<u64>,
     pub key_index: u32,
@@ -1144,6 +1170,8 @@ pub struct SwapRestoreResponse {
     pub created_at: u64,
     pub from: String,
     pub to: String,
+    #[uniffi(default = None)]
+    pub preimage_hash: Option<String>,
     /// Lightning invoice; boltz only returns it for submarine/reverse swaps.
     pub invoice: Option<String>,
     pub claim_details: Option<ClaimDetails>,

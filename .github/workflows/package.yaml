@@ -39,8 +39,8 @@ jobs:
         run: |
           rustup toolchain install "${RUST_VERSION}" --profile minimal
           rustup default "${RUST_VERSION}"
-      # The only committed generated source left is the UniFFI Python glue
-      # fallback; regenerating it needs Rust + uv, not Node or cargo-typify.
+      # The UniFFI Python glue fallback needs Rust + uv. Swap TypeScript DTOs
+      # are checked separately in the TypeScript package job below.
       - name: Verify generated sources
         run: make check-generated
       # Regenerating this file needs a working local Rust build. When a change
@@ -178,6 +178,11 @@ jobs:
       - name: Install locked TypeScript dependencies
         working-directory: typescript-sdk
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Check serde-derived swap DTO declarations
+        run: make check-swap-types
+      - name: Check supported maker schema compatibility
+        working-directory: typescript-sdk
+        run: node scripts/check-swap-schema.mjs
       - name: Build fresh WASM bindings
         run: make wasm-pack-build
       - name: Typecheck

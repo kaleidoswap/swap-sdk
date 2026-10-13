@@ -25,6 +25,8 @@ const requiredPaths = [
   "dist/arkade/index.js",
   "dist/pay-through.d.ts",
   "dist/pay-through.js",
+  "dist/chain-data.d.ts",
+  "dist/chain-data.js",
   "package.json",
   "vendor/bindings_wasm.d.ts",
   "vendor/bindings_wasm.js",
@@ -192,7 +194,21 @@ try {
   writeFileSync(
     join(consumerRoot, "smoke.mjs"),
     `
-      import { SwapMasterKey, init, toJson } from "@kaleidorg/swap-sdk";
+      import { BtcLikeTransaction, SwapMasterKey, init, toJson, canClaim, canRefund,
+        refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap } from "@kaleidorg/swap-sdk";
+      import { esploraFeeEstimates, esploraTipHeight } from "@kaleidorg/swap-sdk/chain-data";
+
+      const fees = await esploraFeeEstimates("https://esplora.example/api", {
+        fetch: async () => new Response('{"2":0.1}'),
+      });
+      const tip = await esploraTipHeight("https://esplora.example/api", {
+        fetch: async () => new Response("123"),
+      });
+      if (fees[2] !== 0.1 || tip !== 123) throw new Error("packaged chain data helpers failed");
+
+      for (const helper of [canClaim, canRefund, refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap]) {
+        if (typeof helper !== "function") throw new Error("packaged reconciliation export missing");
+      }
 
       // Zero-argument init is the call a consumer actually writes, and the only
       // one that behaves identically in Node and the browser. Asserting the
@@ -210,12 +226,54 @@ try {
       if (toJson({ amount: 1n }) !== '{"amount":"1"}') {
         throw new Error("bigint JSON encoding failed");
       }
+      const fixtures = ${readFileSync(join(packageRoot, "../tests/fixtures/transactions-v1/saved-transactions.json"), "utf8")};
+      for (const chain of ["bitcoin", "liquid"]) {
+        const tx = BtcLikeTransaction.fromHex(fixtures[chain].hex, chain);
+        if (tx.hex() !== fixtures[chain].hex || tx.txid() !== fixtures[chain].txid) {
+          throw new Error("packaged transaction recovery changed bytes or txid");
+        }
+        tx.free();
+      }
     `,
   );
   execFileSync("node", ["smoke.mjs"], {
     cwd: consumerRoot,
     stdio: "inherit",
   });
+
+  // Compile against the packed declarations, including the chain union. This
+  // catches a generated WASM signature widening to string or disappearing.
+  writeFileSync(
+    join(consumerRoot, "transaction-types.mts"),
+    `
+      import { BtcLikeTransaction } from "@kaleidorg/swap-sdk";
+      const tx: BtcLikeTransaction = BtcLikeTransaction.fromHex("00", "bitcoin");
+      BtcLikeTransaction.fromHex("00", "liquid");
+      const hex: string = tx.hex();
+      const txid: string = tx.txid();
+      const sent: Promise<string> = tx.broadcast("regtest", "http://127.0.0.1:3000");
+      // @ts-expect-error network names are not transaction encodings
+      BtcLikeTransaction.fromHex("00", "regtest");
+      // @ts-expect-error serialized bytes must be supplied as hex
+      BtcLikeTransaction.fromHex(new Uint8Array(), "bitcoin");
+    `,
+  );
+  execFileSync(
+    process.execPath,
+    [
+      join(packageRoot, "node_modules/typescript/bin/tsc"),
+      "--noEmit",
+      "--module",
+      "NodeNext",
+      "--moduleResolution",
+      "NodeNext",
+      "--target",
+      "ES2020",
+      "--skipLibCheck",
+      "transaction-types.mts",
+    ],
+    { cwd: consumerRoot, stdio: "inherit" },
+  );
 
   // Every way a caller can supply the binary itself, each in its own process:
   // wasm-bindgen memoizes the instantiated module, so a second init() in one

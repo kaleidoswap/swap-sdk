@@ -1,12 +1,12 @@
 // KaleidoSwap swap SDK — TypeScript surface.
 //
-// Wraps the wasm-bindgen client (bindings-wasm/pkg) with typed signatures. The
-// wasm boundary passes plain JS objects (typed `any`); this layer restores the
-// domain types with hand-written interfaces.
+// Wraps the wasm-bindgen client (bindings-wasm/pkg), re-exports its generated
+// swap DTOs, and adds typed helpers for the remaining SDK surface.
 
 import initWasm, {
   BoltzClient as WasmSwapClient,
   BtcLikeTransaction,
+  type CorridorCard,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
   PreparedRgbSpend as WasmPreparedRgbSpend,
   RgbCooperativeRefund as WasmRgbCooperativeRefund,
@@ -20,20 +20,59 @@ export const wasmUrl = new URL(
   import.meta.url,
 );
 
-// The swap API client. Re-exported from the wasm module as-is: its request/
-// response payloads are currently untyped (`any`) because the swap DTOs are
-// Rust-defined and have no OpenAPI spec to generate TS types from. A typed
-// surface would need a schema-generation step (schemars) or hand-written types.
-// NOTE: 64-bit integer fields in its responses arrive as `bigint` — the wasm
-// boundary serializes Rust i64/u64 losslessly rather than through an f64.
-//
-// It speaks the Boltz protocol and can be pointed at Boltz's own API, which is
-// where the old name came from. But the name a partner writes should say whose
-// SDK this is, not whose wire format it inherited — that provenance belongs in
-// the README and the LICENSE, where it is recorded in full.
+// Swap payloads are serde-derived Rust DTOs embedded in the WASM declarations.
+// 64-bit response integers are bigint; request amounts accept bigint or safe
+// JS numbers. See the generated public types below.
 export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
+/** Rebuild saved Bitcoin/Liquid transactions with `fromHex(hex, chain)` and
+ * rebroadcast the same bytes through their existing `broadcast` method. */
 export { BtcLikeTransaction };
+export * from "./reconcile.js";
+
+export { resolveLightningAddress } from "../vendor/bindings_wasm.js";
+
+export type {
+  CorridorCard,
+  CorridorCardAsset,
+  CorridorCardMarket,
+} from "../vendor/bindings_wasm.js";
+
+export {
+  EsploraDataError,
+  esploraFeeEstimates,
+  selectEsploraFeeRate,
+  esploraTipHeight,
+  type EsploraDataOptions,
+  type EsploraFeeEstimates,
+} from "./chain-data.js";
+
+export type {
+  Leaf,
+  SwapTree,
+  RgbLock,
+  SubSwapStates,
+  RevSwapStates,
+  ChainSwapStates,
+  Webhook,
+  CreateSubmarineRequest,
+  CreateSubmarineResponse,
+  CreateReverseRequest,
+  CreateReverseResponse,
+  CreateChainRequest,
+  ChainSwapDetails,
+  CreateChainResponse,
+  TransactionResponse,
+  TransactionOut,
+  SwapEvent,
+  SwapPayoutStatus,
+  GetSwapResponse,
+  ClaimDetails,
+  RefundDetails,
+  SwapRestoreType,
+  SwapRestoreResponse,
+  SwapRestoreIndexResponse,
+} from "../vendor/bindings_wasm.js";
 
 /** Options for {@link createKaleidoMakerClient}. */
 export interface KaleidoMakerClientOptions {
@@ -125,6 +164,8 @@ export {
 
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {
+  /** Trusted, already observed claim lockup. Pins input selection; never broadcasts it. */
+  claimLockup?: { chain: "bitcoin" | "liquid"; hex: string; txid: string };
   /** Where the claimed/refunded funds are sent. */
   outputAddress: string;
   swapId: string;
@@ -190,20 +231,6 @@ export interface RgbPsbtParams {
   esploraTimeoutSecs?: number;
   /** Required colored lock transaction; prevents third-party output selection. */
   lockupTxHex: string;
-}
-
-export interface RgbLock {
-  cooperativeRefund?: "rgb-coop-refund-v1";
-  assetId: string;
-  /** Contract units, six decimals for USDT-RGB. */
-  amount: bigint;
-  recipientId: string;
-  blinding: string;
-  htlcSat: bigint;
-  claimFeeRate?: bigint;
-  scriptPubkey: string;
-  transportEndpoints: string[];
-  minConfirmations: number;
 }
 
 /** Base64 unsigned PSBT and the RGB allocation the wallet must construct. */
@@ -462,6 +489,22 @@ function toWasmParams<T extends TxParams | LiquidPsetParams | RgbPsbtParams>(
 
 export class SwapScript {
   private constructor(private readonly inner: WasmSwapScript) {}
+
+  /**
+   * Rebuild from a `swapRestore()` entry using the public key derived at the
+   * selected details' `keyIndex`. Chain swaps require an explicit side.
+   * BTC and L-BTC are supported; token restores lack the required asset context.
+   */
+  static fromRestored(
+    restoredSwap: unknown,
+    ourPubkeyHex: string,
+    network: Network,
+    side?: "lockup" | "claim",
+  ): SwapScript {
+    return new SwapScript(
+      WasmSwapScript.fromRestored(restoredSwap, ourPubkeyHex, network, side),
+    );
+  }
 
   static fromSubmarine(
     chainKind: "bitcoin" | "liquid",
@@ -774,6 +817,18 @@ export class IntentsCorridor {
    * suffix. Same rule as {@link corridorRootFromMakerUrl}. */
   get url(): string {
     return this.client.corridorUrl as string;
+  }
+
+  /** Signed discovery card; null when unavailable or withdrawn (404).
+   * Does not verify the signature or establish trust in the advertised identity. */
+  card(): Promise<CorridorCard | null> {
+    return this.client.corridorCard();
+  }
+
+  /** Exact unverified v0 card JSON, preserving unknown fields and member order
+   * for lossless signature verification; null on 404. */
+  async cardRaw(): Promise<string | null> {
+    return (await this.client.corridorCardRaw()) ?? null;
   }
 
   quoteLightningSend(request: LightningSendRfqRequest): Promise<RfqAnswer> {
