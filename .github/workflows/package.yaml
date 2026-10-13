@@ -160,8 +160,6 @@ jobs:
     name: TypeScript package
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env:
-      MAKER_SCHEMA_READ_TOKEN: ${{ secrets.MAKER_SCHEMA_READ_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -185,19 +183,6 @@ jobs:
       - name: Check supported maker schema compatibility
         working-directory: typescript-sdk
         run: node scripts/check-swap-schema.mjs
-      # The maker repository is private. Normal CI always checks the pinned
-      # contract above; owners can additionally enable live drift detection
-      # with a token that has read-only Contents access to the maker repository.
-      - name: Set up uv for optional live maker schema check
-        if: env.MAKER_SCHEMA_READ_TOKEN != ''
-        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-        with:
-          version: ${{ env.UV_VERSION }}
-      - name: Check live maker schema when cross-repository access is configured
-        env:
-          GH_TOKEN: ${{ secrets.MAKER_SCHEMA_READ_TOKEN }}
-        if: env.MAKER_SCHEMA_READ_TOKEN != ''
-        run: uv run scripts/update_maker_swap_schema.py --check
       - name: Build fresh WASM bindings
         run: make wasm-pack-build
       - name: Typecheck

@@ -198,7 +198,12 @@ Restore entries carry the literal `type` discriminator (`"submarine"`,
 `"reverse"` or `"chain"`), with optional claim/refund details. A missing or null
 Rust `Option` becomes `undefined` in responses. Maker status responses preserve
 payout progress and payment audit events. Event `data` is `unknown`: narrow it
-before reading fields. Native bindings expose that open audit value as JSON text.
+before reading fields. JSON integer encodings inside `data` arrive as `bigint`, including
+small values; floating-point encodings arrive as `number` (`2` becomes `2n`,
+while `2.5` stays `2.5`). Narrow for both
+forms as appropriate. These values are not JSON-serializable as-is:
+`JSON.stringify(event.data)` can throw; use `toJson(event.data)` for persistence.
+Native bindings expose that open audit value as JSON text.
 
 Every rejection produced after an argument reaches the Rust binding is an `Error`
 carrying a `code`. Input the binding rejects — a mistyped string argument, an
@@ -433,10 +438,12 @@ node typescript-sdk/scripts/check-swap-schema.mjs
 
 Review snapshot changes together with the Rust DTOs and any compatibility
 exceptions. CI always validates the pinned snapshot. Live upstream drift
-detection runs only when the repository secret `MAKER_SCHEMA_READ_TOKEN` is
-configured with read-only Contents access to the maker repository; without that
-secret, CI cannot discover later maker schema changes. Fork PRs without access to
-the secret still run the pinned checks.
+detection is a separate, owner-triggered **Maker schema drift** workflow. It
+checks trusted default-branch scripts and scopes `MAKER_SCHEMA_READ_TOKEN`
+(read-only maker Contents access) to its single live-check step. Required PR
+builds never receive that token or depend on moving maker `main`; they always
+check the pinned contract. Run the manual workflow after deployment/schema
+changes or refresh locally with authenticated read access as above.
 
 ## Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
 

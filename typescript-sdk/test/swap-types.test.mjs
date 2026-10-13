@@ -18,7 +18,7 @@ test("public/browser/raw WASM swap payloads compile without any", () => {
   const program = ts.createProgram([file], {
     noEmit: true,
     strict: true,
-    skipLibCheck: true,
+    skipLibCheck: false,
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -33,6 +33,43 @@ test("public/browser/raw WASM swap payloads compile without any", () => {
       getNewLine: () => "\n",
     }),
   );
+});
+
+test("a missing nested WASM declaration is rejected instead of becoming any", () => {
+  const directory = mkdtempSync(join(tmpdir(), "swap-nested-"));
+  try {
+    const source = readFileSync(
+      new URL("../vendor/bindings_wasm.d.ts", import.meta.url),
+      "utf8",
+    );
+    const damaged = source.replace(/export type SwapTree = [^;]+;/, "");
+    assert.notEqual(
+      damaged,
+      source,
+      "mutation must remove the real nested declaration",
+    );
+    const file = join(directory, "bindings.d.ts");
+    writeFileSync(file, damaged);
+    const program = ts.createProgram([file], {
+      noEmit: true,
+      strict: true,
+      skipLibCheck: false,
+      target: ts.ScriptTarget.ES2022,
+    });
+    assert.ok(
+      ts
+        .getPreEmitDiagnostics(program)
+        .some(
+          (d) =>
+            d.code === 2304 &&
+            ts
+              .flattenDiagnosticMessageText(d.messageText, " ")
+              .includes("SwapTree"),
+        ),
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("maker compatibility gate detects new, removed and mistyped fields", () => {

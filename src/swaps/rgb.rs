@@ -96,6 +96,7 @@ pub struct RgbLock {
     pub asset_id: String,
     /// Asset amount locked in the HTLC. Equals `expectedAmount` (submarine)
     /// or `onchainAmount` (reverse).
+    /// RGB contract units (six decimals for USDT-RGB), not Bitcoin satoshis.
     pub amount: u64,
     /// rgb-lib witness recipient id of the HTLC script, the proxy key the
     /// lock consignment is posted under.

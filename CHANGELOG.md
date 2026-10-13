@@ -14,10 +14,22 @@ WASM and native bindings. Package CI checks declaration generation and supported
 maker schema compatibility; live private-maker drift detection requires the
 documented read token.
 
-Rust struct literals for `ClaimDetails`, `RefundDetails`, `SwapRestoreResponse`,
-`GetSwapResponse` and `SwapEvent` must initialize their new optional metadata
-fields; use `None` when absent. Generated Python constructors default those new
-fields to `None`.
+### BREAKING — Rust core and TypeScript: typed swap DTOs
+
+Rust public struct literals for `ClaimDetails`, `RefundDetails`,
+`SwapRestoreResponse`, `GetSwapResponse` and `SwapEvent` must initialize the new
+optional metadata fields (`None` when absent). Adding fields to these public
+exhaustive structs is a SemVer-major Rust source break. Generated Python
+constructors default the new fields to `None`.
+
+TypeScript calls previously returning `any` now expose checked DTOs. Use `1n`
+with bigint response amounts/heights; assign them to `bigint`, or explicitly
+range-check before converting to `number`. Request literals now reject unmodeled
+extra keys (including `pairId`); use the documented request shape. The generated
+`RgbLock.cooperativeRefund` is `string | undefined`, so callers requiring
+`"rgb-coop-refund-v1"` must narrow/check it explicitly. `RgbLock.amount` remains
+contract units (six decimals for USDT-RGB), not Bitcoin satoshis. These are
+TypeScript source compatibility changes, even when the HTTP wire is unchanged.
 
 ### Fixed — wait for a complete PyPI inventory after publication
 

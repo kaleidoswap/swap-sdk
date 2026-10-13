@@ -18,6 +18,7 @@ assetId: string,
 /**
  * Asset amount locked in the HTLC. Equals `expectedAmount` (submarine)
  * or `onchainAmount` (reverse).
+ * RGB contract units (six decimals for USDT-RGB), not Bitcoin satoshis.
  */
 amount: bigint,
 /**
