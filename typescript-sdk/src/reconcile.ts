@@ -89,6 +89,10 @@ export function canRefund(
     return wait("completed");
   if (swapStatus === "transaction.claim.pending")
     return wait("already-spending");
+  // CLTV refunds need no maker signature. Consensus and the unspent output
+  // decide availability even if the maker has lost track of this swap.
+  if (mature && options.mode !== "cooperative")
+    return { eligible: true, path: "script" };
   if (swapStatus === "invoice.pending") return wait("invoice-in-flight");
   const failed = [
     "invoice.failedToPay",
@@ -111,14 +115,7 @@ export function canRefund(
   if (swapStatus === "swap.created") return wait("waiting-for-lockup");
   if (!failed.includes(swapStatus) && !funded.includes(swapStatus))
     return wait("unknown-status");
-  if (options.mode === "script")
-    return mature
-      ? { eligible: true, path: "script" }
-      : wait("waiting-for-timeout");
-  // At maturity the next block can include nLockTime=timeout. No signature
-  // refusal is caught or reinterpreted as authorization for another path.
-  if (mature && options.mode !== "cooperative")
-    return { eligible: true, path: "script" };
+  if (options.mode === "script") return wait("waiting-for-timeout");
   return failed.includes(swapStatus)
     ? { eligible: true, path: "cooperative" }
     : wait("waiting-for-timeout");
@@ -129,7 +126,7 @@ export function canClaim(
   swapStatus: string,
   tipHeight: number | bigint,
   createResponse: SwapTiming,
-  options: { kind?: "reverse" | "chain"; allowZeroConf?: boolean } = {},
+  options: ClaimPolicy & { kind?: "reverse" | "chain" } = {},
 ): SpendEligibility {
   if (
     options.kind !== undefined &&
@@ -165,8 +162,23 @@ export function canClaim(
       ? "transaction.server.mempool"
       : "transaction.mempool";
   if (swapStatus === confirmed || swapStatus === mempool) {
-    if (tip >= deadline) return wait("claim-timeout");
-    if (swapStatus === mempool && !options.allowZeroConf)
+    const margin = options.claimSafetyMarginBlocks ?? 6;
+    if (!Number.isSafeInteger(margin) || margin < 0)
+      invalid("claimSafetyMarginBlocks must be a nonnegative safe integer");
+    if (tip + margin >= deadline) return wait("claim-timeout");
+    const minimum = options.minConfirmations ?? 1;
+    const confirmations = options.lockupConfirmations;
+    if (!Number.isSafeInteger(minimum) || minimum < 1)
+      invalid("minConfirmations must be a positive safe integer");
+    if (
+      confirmations !== undefined &&
+      (!Number.isSafeInteger(confirmations) || confirmations < 0)
+    )
+      invalid("lockupConfirmations must be a nonnegative safe integer");
+    if (
+      !options.allowZeroConf &&
+      (confirmations === undefined || confirmations < minimum)
+    )
       return wait("waiting-for-confirmation");
     return { eligible: true, path: "script" };
   }
@@ -192,7 +204,20 @@ export interface SignedSwapSpend {
 }
 export type SwapSpendResult =
   SignedSwapSpend | { kind: "not-yet"; reason: SpendWaitReason };
+export interface ClaimPolicy {
+  /** Independently verified from a trusted chain source; maker status is insufficient. */
+  lockupConfirmations?: number;
+  minConfirmations?: number;
+  allowZeroConf?: boolean;
+  /** Defaults to 6 blocks here; helpers use 60 for Liquid. Explicit 0 accepts expiry-race risk. */
+  claimSafetyMarginBlocks?: number;
+}
+export interface FeeLimits {
+  maxFeeSatPerVb?: number;
+  maxFeeAbsoluteSat?: number;
+}
 export interface SwapSpendOptions {
+  feeLimits?: FeeLimits;
   status: string;
   /** Refund: lockup chain. Claim: receiving chain. Fetch a fresh trusted tip. */
   tipHeight: number | bigint;
@@ -206,9 +231,16 @@ export interface SwapSpendOptions {
   /** A recovered previous result wins over current status/fees; never re-sign. */
   previous?: SignedSwapSpend;
 }
-export interface ClaimSwapOptions extends SwapSpendOptions {
+export interface ClaimSwapOptions
+  extends SwapSpendOptions, Omit<ClaimPolicy, "lockupConfirmations"> {
+  /** Fetch raw bytes, txid and confirmations together from the trusted chain source. */
+  lockup?: {
+    chain: "bitcoin" | "liquid";
+    hex: string;
+    txid: string;
+    confirmations: number;
+  };
   preimageHex: string;
-  allowZeroConf?: boolean;
   /** Defaults to cooperative for reverse; chain needs the extra context below. */
   mode?: "auto" | "cooperative" | "script";
 }
@@ -236,7 +268,18 @@ function previous(
   }
 }
 
-function fee(params: SwapSpendOptions["params"]): void {
+function fee(params: SwapSpendOptions["params"], limits: FeeLimits = {}): void {
+  if (
+    limits.maxFeeSatPerVb !== undefined &&
+    (!Number.isFinite(limits.maxFeeSatPerVb) || limits.maxFeeSatPerVb <= 0)
+  )
+    invalid("maxFeeSatPerVb must be positive and finite");
+  if (
+    limits.maxFeeAbsoluteSat !== undefined &&
+    (!Number.isSafeInteger(limits.maxFeeAbsoluteSat) ||
+      limits.maxFeeAbsoluteSat <= 0)
+  )
+    invalid("maxFeeAbsoluteSat must be a positive safe integer");
   const { feeSatPerVb: rate, feeAbsoluteSat: absolute } = params;
   if ((rate === undefined) === (absolute === undefined))
     invalid("provide exactly one feeSatPerVb or feeAbsoluteSat");
@@ -247,6 +290,18 @@ function fee(params: SwapSpendOptions["params"]): void {
     (!Number.isSafeInteger(absolute) || absolute <= 0)
   )
     invalid("feeAbsoluteSat must be a positive safe integer");
+  if (
+    rate !== undefined &&
+    limits.maxFeeSatPerVb !== undefined &&
+    rate > limits.maxFeeSatPerVb
+  )
+    invalid("feeSatPerVb exceeds maxFeeSatPerVb");
+  if (
+    absolute !== undefined &&
+    limits.maxFeeAbsoluteSat !== undefined &&
+    absolute > limits.maxFeeAbsoluteSat
+  )
+    invalid("feeAbsoluteSat exceeds maxFeeAbsoluteSat");
 }
 
 async function refund(
@@ -268,7 +323,7 @@ async function refund(
     return { kind: "not-yet", reason: eligibility.reason };
   if (eligibility.path === "cooperative" && !options.params.swapAuth)
     return { kind: "not-yet", reason: "missing-swap-auth" };
-  fee(options.params);
+  fee(options.params, options.feeLimits);
   const transaction = await options.script.constructRefund({
     ...options.params,
     cooperative: eligibility.path === "cooperative",
@@ -303,10 +358,16 @@ async function claim(
     {
       kind: action === "claimChain" ? "chain" : "reverse",
       allowZeroConf: options.allowZeroConf,
+      lockupConfirmations: options.lockup?.confirmations,
+      minConfirmations: options.minConfirmations,
+      claimSafetyMarginBlocks:
+        options.claimSafetyMarginBlocks ??
+        (options.lockup?.chain === "liquid" ? 60 : 6),
     },
   );
   if (!eligibility.eligible)
     return { kind: "not-yet", reason: eligibility.reason };
+  if (!options.lockup) return { kind: "not-yet", reason: "waiting-for-lockup" };
   const chain = action === "claimChain";
   const context =
     options.lockupScript !== undefined &&
@@ -322,22 +383,57 @@ async function claim(
   )
     return { kind: "not-yet", reason: "missing-cooperative-context" };
   const cooperative = options.mode !== "script" && (!chain || context);
-  fee(options.params);
-  const params = { ...options.params, cooperative };
-  const transaction =
-    chain && cooperative
-      ? await options.script.constructCooperativeClaim(
-          options.preimageHex,
-          params,
-          options.lockupScript!,
-          options.refundKeysSecretHex!,
-        )
-      : await options.script.constructClaim(options.preimageHex, params);
+  fee(options.params, options.feeLimits);
+  const params = {
+    ...options.params,
+    cooperative,
+    claimLockup: {
+      chain: options.lockup.chain,
+      hex: options.lockup.hex,
+      txid: options.lockup.txid,
+    },
+  };
+  let path: SpendPath = cooperative ? "cooperative" : "script";
+  let transaction: BtcLikeTransaction;
+  try {
+    transaction =
+      chain && cooperative
+        ? await options.script.constructCooperativeClaim(
+            options.preimageHex,
+            params,
+            options.lockupScript!,
+            options.refundKeysSecretHex!,
+          )
+        : await options.script.constructClaim(options.preimageHex, params);
+  } catch (error) {
+    // Claim cooperation may already have disclosed the preimage. The pinned
+    // script path needs no maker signature; preserve explicit cooperative mode.
+    if (!cooperative || (options.mode !== undefined && options.mode !== "auto"))
+      throw error;
+    try {
+      transaction = await options.script.constructClaim(options.preimageHex, {
+        ...params,
+        cooperative: false,
+      });
+      path = "script";
+    } catch (fallback) {
+      throw Object.assign(
+        new Error(
+          "Cooperative claim and script fallback failed; retain the preimage/lockup and retry the script path urgently",
+        ),
+        {
+          code: "ClaimFallbackFailed",
+          cooperativeError: error,
+          scriptError: fallback,
+        },
+      );
+    }
+  }
   return {
     kind: "signed",
     swapId: params.swapId,
     action,
-    path: cooperative ? "cooperative" : "script",
+    path,
     transaction,
   };
 }

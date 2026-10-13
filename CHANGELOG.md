@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Claims require trusted chain confirmation evidence and pin the lockup raw
+  transaction/txid before revealing a preimage. Automatic claims fall back to
+  the script path after cooperative failure. Matured refunds tolerate stale
+  maker status. Claim safety margins and optional fee ceilings are explicit.
+
 ### Added
 
 - Stateless TypeScript eligibility and claim/refund helpers with conservative

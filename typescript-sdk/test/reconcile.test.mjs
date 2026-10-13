@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 import {
   canRefund,
   canClaim,
@@ -50,6 +51,238 @@ test("browser and Node entry points share reconciliation helpers", async () => {
     assert.equal(browser[helper.name], helper);
 });
 
+test("claim confirmation evidence cannot be replaced by a maker status", async () => {
+  const { options, calls } = setup({
+    status: "transaction.confirmed",
+    tipHeight: 100,
+  });
+  for (const confirmations of [undefined, 0]) {
+    assert.deepEqual(
+      canClaim("transaction.confirmed", 100, timing, {
+        lockupConfirmations: confirmations,
+      }),
+      { eligible: false, reason: "waiting-for-confirmation" },
+    );
+    assert.equal(
+      (
+        await claimReverseSwap({
+          ...options,
+          lockup:
+            confirmations === undefined
+              ? undefined
+              : { ...options.lockup, confirmations },
+        })
+      ).kind,
+      "not-yet",
+    );
+  }
+  assert.equal(
+    calls.length,
+    0,
+    "must not disclose the preimage or construct a claim",
+  );
+  assert.equal(
+    canClaim("transaction.mempool", 100, timing, { lockupConfirmations: 2 })
+      .eligible,
+    true,
+    "chain evidence outranks a stale maker mempool label",
+  );
+  assert.equal(
+    canClaim("transaction.confirmed", 100, timing, {
+      lockupConfirmations: 1,
+      minConfirmations: 2,
+    }).eligible,
+    false,
+  );
+  assert.equal(
+    (
+      await claimReverseSwap({
+        ...options,
+        lockup: { ...options.lockup, confirmations: 0 },
+        allowZeroConf: true,
+      })
+    ).kind,
+    "signed",
+  );
+});
+
+test("automatic claims fall back immediately after cooperation fails; explicit modes remain explicit", async () => {
+  for (const chain of [false, true]) {
+    const { options, calls, transaction } = setup({
+      status: chain ? "transaction.server.confirmed" : "transaction.confirmed",
+      tipHeight: 100,
+    });
+    const refused = new Error("cooperative signature refused");
+    options.script.constructClaim = async (preimage, params) => {
+      calls.push(params.cooperative);
+      if (params.cooperative) throw refused;
+      return transaction;
+    };
+    options.script.constructCooperativeClaim = async () => {
+      calls.push(true);
+      throw refused;
+    };
+    const input = chain
+      ? { ...options, lockupScript: {}, refundKeysSecretHex: "refund-key" }
+      : options;
+    const helper = chain ? claimChainSwap : claimReverseSwap;
+    const result = await helper(input);
+    assert.equal(result.path, "script");
+    assert.equal(result.transaction, transaction);
+    assert.deepEqual(calls, [true, false]);
+    calls.length = 0;
+    await assert.rejects(
+      helper({ ...input, mode: "cooperative" }),
+      (error) => error === refused,
+    );
+    assert.deepEqual(calls, [true]);
+    options.script.constructClaim = async () => {
+      throw new Error("chain unavailable");
+    };
+    await assert.rejects(helper(input), { code: "ClaimFallbackFailed" });
+  }
+});
+
+test("matured unilateral refunds cannot be vetoed by stale or unknown maker status", async () => {
+  for (const status of ["swap.created", "invoice.pending", "future.state"]) {
+    const { options, calls } = setup({ status, tipHeight: 200 });
+    assert.deepEqual(canRefund(status, 200, timing), {
+      eligible: true,
+      path: "script",
+    });
+    assert.equal((await refundSubmarineSwap(options)).path, "script");
+    assert.equal(calls[0].args[0].cooperative, false);
+    assert.equal(canRefund(status, 199, timing).eligible, false);
+  }
+});
+
+test("claim margins and explicit fee ceilings reject risky construction before signing", async () => {
+  assert.deepEqual(
+    canClaim("transaction.confirmed", 194, timing, { lockupConfirmations: 1 }),
+    { eligible: false, reason: "claim-timeout" },
+  );
+  assert.equal(
+    canClaim("transaction.confirmed", 193, timing, { lockupConfirmations: 1 })
+      .eligible,
+    true,
+  );
+  const { options, calls } = setup();
+  await assert.rejects(
+    refundSubmarineSwap({ ...options, feeLimits: { maxFeeSatPerVb: 0.1 } }),
+    /maxFeeSatPerVb/,
+  );
+  await assert.rejects(
+    refundSubmarineSwap({
+      ...options,
+      params: {
+        ...options.params,
+        feeSatPerVb: undefined,
+        feeAbsoluteSat: 100,
+      },
+      feeLimits: { maxFeeAbsoluteSat: 99 },
+    }),
+    /maxFeeAbsoluteSat/,
+  );
+  assert.equal(calls.length, 0);
+});
+
+test(
+  "real WASM claims pin the trusted confirmed lockup and recover from cooperative refusal",
+  { timeout: 10000 },
+  async () => {
+    await init();
+    const vector = JSON.parse(
+      await readFile(
+        new URL(
+          "../../bindings/tests/fixtures/rgb-spends.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    const response = structuredClone(vector.swaps.reverse.response);
+    response.onchainAmount = BigInt(response.rgb.htlcSat);
+    delete response.rgb;
+    const hex = vector.swaps.reverse.lockTxHex;
+    const txid = createHash("sha256")
+      .update(createHash("sha256").update(Buffer.from(hex, "hex")).digest())
+      .digest()
+      .reverse()
+      .toString("hex");
+    const requests = [];
+    const server = createServer(async (req, res) => {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      requests.push({ path: req.url, body });
+      // Any address discovery would expose the bug: there could be a different
+      // unconfirmed HTLC here. Claims must use only the pinned raw transaction.
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end('{"error":"signature_refused"}');
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const url = `http://127.0.0.1:${server.address().port}`;
+    const script = SwapScript.fromReverse(
+      "bitcoin",
+      "regtest",
+      response,
+      vector.publicKeyHex,
+    );
+    const options = {
+      status: "transaction.confirmed",
+      tipHeight: 100,
+      createResponse: response,
+      script,
+      preimageHex: vector.preimageHex,
+      lockup: { chain: "bitcoin", hex, txid, confirmations: 1 },
+      params: {
+        swapId: response.id,
+        outputAddress: vector.payoutAddress,
+        keysSecretHex: vector.secretKeyHex,
+        makerBaseUrl: `${url}/v2`,
+        network: "regtest",
+        bitcoinEsploraUrl: url,
+        feeAbsoluteSat: 50,
+      },
+    };
+    let result;
+    try {
+      assert.equal(
+        (
+          await claimReverseSwap({
+            ...options,
+            lockup: { ...options.lockup, confirmations: 0 },
+          })
+        ).kind,
+        "not-yet",
+      );
+      assert.equal(requests.length, 0);
+      result = await claimReverseSwap(options);
+      assert.equal(result.kind, "signed");
+      assert.equal(result.path, "script");
+      assert.equal(requests.length, 1);
+      assert.equal(requests[0].path, `/v2/swap/reverse/${response.id}/claim`);
+      assert.equal(JSON.parse(requests[0].body).preimage, vector.preimageHex);
+      assert.ok(result.transaction.hex().includes(vector.preimageHex));
+      await assert.rejects(
+        claimReverseSwap({
+          ...options,
+          lockup: { ...options.lockup, txid: "00".repeat(32) },
+        }),
+        /fallback failed/,
+      );
+      assert.equal(
+        requests.length,
+        1,
+        "bad lockup identity must fail before preimage disclosure",
+      );
+    } finally {
+      result?.transaction.free();
+      script.free();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  },
+);
+
 const timing = { timeoutBlockHeight: 200n };
 const chainTiming = {
   lockupDetails: { timeoutBlockHeight: 200n },
@@ -81,6 +314,12 @@ function setup(overrides = {}) {
       createResponse: timing,
       script,
       preimageHex: "11".repeat(32),
+      lockup: {
+        chain: "bitcoin",
+        hex: "00",
+        txid: "11".repeat(32),
+        confirmations: 1,
+      },
       params: {
         swapId: "swap-1",
         swapAuth: "secret-auth",
@@ -97,12 +336,9 @@ function setup(overrides = {}) {
 
 test("refund policy blocks in-flight payment and unknown/terminal states even after CLTV", () => {
   for (const status of [
-    "invoice.pending",
     "invoice.paid",
     "transaction.claimed",
     "transaction.claim.pending",
-    "future.state",
-    "swap.created",
   ]) {
     assert.equal(canRefund(status, 201, timing).eligible, false, status);
   }
@@ -180,6 +416,8 @@ test("claims require the receiving-side lockup, confirmation by default and time
   assert.equal(
     canClaim("transaction.server.confirmed", 149, chainTiming, {
       kind: "chain",
+      lockupConfirmations: 1,
+      claimSafetyMarginBlocks: 0,
     }).eligible,
     true,
   );

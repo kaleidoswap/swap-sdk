@@ -126,6 +126,8 @@ export {
 
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {
+  /** Trusted, already observed claim lockup. Pins input selection; never broadcasts it. */
+  claimLockup?: { chain: "bitcoin" | "liquid"; hex: string; txid: string };
   /** Where the claimed/refunded funds are sent. */
   outputAddress: string;
   swapId: string;

@@ -58,3 +58,15 @@ canClaim("transaction.confirmed", "1", { timeoutBlockHeight: 2 });
 void results;
 void eligibility;
 void retry;
+
+claimReverseSwap({
+  ...reverse,
+  // @ts-expect-error Confirmation counts must be numerical chain evidence.
+  lockup: { chain: "bitcoin", hex: "00", txid: "00", confirmations: "1" },
+});
+claimReverseSwap({
+  ...reverse,
+  claimSafetyMarginBlocks: 6,
+  minConfirmations: 2,
+  feeLimits: { maxFeeSatPerVb: 5 },
+});

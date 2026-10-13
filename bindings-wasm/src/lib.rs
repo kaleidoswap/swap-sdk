@@ -1224,9 +1224,43 @@ struct TxParams {
     cooperative: bool,
     #[serde(default)]
     swap_auth: Option<String>,
+    #[serde(default)]
+    claim_lockup: Option<ClaimLockup>,
+}
+
+#[derive(serde::Deserialize)]
+struct ClaimLockup {
+    chain: String,
+    hex: String,
+    txid: String,
+}
+
+impl ClaimLockup {
+    fn transaction(&self) -> Result<CoreBtcLikeTransaction, JsValue> {
+        let tx = match self.chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&self.hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&self.hex),
+            _ => return Err(arg_err("claimLockup.chain must be bitcoin or liquid")),
+        }
+        .map_err(core_err)?;
+        let txid = match &tx {
+            CoreBtcLikeTransaction::Bitcoin(tx) => tx.compute_txid().to_string(),
+            CoreBtcLikeTransaction::Liquid(tx) => tx.txid().to_string(),
+        };
+        if txid != self.txid {
+            return Err(arg_err("claimLockup hex does not match its trusted txid"));
+        }
+        Ok(tx)
+    }
 }
 
 impl TxParams {
+    fn claim_options(&self, options: TransactionOptions) -> Result<TransactionOptions, JsValue> {
+        match &self.claim_lockup {
+            Some(lockup) => Ok(options.with_existing_lockup_tx(lockup.transaction()?)),
+            None => Ok(options),
+        }
+    }
     fn keypair(&self) -> Result<Keypair, JsValue> {
         Self::keypair_from(&self.keys_secret_hex, "keysSecretHex")
     }
@@ -1425,9 +1459,10 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some({
-                let options = TransactionOptions::default().with_cooperative(p.cooperative);
-                match p.swap_auth {
-                    Some(auth) => options.with_swap_auth(auth),
+                let options =
+                    p.claim_options(TransactionOptions::default().with_cooperative(p.cooperative))?;
+                match &p.swap_auth {
+                    Some(auth) => options.with_swap_auth(auth.clone()),
                     None => options,
                 }
             }),
@@ -1492,8 +1527,10 @@ impl SwapScript {
             chain_client: &chain_client,
             boltz_api: &boltz,
             options: Some(
-                TransactionOptions::default()
-                    .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                p.claim_options(
+                    TransactionOptions::default()
+                        .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                )?,
             ),
         };
         let tx = self
