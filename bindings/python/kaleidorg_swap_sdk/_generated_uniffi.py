@@ -522,6 +522,10 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address() != 45246:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex() != 9628:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1917,6 +1921,13 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.c_uint64,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2151,6 +2162,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.resty
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.restype = (
     ctypes.c_uint16
@@ -12896,6 +12911,31 @@ def new_rfq_id() -> "str":
     )
 
 
+async def resolve_lightning_address(address: "str", amount_sat: "int") -> "str":
+    """
+    Resolve a Lightning address or encoded LNURL-pay request to a fixed-amount
+    invoice. Whole satoshis; no payment or swap creation occurs.
+    """
+
+    _UniffiConverterString.check_lower(address)
+
+    _UniffiConverterUInt64.check_lower(amount_sat)
+
+    return await _uniffi_rust_call_async(
+        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address(
+            _UniffiConverterString.lower(address),
+            _UniffiConverterUInt64.lower(amount_sat),
+        ),
+        _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+        _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+        _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+        # lift function
+        _UniffiConverterString.lift,
+        # Error FFI converter
+        _UniffiConverterTypeError,
+    )
+
+
 __all__ = [
     "InternalError",
     "AmountSide",
@@ -12996,6 +13036,7 @@ __all__ = [
     "btc_chain_from_network",
     "lbtc_chain_from_network",
     "new_rfq_id",
+    "resolve_lightning_address",
     "BtcLikeTransaction",
     "ChainClient",
     "KeyPair",

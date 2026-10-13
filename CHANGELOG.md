@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- LNURL-pay resolution requires HTTPS on clearnet, rejects redirects and URL
+  credentials, bounds each request/body read to 30 seconds, and verifies the
+  invoice description hash against LNURL metadata. Rustls/WebPKI replaces the
+  OS trust store when the LNURL feature is enabled.
+
+### Added — Lightning-address and LNURL-pay lookup in bindings
+
+WASM/TypeScript exports `resolveLightningAddress(address, amountSat)` and native
+bindings export `resolve_lightning_address`. Both use whole satoshis, reuse the
+Rust LNURL resolver and require the returned invoice amount to match the request.
+
 ### Added — corridor discovery card
 
 Rust, WASM and native clients can fetch the maker's corridor card (signature not verified) from

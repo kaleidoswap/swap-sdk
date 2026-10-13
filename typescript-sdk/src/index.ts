@@ -37,6 +37,8 @@ export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 /** Rebuild saved Bitcoin/Liquid transactions with `fromHex(hex, chain)` and
  * rebroadcast the same bytes through their existing `broadcast` method. */
 export { BtcLikeTransaction };
+export { resolveLightningAddress } from "../vendor/bindings_wasm.js";
+
 export type {
   CorridorCard,
   CorridorCardAsset,

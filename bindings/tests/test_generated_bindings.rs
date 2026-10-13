@@ -41,6 +41,12 @@ fn auth_recovery() {
 
 #[test]
 #[serial]
+fn lightning_address() {
+    run_test("tests/bindings/lightning_address.py");
+}
+
+#[test]
+#[serial]
 fn corridor_card() {
     run_test("tests/bindings/corridor_card.py");
 }

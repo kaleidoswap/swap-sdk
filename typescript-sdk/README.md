@@ -35,6 +35,38 @@ cd examples && npm install && node 01-pairs.ts
 `"regtest"` resolves to `http://localhost:9001/v2` and needs this
 repository's local harness.
 
+## Lightning addresses and LNURL-pay
+
+```ts
+import { init, resolveLightningAddress } from "@kaleidorg/swap-sdk";
+
+await init();
+const invoice = await resolveLightningAddress("alice@example.com", 25_000n);
+// Pass this fixed-amount BOLT11 to the normal submarine-create flow.
+```
+
+The resolver also accepts an encoded `lnurl1...` pay request (including uppercase
+encoding). `amountSat` is a positive **bigint in whole satoshis**; unsafe types,
+zero, negative values and amounts that overflow the millisatoshi conversion are
+rejected. It reuses the Rust LNURL resolver, checks the provider's advertised
+amount limits, parses the returned BOLT11 and requires its exact amount and LNURL
+metadata description hash to match.
+Service and transport errors reject the promise. Native/Python exposes
+`await resolve_lightning_address(address, amount_sat)` with the same satoshi unit.
+
+Lookup requires HTTPS for clearnet service and callback URLs; HTTP is accepted
+only for onion services (native callers must provide Tor connectivity). Redirects,
+URL credentials and fragments are rejected. Each request, including body reads,
+has a 30-second deadline in native and browser/Node WASM. It creates no swap
+and sends no payment or maker credentials. Browser providers must allow CORS. The resolver does not select or pin the invoice
+network or check expiry; callers must apply their invoice and provider trust
+policy before using the result. Do not
+interpret successful lookup as payment settlement.
+
+When the `lnurl` feature is enabled, HTTPS now uses Rustls with WebPKI roots,
+matching the SDK transport and avoiding system OpenSSL dependencies in wheels.
+An enterprise CA installed only in the OS trust store is not automatically trusted.
+
 ## Fee rates and tip heights for claims and refunds
 
 Use an explicitly configured Esplora endpoint for the chain and network the
