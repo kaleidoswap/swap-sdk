@@ -7,6 +7,7 @@
 import initWasm, {
   BoltzClient as WasmSwapClient,
   BtcLikeTransaction,
+  type CorridorCard,
   PreparedLiquidSpend as WasmPreparedLiquidSpend,
   PreparedRgbSpend as WasmPreparedRgbSpend,
   RgbCooperativeRefund as WasmRgbCooperativeRefund,
@@ -36,6 +37,12 @@ export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 /** Rebuild saved Bitcoin/Liquid transactions with `fromHex(hex, chain)` and
  * rebroadcast the same bytes through their existing `broadcast` method. */
 export { BtcLikeTransaction };
+export type {
+  CorridorCard,
+  CorridorCardAsset,
+  CorridorCardMarket,
+} from "../vendor/bindings_wasm.js";
+
 export {
   EsploraDataError,
   esploraFeeEstimates,
@@ -784,6 +791,18 @@ export class IntentsCorridor {
    * suffix. Same rule as {@link corridorRootFromMakerUrl}. */
   get url(): string {
     return this.client.corridorUrl as string;
+  }
+
+  /** Signed discovery card; null when unavailable or withdrawn (404).
+   * Does not verify the signature or establish trust in the advertised identity. */
+  card(): Promise<CorridorCard | null> {
+    return this.client.corridorCard();
+  }
+
+  /** Exact unverified v0 card JSON, preserving unknown fields and member order
+   * for lossless signature verification; null on 404. */
+  async cardRaw(): Promise<string | null> {
+    return (await this.client.corridorCardRaw()) ?? null;
   }
 
   quoteLightningSend(request: LightningSendRfqRequest): Promise<RfqAnswer> {
