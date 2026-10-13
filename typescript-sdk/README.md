@@ -35,6 +35,69 @@ cd examples && npm install && node 01-pairs.ts
 `"regtest"` resolves to `http://localhost:9001/v2` and needs this
 repository's local harness.
 
+## Fee rates and tip heights for claims and refunds
+
+Use an explicitly configured Esplora endpoint for the chain and network the
+transaction spends on. The pure TypeScript helpers require no WASM initialization
+and are also exported from the main package:
+
+```ts
+import {
+  esploraFeeEstimates,
+  selectEsploraFeeRate,
+  esploraTipHeight,
+} from "@kaleidorg/swap-sdk/chain-data";
+
+const baseUrl = "https://your-bitcoin-esplora.example/api";
+const [fees, tipHeight] = await Promise.all([
+  esploraFeeEstimates(baseUrl, { timeoutMs: 10_000 }),
+  esploraTipHeight(baseUrl, { timeoutMs: 10_000 }),
+]);
+const feeRateSatVb = selectEsploraFeeRate(fees, 2); // Target: two blocks; sat/vB.
+if (feeRateSatVb === undefined)
+  throw new Error("No estimate for the requested target");
+```
+
+Fee estimates map positive confirmation targets to positive, finite **sat/vB**
+rates; fractional Liquid rates are preserved. Missing targets stay `undefined`.
+The tip is an integer block height. An Esplora genesis tip of zero is valid;
+missing, failed or malformed tip data rejects rather than producing zero.
+The fetch helpers make one request per call and do not cache, retry, select
+another target, substitute a fixed fee or switch endpoints. The default deadline
+is 30 seconds, including reading the response body; `signal` supports cancellation
+and `fetch` supports injected transports. HTTP errors report their status via
+`EsploraDataError`, separately from malformed successful responses. Network and
+cancellation errors propagate. Requests omit cookies and maker credentials and
+refuse redirects. A configured URL that redirects (including HTTP→HTTPS)
+fails as a network error; configure the final URL directly.
+
+An empty `{}` fee map is valid when the explorer has no estimates yet.
+`selectEsploraFeeRate(fees, target)` chooses the largest available target at or
+below the requested block count (equally fast or faster). Missing eligible
+estimates return `undefined`; it never substitutes a slower target or a default
+fee. Fractional Liquid rates remain fractional. Postpone construction or apply
+an explicit application policy when no eligible estimate exists.
+
+Select the endpoint alongside the spend's existing Esplora configuration. Bitcoin,
+Liquid, testnet and regtest are distinct, and Mutinynet is not vanilla signet.
+The endpoint is trusted chain data; these helpers do not identify its network or
+prove relay acceptance. If it is unavailable or has no requested target, postpone
+construction or apply an explicit application policy using a verified source on
+the same network. Do not silently turn a failure into a usable height or fee.
+
+The existing maker-backed methods remain useful for maker pricing and diagnostics:
+
+| Source                   | Bitcoin                                                  | Liquid                                       |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------------- |
+| `client.feeEstimation()` | Node's two-block estimate, floored to 1 sat/vB when zero | Fixed 0.1 sat/vB policy; not a live estimate |
+| `client.height()`        | Node tip                                                 | Provider tip, or **0** when unavailable      |
+
+Treat the maker's Liquid zero as unavailable; it cannot establish refund maturity.
+For client-built claims/refunds, use the explicit Esplora policy above rather than
+falling back to that placeholder or the maker's fixed fee. Selecting a fee rate
+does not prove that a particular transaction will relay. Liquid relay validation
+must cover the intended network and transaction types separately.
+
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.
 

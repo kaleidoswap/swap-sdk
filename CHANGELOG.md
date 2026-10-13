@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — explicit Esplora chain-data helpers
+
+TypeScript exports `esploraFeeEstimates(url)` and `esploraTipHeight(url)`, including
+a WASM-free `./chain-data` entry. The helpers validate data, preserve fractional
+sat/vB rates, honor deadlines/cancellation, and never substitute defaults after
+a failed read. Document endpoint selection and the maker-backed methods' fixed
+Liquid fee and unavailable-height placeholder.
+
 ### Added — transaction recovery from saved hex
 
 `BtcLikeTransaction.fromHex(hex, "bitcoin" | "liquid")` rebuilds a saved
