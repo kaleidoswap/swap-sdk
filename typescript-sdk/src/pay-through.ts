@@ -1,6 +1,13 @@
 /** Maker pay-through: a Lightning hold invoice funds a direct address payout.
  * The address leg is operator-trusted and has no hash lock. */
 
+/** Stable maker codes; unknown future codes remain available on ApiError.code. */
+export const PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT = "idempotency_in_flight";
+export const PAY_THROUGH_IDEMPOTENCY_MISMATCH = "idempotency_mismatch";
+export const PAY_THROUGH_IDEMPOTENCY_SCOPE_MISMATCH =
+  "idempotency_scope_mismatch";
+export const PAY_THROUGH_IDEMPOTENCY_EXPIRED = "idempotency_expired";
+
 export interface PayThroughRequest {
   destination: string;
   /** Satoshis paid on Lightning. Exactly one amount is required. */
@@ -48,8 +55,9 @@ export interface PayThroughStatus {
   };
 }
 
-/** The maker answered with an error. A 4xx means nothing was created; a 5xx
- * or gateway error leaves the outcome of a create unknown. */
+/** The maker answered with an error. Status alone does not prove that no swap
+ * exists: 409 idempotency_in_flight means the original attempt is pending or
+ * uncertain, and a 5xx or gateway error can follow a committed creation. */
 export class PayThroughApiError extends Error {
   constructor(
     public readonly status: number,
@@ -79,6 +87,14 @@ export interface PayThroughClientOptions {
 
 export interface PayThroughCallOptions {
   signal?: AbortSignal;
+}
+
+export interface PayThroughCreateOptions extends PayThroughCallOptions {
+  /** Secret, caller-generated key: a canonical UUIDv4 or 64 hexadecimal characters. Persist a
+   * random UUIDv4 (or 32 CSPRNG bytes encoded as hex) with the request before sending.
+   * Reuse it with identical input and partner attribution after a lost response.
+   * Safe retries require a maker that supports Idempotency-Key. */
+  idempotencyKey?: string;
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -255,13 +271,42 @@ export class PayThroughClient {
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
+  /** Check BEFORE the first create. Missing capabilities on older makers fail
+   * closed; a successful unmarked create does not prove retry safety.
+   * This is a separate GET, with no key generation or automatic create retry. */
+  async supportsIdempotency(
+    options: PayThroughCallOptions = {},
+  ): Promise<boolean> {
+    const version = object(
+      await this.call("version", { method: "GET", signal: options.signal }),
+    );
+    return (
+      Array.isArray(version.capabilities) &&
+      version.capabilities.includes("pay_through_idempotency_v1")
+    );
+  }
+
   /** Create the hold invoice and check the maker's terms against the request
-   * and the invoice itself. A transport failure or 5xx may leave creation
-   * unknown; do not blindly repeat the call or pay a second invoice. */
+   * and the invoice itself. To recover a lost response on a supporting maker,
+   * repeat with the same persisted idempotencyKey, input and partner attribution.
+   * Never switch keys after an uncertain outcome or pay a second invoice.
+   * Each call makes one request; retries are controlled by the caller. */
   async create(
     input: PayThroughRequest,
-    options: PayThroughCallOptions = {},
+    options: PayThroughCreateOptions = {},
   ): Promise<PayThroughCreated> {
+    const { idempotencyKey } = options;
+    if (
+      idempotencyKey !== undefined &&
+      (typeof idempotencyKey !== "string" ||
+        !/^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{64})$/i.test(
+          idempotencyKey,
+        ))
+    ) {
+      throw new TypeError(
+        "idempotencyKey must be a canonical UUIDv4 or 64 hexadecimal characters",
+      );
+    }
     const destination = input.destination?.trim();
     if (!destination) throw new TypeError("destination is required");
     requestedAmount(input.invoiceAmount, "invoiceAmount");
@@ -289,6 +334,7 @@ export class PayThroughClient {
         method: "POST",
         body: JSON.stringify(body),
         signal: options.signal,
+        idempotencyKey,
       }),
     );
     const fees = object(raw.fees);
@@ -417,11 +463,19 @@ export class PayThroughClient {
 
   private async call(
     path: string,
-    options: { method: "GET" | "POST"; body?: string; signal?: AbortSignal },
+    options: {
+      method: "GET" | "POST";
+      body?: string;
+      signal?: AbortSignal;
+      idempotencyKey?: string;
+    },
   ): Promise<unknown> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (options.body) headers["Content-Type"] = "application/json";
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+    if (options.idempotencyKey !== undefined) {
+      headers["Idempotency-Key"] = options.idempotencyKey;
+    }
 
     const controller = new AbortController();
     const timer = setTimeout(
