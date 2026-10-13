@@ -7,7 +7,9 @@ Native.
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
 refund transactions client-side. Any Boltz-`/v2`-compatible endpoint works via
-an explicit base URL.
+an explicit base URL. Endpoint support varies by maker and binding; see the
+[maker/upstream compatibility matrix](docs/compatibility.md) for submarine
+co-signing, public raw broadcast and BOLT12 routes.
 
 ### Networks
 
@@ -73,6 +75,20 @@ match answer {
 A refusal is the maker's answer, not an error — it comes back as a value. The
 same surface is `SwapClient.quote_lightning_send(...)` in Python and
 `new IntentsCorridor(client).quoteLightningSend(...)` in TypeScript.
+
+Discover the maker's advertised markets with `client.corridor_card().await?`
+in Rust, `await client.corridor_card()` in Python, or
+`await new IntentsCorridor(client).card()` in TypeScript (also exposed as
+`client.corridorCard()`). The method requests `GET /v1/card` beside the client's
+`/v2` base, preserving any deployment path prefix and client authentication.
+It returns the maker's card (signature not verified), with amount limits kept
+as decimal strings,
+or `None`/`null` for HTTP 404 (unavailable or withdrawn). Other HTTP, transport
+and malformed-response failures remain errors. Fetching the card does not
+verify its signature or establish trust in its advertised discovery key.
+Only schema v0 is accepted. Use `corridor_card_raw()` / `cardRaw()` to preserve
+unknown fields for verification; see the TypeScript README for the signing
+preimage and lossless-processing requirements.
 
 What this half does **not** do is touch Arkade: funding a send lockup or
 claiming a receive lockup needs an Ark wallet, which is the
@@ -185,10 +201,61 @@ sources](docs/releasing.md#python-registry).
 ```bash
 make generate-python-bindings  # platform-independent UniFFI Python glue fallback
 make check-generated           # regenerate from pinned inputs and reject drift
+make generate-swap-types       # serde-derived WASM/TypeScript swap DTOs
+make check-swap-types           # reject DTO declaration drift
 ```
 
 The generated fallback is committed. Pull-request CI regenerates it solely from
 repository-pinned tool inputs and rejects any drift.
+
+The six swap create/status/restore methods use public TypeScript DTOs generated
+from the Rust types with pinned `ts-rs`. Their declarations are embedded in the
+WASM package, so Node, browser and raw WASM consumers share the same signatures.
+See [the TypeScript guide](typescript-sdk/README.md#swap-dto-generation-and-maker-schema-checks)
+for maker schema compatibility checks and snapshot updates.
+
+## Rebuild scripts after swap recovery
+
+`SwapScript.fromRestored(entry, ourPubkeyHex, network, side?)` accepts an entry
+returned by `SwapClient.swapRestore()` or `SwapMasterKey.restore()` directly.
+Use the swap key at the selected details' `keyIndex`: refund details for a
+submarine swap, claim details for a reverse swap. For chain swaps, pass
+`"lockup"` or `"claim"` explicitly and derive the corresponding key.
+
+```ts
+const [entry] = await master.restore(client);
+const refundKey = master.deriveSwapKey(BigInt(entry.refundDetails.keyIndex));
+const submarine = SwapScript.fromRestored(entry, refundKey.publicKey, "signet");
+
+// For a chain swap, select each side and its own key separately.
+const claimKey = master.deriveSwapKey(BigInt(chainEntry.claimDetails.keyIndex));
+const claim = SwapScript.fromRestored(
+  chainEntry,
+  claimKey.publicKey,
+  "signet",
+  "claim",
+);
+```
+
+This reconstructs and validates the canonical script tree, keys, timeout,
+network and lockup address without inventing create-response fields. It
+preserves the expected on-chain amount and Liquid blinding key. It performs
+no network requests and neither claims nor refunds automatically. Restore
+claim details must include `amount`; refund details may omit it, because refunds
+recover the positive amount actually locked. Refund hashlock validation prefers
+the maker's `preimageHash` and otherwise supports BOLT11 or BOLT12 invoices.
+
+BTC and L-BTC sides are supported for all three swap kinds, including explicit
+and confidential Liquid addresses. The current restore wire contract omits
+RGB allocation data and Liquid token asset/fee-asset context, so USDT-RGB,
+L-USDT and Arkade sides are rejected explicitly. Persist their original
+validated create responses and wallet context until the maker supplies that
+recovery metadata. Restore also does not recover the maker's `swapAuth`
+credential; use the separate signed credential recovery flow before a
+cooperative claim or refund that requires it.
+
+Native bindings expose the same core constructor as
+`SwapScript.from_restored(network, restored_swap, our_pubkey, side)`.
 
 ## Bindings
 

@@ -16,6 +16,88 @@ All notable changes to this project will be documented in this file.
 - Stateless TypeScript eligibility and claim/refund helpers with conservative
   confirmation/CLTV checks and reuse of saved signed transactions on retries.
 
+### Added — serde-derived TypeScript swap DTOs
+
+Create, status and restore methods now expose public Rust-derived DTOs in Node,
+browser and raw WASM declarations. Tests cover consumer compilation, exact
+64-bit response integers and rejection of unsafe create amounts. Restore hashes
+and detail types, payout status and payment audit payloads are preserved across
+WASM and native bindings. Package CI checks declaration generation and supported
+maker schema compatibility; live private-maker drift detection requires the
+documented read token.
+
+### BREAKING — Rust core and TypeScript: typed swap DTOs
+
+Rust public struct literals for `ClaimDetails`, `RefundDetails`,
+`SwapRestoreResponse`, `GetSwapResponse` and `SwapEvent` must initialize the new
+optional metadata fields (`None` when absent). Adding fields to these public
+exhaustive structs is a SemVer-major Rust source break. Generated Python
+constructors default the new fields to `None`.
+
+TypeScript calls previously returning `any` now expose checked DTOs. Use `1n`
+with bigint response amounts/heights; assign them to `bigint`, or explicitly
+range-check before converting to `number`. Request literals now reject unmodeled
+extra keys (including `pairId`); use the documented request shape. The generated
+`RgbLock.cooperativeRefund` is `string | undefined`, so callers requiring
+`"rgb-coop-refund-v1"` must narrow/check it explicitly. `RgbLock.amount` remains
+contract units (six decimals for USDT-RGB), not Bitcoin satoshis. These are
+TypeScript source compatibility changes, even when the HTTP wire is unchanged.
+
+### Added — rebuild swap scripts from recovery results
+
+`SwapScript.fromRestored()` rebuilds BTC and L-BTC submarine, reverse and
+chain-swap scripts directly from `swapRestore()` entries, with explicit side
+selection for chain swaps. WASM/TypeScript and native bindings share canonical
+tree/address validation and preserve amounts and Liquid blinding keys. Token
+restores without the required asset context are rejected explicitly.
+
+### Security
+
+- LNURL-pay resolution requires HTTPS on clearnet, rejects redirects and URL
+  credentials, bounds each request/body read to 30 seconds, and verifies the
+  invoice description hash against LNURL metadata. Rustls/WebPKI replaces the
+  OS trust store when the LNURL feature is enabled.
+
+### Added — Lightning-address and LNURL-pay lookup in bindings
+
+WASM/TypeScript exports `resolveLightningAddress(address, amountSat)` and native
+bindings export `resolve_lightning_address`. Both use whole satoshis, reuse the
+Rust LNURL resolver and require the returned invoice amount to match the request.
+
+### Added — corridor discovery card
+
+Rust, WASM and native clients can fetch the maker's corridor card (signature not verified) from
+`GET /v1/card`; TypeScript exposes `IntentsCorridor.card()`. HTTP 404 returns
+`None`/`null`, amount limits remain decimal strings, and other failures remain
+errors. Only schema v0 is accepted. Raw JSON is available through
+`corridor_card_raw()` / `IntentsCorridor.cardRaw()` for lossless verification;
+card fetching does not verify the advertised signature.
+
+### Added — explicit Esplora chain-data helpers
+
+TypeScript exports `esploraFeeEstimates(url)` and `esploraTipHeight(url)`, including
+a WASM-free `./chain-data` entry. The helpers validate data, preserve fractional
+sat/vB rates, honor deadlines/cancellation, and never substitute defaults after
+a failed read. Document endpoint selection and the maker-backed methods' fixed
+Liquid fee and unavailable-height placeholder.
+
+### Added — transaction recovery from saved hex
+
+`BtcLikeTransaction.fromHex(hex, "bitcoin" | "liquid")` rebuilds a saved
+transaction in WASM/TypeScript without signing or broadcasting. It preserves
+the transaction bytes, witnesses and txid, rejects malformed or noncanonical
+encodings, and uses the existing `broadcast()` method for explicit retries.
+Native bindings expose the corresponding `from_hex(hex, chain)` constructor.
+
+### Documented — maker and upstream compatibility boundary
+
+Record the deliberate Rust/WASM/native support matrix for upstream submarine
+claim co-signing, public maker raw broadcast and BOLT12 routes. Existing Rust
+compatibility methods and native submarine co-signing remain available; the
+current maker does not register their exact public routes. Correct the parity
+alias for WASM cooperative chain claims to native `construct_claim`, and check
+the route/export policy in CI against a pinned maker router inventory.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

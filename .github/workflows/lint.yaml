@@ -37,6 +37,8 @@ jobs:
         run: make validate-versions
       - name: Check binding parity
         run: make check-binding-parity
+      - name: Check maker and upstream compatibility boundary
+        run: make check-compatibility-boundary
       - name: Validate release automation
         run: |
           make check-release-workflow

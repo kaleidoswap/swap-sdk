@@ -35,6 +35,101 @@ cd examples && npm install && node 01-pairs.ts
 `"regtest"` resolves to `http://localhost:9001/v2` and needs this
 repository's local harness.
 
+## Lightning addresses and LNURL-pay
+
+```ts
+import { init, resolveLightningAddress } from "@kaleidorg/swap-sdk";
+
+await init();
+const invoice = await resolveLightningAddress("alice@example.com", 25_000n);
+// Pass this fixed-amount BOLT11 to the normal submarine-create flow.
+```
+
+The resolver also accepts an encoded `lnurl1...` pay request (including uppercase
+encoding). `amountSat` is a positive **bigint in whole satoshis**; unsafe types,
+zero, negative values and amounts that overflow the millisatoshi conversion are
+rejected. It reuses the Rust LNURL resolver, checks the provider's advertised
+amount limits, parses the returned BOLT11 and requires its exact amount and LNURL
+metadata description hash to match.
+Service and transport errors reject the promise. Native/Python exposes
+`await resolve_lightning_address(address, amount_sat)` with the same satoshi unit.
+
+Lookup requires HTTPS for clearnet service and callback URLs; HTTP is accepted
+only for onion services (native callers must provide Tor connectivity). Redirects,
+URL credentials and fragments are rejected. Each request, including body reads,
+has a 30-second deadline in native and browser/Node WASM. It creates no swap
+and sends no payment or maker credentials. Browser providers must allow CORS. The resolver does not select or pin the invoice
+network or check expiry; callers must apply their invoice and provider trust
+policy before using the result. Do not
+interpret successful lookup as payment settlement.
+
+When the `lnurl` feature is enabled, HTTPS now uses Rustls with WebPKI roots,
+matching the SDK transport and avoiding system OpenSSL dependencies in wheels.
+An enterprise CA installed only in the OS trust store is not automatically trusted.
+
+## Fee rates and tip heights for claims and refunds
+
+Use an explicitly configured Esplora endpoint for the chain and network the
+transaction spends on. The pure TypeScript helpers require no WASM initialization
+and are also exported from the main package:
+
+```ts
+import {
+  esploraFeeEstimates,
+  selectEsploraFeeRate,
+  esploraTipHeight,
+} from "@kaleidorg/swap-sdk/chain-data";
+
+const baseUrl = "https://your-bitcoin-esplora.example/api";
+const [fees, tipHeight] = await Promise.all([
+  esploraFeeEstimates(baseUrl, { timeoutMs: 10_000 }),
+  esploraTipHeight(baseUrl, { timeoutMs: 10_000 }),
+]);
+const feeRateSatVb = selectEsploraFeeRate(fees, 2); // Target: two blocks; sat/vB.
+if (feeRateSatVb === undefined)
+  throw new Error("No estimate for the requested target");
+```
+
+Fee estimates map positive confirmation targets to positive, finite **sat/vB**
+rates; fractional Liquid rates are preserved. Missing targets stay `undefined`.
+The tip is an integer block height. An Esplora genesis tip of zero is valid;
+missing, failed or malformed tip data rejects rather than producing zero.
+The fetch helpers make one request per call and do not cache, retry, select
+another target, substitute a fixed fee or switch endpoints. The default deadline
+is 30 seconds, including reading the response body; `signal` supports cancellation
+and `fetch` supports injected transports. HTTP errors report their status via
+`EsploraDataError`, separately from malformed successful responses. Network and
+cancellation errors propagate. Requests omit cookies and maker credentials and
+refuse redirects. A configured URL that redirects (including HTTP→HTTPS)
+fails as a network error; configure the final URL directly.
+
+An empty `{}` fee map is valid when the explorer has no estimates yet.
+`selectEsploraFeeRate(fees, target)` chooses the largest available target at or
+below the requested block count (equally fast or faster). Missing eligible
+estimates return `undefined`; it never substitutes a slower target or a default
+fee. Fractional Liquid rates remain fractional. Postpone construction or apply
+an explicit application policy when no eligible estimate exists.
+
+Select the endpoint alongside the spend's existing Esplora configuration. Bitcoin,
+Liquid, testnet and regtest are distinct, and Mutinynet is not vanilla signet.
+The endpoint is trusted chain data; these helpers do not identify its network or
+prove relay acceptance. If it is unavailable or has no requested target, postpone
+construction or apply an explicit application policy using a verified source on
+the same network. Do not silently turn a failure into a usable height or fee.
+
+The existing maker-backed methods remain useful for maker pricing and diagnostics:
+
+| Source                   | Bitcoin                                                  | Liquid                                       |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------------- |
+| `client.feeEstimation()` | Node's two-block estimate, floored to 1 sat/vB when zero | Fixed 0.1 sat/vB policy; not a live estimate |
+| `client.height()`        | Node tip                                                 | Provider tip, or **0** when unavailable      |
+
+Treat the maker's Liquid zero as unavailable; it cannot establish refund maturity.
+For client-built claims/refunds, use the explicit Esplora policy above rather than
+falling back to that placeholder or the maker's fixed fee. Selecting a fee rate
+does not prove that a particular transaction will relay. Liquid relay validation
+must cover the intended network and transaction types separately.
+
 ## Stateless claim/refund reconciliation
 
 The TypeScript helpers `canRefund`, `canClaim`, `refundSubmarineSwap`,
@@ -216,6 +311,19 @@ take. Funding or claiming the Arkade side needs an Ark wallet — that is the
 `@kaleidorg/swap-sdk/arkade` venue, whose transport you build from the same URL
 with `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
+Discovery cards are **unverified**. `corridor.card()` / `client.corridorCard()`
+reject unsupported versions (only v0 is understood) and discard unknown fields.
+For verification, use `corridor.cardRaw()` / `client.corridorCardRaw()` (Python:
+`corridor_card_raw()`): the exact response text preserves unknown fields, member
+order and numeric spelling. The maker signs SHA256 of its compact JSON card
+**without `sig`**, in the maker's serialization order. Do not hash the entire
+response or reserialize the typed record. Use lossless ordered JSON processing
+and preserve every field; ordinary JS JSON parsing can round future large
+integers. Check the Schnorr signature against `discovery_pubkey` and establish
+trust in that identity separately before acting on advertisements. A valid
+signature alone is not an endorsement. Each fetch is a separate observation;
+verify the raw card you intend to use rather than combining two fetches.
+
 ## Supplying the binary yourself
 
 To serve the WebAssembly binary from your own CDN, or as a bundler asset URL,
@@ -241,6 +349,44 @@ at runtime rather than at build time, so reach for this before you ship a bundle
 
 SDK operations also require the web APIs used by the selected client, including
 `fetch` and WebSocket. Node 22 and newer provide both.
+
+## Recovering a saved transaction
+
+Persist the signed transaction's hex, chain, network and Esplora endpoint
+**before** broadcasting. After a restart or a lost broadcast response, rebuild
+the transaction and explicitly rebroadcast the same bytes:
+
+```ts
+import { BtcLikeTransaction, init } from "@kaleidorg/swap-sdk";
+
+await init();
+// Load these from the receipt saved before the original broadcast.
+const tx = BtcLikeTransaction.fromHex(receipt.hex, receipt.chain);
+const txid = await tx.broadcast(
+  receipt.network,
+  receipt.chain === "bitcoin" ? receipt.esploraUrl : undefined,
+  receipt.chain === "liquid" ? receipt.esploraUrl : undefined,
+);
+```
+
+`receipt.chain` is `"bitcoin" | "liquid"`; network selection is separate.
+Native/Python uses `BtcLikeTransaction.from_hex(hex, TransactionChain.BITCOIN)`
+or `TransactionChain.LIQUID`. These select the encoding family only: transaction
+bytes do not identify mainnet, testnet or regtest. Keep the network in the saved
+receipt and select it separately when broadcasting.
+The factory performs local decoding only: it does not sign, select fees or
+inputs, query the maker, or broadcast. Malformed, truncated, trailing-byte and
+noncanonical encodings raise an `InvalidArgument` error. It preserves all
+accepted transaction bytes, including witnesses; uppercase hex is accepted
+and `hex()` returns lowercase. Store the original txid too if you want to
+verify the recovered receipt before sending it.
+
+There is no automatic retry. A lost response does not prove broadcast failed;
+check the original txid at the same chain backend and retain the original
+transaction. Rebroadcasting identical bytes cannot create another transaction,
+but a backend may report that it already knows the transaction. This helper
+does not turn that rejection into success or validate that a transaction is
+spendable. Never construct a new claim/refund just to retry an uncertain send.
 
 ## Swap keys
 
@@ -268,6 +414,13 @@ that provenance is recorded in the
 [root README](../README.md#the-swap-engine-boltz-protocol) and the LICENSE,
 which is where it belongs rather than in a symbol an integrator types.
 
+See the [maker/upstream support matrix](../docs/compatibility.md) for the
+deliberately retained Rust-only raw routes and the existing native submarine
+co-sign helper. `constructCooperativeClaim` is a chain-claim constructor; it does
+not expose submarine co-signing. Maker-mediated raw broadcast and Boltz-shaped
+BOLT12 management are not exported here and are absent from the KaleidoSwap
+public router.
+
 - `SwapClient` — the swap API (create submarine/reverse/chain swaps, pairs,
   fees, quotes, restore).
 - `SwapWsApi` / `SwapWsUpdates` — WebSocket swap-status stream.
@@ -282,9 +435,23 @@ which is where it belongs rather than in a symbol an integrator types.
 - `SwapMasterKey` — BIP85 swap key and preimage derivation.
 - `isKaleidoSwapError` — narrow a rejection to its stable `code`.
 
-Boltz request and response payloads are Rust-defined and cross the boundary as
-plain objects typed `any`; the rest of the surface is hand-typed. The packaged
-`dist/index.d.ts` carries the full signatures and their documentation.
+`swap()`, the three create methods, `swapRestore()` and `swapRestoreIndex()` use
+public DTOs generated from the Rust/serde definitions. Types such as
+`CreateReverseRequest`, `CreateReverseResponse`, `GetSwapResponse` and
+`SwapRestoreResponse` can be imported from this package. Node, browser and raw
+WASM declarations carry the same types; the packaged `dist/index.d.ts` also
+documents the hand-written helpers.
+
+Restore entries carry the literal `type` discriminator (`"submarine"`,
+`"reverse"` or `"chain"`), with optional claim/refund details. A missing or null
+Rust `Option` becomes `undefined` in responses. Maker status responses preserve
+payout progress and payment audit events. Event `data` is `unknown`: narrow it
+before reading fields. JSON integer encodings inside `data` arrive as `bigint`, including
+small values; floating-point encodings arrive as `number` (`2` becomes `2n`,
+while `2.5` stays `2.5`). Narrow for both
+forms as appropriate. These values are not JSON-serializable as-is:
+`JSON.stringify(event.data)` can throw; use `toJson(event.data)` for persistence.
+Native bindings expose that open audit value as JSON text.
 
 Every rejection produced after an argument reaches the Rust binding is an `Error`
 carrying a `code`. Input the binding rejects — a mistyped string argument, an
@@ -486,9 +653,45 @@ master.deriveSwapKey(0); // TypeError: Cannot convert 0 to a BigInt
 `tsc` rejects the plain-number form ahead of that throw. The same applies to any
 other `bigint` argument, such as the `SwapClient` constructor's `timeoutSecs`.
 
-Fields inside request objects are declared `number` even where the Rust type
-behind them is 64-bit, because those objects are deserialized rather than passed
-on the ABI. Pass what the field declares and both cases are correct.
+64-bit fields inside swap request objects accept `bigint | number`, because
+serde deserializes those objects. Use BigInt for values above
+`Number.MAX_SAFE_INTEGER`; unsafe Numbers are rejected before sending the create
+request. Optional request fields also accept `null`.
+
+64-bit response fields are always `bigint`, including amounts, event timestamps,
+`createdAt` and the restore index. Rust `u32`/`u8` fields remain `number`, such as
+restore key indices, output indices and reverse/chain timeout heights. Submarine
+timeout height is a Rust `u64` and therefore `bigint`.
+
+## Swap DTO generation and maker schema checks
+
+From the repository root, run `make generate-swap-types` after editing a Rust DTO.
+`make check-swap-types` regenerates the declarations with pinned `ts-rs` and
+rejects differences. Package CI runs this check and
+`node typescript-sdk/scripts/check-swap-schema.mjs` against the committed
+`tests/fixtures/maker-swap-schema.json` snapshot. The snapshot records the exact
+maker commit and source file; the checker validates routes, supported fields,
+required fields, references, integer representations and restore discriminators. Its explicit exceptions
+cover upstream Boltz extensions and maker routes this SDK does not expose, such
+as BOLT12 offer creation and legacy flat/Arkade chain responses.
+
+To refresh or check the upstream contract, authenticate `gh` with read access to
+the private `kaleidoswap/kaleidoswap-maker-rs` repository, then run:
+
+```bash
+uv run scripts/update_maker_swap_schema.py --check
+uv run scripts/update_maker_swap_schema.py --revision main
+node typescript-sdk/scripts/check-swap-schema.mjs
+```
+
+Review snapshot changes together with the Rust DTOs and any compatibility
+exceptions. CI always validates the pinned snapshot. Live upstream drift
+detection is a separate, owner-triggered **Maker schema drift** workflow. It
+checks trusted default-branch scripts and scopes `MAKER_SCHEMA_READ_TOKEN`
+(read-only maker Contents access) to its single live-check step. Required PR
+builds never receive that token or depend on moving maker `main`; they always
+check the pinned contract. Run the manual workflow after deployment/schema
+changes or refresh locally with authenticated read access as above.
 
 ## Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
 
