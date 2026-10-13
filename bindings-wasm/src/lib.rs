@@ -94,12 +94,14 @@ fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
 // Keep the direct client method typed, as well as the TypeScript facade.
 #[wasm_bindgen(typescript_custom_section)]
 const CORRIDOR_CARD_TYPES: &str = r#"
+/** Unverified: sig has NOT been checked against discovery_pubkey. */
 export interface CorridorCard {
   version: number;
   name: string;
   discovery_pubkey: string;
   transports: { nostr: { relays: string[] } };
   markets: CorridorCardMarket[];
+  /** Unverified signature; does not establish authenticity or trust. */
   sig: string;
 }
 
@@ -753,6 +755,13 @@ impl BoltzClient {
             Some(card) => Ok(to_js(&card)?.unchecked_into()),
             None => Ok(JsValue::NULL.unchecked_into()),
         }
+    }
+
+    /// Exact unverified card JSON for lossless verification. 404 is undefined.
+    /// Hash the maker's compact ordered JSON without sig, preserving all fields.
+    #[wasm_bindgen(js_name = corridorCardRaw)]
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, JsValue> {
+        self.inner.corridor_card_raw().await.map_err(core_err)
     }
 
     /// `POST /v1/swap` with an envelope already built. Resolves to an

@@ -15,7 +15,7 @@ card = json.loads(
 )
 requests = []
 status = 200
-body = json.dumps(card)
+body = json.dumps({**card, "future_field": "preserved"})
 
 
 class Maker(BaseHTTPRequestHandler):
@@ -43,6 +43,16 @@ async def run():
         assert result.transports.nostr.relays == card["transports"]["nostr"]["relays"]
         assert result.markets[0].max_quote_amount == "9007199254740993"
         assert result.sig == card["sig"]
+        assert await client.corridor_card_raw() == body
+        status, body = 200, json.dumps({**card, "version": 1})
+        for fetch in [client.corridor_card, client.corridor_card_raw]:
+            try:
+                await fetch()
+            except sdk.Error as error:
+                assert "unsupported corridor card version" in str(error)
+            else:
+                raise AssertionError("unsupported schema version accepted")
+        assert "Unverified" in sdk.CorridorCard.__doc__
         status, body = 404, "no live card"
         assert await client.corridor_card() is None
         for status, body in [(503, "unavailable"), (200, "{}"), (200, "invalid JSON")]:
@@ -54,7 +64,7 @@ async def run():
                 raise AssertionError(
                     "a failed or malformed response must remain an error"
                 )
-        assert requests == ["/prefix/v1/card"] * 5
+        assert requests == ["/prefix/v1/card"] * 8
     finally:
         server.shutdown()
         server.server_close()

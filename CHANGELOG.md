@@ -6,10 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Added — corridor discovery card
 
-Rust, WASM and native clients can fetch the typed signed corridor card from
+Rust, WASM and native clients can fetch the maker's corridor card (signature not verified) from
 `GET /v1/card`; TypeScript exposes `IntentsCorridor.card()`. HTTP 404 returns
 `None`/`null`, amount limits remain decimal strings, and other failures remain
-errors. Card fetching does not verify the advertised signature.
+errors. Only schema v0 is accepted. Raw JSON is available through
+`corridor_card_raw()` / `IntentsCorridor.cardRaw()` for lossless verification;
+card fetching does not verify the advertised signature.
 
 ### Fixed — wait for a complete PyPI inventory after publication
 

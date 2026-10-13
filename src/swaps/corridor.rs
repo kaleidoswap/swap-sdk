@@ -66,7 +66,10 @@ pub const MIN_HEADROOM_SECONDS: u64 = 90 * 60;
 /// can pay and the maker's refund deadline — `MIN_CLAIM_WINDOW_SECONDS`.
 pub const MIN_CLAIM_WINDOW_SECONDS: u64 = 30 * 60;
 
-/// Signed discovery document served by `GET /v1/card`.
+/// The only discovery schema this SDK understands.
+pub const CORRIDOR_CARD_VERSION: u32 = 0;
+
+/// Unverified discovery document served by `GET /v1/card`.
 ///
 /// Fetching/deserializing this document does not verify its signature or trust
 /// its advertised identity. Amount strings are preserved without rounding.
@@ -77,6 +80,7 @@ pub struct CorridorCard {
     pub discovery_pubkey: String,
     pub transports: CardTransports,
     pub markets: Vec<CardMarket>,
+    /// Unverified Schnorr signature; fetching does not authenticate the card.
     pub sig: String,
 }
 

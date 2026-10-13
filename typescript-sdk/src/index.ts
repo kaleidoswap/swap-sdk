@@ -788,6 +788,12 @@ export class IntentsCorridor {
     return this.client.corridorCard();
   }
 
+  /** Exact unverified v0 card JSON, preserving unknown fields and member order
+   * for lossless signature verification; null on 404. */
+  async cardRaw(): Promise<string | null> {
+    return (await this.client.corridorCardRaw()) ?? null;
+  }
+
   quoteLightningSend(request: LightningSendRfqRequest): Promise<RfqAnswer> {
     return this.client.quoteLightningSend(request) as Promise<RfqAnswer>;
   }

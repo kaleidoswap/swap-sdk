@@ -57,9 +57,18 @@ test("corridor card uses the sibling route and preserves maker amount strings", 
       (await corridor.card()).markets[0].max_quote_amount,
       "9007199254740993",
     );
+    assert.equal(
+      await corridor.cardRaw(),
+      body,
+      "unknown fields and exact bytes survive",
+    );
+    body = JSON.stringify({ ...card, version: 1 });
+    await assert.rejects(corridor.card(), { code: "Protocol" });
+    await assert.rejects(corridor.cardRaw(), { code: "Protocol" });
     status = 404;
     body = "no live card";
     assert.equal(await corridor.card(), null);
+    assert.equal(await corridor.cardRaw(), null);
     status = 503;
     body = JSON.stringify({ error: "unavailable" });
     await assert.rejects(corridor.card(), { code: "HTTPStatusNotSuccess" });

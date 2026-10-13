@@ -11,6 +11,8 @@ use kaleidorg_swap_sdk::corridor::{
 
 use crate::boltz::{Error, SwapClient};
 
+/// Unverified maker card. The signature has NOT been checked against discovery_pubkey.
+/// Use corridor_card_raw for verification; the typed record discards unknown fields.
 #[uniffi::remote(Record)]
 pub struct CorridorCard {
     pub version: u32,
@@ -18,6 +20,7 @@ pub struct CorridorCard {
     pub discovery_pubkey: String,
     pub transports: CardTransports,
     pub markets: Vec<CardMarket>,
+    /// Unverified signature; it does not establish authenticity or trust.
     pub sig: String,
 }
 
@@ -189,6 +192,13 @@ impl SwapClient {
     #[uniffi::method]
     pub async fn corridor_card(&self) -> Result<Option<CorridorCard>, Error> {
         Ok(self.inner.corridor_card().await?)
+    }
+
+    /// Exact unverified card JSON for lossless verification. 404 is None.
+    /// Hash the maker's compact ordered JSON without sig, preserving all fields.
+    #[uniffi::method]
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, Error> {
+        Ok(self.inner.corridor_card_raw().await?)
     }
 
     /// Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup

@@ -650,6 +650,13 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw()
+        != 7137
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url() != 34546:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1510,6 +1517,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.argtypes
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_url.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2193,6 +2206,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.resty
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.restype = (
     ctypes.c_uint16
@@ -3575,12 +3590,20 @@ class _UniffiConverterTypeColoredRgbPsbt(_UniffiConverterRustBuffer):
 
 
 class CorridorCard:
+    """
+    Unverified maker card. The signature has NOT been checked against discovery_pubkey.
+    Use corridor_card_raw for verification; the typed record discards unknown fields.
+    """
+
     version: "int"
     name: "str"
     discovery_pubkey: "str"
     transports: "CardTransports"
     markets: "typing.List[CardMarket]"
     sig: "str"
+    """
+    Unverified signature; it does not establish authenticity or trust.
+    """
 
     def __init__(
         self,
@@ -10966,6 +10989,16 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def corridor_card_raw(
+        self,
+    ):
+        """
+        Exact unverified card JSON for lossless verification. 404 is None.
+        Hash the maker's compact ordered JSON without sig, preserving all fields.
+        """
+
+        raise NotImplementedError
+
     def corridor_url(
         self,
     ):
@@ -11325,6 +11358,27 @@ class SwapClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterOptionalTypeCorridorCard.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def corridor_card_raw(
+        self,
+    ) -> "typing.Optional[str]":
+        """
+        Exact unverified card JSON for lossless verification. 404 is None.
+        Hash the maker's compact ordered JSON without sig, preserving all fields.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterOptionalString.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )

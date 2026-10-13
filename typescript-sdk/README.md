@@ -121,6 +121,19 @@ take. Funding or claiming the Arkade side needs an Ark wallet — that is the
 `@kaleidorg/swap-sdk/arkade` venue, whose transport you build from the same URL
 with `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
+Discovery cards are **unverified**. `corridor.card()` / `client.corridorCard()`
+reject unsupported versions (only v0 is understood) and discard unknown fields.
+For verification, use `corridor.cardRaw()` / `client.corridorCardRaw()` (Python:
+`corridor_card_raw()`): the exact response text preserves unknown fields, member
+order and numeric spelling. The maker signs SHA256 of its compact JSON card
+**without `sig`**, in the maker's serialization order. Do not hash the entire
+response or reserialize the typed record. Use lossless ordered JSON processing
+and preserve every field; ordinary JS JSON parsing can round future large
+integers. Check the Schnorr signature against `discovery_pubkey` and establish
+trust in that identity separately before acting on advertisements. A valid
+signature alone is not an endorsement. Each fetch is a separate observation;
+verify the raw card you intend to use rather than combining two fetches.
+
 ## Supplying the binary yourself
 
 To serve the WebAssembly binary from your own CDN, or as a bundler asset URL,

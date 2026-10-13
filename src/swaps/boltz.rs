@@ -1292,17 +1292,34 @@ impl BoltzApiClientV2 {
     /// `None` means the maker has no live card (HTTP 404). Other HTTP, transport
     /// and decoding failures remain errors. This does not verify the signature.
     pub async fn corridor_card(&self) -> Result<Option<corridor::CorridorCard>, Error> {
-        let url = format!("{}/v1/card", self.corridor_root()?);
-        let response = self.get_response_at(url).await?;
-        match Self::parse_json_response(response).await {
-            Ok(card) => Ok(Some(card)),
-            Err(Error::HTTPStatusNotSuccess(status, _))
-                if status == reqwest::StatusCode::NOT_FOUND =>
-            {
-                Ok(None)
-            }
-            Err(error) => Err(error),
+        self.corridor_card_raw()
+            .await?
+            .map(|body| serde_json::from_str(&body).map_err(|e| Error::Protocol(e.to_string())))
+            .transpose()
+    }
+
+    /// Fetch the unverified v0 card as exact response text, preserving unknown
+    /// fields and order for signature verification. 404 means no live card.
+    /// The signing preimage is SHA256 of compact ordered JSON without `sig`,
+    /// using the maker's serialization (not the entire response or a typed DTO).
+    /// A verifier must preserve all fields, numeric precision and member order.
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, Error> {
+        let response = self
+            .get_response_at(format!("{}/v1/card", self.corridor_root()?))
+            .await?;
+        let status = response.status();
+        let body = response.text().await?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
         }
+        let card: corridor::CorridorCard = Self::json_from_body(status, body.clone())?;
+        if card.version != corridor::CORRIDOR_CARD_VERSION {
+            return Err(Error::Protocol(format!(
+                "unsupported corridor card version: {}",
+                card.version
+            )));
+        }
+        Ok(Some(body))
     }
 
     /// `POST /v1/swap` — ask the maker for a binding quote.
