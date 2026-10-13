@@ -217,7 +217,9 @@ This reconstructs and validates the canonical script tree, keys, timeout,
 network and lockup address without inventing create-response fields. It
 preserves the expected on-chain amount and Liquid blinding key. It performs
 no network requests and neither claims nor refunds automatically. Restore
-details must include `amount`; an incomplete entry is rejected.
+claim details must include `amount`; refund details may omit it, because refunds
+recover the positive amount actually locked. Refund hashlock validation prefers
+the maker's `preimageHash` and otherwise supports BOLT11 or BOLT12 invoices.
 
 BTC and L-BTC sides are supported for all three swap kinds, including explicit
 and confidential Liquid addresses. The current restore wire contract omits

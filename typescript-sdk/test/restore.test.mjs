@@ -187,16 +187,17 @@ test("restoration refuses incomplete, tampered and unsupported recovery data", (
         ),
       /missing.*details/,
     );
-    protocol(
-      () =>
-        SwapScript.fromRestored(
-          { ...entry, [field]: { ...entry[field], amount: undefined } },
-          sideKey,
-          "regtest",
-          side,
-        ),
-      /amount/,
-    );
+    const withoutAmount = {
+      ...entry,
+      [field]: { ...entry[field], amount: undefined },
+    };
+    if (field === "claimDetails")
+      protocol(
+        () => SwapScript.fromRestored(withoutAmount, sideKey, "regtest", side),
+        /amount/,
+      );
+    else
+      SwapScript.fromRestored(withoutAmount, sideKey, "regtest", side).free();
     const changed = structuredClone(entry);
     changed[field].tree.claimLeaf.output += "51";
     protocol(
@@ -229,5 +230,35 @@ test("restoration refuses incomplete, tampered and unsupported recovery data", (
         "lockup",
       ),
     /only valid for a chain/,
+  );
+});
+
+test("refund recovery accepts missing amount and preserves the authoritative payment hash", () => {
+  const vector = vectors[4];
+  const entry = restoreEntry(vector, vector.response);
+  entry.preimageHash = vector.request.preimageHash;
+  entry.invoice = undefined;
+  entry.refundDetails.amount = null;
+  const key = vector.request.refundPublicKey;
+  SwapScript.fromRestored(entry, key, "regtest", "lockup").free();
+  assert.throws(
+    () =>
+      SwapScript.fromRestored(
+        { ...entry, preimageHash: "00".repeat(32) },
+        key,
+        "regtest",
+        "lockup",
+      ),
+    /hashlock/,
+  );
+  assert.throws(
+    () =>
+      SwapScript.fromRestored(
+        entry,
+        vector.request.claimPublicKey,
+        "regtest",
+        "lockup",
+      ),
+    /ourPubkey.*refund key.*keyIndex/,
   );
 });

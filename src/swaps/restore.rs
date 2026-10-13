@@ -13,6 +13,7 @@ use super::liquid::LiquidSwapScript;
 use super::{SwapScript, SwapScriptImpl};
 use crate::error::Error;
 use crate::network::{Chain, Network};
+use crate::util::invoice::LightningInvoice;
 use crate::util::secrets::Preimage;
 
 impl SwapScript {
@@ -77,9 +78,15 @@ impl SwapScript {
                 )));
             }
         };
-        let amount = amount.ok_or_else(|| {
-            Error::Protocol("Restore details must include the expected on-chain amount".into())
-        })?;
+        let amount = if claim {
+            amount.ok_or_else(|| {
+                Error::Protocol(
+                    "Claim restore details must include the expected on-chain amount".into(),
+                )
+            })?
+        } else {
+            amount.unwrap_or(0)
+        };
         let server_key = PublicKey::from_str(server_key)?;
         let (sender_pubkey, receiver_pubkey) = if claim {
             (server_key, our_pubkey)
@@ -87,6 +94,15 @@ impl SwapScript {
             (our_pubkey, server_key)
         };
         let claim_script = ScriptBuf::from_hex(&tree.claim_leaf.output)?;
+        let our_leaf = if claim {
+            claim_script.clone()
+        } else {
+            ScriptBuf::from_hex(&tree.refund_leaf.output)?
+        };
+        let our_key = our_pubkey.inner.x_only_public_key().0.serialize();
+        if !our_leaf.instructions().any(|instruction| matches!(instruction, Ok(Instruction::PushBytes(bytes)) if bytes.as_bytes() == our_key)) {
+            return Err(Error::Protocol(format!("ourPubkey does not match this restore's {} key; derive it from the selected details' keyIndex", if claim { "claim" } else { "refund" })));
+        }
         let hashlock = claim_script
             .instructions()
             .find_map(|instruction| match instruction {
@@ -108,15 +124,26 @@ impl SwapScript {
                 )?
                 .hash160,
             )
+        } else if let Some(hash) = restored.preimage_hash.as_deref() {
+            Some(Preimage::from_sha256_str(hash)?.hash160)
         } else {
             restored
                 .invoice
                 .as_deref()
-                .map(Preimage::from_invoice_str)
+                .map(|invoice| {
+                    Preimage::from_sha256_str(&LightningInvoice::from_str(invoice)?.payment_hash())
+                })
                 .transpose()?
                 .map(|preimage| preimage.hash160)
         };
-        if expected_hashlock.is_some_and(|expected| expected != hashlock) {
+        if expected_hashlock.is_some_and(|expected| expected != hashlock)
+            || restored
+                .preimage_hash
+                .as_deref()
+                .map(Preimage::from_sha256_str)
+                .transpose()?
+                .is_some_and(|expected| expected.hash160 != hashlock)
+        {
             return Err(Error::Protocol(
                 "Restore hashlock does not match payment hash".into(),
             ));
@@ -193,6 +220,7 @@ mod tests {
         blinded: bool,
         kind: &str,
         side: Option<Side>,
+        payment_hash: Option<&str>,
     ) -> (SwapScript, Value, PublicKey) {
         let our_pubkey = PublicKey::from_str(
             "0210154f49ec6656fd70d28abd9bbb71633da124eda324b1bf2b28dd9686915087",
@@ -202,7 +230,10 @@ mod tests {
             "0283d1d7b47cd4163db23e633b81a3a6906a99a99e5acbbe4df29172f42621668c",
         )
         .unwrap();
-        let preimage = Preimage::from_str(&"03".repeat(32)).unwrap();
+        let preimage = payment_hash
+            .map(Preimage::from_sha256_str)
+            .unwrap_or_else(|| Preimage::from_str(&"03".repeat(32)))
+            .unwrap();
         let claim = kind == "reverse" || side == Some(Side::Claim);
         let swap_type = match kind {
             "submarine" => SwapType::Submarine,
@@ -300,6 +331,87 @@ mod tests {
     }
 
     #[test]
+    fn restore_bolt12_refunds_and_authoritative_payment_hash() {
+        let bolt12: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/restore-v1/bolt12.json"))
+                .unwrap();
+        let invoice = bolt12["invoice"].as_str().unwrap();
+        let hash = LightningInvoice::from_str(invoice).unwrap().payment_hash();
+        assert_eq!(hash, bolt12["paymentHash"]);
+        for liquid in [false, true] {
+            let (_, mut wire, key) = fixture(liquid, false, "submarine", None, Some(&hash));
+            wire["invoice"] = json!(invoice);
+            wire["refundDetails"]["amount"] = Value::Null;
+            assert!(SwapScript::from_restored(
+                Network::Regtest,
+                &serde_json::from_value(wire.clone()).unwrap(),
+                key,
+                None
+            )
+            .is_ok());
+            wire["preimageHash"] = json!(hash);
+            wire["invoice"] = Value::Null;
+            assert!(SwapScript::from_restored(
+                Network::Regtest,
+                &serde_json::from_value(wire.clone()).unwrap(),
+                key,
+                None
+            )
+            .is_ok());
+            wire["preimageHash"] = json!("00".repeat(32));
+            assert!(SwapScript::from_restored(
+                Network::Regtest,
+                &serde_json::from_value(wire).unwrap(),
+                key,
+                None
+            )
+            .unwrap_err()
+            .message()
+            .contains("hashlock"));
+            let (_, mut wire, key) =
+                fixture(liquid, false, "chain", Some(Side::Lockup), Some(&hash));
+            wire["preimageHash"] = json!("00".repeat(32));
+            assert!(SwapScript::from_restored(
+                Network::Regtest,
+                &serde_json::from_value(wire).unwrap(),
+                key,
+                Some(Side::Lockup)
+            )
+            .unwrap_err()
+            .message()
+            .contains("hashlock"));
+        }
+    }
+
+    #[test]
+    fn restore_wrong_local_key_explains_selected_key_index() {
+        for (kind, side) in [
+            ("submarine", None),
+            ("reverse", None),
+            ("chain", Some(Side::Lockup)),
+            ("chain", Some(Side::Claim)),
+        ] {
+            let (_, wire, _) = fixture(false, false, kind, side.clone(), None);
+            let field = if kind == "reverse" || side == Some(Side::Claim) {
+                "claimDetails"
+            } else {
+                "refundDetails"
+            };
+            let wrong =
+                PublicKey::from_str(wire[field]["serverPublicKey"].as_str().unwrap()).unwrap();
+            let error = SwapScript::from_restored(
+                Network::Regtest,
+                &serde_json::from_value(wire).unwrap(),
+                wrong,
+                side,
+            )
+            .unwrap_err();
+            assert!(error.message().contains("ourPubkey does not match"));
+            assert!(error.message().contains("keyIndex"));
+        }
+    }
+
+    #[test]
     fn restore_roundtrip_all_kinds_on_both_chains() {
         for (liquid, blinded) in [(false, false), (true, false), (true, true)] {
             for (kind, side) in [
@@ -308,7 +420,8 @@ mod tests {
                 ("chain", Some(Side::Lockup)),
                 ("chain", Some(Side::Claim)),
             ] {
-                let (original, wire, our_pubkey) = fixture(liquid, blinded, kind, side.clone());
+                let (original, wire, our_pubkey) =
+                    fixture(liquid, blinded, kind, side.clone(), None);
                 let restored = SwapScript::from_restored(
                     Network::Regtest,
                     &serde_json::from_value(wire).unwrap(),
@@ -336,14 +449,13 @@ mod tests {
                 ("chain", Some(Side::Lockup)),
                 ("chain", Some(Side::Claim)),
             ] {
-                let (_, wire, key) = fixture(liquid, false, kind, side.clone());
+                let (_, wire, key) = fixture(liquid, false, kind, side.clone(), None);
                 let field = if kind == "reverse" || side == Some(Side::Claim) {
                     "claimDetails"
                 } else {
                     "refundDetails"
                 };
                 for (path, value) in [
-                    ("/amount", Value::Null),
                     ("/serverPublicKey", json!(key.to_string())),
                     ("/timeoutBlockHeight", json!(145)),
                     ("/tree/claimLeaf/version", json!(1)),
@@ -362,6 +474,19 @@ mod tests {
                         .is_err(),
                         "accepted {kind} {field}{path}"
                     );
+                }
+                let mut no_amount = wire.clone();
+                no_amount[field]["amount"] = Value::Null;
+                let result = SwapScript::from_restored(
+                    Network::Regtest,
+                    &serde_json::from_value(no_amount).unwrap(),
+                    key,
+                    side.clone(),
+                );
+                if kind == "reverse" || side == Some(Side::Claim) {
+                    assert!(result.is_err());
+                } else {
+                    assert!(result.is_ok());
                 }
                 assert!(SwapScript::from_restored(
                     Network::Mainnet,

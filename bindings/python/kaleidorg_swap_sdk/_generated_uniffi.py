@@ -7048,6 +7048,7 @@ class SwapRestoreResponse:
     created_at: "int"
     _from: "str"
     to: "str"
+    preimage_hash: "typing.Optional[str]"
     invoice: "typing.Optional[str]"
     """
     Lightning invoice; boltz only returns it for submarine/reverse swaps.
@@ -7065,6 +7066,7 @@ class SwapRestoreResponse:
         created_at: "int",
         _from: "str",
         to: "str",
+        preimage_hash: "typing.Optional[str]" = _DEFAULT,
         invoice: "typing.Optional[str]",
         claim_details: "typing.Optional[ClaimDetails]",
         refund_details: "typing.Optional[RefundDetails]",
@@ -7075,18 +7077,23 @@ class SwapRestoreResponse:
         self.created_at = created_at
         self._from = _from
         self.to = to
+        if preimage_hash is _DEFAULT:
+            self.preimage_hash = None
+        else:
+            self.preimage_hash = preimage_hash
         self.invoice = invoice
         self.claim_details = claim_details
         self.refund_details = refund_details
 
     def __str__(self):
-        return "SwapRestoreResponse(id={}, swap_type={}, status={}, created_at={}, _from={}, to={}, invoice={}, claim_details={}, refund_details={})".format(
+        return "SwapRestoreResponse(id={}, swap_type={}, status={}, created_at={}, _from={}, to={}, preimage_hash={}, invoice={}, claim_details={}, refund_details={})".format(
             self.id,
             self.swap_type,
             self.status,
             self.created_at,
             self._from,
             self.to,
+            self.preimage_hash,
             self.invoice,
             self.claim_details,
             self.refund_details,
@@ -7104,6 +7111,8 @@ class SwapRestoreResponse:
         if self._from != other._from:
             return False
         if self.to != other.to:
+            return False
+        if self.preimage_hash != other.preimage_hash:
             return False
         if self.invoice != other.invoice:
             return False
@@ -7124,6 +7133,7 @@ class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
             created_at=_UniffiConverterUInt64.read(buf),
             _from=_UniffiConverterString.read(buf),
             to=_UniffiConverterString.read(buf),
+            preimage_hash=_UniffiConverterOptionalString.read(buf),
             invoice=_UniffiConverterOptionalString.read(buf),
             claim_details=_UniffiConverterOptionalTypeClaimDetails.read(buf),
             refund_details=_UniffiConverterOptionalTypeRefundDetails.read(buf),
@@ -7137,6 +7147,7 @@ class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.check_lower(value.created_at)
         _UniffiConverterString.check_lower(value._from)
         _UniffiConverterString.check_lower(value.to)
+        _UniffiConverterOptionalString.check_lower(value.preimage_hash)
         _UniffiConverterOptionalString.check_lower(value.invoice)
         _UniffiConverterOptionalTypeClaimDetails.check_lower(value.claim_details)
         _UniffiConverterOptionalTypeRefundDetails.check_lower(value.refund_details)
@@ -7149,6 +7160,7 @@ class _UniffiConverterTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.write(value.created_at, buf)
         _UniffiConverterString.write(value._from, buf)
         _UniffiConverterString.write(value.to, buf)
+        _UniffiConverterOptionalString.write(value.preimage_hash, buf)
         _UniffiConverterOptionalString.write(value.invoice, buf)
         _UniffiConverterOptionalTypeClaimDetails.write(value.claim_details, buf)
         _UniffiConverterOptionalTypeRefundDetails.write(value.refund_details, buf)

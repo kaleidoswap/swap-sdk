@@ -2171,6 +2171,9 @@ pub struct SwapRestoreResponse {
     pub created_at: u64,
     pub from: String,
     pub to: String,
+    /// Payment hash retained by the maker for submarine refund recovery.
+    #[serde(default)]
+    pub preimage_hash: Option<String>,
     /// Lightning invoice; boltz only returns it for submarine/reverse swaps.
     pub invoice: Option<String>,
     pub claim_details: Option<ClaimDetails>,
