@@ -6,6 +6,10 @@ import {
   PayThroughApiError,
   PayThroughClient,
   decodeBolt11,
+  PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT,
+  PAY_THROUGH_IDEMPOTENCY_MISMATCH,
+  PAY_THROUGH_IDEMPOTENCY_SCOPE_MISMATCH,
+  PAY_THROUGH_IDEMPOTENCY_EXPIRED,
 } from "../dist/pay-through.js";
 
 // Generated with lightning-invoice 0.34.1: payment hash 0xcd..cd (or 0xee..ee),
@@ -118,7 +122,7 @@ test("pay-through retries a lost create response with the persisted key after a 
     pairHash: "11".repeat(32),
     webhook: { url: "https://example.com/callback" },
   };
-  const idempotencyKey = "334cf4ef-414c-4af2-a347-2432aa413123";
+  const idempotencyKey = "ab".repeat(32);
   const apiKey = "kld_test_idempotency_fixture";
   const accepted = new Map();
   let attempts = 0;
@@ -193,7 +197,7 @@ test("pay-through retries a lost create response with the persisted key after a 
 for (const failure of ["timeout", "gateway 502", "lost response body"]) {
   test(`pay-through recovers the original create after ${failure} using the same key`, async () => {
     const request = { destination: "bcrt1test", invoiceAmount: 100000 };
-    const idempotencyKey = "retry-same-payment-intent";
+    const idempotencyKey = "ab".repeat(32);
     let attempts = 0;
     let accepted;
     let creations = 0;
@@ -272,6 +276,8 @@ test("pay-through validates idempotency keys without trimming or sending invalid
     "\x7f",
     "non-ASCII-é",
     "x".repeat(129),
+    "predictable-order-reference-12345678",
+    "00000000-0000-1000-8000-000000000000",
     null,
     123,
     ["first", "second"],
@@ -284,9 +290,9 @@ test("pay-through validates idempotency keys without trimming or sending invalid
   }
   assert.equal(calls, 0, "invalid keys must fail before I/O");
   for (const idempotencyKey of [
-    "!",
-    "~".repeat(128),
-    "Case-Sensitive_Key:123",
+    "cb7c1c44-dcdb-44ab-8a89-123456789abc",
+    "ab".repeat(32),
+    "AB".repeat(32),
   ]) {
     await client.create(request, { idempotencyKey });
     assert.equal(sent.at(-1), idempotencyKey);
@@ -298,7 +304,7 @@ test("pay-through validates idempotency keys without trimming or sending invalid
 
 test("pay-through can reuse its key after a temporary preflight rejection", async () => {
   const request = { destination: "bcrt1test", invoiceAmount: 100000 };
-  const idempotencyKey = "retry-after-inventory-recovers";
+  const idempotencyKey = "ab".repeat(32);
   let attempts = 0;
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
@@ -329,8 +335,14 @@ test("pay-through can reuse its key after a temporary preflight rejection", asyn
 });
 
 test("pay-through exposes idempotency conflicts without retrying or replacing the key", async () => {
-  const idempotencyKey = "keep-the-original-key";
-  for (const code of ["idempotency_in_flight", "idempotency_mismatch"]) {
+  const idempotencyKey = "ab".repeat(32);
+  for (const code of [
+    PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT,
+    PAY_THROUGH_IDEMPOTENCY_MISMATCH,
+    PAY_THROUGH_IDEMPOTENCY_SCOPE_MISMATCH,
+    PAY_THROUGH_IDEMPOTENCY_EXPIRED,
+    "future_idempotency_code",
+  ]) {
     let attempts = 0;
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
@@ -546,4 +558,72 @@ test("pay-through calls the global fetch unbound when none is injected", async (
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("pay-through checks explicit capability before creating, failing closed on legacy makers", async () => {
+  for (const capabilities of [
+    undefined,
+    [],
+    ["other"],
+    ["pay_through_idempotency_v1"],
+  ]) {
+    const calls = [];
+    const client = new PayThroughClient({
+      makerUrl: "https://maker.example/v2",
+      fetch: async (url, init) => {
+        calls.push(url);
+        assert.equal(init.method, "GET");
+        assert.equal(init.headers["Idempotency-Key"], undefined);
+        return Response.json({ version: "0.8.0", capabilities });
+      },
+    });
+    assert.equal(
+      await client.supportsIdempotency(),
+      capabilities?.includes("pay_through_idempotency_v1") ?? false,
+    );
+    assert.deepEqual(calls, ["https://maker.example/v2/version"]);
+  }
+});
+
+test("caller can retry in-flight with the unchanged key and recover the original create", async () => {
+  let calls = 0;
+  const idempotencyKey = "ab".repeat(32);
+  const request = { destination: "bcrt1test", invoiceAmount: 100000 };
+  let originalBody;
+  const client = new PayThroughClient({
+    makerUrl: "https://maker.example/v2",
+    fetch: async (_url, init) => {
+      assert.equal(init.headers["Idempotency-Key"], idempotencyKey);
+      if (!calls) originalBody = init.body;
+      assert.equal(init.body, originalBody);
+      calls++;
+      return calls === 1
+        ? Response.json(
+            { error: PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT },
+            { status: 409 },
+          )
+        : Response.json(created, { status: 201 });
+    },
+  });
+  await assert.rejects(
+    client.create(request, { idempotencyKey }),
+    (e) =>
+      e instanceof PayThroughApiError &&
+      e.code === PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT,
+  );
+  assert.equal(calls, 1, "no automatic loop");
+  assert.deepEqual(await client.create(request, { idempotencyKey }), created);
+  assert.equal(calls, 2);
+  assert.deepEqual(
+    [
+      PAY_THROUGH_IDEMPOTENCY_MISMATCH,
+      PAY_THROUGH_IDEMPOTENCY_SCOPE_MISMATCH,
+      PAY_THROUGH_IDEMPOTENCY_EXPIRED,
+    ],
+    [
+      "idempotency_mismatch",
+      "idempotency_scope_mismatch",
+      "idempotency_expired",
+    ],
+  );
 });

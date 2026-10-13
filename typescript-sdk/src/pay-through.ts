@@ -1,6 +1,13 @@
 /** Maker pay-through: a Lightning hold invoice funds a direct address payout.
  * The address leg is operator-trusted and has no hash lock. */
 
+/** Stable maker codes; unknown future codes remain available on ApiError.code. */
+export const PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT = "idempotency_in_flight";
+export const PAY_THROUGH_IDEMPOTENCY_MISMATCH = "idempotency_mismatch";
+export const PAY_THROUGH_IDEMPOTENCY_SCOPE_MISMATCH =
+  "idempotency_scope_mismatch";
+export const PAY_THROUGH_IDEMPOTENCY_EXPIRED = "idempotency_expired";
+
 export interface PayThroughRequest {
   destination: string;
   /** Satoshis paid on Lightning. Exactly one amount is required. */
@@ -83,8 +90,8 @@ export interface PayThroughCallOptions {
 }
 
 export interface PayThroughCreateOptions extends PayThroughCallOptions {
-  /** Secret, caller-generated key: 1–128 visible ASCII characters. Persist a
-   * random UUIDv4 (or at least 128 random bits) with the request before sending.
+  /** Secret, caller-generated key: a canonical UUIDv4 or 64 hexadecimal characters. Persist a
+   * random UUIDv4 (or 32 CSPRNG bytes encoded as hex) with the request before sending.
    * Reuse it with identical input and partner attribution after a lost response.
    * Safe retries require a maker that supports Idempotency-Key. */
   idempotencyKey?: string;
@@ -264,6 +271,21 @@ export class PayThroughClient {
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
+  /** Check BEFORE the first create. Missing capabilities on older makers fail
+   * closed; a successful unmarked create does not prove retry safety.
+   * This is a separate GET, with no key generation or automatic create retry. */
+  async supportsIdempotency(
+    options: PayThroughCallOptions = {},
+  ): Promise<boolean> {
+    const version = object(
+      await this.call("version", { method: "GET", signal: options.signal }),
+    );
+    return (
+      Array.isArray(version.capabilities) &&
+      version.capabilities.includes("pay_through_idempotency_v1")
+    );
+  }
+
   /** Create the hold invoice and check the maker's terms against the request
    * and the invoice itself. To recover a lost response on a supporting maker,
    * repeat with the same persisted idempotencyKey, input and partner attribution.
@@ -277,12 +299,12 @@ export class PayThroughClient {
     if (
       idempotencyKey !== undefined &&
       (typeof idempotencyKey !== "string" ||
-        idempotencyKey.length < 1 ||
-        idempotencyKey.length > 128 ||
-        /[^\x21-\x7e]/.test(idempotencyKey))
+        !/^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[0-9a-f]{64})$/i.test(
+          idempotencyKey,
+        ))
     ) {
       throw new TypeError(
-        "idempotencyKey must contain 1–128 visible ASCII characters",
+        "idempotencyKey must be a canonical UUIDv4 or 64 hexadecimal characters",
       );
     }
     const destination = input.destination?.trim();
