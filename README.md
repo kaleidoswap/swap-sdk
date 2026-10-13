@@ -206,6 +206,49 @@ make check-generated           # regenerate from pinned inputs and reject drift
 The generated fallback is committed. Pull-request CI regenerates it solely from
 repository-pinned tool inputs and rejects any drift.
 
+## Rebuild scripts after swap recovery
+
+`SwapScript.fromRestored(entry, ourPubkeyHex, network, side?)` accepts an entry
+returned by `SwapClient.swapRestore()` or `SwapMasterKey.restore()` directly.
+Use the swap key at the selected details' `keyIndex`: refund details for a
+submarine swap, claim details for a reverse swap. For chain swaps, pass
+`"lockup"` or `"claim"` explicitly and derive the corresponding key.
+
+```ts
+const [entry] = await master.restore(client);
+const refundKey = master.deriveSwapKey(BigInt(entry.refundDetails.keyIndex));
+const submarine = SwapScript.fromRestored(entry, refundKey.publicKey, "signet");
+
+// For a chain swap, select each side and its own key separately.
+const claimKey = master.deriveSwapKey(BigInt(chainEntry.claimDetails.keyIndex));
+const claim = SwapScript.fromRestored(
+  chainEntry,
+  claimKey.publicKey,
+  "signet",
+  "claim",
+);
+```
+
+This reconstructs and validates the canonical script tree, keys, timeout,
+network and lockup address without inventing create-response fields. It
+preserves the expected on-chain amount and Liquid blinding key. It performs
+no network requests and neither claims nor refunds automatically. Restore
+claim details must include `amount`; refund details may omit it, because refunds
+recover the positive amount actually locked. Refund hashlock validation prefers
+the maker's `preimageHash` and otherwise supports BOLT11 or BOLT12 invoices.
+
+BTC and L-BTC sides are supported for all three swap kinds, including explicit
+and confidential Liquid addresses. The current restore wire contract omits
+RGB allocation data and Liquid token asset/fee-asset context, so USDT-RGB,
+L-USDT and Arkade sides are rejected explicitly. Persist their original
+validated create responses and wallet context until the maker supplies that
+recovery metadata. Restore also does not recover the maker's `swapAuth`
+credential; use the separate signed credential recovery flow before a
+cooperative claim or refund that requires it.
+
+Native bindings expose the same core constructor as
+`SwapScript.from_restored(network, restored_swap, our_pubkey, side)`.
+
 ## Bindings
 
 - **Python (UniFFI):** see [`bindings/`](bindings/README.md). Build with

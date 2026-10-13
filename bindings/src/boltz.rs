@@ -1144,6 +1144,8 @@ pub struct SwapRestoreResponse {
     pub created_at: u64,
     pub from: String,
     pub to: String,
+    #[uniffi(default = None)]
+    pub preimage_hash: Option<String>,
     /// Lightning invoice; boltz only returns it for submarine/reverse swaps.
     pub invoice: Option<String>,
     pub claim_details: Option<ClaimDetails>,

@@ -29,6 +29,12 @@ fn submarine() {
 
 #[test]
 #[serial]
+fn swap_script_restore() {
+    run_test("tests/bindings/swap_script_restore.py");
+}
+
+#[test]
+#[serial]
 fn kaleido_auth() {
     run_test("tests/bindings/kaleido_auth.py");
 }
