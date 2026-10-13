@@ -156,6 +156,9 @@ extern "C" {
     /// Keep local collateral caps as raw JS values until range validation.
     #[wasm_bindgen(typescript_type = "bigint")]
     pub type BigIntArg;
+    /// Transaction encoding is independent of the network used to broadcast.
+    #[wasm_bindgen(typescript_type = "\"bitcoin\" | \"liquid\"")]
+    pub type TransactionChainArg;
 }
 
 /// Convert a required string argument, naming it if it is not a string.
@@ -1920,6 +1923,39 @@ pub struct BtcLikeTransaction {
 
 #[wasm_bindgen]
 impl BtcLikeTransaction {
+    /// Rebuild a saved transaction without signing, changing fees or broadcasting.
+    /// Pass the chain saved with the hex; the encoding is never auto-detected.
+    /// Keep the original network and Esplora endpoint for a later `broadcast`.
+    #[wasm_bindgen(js_name = fromHex)]
+    pub fn from_hex(
+        hex: StringArg,
+        chain: TransactionChainArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let hex = str_arg(hex, "hex")?;
+        let chain = JsValue::from(chain)
+            .as_string()
+            .ok_or_else(|| arg_err("argument `chain` must be 'bitcoin' or 'liquid'"))?;
+        let inner = match chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&hex),
+            _ => return Err(arg_err("argument `chain` must be 'bitcoin' or 'liquid'")),
+        }
+        .map_err(|error| {
+            arg_err(format!(
+                "argument `hex` is not a valid {chain} transaction: {error}"
+            ))
+        })?;
+        let restored = Self { inner };
+        // Refuse encodings that the parser would normalize. Safe rebroadcast
+        // requires the serialized bytes (including witnesses) to stay identical.
+        if !hex.eq_ignore_ascii_case(&restored.hex()) {
+            return Err(arg_err(
+                "argument `hex` must use canonical transaction encoding",
+            ));
+        }
+        Ok(restored)
+    }
+
     /// The transaction serialized as hex.
     pub fn hex(&self) -> String {
         match &self.inner {

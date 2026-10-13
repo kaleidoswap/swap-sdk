@@ -7,7 +7,9 @@ Native.
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
 refund transactions client-side. Any Boltz-`/v2`-compatible endpoint works via
-an explicit base URL.
+an explicit base URL. Endpoint support varies by maker and binding; see the
+[maker/upstream compatibility matrix](docs/compatibility.md) for submarine
+co-signing, public raw broadcast and BOLT12 routes.
 
 ### Networks
 

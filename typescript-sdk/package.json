@@ -31,6 +31,11 @@
       "import": "./dist/pay-through.js",
       "default": "./dist/pay-through.js"
     },
+    "./chain-data": {
+      "types": "./dist/chain-data.d.ts",
+      "import": "./dist/chain-data.js",
+      "default": "./dist/chain-data.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

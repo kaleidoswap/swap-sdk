@@ -13,6 +13,31 @@ errors. Only schema v0 is accepted. Raw JSON is available through
 `corridor_card_raw()` / `IntentsCorridor.cardRaw()` for lossless verification;
 card fetching does not verify the advertised signature.
 
+### Added — explicit Esplora chain-data helpers
+
+TypeScript exports `esploraFeeEstimates(url)` and `esploraTipHeight(url)`, including
+a WASM-free `./chain-data` entry. The helpers validate data, preserve fractional
+sat/vB rates, honor deadlines/cancellation, and never substitute defaults after
+a failed read. Document endpoint selection and the maker-backed methods' fixed
+Liquid fee and unavailable-height placeholder.
+
+### Added — transaction recovery from saved hex
+
+`BtcLikeTransaction.fromHex(hex, "bitcoin" | "liquid")` rebuilds a saved
+transaction in WASM/TypeScript without signing or broadcasting. It preserves
+the transaction bytes, witnesses and txid, rejects malformed or noncanonical
+encodings, and uses the existing `broadcast()` method for explicit retries.
+Native bindings expose the corresponding `from_hex(hex, chain)` constructor.
+
+### Documented — maker and upstream compatibility boundary
+
+Record the deliberate Rust/WASM/native support matrix for upstream submarine
+claim co-signing, public maker raw broadcast and BOLT12 routes. Existing Rust
+compatibility methods and native submarine co-signing remain available; the
+current maker does not register their exact public routes. Correct the parity
+alias for WASM cooperative chain claims to native `construct_claim`, and check
+the route/export policy in CI against a pinned maker router inventory.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit
