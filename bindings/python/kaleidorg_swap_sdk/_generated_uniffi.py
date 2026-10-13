@@ -897,7 +897,7 @@ def _uniffi_check_api_checksums(lib):
         )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex()
-        != 14142
+        != 32618
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -8683,6 +8683,43 @@ class _UniffiConverterTypeSwapRestoreType(_UniffiConverterRustBuffer):
             buf.write_i32(3)
 
 
+class TransactionChain(enum.Enum):
+    """
+    Transaction encoding family, independent of the network chosen at broadcast.
+    Serialized transaction bytes cannot prove mainnet/testnet/regtest identity.
+    """
+
+    BITCOIN = 0
+
+    LIQUID = 1
+
+
+class _UniffiConverterTypeTransactionChain(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return TransactionChain.BITCOIN
+        if variant == 2:
+            return TransactionChain.LIQUID
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == TransactionChain.BITCOIN:
+            return
+        if value == TransactionChain.LIQUID:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == TransactionChain.BITCOIN:
+            buf.write_i32(1)
+        if value == TransactionChain.LIQUID:
+            buf.write_i32(2)
+
+
 class _UniffiConverterOptionalUInt32(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -9731,21 +9768,21 @@ class BtcLikeTransaction:
         return inst
 
     @classmethod
-    def from_hex(cls, hex: "str", chain: "Chain"):
+    def from_hex(cls, hex: "str", chain: "TransactionChain"):
         """
         Rebuild a saved Bitcoin/Liquid transaction without signing or broadcasting.
         """
 
         _UniffiConverterString.check_lower(hex)
 
-        _UniffiConverterTypeChain.check_lower(chain)
+        _UniffiConverterTypeTransactionChain.check_lower(chain)
 
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
             _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex,
             _UniffiConverterString.lower(hex),
-            _UniffiConverterTypeChain.lower(chain),
+            _UniffiConverterTypeTransactionChain.lower(chain),
         )
         return cls._make_instance_(pointer)
 
@@ -12421,6 +12458,7 @@ __all__ = [
     "Side",
     "SubSwapStates",
     "SwapRestoreType",
+    "TransactionChain",
     "BoltzWsConfig",
     "ChainClaim",
     "ChainFees",

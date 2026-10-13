@@ -167,6 +167,10 @@ const txid = await tx.broadcast(
 ```
 
 `receipt.chain` is `"bitcoin" | "liquid"`; network selection is separate.
+Native/Python uses `BtcLikeTransaction.from_hex(hex, TransactionChain.BITCOIN)`
+or `TransactionChain.LIQUID`. These select the encoding family only: transaction
+bytes do not identify mainnet, testnet or regtest. Keep the network in the saved
+receipt and select it separately when broadcasting.
 The factory performs local decoding only: it does not sign, select fees or
 inputs, query the maker, or broadcast. Malformed, truncated, trailing-byte and
 noncanonical encodings raise an `InvalidArgument` error. It preserves all

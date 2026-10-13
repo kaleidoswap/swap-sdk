@@ -12,9 +12,9 @@ fixtures = json.loads(
     ).read_text()
 )
 for name, chain in [
-    ("bitcoin", sdk.Chain.BITCOIN(sdk.BitcoinChain.BITCOIN_REGTEST)),
-    ("bitcoinLegacy", sdk.Chain.BITCOIN(sdk.BitcoinChain.BITCOIN_REGTEST)),
-    ("liquid", sdk.Chain.LIQUID(sdk.LiquidChain.LIQUID_REGTEST)),
+    ("bitcoin", sdk.TransactionChain.BITCOIN),
+    ("bitcoinLegacy", sdk.TransactionChain.BITCOIN),
+    ("liquid", sdk.TransactionChain.LIQUID),
 ]:
     fixture = fixtures[name]
     tx = sdk.BtcLikeTransaction.from_hex(fixture["hex"], chain)
@@ -28,3 +28,14 @@ for name, chain in [
         pass
     else:
         raise AssertionError("trailing bytes must be rejected")
+
+for name, wrong_chain in [
+    ("bitcoin", sdk.TransactionChain.LIQUID),
+    ("liquid", sdk.TransactionChain.BITCOIN),
+]:
+    try:
+        sdk.BtcLikeTransaction.from_hex(fixtures[name]["hex"], wrong_chain)
+    except sdk.Error:
+        pass
+    else:
+        raise AssertionError("wrong transaction family must fail")

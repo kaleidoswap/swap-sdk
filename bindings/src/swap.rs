@@ -532,12 +532,23 @@ pub enum Fee {
 #[derive(uniffi::Object)]
 pub struct BtcLikeTransaction(pub(crate) swaps_bitcoin::BtcLikeTransaction);
 
+/// Transaction encoding family, independent of the network chosen at broadcast.
+/// Serialized transaction bytes cannot prove mainnet/testnet/regtest identity.
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum TransactionChain {
+    Bitcoin,
+    Liquid,
+}
+
 #[uniffi::export]
 impl BtcLikeTransaction {
     /// Rebuild a saved Bitcoin/Liquid transaction without signing or broadcasting.
     #[uniffi::constructor]
-    pub fn from_hex(hex: &str, chain: Chain) -> Result<Self, Error> {
-        let restored = Self(swaps_bitcoin::BtcLikeTransaction::from_hex(chain, hex)?);
+    pub fn from_hex(hex: &str, chain: TransactionChain) -> Result<Self, Error> {
+        let restored = Self(match chain {
+            TransactionChain::Bitcoin => swaps_bitcoin::BtcLikeTransaction::from_hex_bitcoin(hex)?,
+            TransactionChain::Liquid => swaps_bitcoin::BtcLikeTransaction::from_hex_liquid(hex)?,
+        });
         if !hex.eq_ignore_ascii_case(&restored.hex()) {
             return Err(Error::Generic(
                 "hex must use canonical transaction encoding".into(),
