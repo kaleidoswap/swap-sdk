@@ -15,8 +15,9 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 
-from check_binding_parity import ALIASES, exports
+from check_binding_parity import ALIASES, WASM_DIR, UNIFFI_DIR, exports
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = ROOT / "tests/fixtures/maker-compatibility-routes.json"
@@ -58,39 +59,83 @@ def function(text: str, name: str) -> str:
     raise ValueError(f"unterminated body for {name}")
 
 
+def masked(source: str) -> str:
+    # Preserve offsets while excluding calls inside comments/string contents.
+    return re.sub(
+        r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/',
+        lambda m: " " * len(m[0]),
+        source,
+        flags=re.S,
+    )
+
+
+def closing_paren(source: str, opening: int) -> int:
+    depth = 0
+    for index in range(opening, len(source)):
+        depth += (source[index] == "(") - (source[index] == ")")
+        if depth == 0:
+            return index
+    raise ValueError("unterminated router call")
+
+
 def inventory(source: str, revision: str) -> dict:
-    routes = []
-    for name, prefix in [
-        ("v2_routes", "/v2"),
-        ("swap_routes", "/v2/swap"),
-        ("admin_routes", "/v2/admin"),
-    ]:
+    routes = set()
+
+    def walk(name: str, prefix: str, stack: tuple = ()) -> None:
+        require(name not in stack, f"recursive router nesting: {stack + (name,)}")
         body = function(source, name)
-        require(
-            ".fallback(" not in body and ".route_service(" not in body,
-            f"router layout changed in {name}; review fallback/service routes",
+        clean = masked(body)
+        cursor = 0
+        calls = re.compile(
+            r"\.\s*(route|nest|merge|route_service|nest_service|fallback|fallback_service)\s*\("
         )
-        # The router uses literal paths in chained .route calls. Stop each
-        # expression at the next chained route/nest/layer (not route_layer).
-        matches = list(re.finditer(r'\.route\(\s*"([^"\n]+)"\s*,', body))
-        if not matches:
-            raise ValueError(f"router layout changed: no routes in {name}")
-        for index, match in enumerate(matches):
-            expression = body[
-                match.end() : matches[index + 1].start()
-                if index + 1 < len(matches)
-                else len(body)
-            ]
-            expression = re.split(
-                r"\n        \.(?:nest|layer|with_state)\(", expression
-            )[0]
-            expression = re.sub(r"//[^\n]*", "", expression)
-            verbs = set(re.findall(r"\b(get|post|patch|delete|put)\(", expression))
-            if not verbs:
-                raise ValueError(
-                    f"router layout changed: no HTTP method for {prefix}{match[1]}"
+        while match := calls.search(clean, cursor):
+            end = closing_paren(clean, match.end() - 1)
+            arguments = body[match.end() : end]
+            cursor = end + 1  # Do not mistake a MethodRouter.merge for Router.merge.
+            kind = match[1]
+            require(
+                kind in {"route", "nest"},
+                f"unsupported router {kind} in {name}; review route inventory",
+            )
+            literal = re.fullmatch(
+                r'\s*"([^"\\\n]+)"\s*,\s*(.*?)\s*,?\s*', arguments, flags=re.S
+            )
+            require(
+                literal is not None,
+                f"non-literal/unknown {kind} in {name}; review route inventory",
+            )
+            path, expression = literal.groups()
+            require(path.startswith("/"), f"invalid router path in {name}: {path}")
+            full_path = prefix.rstrip("/") + path
+            if kind == "nest":
+                target = re.match(r"([A-Za-z_]\w*)\s*\(", expression)
+                require(
+                    target is not None,
+                    f"nest target is not a local function in {name}: {path}",
                 )
-            routes.extend([verb.upper(), prefix + match[1]] for verb in sorted(verbs))
+                last = closing_paren(masked(expression), target.end() - 1)
+                require(
+                    not expression[last + 1 :].strip(),
+                    f"unsupported nested router expression in {name}: {path}",
+                )
+                walk(target[1], full_path, stack + (name,))
+            else:
+                expression = masked(expression)
+                require(
+                    not re.search(r"\b(?:any|on)\s*\(", expression),
+                    f"unsupported HTTP method mapping in {name}: {path}",
+                )
+                verbs = set(
+                    re.findall(
+                        r"\b(get|post|patch|delete|put|options|head|trace|connect)\s*\(",
+                        expression,
+                    )
+                )
+                require(bool(verbs), f"no HTTP method for {full_path} in {name}")
+                routes.update((verb.upper(), full_path) for verb in verbs)
+
+    walk("router", "")
     return {
         "source": {
             "repository": REPOSITORY,
@@ -104,8 +149,16 @@ def inventory(source: str, revision: str) -> dict:
                 re.sub(r"//[^\n]*", "", function(source, "admin_routes")),
             )
         ),
-        "routes": sorted(routes),
+        "routes": [list(route) for route in sorted(routes)],
     }
+
+
+def load_binding_sources() -> tuple[str, str]:
+    # Match the parity guard: exports may live in any recursively nested module.
+    return tuple(
+        "\n".join(path.read_text() for path in sorted(directory.rglob("*.rs")))
+        for directory in (WASM_DIR, UNIFFI_DIR)
+    )
 
 
 def registered(routes: list, method: str, path: str) -> bool:
@@ -192,8 +245,10 @@ def validate(maker: dict, core: str, wrappers: str, wasm: str, native: str) -> N
         "submarine co-sign added to WASM; review the support policy",
     )
     helper = function(wrappers, "submarine_cooperative_claim")
+    proof = helper.find("verify_submarine_preimage")
+    signing = helper.find(".partial_sign(")
     require(
-        helper.index("verify_submarine_preimage") < helper.index(".partial_sign("),
+        proof >= 0 and signing >= 0 and proof < signing,
         "submarine co-sign must retain its proof-of-payment gate",
     )
     chain = function(wasm, "construct_cooperative_claim")
@@ -233,14 +288,12 @@ def main() -> None:
         maker = inventory(args.maker_router.read_text(), "local-checkout")
     else:
         maker = json.loads(SNAPSHOT.read_text())
-    native = "\n".join(
-        path.read_text() for path in sorted((ROOT / "bindings/src").glob("*.rs"))
-    )
+    wasm, native = load_binding_sources()
     validate(
         maker,
         (ROOT / "src/swaps/boltz.rs").read_text(),
         (ROOT / "src/swaps/wrappers.rs").read_text(),
-        (ROOT / "bindings-wasm/src/lib.rs").read_text(),
+        wasm,
         native,
     )
     if args.refresh_maker:
@@ -251,4 +304,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (ValueError, OSError, subprocess.SubprocessError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        raise SystemExit(1)

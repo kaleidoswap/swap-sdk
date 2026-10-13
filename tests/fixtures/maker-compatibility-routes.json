@@ -13,6 +13,14 @@
     ],
     [
       "GET",
+      "/v1/card"
+    ],
+    [
+      "GET",
+      "/v1/rfq/{rfq_id}"
+    ],
+    [
+      "GET",
       "/v2/admin/arkade/address"
     ],
     [
@@ -169,6 +177,14 @@
     ],
     [
       "GET",
+      "/v2/lsps1/info"
+    ],
+    [
+      "GET",
+      "/v2/lsps1/order/{id}"
+    ],
+    [
+      "GET",
       "/v2/metrics"
     ],
     [
@@ -242,6 +258,10 @@
     [
       "GET",
       "/v2/ws"
+    ],
+    [
+      "POST",
+      "/v1/swap"
     ],
     [
       "POST",
@@ -370,6 +390,10 @@
     [
       "POST",
       "/v2/admin/webhooks/{id}/retry"
+    ],
+    [
+      "POST",
+      "/v2/lsps1/order"
     ],
     [
       "POST",

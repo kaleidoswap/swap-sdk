@@ -79,7 +79,14 @@ does not remove those other capabilities or change swap creation behavior.
 
 `make check-compatibility-boundary` checks the retained Rust route literals,
 binding exports, distinct chain/submarine helpers and the pinned maker route
-inventory. CI runs it alongside binding parity. Regression tests exercise new
+inventory. Extraction starts at `router()` and follows literal `.nest` calls
+into local router functions, including direct `/v1` routes and `/v2/lsps1`.
+Unknown/dynamic nest targets, router-level merges and service/fallback routes
+fail closed and require a deliberate parser/policy update; method-router merges
+inside a literal route are supported. Both binding surfaces scan all recursive
+Rust source modules, matching parity's file inventory. This is a guard for the
+recognized source layout, not a general Rust parser or live endpoint probe.
+CI runs it alongside binding parity. Regression tests exercise new
 public and parameterized routes, accidental raw exports, removed Rust support
 and the formerly incorrect parity alias.
 
