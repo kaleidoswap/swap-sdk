@@ -94,6 +94,16 @@ errors. Only schema v0 is accepted. Raw JSON is available through
 `corridor_card_raw()` / `IntentsCorridor.cardRaw()` for lossless verification;
 card fetching does not verify the advertised signature.
 
+### Fixed — a WebSocket status stream can be stopped
+
+`run_ws_loop` holds a handle to its own stream, so dropping the last one never
+reached the shutdown it was meant to trigger: the loop kept its socket open and
+kept reconnecting. In JavaScript `free()` could not stop it either, and a Node
+process that had watched a swap never exited. `BoltzWsApi::shutdown` (Rust),
+`SwapWsApi.close()` (TypeScript) and `SwapWsApi.shutdown()` (UniFFI) now close
+the socket with a close frame and end the loop, also while it waits to
+reconnect. A stopped stream stays stopped.
+
 ### Added — explicit Esplora chain-data helpers
 
 TypeScript exports `esploraFeeEstimates(url)` and `esploraTipHeight(url)`, including

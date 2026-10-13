@@ -84,6 +84,8 @@ pub struct BoltzWsApi {
     /// life of the loop — including while it is dialling — and so cannot say
     /// whether the connection is actually up.
     connected: AtomicBool,
+    /// Set by [`Self::shutdown`]: the loop exits and does not dial again.
+    stopped: AtomicBool,
 }
 
 impl BoltzWsApi {
@@ -107,6 +109,20 @@ impl BoltzWsApi {
             shutdown_sender: Mutex::new(None),
             restart_sender: Mutex::new(None),
             connected: AtomicBool::new(false),
+            stopped: AtomicBool::new(false),
+        }
+    }
+
+    /// Stop [`Self::run_ws_loop`]: it closes the socket, stops reconnecting
+    /// and returns. A stopped stream stays stopped; make a new one to watch
+    /// again.
+    ///
+    /// Dropping the last handle cannot do this while the loop runs, because
+    /// the loop holds one itself.
+    pub async fn shutdown(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        if let Some(sender) = self.shutdown_sender.lock().await.take() {
+            let _ = sender.send(());
         }
     }
 
@@ -280,6 +296,9 @@ impl BoltzWsApi {
             // Nothing is established until the dial below succeeds; every path
             // back to the top of this loop is a lost or not-yet-made socket.
             self.connected.store(false, Ordering::SeqCst);
+            if self.stopped.load(Ordering::SeqCst) {
+                break 'outer;
+            }
 
             // Set up restart channel at the start of each connection attempt
             let (restart_sender, mut restart_receiver) = oneshot::channel();
@@ -320,6 +339,7 @@ impl BoltzWsApi {
                         tokio::select! {
                             _ = &mut shutdown_receiver => {
                                 info!("Received shutdown signal, exiting socket loop");
+                                let _ = connection.ws.close().await;
                                 break 'outer;
                             },
 
@@ -419,7 +439,10 @@ impl BoltzWsApi {
                                 None => {
                                     warn!("Received nothing from the stream");
                                     let _ = connection.ws.close().await;
-                                    sleep(self.config.reconnect_delay).await;
+                                    tokio::select! {
+                                        _ = sleep(self.config.reconnect_delay) => {},
+                                        _ = &mut shutdown_receiver => break 'outer,
+                                    }
                                     break;
                                 },
                             }
@@ -428,7 +451,10 @@ impl BoltzWsApi {
                 }
                 Err(e) => {
                     error!("Error connecting to websocket: {e:?}");
-                    sleep(self.config.reconnect_delay).await;
+                    tokio::select! {
+                        _ = sleep(self.config.reconnect_delay) => {},
+                        _ = &mut shutdown_receiver => break 'outer,
+                    }
                 }
             }
         }
@@ -444,6 +470,105 @@ impl Drop for BoltzWsApi {
         if let Some(sender) = self.shutdown_sender.get_mut().take() {
             let _ = sender.send(());
         }
+    }
+}
+
+#[cfg(test)]
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+mod shutdown_tests {
+    use std::io::{Read, Write};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use bitcoin::base64::Engine;
+    use bitcoin::hashes::{sha1, Hash};
+
+    use super::{BoltzWsApi, BoltzWsConfig};
+
+    fn config(reconnect_delay: Duration) -> BoltzWsConfig {
+        BoltzWsConfig {
+            reconnect_delay,
+            ..BoltzWsConfig::default()
+        }
+    }
+
+    /// Runs the loop and expects `shutdown` to end it promptly.
+    async fn shuts_down(api: Arc<BoltzWsApi>, before: impl std::future::Future<Output = ()>) {
+        let running = tokio::spawn(api.clone().run_ws_loop());
+        before.await;
+        api.shutdown().await;
+        tokio::time::timeout(Duration::from_secs(5), running)
+            .await
+            .expect("run_ws_loop did not return after shutdown")
+            .unwrap();
+        assert!(!api.is_connected().await);
+    }
+
+    #[tokio::test]
+    async fn shutdown_ends_a_loop_that_is_waiting_to_reconnect() {
+        // Nothing listens on port 1: the loop dials, fails and backs off for
+        // longer than the test waits.
+        let api = Arc::new(BoltzWsApi::new(
+            "ws://127.0.0.1:1/v2/ws".to_string(),
+            config(Duration::from_secs(600)),
+        ));
+        shuts_down(api, tokio::time::sleep(Duration::from_millis(200))).await;
+    }
+
+    #[tokio::test]
+    async fn shutdown_closes_a_connected_socket() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}/v2/ws", listener.local_addr().unwrap());
+        // A one-connection WebSocket server that reports the first frame's
+        // opcode it receives from the client, or `None` at EOF.
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                let read = stream.read(&mut buf).unwrap();
+                request.extend_from_slice(&buf[..read]);
+            }
+            let key = String::from_utf8_lossy(&request)
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("sec-websocket-key")
+                        .then(|| value.trim().to_string())
+                })
+                .unwrap();
+            let accept = bitcoin::base64::engine::general_purpose::STANDARD.encode(
+                sha1::Hash::hash(format!("{key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11").as_bytes())
+                    .to_byte_array(),
+            );
+            write!(
+                stream,
+                "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: {accept}\r\n\r\n"
+            )
+            .unwrap();
+            let mut header = [0u8; 2];
+            match stream.read(&mut header) {
+                Ok(2) => Some(header[0] & 0x0f),
+                _ => None,
+            }
+        });
+
+        let api = Arc::new(BoltzWsApi::new(url, config(Duration::from_secs(600))));
+        let connected = {
+            let api = api.clone();
+            async move {
+                for _ in 0..100 {
+                    if api.is_connected().await {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                panic!("never connected");
+            }
+        };
+        shuts_down(api, connected).await;
+        // 0x8: the client sent a close frame rather than vanishing.
+        assert_eq!(server.join().unwrap(), Some(0x8));
     }
 }
 

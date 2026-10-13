@@ -600,6 +600,14 @@ impl SwapWsApi {
         self.0.is_connected().await
     }
 
+    /// Stop `run_ws_loop`: close the socket and stop reconnecting, so the
+    /// call returns. Dropping the object cannot do this while the loop runs.
+    /// A stopped stream stays stopped.
+    #[uniffi::method]
+    pub async fn shutdown(&self) {
+        self.0.shutdown().await
+    }
+
     #[uniffi::method]
     pub async fn subscribe_swap(&self, swap_id: &str) -> Result<(), Error> {
         self.0.subscribe_swap(swap_id).await.map_err(|e| e.into())

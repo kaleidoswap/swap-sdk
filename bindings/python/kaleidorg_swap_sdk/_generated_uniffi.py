@@ -901,6 +901,10 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_shutdown() != 37947:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_subscribe_swap() != 9540:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1890,6 +1894,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_run_ws_loop.argtypes = 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_run_ws_loop.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_shutdown.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_shutdown.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_subscribe_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -2351,6 +2361,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected.rest
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_run_ws_loop.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_run_ws_loop.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_shutdown.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_shutdown.restype = (
     ctypes.c_uint16
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_subscribe_swap.argtypes = ()
@@ -12856,6 +12870,17 @@ class SwapWsApiProtocol(typing.Protocol):
     ):
         raise NotImplementedError
 
+    def shutdown(
+        self,
+    ):
+        """
+        Stop `run_ws_loop`: close the socket and stop reconnecting, so the
+        call returns. Dropping the object cannot do this while the loop runs.
+        A stopped stream stays stopped.
+        """
+
+        raise NotImplementedError
+
     def subscribe_swap(self, swap_id: "str"):
         raise NotImplementedError
 
@@ -12927,6 +12952,28 @@ class SwapWsApi:
     ) -> None:
         return await _uniffi_rust_call_async(
             _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_run_ws_loop(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            # lift function
+            lambda val: None,
+            # Error FFI converter
+            None,
+        )
+
+    async def shutdown(
+        self,
+    ) -> None:
+        """
+        Stop `run_ws_loop`: close the socket and stop reconnecting, so the
+        call returns. Dropping the object cannot do this while the loop runs.
+        A stopped stream stays stopped.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_shutdown(
                 self._uniffi_clone_pointer(),
             ),
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,

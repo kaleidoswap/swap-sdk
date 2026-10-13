@@ -2173,6 +2173,15 @@ impl BoltzWsApi {
         self.inner.is_connected().await
     }
 
+    /// Stop `runWsLoop`: close the socket and stop reconnecting. Its promise
+    /// then resolves. `free()` cannot do this while the loop runs, because
+    /// the loop holds the stream too; without `close()` a Node process
+    /// watching a swap never exits. A closed stream stays closed.
+    #[wasm_bindgen(js_name = close)]
+    pub async fn shutdown(&self) {
+        self.inner.shutdown().await
+    }
+
     /// A cursor over swap-status updates (see `BoltzWsUpdates.next`).
     pub fn updates(&self) -> BoltzWsUpdates {
         BoltzWsUpdates {
