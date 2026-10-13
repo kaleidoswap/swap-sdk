@@ -7,7 +7,9 @@ Native.
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
 refund transactions client-side. Any Boltz-`/v2`-compatible endpoint works via
-an explicit base URL.
+an explicit base URL. Endpoint support varies by maker and binding; see the
+[maker/upstream compatibility matrix](docs/compatibility.md) for submarine
+co-signing, public raw broadcast and BOLT12 routes.
 
 ### Networks
 
@@ -73,6 +75,20 @@ match answer {
 A refusal is the maker's answer, not an error — it comes back as a value. The
 same surface is `SwapClient.quote_lightning_send(...)` in Python and
 `new IntentsCorridor(client).quoteLightningSend(...)` in TypeScript.
+
+Discover the maker's advertised markets with `client.corridor_card().await?`
+in Rust, `await client.corridor_card()` in Python, or
+`await new IntentsCorridor(client).card()` in TypeScript (also exposed as
+`client.corridorCard()`). The method requests `GET /v1/card` beside the client's
+`/v2` base, preserving any deployment path prefix and client authentication.
+It returns the maker's card (signature not verified), with amount limits kept
+as decimal strings,
+or `None`/`null` for HTTP 404 (unavailable or withdrawn). Other HTTP, transport
+and malformed-response failures remain errors. Fetching the card does not
+verify its signature or establish trust in its advertised discovery key.
+Only schema v0 is accepted. Use `corridor_card_raw()` / `cardRaw()` to preserve
+unknown fields for verification; see the TypeScript README for the signing
+preimage and lossless-processing requirements.
 
 What this half does **not** do is touch Arkade: funding a send lockup or
 claiming a receive lockup needs an Ark wallet, which is the

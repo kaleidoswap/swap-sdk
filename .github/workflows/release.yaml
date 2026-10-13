@@ -275,6 +275,9 @@ jobs:
           release-artifacts registry-npm
           --version "${{ needs.release-ready.outputs.version }}"
           --npm
+      - name: Install locked tooling for npm consumer type checks
+        working-directory: typescript-sdk
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Clean-install the registry npm tarball in Node
         working-directory: typescript-sdk
         run: >-

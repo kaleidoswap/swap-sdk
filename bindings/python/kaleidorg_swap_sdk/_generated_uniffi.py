@@ -647,6 +647,20 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card()
+        != 59966
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw()
+        != 7137
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url() != 34546:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -896,6 +910,13 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next() != 25944:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex()
+        != 32618
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -1205,6 +1226,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex.restype = ctypes.c_void_p
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex_bitcoin.argtypes = (
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1500,6 +1527,18 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.argtypes = 
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.restype = (
     _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw.restype = (
+    ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_url.argtypes = (
     ctypes.c_void_p,
@@ -2193,6 +2232,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.restype = (
     ctypes.c_uint16
@@ -2303,6 +2346,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next.argtypes
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new.argtypes = ()
@@ -2588,6 +2633,231 @@ class _UniffiConverterTypeBoltzWsConfig(_UniffiConverterRustBuffer):
         _UniffiConverterDuration.write(value.reconnect_delay, buf)
         _UniffiConverterDuration.write(value.subscription_timeout, buf)
         _UniffiConverterOptionalSequenceString.write(value.protocols, buf)
+
+
+class CardAsset:
+    id: "str"
+    name: "str"
+    ticker: "str"
+    decimals: "int"
+
+    def __init__(self, *, id: "str", name: "str", ticker: "str", decimals: "int"):
+        self.id = id
+        self.name = name
+        self.ticker = ticker
+        self.decimals = decimals
+
+    def __str__(self):
+        return "CardAsset(id={}, name={}, ticker={}, decimals={})".format(
+            self.id, self.name, self.ticker, self.decimals
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.name != other.name:
+            return False
+        if self.ticker != other.ticker:
+            return False
+        if self.decimals != other.decimals:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCardAsset(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CardAsset(
+            id=_UniffiConverterString.read(buf),
+            name=_UniffiConverterString.read(buf),
+            ticker=_UniffiConverterString.read(buf),
+            decimals=_UniffiConverterUInt8.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.name)
+        _UniffiConverterString.check_lower(value.ticker)
+        _UniffiConverterUInt8.check_lower(value.decimals)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.name, buf)
+        _UniffiConverterString.write(value.ticker, buf)
+        _UniffiConverterUInt8.write(value.decimals, buf)
+
+
+class CardMarket:
+    pair: "str"
+    base_asset: "CardAsset"
+    quote_asset: "CardAsset"
+    quote_corridor: "str"
+    fee_bps: "int"
+    min_base_amount: "str"
+    max_base_amount: "str"
+    min_quote_amount: "str"
+    max_quote_amount: "str"
+
+    def __init__(
+        self,
+        *,
+        pair: "str",
+        base_asset: "CardAsset",
+        quote_asset: "CardAsset",
+        quote_corridor: "str",
+        fee_bps: "int",
+        min_base_amount: "str",
+        max_base_amount: "str",
+        min_quote_amount: "str",
+        max_quote_amount: "str",
+    ):
+        self.pair = pair
+        self.base_asset = base_asset
+        self.quote_asset = quote_asset
+        self.quote_corridor = quote_corridor
+        self.fee_bps = fee_bps
+        self.min_base_amount = min_base_amount
+        self.max_base_amount = max_base_amount
+        self.min_quote_amount = min_quote_amount
+        self.max_quote_amount = max_quote_amount
+
+    def __str__(self):
+        return "CardMarket(pair={}, base_asset={}, quote_asset={}, quote_corridor={}, fee_bps={}, min_base_amount={}, max_base_amount={}, min_quote_amount={}, max_quote_amount={})".format(
+            self.pair,
+            self.base_asset,
+            self.quote_asset,
+            self.quote_corridor,
+            self.fee_bps,
+            self.min_base_amount,
+            self.max_base_amount,
+            self.min_quote_amount,
+            self.max_quote_amount,
+        )
+
+    def __eq__(self, other):
+        if self.pair != other.pair:
+            return False
+        if self.base_asset != other.base_asset:
+            return False
+        if self.quote_asset != other.quote_asset:
+            return False
+        if self.quote_corridor != other.quote_corridor:
+            return False
+        if self.fee_bps != other.fee_bps:
+            return False
+        if self.min_base_amount != other.min_base_amount:
+            return False
+        if self.max_base_amount != other.max_base_amount:
+            return False
+        if self.min_quote_amount != other.min_quote_amount:
+            return False
+        if self.max_quote_amount != other.max_quote_amount:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCardMarket(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CardMarket(
+            pair=_UniffiConverterString.read(buf),
+            base_asset=_UniffiConverterTypeCardAsset.read(buf),
+            quote_asset=_UniffiConverterTypeCardAsset.read(buf),
+            quote_corridor=_UniffiConverterString.read(buf),
+            fee_bps=_UniffiConverterUInt32.read(buf),
+            min_base_amount=_UniffiConverterString.read(buf),
+            max_base_amount=_UniffiConverterString.read(buf),
+            min_quote_amount=_UniffiConverterString.read(buf),
+            max_quote_amount=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterTypeCardAsset.check_lower(value.base_asset)
+        _UniffiConverterTypeCardAsset.check_lower(value.quote_asset)
+        _UniffiConverterString.check_lower(value.quote_corridor)
+        _UniffiConverterUInt32.check_lower(value.fee_bps)
+        _UniffiConverterString.check_lower(value.min_base_amount)
+        _UniffiConverterString.check_lower(value.max_base_amount)
+        _UniffiConverterString.check_lower(value.min_quote_amount)
+        _UniffiConverterString.check_lower(value.max_quote_amount)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterTypeCardAsset.write(value.base_asset, buf)
+        _UniffiConverterTypeCardAsset.write(value.quote_asset, buf)
+        _UniffiConverterString.write(value.quote_corridor, buf)
+        _UniffiConverterUInt32.write(value.fee_bps, buf)
+        _UniffiConverterString.write(value.min_base_amount, buf)
+        _UniffiConverterString.write(value.max_base_amount, buf)
+        _UniffiConverterString.write(value.min_quote_amount, buf)
+        _UniffiConverterString.write(value.max_quote_amount, buf)
+
+
+class CardNostrTransport:
+    relays: "typing.List[str]"
+
+    def __init__(self, *, relays: "typing.List[str]"):
+        self.relays = relays
+
+    def __str__(self):
+        return "CardNostrTransport(relays={})".format(self.relays)
+
+    def __eq__(self, other):
+        if self.relays != other.relays:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCardNostrTransport(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CardNostrTransport(
+            relays=_UniffiConverterSequenceString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterSequenceString.check_lower(value.relays)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterSequenceString.write(value.relays, buf)
+
+
+class CardTransports:
+    nostr: "CardNostrTransport"
+
+    def __init__(self, *, nostr: "CardNostrTransport"):
+        self.nostr = nostr
+
+    def __str__(self):
+        return "CardTransports(nostr={})".format(self.nostr)
+
+    def __eq__(self, other):
+        if self.nostr != other.nostr:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCardTransports(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CardTransports(
+            nostr=_UniffiConverterTypeCardNostrTransport.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeCardNostrTransport.check_lower(value.nostr)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeCardNostrTransport.write(value.nostr, buf)
 
 
 class ChainClaim:
@@ -3347,6 +3617,96 @@ class _UniffiConverterTypeColoredRgbPsbt(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterString.write(value.psbt, buf)
         _UniffiConverterSequenceTypeRgbAllocation.write(value.allocations, buf)
+
+
+class CorridorCard:
+    """
+    Unverified maker card. The signature has NOT been checked against discovery_pubkey.
+    Use corridor_card_raw for verification; the typed record discards unknown fields.
+    """
+
+    version: "int"
+    name: "str"
+    discovery_pubkey: "str"
+    transports: "CardTransports"
+    markets: "typing.List[CardMarket]"
+    sig: "str"
+    """
+    Unverified signature; it does not establish authenticity or trust.
+    """
+
+    def __init__(
+        self,
+        *,
+        version: "int",
+        name: "str",
+        discovery_pubkey: "str",
+        transports: "CardTransports",
+        markets: "typing.List[CardMarket]",
+        sig: "str",
+    ):
+        self.version = version
+        self.name = name
+        self.discovery_pubkey = discovery_pubkey
+        self.transports = transports
+        self.markets = markets
+        self.sig = sig
+
+    def __str__(self):
+        return "CorridorCard(version={}, name={}, discovery_pubkey={}, transports={}, markets={}, sig={})".format(
+            self.version,
+            self.name,
+            self.discovery_pubkey,
+            self.transports,
+            self.markets,
+            self.sig,
+        )
+
+    def __eq__(self, other):
+        if self.version != other.version:
+            return False
+        if self.name != other.name:
+            return False
+        if self.discovery_pubkey != other.discovery_pubkey:
+            return False
+        if self.transports != other.transports:
+            return False
+        if self.markets != other.markets:
+            return False
+        if self.sig != other.sig:
+            return False
+        return True
+
+
+class _UniffiConverterTypeCorridorCard(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return CorridorCard(
+            version=_UniffiConverterUInt32.read(buf),
+            name=_UniffiConverterString.read(buf),
+            discovery_pubkey=_UniffiConverterString.read(buf),
+            transports=_UniffiConverterTypeCardTransports.read(buf),
+            markets=_UniffiConverterSequenceTypeCardMarket.read(buf),
+            sig=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt32.check_lower(value.version)
+        _UniffiConverterString.check_lower(value.name)
+        _UniffiConverterString.check_lower(value.discovery_pubkey)
+        _UniffiConverterTypeCardTransports.check_lower(value.transports)
+        _UniffiConverterSequenceTypeCardMarket.check_lower(value.markets)
+        _UniffiConverterString.check_lower(value.sig)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt32.write(value.version, buf)
+        _UniffiConverterString.write(value.name, buf)
+        _UniffiConverterString.write(value.discovery_pubkey, buf)
+        _UniffiConverterTypeCardTransports.write(value.transports, buf)
+        _UniffiConverterSequenceTypeCardMarket.write(value.markets, buf)
+        _UniffiConverterString.write(value.sig, buf)
 
 
 class CreateChainRequest:
@@ -8683,6 +9043,43 @@ class _UniffiConverterTypeSwapRestoreType(_UniffiConverterRustBuffer):
             buf.write_i32(3)
 
 
+class TransactionChain(enum.Enum):
+    """
+    Transaction encoding family, independent of the network chosen at broadcast.
+    Serialized transaction bytes cannot prove mainnet/testnet/regtest identity.
+    """
+
+    BITCOIN = 0
+
+    LIQUID = 1
+
+
+class _UniffiConverterTypeTransactionChain(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return TransactionChain.BITCOIN
+        if variant == 2:
+            return TransactionChain.LIQUID
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == TransactionChain.BITCOIN:
+            return
+        if value == TransactionChain.LIQUID:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == TransactionChain.BITCOIN:
+            buf.write_i32(1)
+        if value == TransactionChain.LIQUID:
+            buf.write_i32(2)
+
+
 class _UniffiConverterOptionalUInt32(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -8939,6 +9336,32 @@ class _UniffiConverterOptionalTypeClaimDetails(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeClaimDetails.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeCorridorCard(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeCorridorCard.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeCorridorCard.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeCorridorCard.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -9329,6 +9752,28 @@ class _UniffiConverterSequenceString(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected negative sequence length")
 
         return [_UniffiConverterString.read(buf) for i in range(count)]
+
+
+class _UniffiConverterSequenceTypeCardMarket(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeCardMarket.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeCardMarket.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeCardMarket.read(buf) for i in range(count)]
 
 
 class _UniffiConverterSequenceTypeRgbAllocation(_UniffiConverterRustBuffer):
@@ -9729,6 +10174,25 @@ class BtcLikeTransaction:
         inst = cls.__new__(cls)
         inst._pointer = pointer
         return inst
+
+    @classmethod
+    def from_hex(cls, hex: "str", chain: "TransactionChain"):
+        """
+        Rebuild a saved Bitcoin/Liquid transaction without signing or broadcasting.
+        """
+
+        _UniffiConverterString.check_lower(hex)
+
+        _UniffiConverterTypeTransactionChain.check_lower(chain)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex,
+            _UniffiConverterString.lower(hex),
+            _UniffiConverterTypeTransactionChain.lower(chain),
+        )
+        return cls._make_instance_(pointer)
 
     @classmethod
     def from_hex_bitcoin(cls, hex: "str"):
@@ -10601,6 +11065,26 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def corridor_card(
+        self,
+    ):
+        """
+        Signed discovery card, or `None` when unavailable/withdrawn (404).
+        Fetching does not verify the signature or establish identity trust.
+        """
+
+        raise NotImplementedError
+
+    def corridor_card_raw(
+        self,
+    ):
+        """
+        Exact unverified card JSON for lossless verification. 404 is None.
+        Hash the maker's compact ordered JSON without sig, preserving all fields.
+        """
+
+        raise NotImplementedError
+
     def corridor_url(
         self,
     ):
@@ -10941,6 +11425,48 @@ class SwapClient:
                 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id,
                 self._uniffi_clone_pointer(),
             )
+        )
+
+    async def corridor_card(
+        self,
+    ) -> "typing.Optional[CorridorCard]":
+        """
+        Signed discovery card, or `None` when unavailable/withdrawn (404).
+        Fetching does not verify the signature or establish identity trust.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterOptionalTypeCorridorCard.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def corridor_card_raw(
+        self,
+    ) -> "typing.Optional[str]":
+        """
+        Exact unverified card JSON for lossless verification. 404 is None.
+        Hash the maker's compact ordered JSON without sig, preserving all fields.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterOptionalString.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
         )
 
     def corridor_url(
@@ -12427,7 +12953,12 @@ __all__ = [
     "Side",
     "SubSwapStates",
     "SwapRestoreType",
+    "TransactionChain",
     "BoltzWsConfig",
+    "CardAsset",
+    "CardMarket",
+    "CardNostrTransport",
+    "CardTransports",
     "ChainClaim",
     "ChainFees",
     "ChainMinerFees",
@@ -12441,6 +12972,7 @@ __all__ = [
     "ClaimDetails",
     "ClientConfig",
     "ColoredRgbPsbt",
+    "CorridorCard",
     "CreateChainRequest",
     "CreateChainResponse",
     "CreateReverseRequest",

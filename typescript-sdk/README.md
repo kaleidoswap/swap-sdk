@@ -67,6 +67,69 @@ When the `lnurl` feature is enabled, HTTPS now uses Rustls with WebPKI roots,
 matching the SDK transport and avoiding system OpenSSL dependencies in wheels.
 An enterprise CA installed only in the OS trust store is not automatically trusted.
 
+## Fee rates and tip heights for claims and refunds
+
+Use an explicitly configured Esplora endpoint for the chain and network the
+transaction spends on. The pure TypeScript helpers require no WASM initialization
+and are also exported from the main package:
+
+```ts
+import {
+  esploraFeeEstimates,
+  selectEsploraFeeRate,
+  esploraTipHeight,
+} from "@kaleidorg/swap-sdk/chain-data";
+
+const baseUrl = "https://your-bitcoin-esplora.example/api";
+const [fees, tipHeight] = await Promise.all([
+  esploraFeeEstimates(baseUrl, { timeoutMs: 10_000 }),
+  esploraTipHeight(baseUrl, { timeoutMs: 10_000 }),
+]);
+const feeRateSatVb = selectEsploraFeeRate(fees, 2); // Target: two blocks; sat/vB.
+if (feeRateSatVb === undefined)
+  throw new Error("No estimate for the requested target");
+```
+
+Fee estimates map positive confirmation targets to positive, finite **sat/vB**
+rates; fractional Liquid rates are preserved. Missing targets stay `undefined`.
+The tip is an integer block height. An Esplora genesis tip of zero is valid;
+missing, failed or malformed tip data rejects rather than producing zero.
+The fetch helpers make one request per call and do not cache, retry, select
+another target, substitute a fixed fee or switch endpoints. The default deadline
+is 30 seconds, including reading the response body; `signal` supports cancellation
+and `fetch` supports injected transports. HTTP errors report their status via
+`EsploraDataError`, separately from malformed successful responses. Network and
+cancellation errors propagate. Requests omit cookies and maker credentials and
+refuse redirects. A configured URL that redirects (including HTTP→HTTPS)
+fails as a network error; configure the final URL directly.
+
+An empty `{}` fee map is valid when the explorer has no estimates yet.
+`selectEsploraFeeRate(fees, target)` chooses the largest available target at or
+below the requested block count (equally fast or faster). Missing eligible
+estimates return `undefined`; it never substitutes a slower target or a default
+fee. Fractional Liquid rates remain fractional. Postpone construction or apply
+an explicit application policy when no eligible estimate exists.
+
+Select the endpoint alongside the spend's existing Esplora configuration. Bitcoin,
+Liquid, testnet and regtest are distinct, and Mutinynet is not vanilla signet.
+The endpoint is trusted chain data; these helpers do not identify its network or
+prove relay acceptance. If it is unavailable or has no requested target, postpone
+construction or apply an explicit application policy using a verified source on
+the same network. Do not silently turn a failure into a usable height or fee.
+
+The existing maker-backed methods remain useful for maker pricing and diagnostics:
+
+| Source                   | Bitcoin                                                  | Liquid                                       |
+| ------------------------ | -------------------------------------------------------- | -------------------------------------------- |
+| `client.feeEstimation()` | Node's two-block estimate, floored to 1 sat/vB when zero | Fixed 0.1 sat/vB policy; not a live estimate |
+| `client.height()`        | Node tip                                                 | Provider tip, or **0** when unavailable      |
+
+Treat the maker's Liquid zero as unavailable; it cannot establish refund maturity.
+For client-built claims/refunds, use the explicit Esplora policy above rather than
+falling back to that placeholder or the maker's fixed fee. Selecting a fee rate
+does not prove that a particular transaction will relay. Liquid relay validation
+must cover the intended network and transaction types separately.
+
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.
 
@@ -153,6 +216,19 @@ take. Funding or claiming the Arkade side needs an Ark wallet — that is the
 `@kaleidorg/swap-sdk/arkade` venue, whose transport you build from the same URL
 with `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
+Discovery cards are **unverified**. `corridor.card()` / `client.corridorCard()`
+reject unsupported versions (only v0 is understood) and discard unknown fields.
+For verification, use `corridor.cardRaw()` / `client.corridorCardRaw()` (Python:
+`corridor_card_raw()`): the exact response text preserves unknown fields, member
+order and numeric spelling. The maker signs SHA256 of its compact JSON card
+**without `sig`**, in the maker's serialization order. Do not hash the entire
+response or reserialize the typed record. Use lossless ordered JSON processing
+and preserve every field; ordinary JS JSON parsing can round future large
+integers. Check the Schnorr signature against `discovery_pubkey` and establish
+trust in that identity separately before acting on advertisements. A valid
+signature alone is not an endorsement. Each fetch is a separate observation;
+verify the raw card you intend to use rather than combining two fetches.
+
 ## Supplying the binary yourself
 
 To serve the WebAssembly binary from your own CDN, or as a bundler asset URL,
@@ -179,6 +255,44 @@ at runtime rather than at build time, so reach for this before you ship a bundle
 SDK operations also require the web APIs used by the selected client, including
 `fetch` and WebSocket. Node 22 and newer provide both.
 
+## Recovering a saved transaction
+
+Persist the signed transaction's hex, chain, network and Esplora endpoint
+**before** broadcasting. After a restart or a lost broadcast response, rebuild
+the transaction and explicitly rebroadcast the same bytes:
+
+```ts
+import { BtcLikeTransaction, init } from "@kaleidorg/swap-sdk";
+
+await init();
+// Load these from the receipt saved before the original broadcast.
+const tx = BtcLikeTransaction.fromHex(receipt.hex, receipt.chain);
+const txid = await tx.broadcast(
+  receipt.network,
+  receipt.chain === "bitcoin" ? receipt.esploraUrl : undefined,
+  receipt.chain === "liquid" ? receipt.esploraUrl : undefined,
+);
+```
+
+`receipt.chain` is `"bitcoin" | "liquid"`; network selection is separate.
+Native/Python uses `BtcLikeTransaction.from_hex(hex, TransactionChain.BITCOIN)`
+or `TransactionChain.LIQUID`. These select the encoding family only: transaction
+bytes do not identify mainnet, testnet or regtest. Keep the network in the saved
+receipt and select it separately when broadcasting.
+The factory performs local decoding only: it does not sign, select fees or
+inputs, query the maker, or broadcast. Malformed, truncated, trailing-byte and
+noncanonical encodings raise an `InvalidArgument` error. It preserves all
+accepted transaction bytes, including witnesses; uppercase hex is accepted
+and `hex()` returns lowercase. Store the original txid too if you want to
+verify the recovered receipt before sending it.
+
+There is no automatic retry. A lost response does not prove broadcast failed;
+check the original txid at the same chain backend and retain the original
+transaction. Rebroadcasting identical bytes cannot create another transaction,
+but a backend may report that it already knows the transaction. This helper
+does not turn that rejection into success or validate that a transaction is
+spendable. Never construct a new claim/refund just to retry an uncertain send.
+
 ## Swap keys
 
 Swap keys and preimages derive client-side from a wallet mnemonic via BIP85
@@ -204,6 +318,13 @@ The client speaks the Boltz protocol and can be pointed at Boltz's own API;
 that provenance is recorded in the
 [root README](../README.md#the-swap-engine-boltz-protocol) and the LICENSE,
 which is where it belongs rather than in a symbol an integrator types.
+
+See the [maker/upstream support matrix](../docs/compatibility.md) for the
+deliberately retained Rust-only raw routes and the existing native submarine
+co-sign helper. `constructCooperativeClaim` is a chain-claim constructor; it does
+not expose submarine co-signing. Maker-mediated raw broadcast and Boltz-shaped
+BOLT12 management are not exported here and are absent from the KaleidoSwap
+public router.
 
 - `SwapClient` — the swap API (create submarine/reverse/chain swaps, pairs,
   fees, quotes, restore).
