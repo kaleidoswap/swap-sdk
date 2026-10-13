@@ -201,10 +201,18 @@ sources](docs/releasing.md#python-registry).
 ```bash
 make generate-python-bindings  # platform-independent UniFFI Python glue fallback
 make check-generated           # regenerate from pinned inputs and reject drift
+make generate-swap-types       # serde-derived WASM/TypeScript swap DTOs
+make check-swap-types           # reject DTO declaration drift
 ```
 
 The generated fallback is committed. Pull-request CI regenerates it solely from
 repository-pinned tool inputs and rejects any drift.
+
+The six swap create/status/restore methods use public TypeScript DTOs generated
+from the Rust types with pinned `ts-rs`. Their declarations are embedded in the
+WASM package, so Node, browser and raw WASM consumers share the same signatures.
+See [the TypeScript guide](typescript-sdk/README.md#swap-dto-generation-and-maker-schema-checks)
+for maker schema compatibility checks and snapshot updates.
 
 ## Rebuild scripts after swap recovery
 

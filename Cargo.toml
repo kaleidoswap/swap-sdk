@@ -40,6 +40,11 @@ crate-type = ["lib"]
 name = "uniffi-bindgen"
 path = "bindings/uniffi-workspace-shim.rs"
 
+[[bin]]
+name = "generate-typescript"
+path = "src/bin/generate_typescript.rs"
+required-features = ["typescript"]
+
 [workspace]
 members = [
     "bindings",
@@ -64,6 +69,7 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
+ts-rs = { version = "=12.0.1", optional = true }
 bitcoin = { workspace = true }
 
 # Used for musig API not available in secp included in bitcoin/elements
@@ -146,6 +152,8 @@ futures = "0.3.31"
 
 [features]
 default = ["esplora"]
+# Build-time DTO declaration generation; absent from normal SDK builds.
+typescript = ["dep:ts-rs"]
 lnurl = ["dep:lnurl-rs"]
 esplora = []
 electrum = ["dep:electrum-client"]

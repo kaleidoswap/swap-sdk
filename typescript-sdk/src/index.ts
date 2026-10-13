@@ -1,8 +1,7 @@
 // KaleidoSwap swap SDK — TypeScript surface.
 //
-// Wraps the wasm-bindgen client (bindings-wasm/pkg) with typed signatures. The
-// wasm boundary passes plain JS objects (typed `any`); this layer restores the
-// domain types with hand-written interfaces.
+// Wraps the wasm-bindgen client (bindings-wasm/pkg), re-exports its generated
+// swap DTOs, and adds typed helpers for the remaining SDK surface.
 
 import initWasm, {
   BoltzClient as WasmSwapClient,
@@ -21,17 +20,9 @@ export const wasmUrl = new URL(
   import.meta.url,
 );
 
-// The swap API client. Re-exported from the wasm module as-is: its request/
-// response payloads are currently untyped (`any`) because the swap DTOs are
-// Rust-defined and have no OpenAPI spec to generate TS types from. A typed
-// surface would need a schema-generation step (schemars) or hand-written types.
-// NOTE: 64-bit integer fields in its responses arrive as `bigint` — the wasm
-// boundary serializes Rust i64/u64 losslessly rather than through an f64.
-//
-// It speaks the Boltz protocol and can be pointed at Boltz's own API, which is
-// where the old name came from. But the name a partner writes should say whose
-// SDK this is, not whose wire format it inherited — that provenance belongs in
-// the README and the LICENSE, where it is recorded in full.
+// Swap payloads are serde-derived Rust DTOs embedded in the WASM declarations.
+// 64-bit response integers are bigint; request amounts accept bigint or safe
+// JS numbers. See the generated public types below.
 export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
 /** Rebuild saved Bitcoin/Liquid transactions with `fromHex(hex, chain)` and
@@ -53,6 +44,33 @@ export {
   type EsploraDataOptions,
   type EsploraFeeEstimates,
 } from "./chain-data.js";
+
+export type {
+  Leaf,
+  SwapTree,
+  RgbLock,
+  SubSwapStates,
+  RevSwapStates,
+  ChainSwapStates,
+  Webhook,
+  CreateSubmarineRequest,
+  CreateSubmarineResponse,
+  CreateReverseRequest,
+  CreateReverseResponse,
+  CreateChainRequest,
+  ChainSwapDetails,
+  CreateChainResponse,
+  TransactionResponse,
+  TransactionOut,
+  SwapEvent,
+  SwapPayoutStatus,
+  GetSwapResponse,
+  ClaimDetails,
+  RefundDetails,
+  SwapRestoreType,
+  SwapRestoreResponse,
+  SwapRestoreIndexResponse,
+} from "../vendor/bindings_wasm.js";
 
 /** Options for {@link createKaleidoMakerClient}. */
 export interface KaleidoMakerClientOptions {
@@ -209,20 +227,6 @@ export interface RgbPsbtParams {
   esploraTimeoutSecs?: number;
   /** Required colored lock transaction; prevents third-party output selection. */
   lockupTxHex: string;
-}
-
-export interface RgbLock {
-  cooperativeRefund?: "rgb-coop-refund-v1";
-  assetId: string;
-  /** Contract units, six decimals for USDT-RGB. */
-  amount: bigint;
-  recipientId: string;
-  blinding: string;
-  htlcSat: bigint;
-  claimFeeRate?: bigint;
-  scriptPubkey: string;
-  transportEndpoints: string[];
-  minConfirmations: number;
 }
 
 /** Base64 unsigned PSBT and the RGB allocation the wallet must construct. */

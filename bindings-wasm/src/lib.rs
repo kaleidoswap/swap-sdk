@@ -2,14 +2,44 @@
 //!
 //! Exposes the Boltz swap surface and the swap key-management surface to
 //! JavaScript/TypeScript via `wasm-bindgen`. Request/response values cross to JS
-//! as plain objects through `serde-wasm-bindgen`; the TS SDK adds hand-written
-//! types on top of that boundary.
+//! as plain objects through `serde-wasm-bindgen`; swap DTO declarations are
+//! generated from their Rust/serde definitions and embedded below.
 //!
 //! Build with `wasm-pack build` (see `make wasm-pack-build`), which emits a JS
 //! package with generated `.d.ts` under `bindings-wasm/pkg/`.
 
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
+
+// Public DTO declarations share the same serde-derived source as native Rust.
+#[wasm_bindgen(typescript_custom_section)]
+const SWAP_TYPES: &str = include_str!("swap_types.ts");
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CreateSubmarineRequest")]
+    pub type CreateSubmarineRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateReverseRequest")]
+    pub type CreateReverseRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateChainRequest")]
+    pub type CreateChainRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateSubmarineResponse")]
+    pub type CreateSubmarineResponseJs;
+    #[wasm_bindgen(typescript_type = "CreateReverseResponse")]
+    pub type CreateReverseResponseJs;
+    #[wasm_bindgen(typescript_type = "CreateChainResponse")]
+    pub type CreateChainResponseJs;
+    #[wasm_bindgen(typescript_type = "GetSwapResponse")]
+    pub type GetSwapResponseJs;
+    #[wasm_bindgen(typescript_type = "SwapRestoreResponse[]")]
+    pub type SwapRestoreResponsesJs;
+    #[wasm_bindgen(typescript_type = "SwapRestoreIndexResponse")]
+    pub type SwapRestoreIndexResponseJs;
+}
+
+fn to_typed_js<T: serde::Serialize, J: JsCast>(value: &T) -> Result<J, JsValue> {
+    Ok(to_js(value)?.unchecked_into())
+}
 
 // ---- Errors -----------------------------------------------------------------
 //
@@ -843,14 +873,14 @@ impl BoltzClient {
     pub async fn create_submarine_swap(
         &self,
         network: StringArg,
-        req: JsValue,
+        req: CreateSubmarineRequestJs,
         rgb_contract_id: Option<StringArg>,
         rgb_max_htlc_sat: Option<BigIntArg>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<CreateSubmarineResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
         let rgb_max_htlc_sat = opt_u64_arg(rgb_max_htlc_sat, "rgbMaxHtlcSat")?;
-        let req: CreateSubmarineRequest = from_js(req)?;
+        let req: CreateSubmarineRequest = from_js(req.into())?;
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
         let rgb_contract_id = rgb_contract_before_create(
@@ -897,18 +927,18 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
-        to_js(&resp)
+        to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
     pub async fn create_reverse_swap(
         &self,
         network: StringArg,
-        req: JsValue,
+        req: CreateReverseRequestJs,
         rgb_contract_id: Option<StringArg>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<CreateReverseResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
-        let req: CreateReverseRequest = from_js(req)?;
+        let req: CreateReverseRequest = from_js(req.into())?;
         let claim_pk = req.claim_public_key;
         let to = req.to.clone();
         let preimage_hash = req.preimage_hash;
@@ -965,16 +995,16 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
-        to_js(&resp)
+        to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
     pub async fn create_chain_swap(
         &self,
         network: StringArg,
-        req: JsValue,
-    ) -> Result<JsValue, JsValue> {
+        req: CreateChainRequestJs,
+    ) -> Result<CreateChainResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
-        let req: CreateChainRequest = from_js(req)?;
+        let req: CreateChainRequest = from_js(req.into())?;
         // Both keys are required so the returned lockup script/tree can be
         // checked against the request — never hand back an unvalidated
         // response to fund (same guarantee as the reverse path). Reject (and
@@ -1028,7 +1058,7 @@ impl BoltzClient {
             to_asset_context,
         )
         .map_err(core_err)?;
-        to_js(&resp)
+        to_typed_js(&resp)
     }
 
     // ---- Status / lookups --------------------------------------------------
@@ -1064,9 +1094,9 @@ impl BoltzClient {
         let invoice = str_arg(invoice, "invoice")?;
         to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
     }
-    pub async fn swap(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+    pub async fn swap(&self, swap_id: StringArg) -> Result<GetSwapResponseJs, JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;
-        to_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
+        to_typed_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
     }
     pub async fn quote(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;
@@ -1150,10 +1180,10 @@ impl BoltzClient {
         xpub: StringArg,
         derivation_path: Option<StringArg>,
         gap_limit: Option<u32>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<SwapRestoreResponsesJs, JsValue> {
         let xpub = str_arg(xpub, "xpub")?;
         let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
-        to_js(
+        to_typed_js(
             &self
                 .inner
                 .post_swap_restore(&xpub, derivation_path, gap_limit)
@@ -1169,10 +1199,10 @@ impl BoltzClient {
         xpub: StringArg,
         derivation_path: Option<StringArg>,
         gap_limit: Option<u32>,
-    ) -> Result<JsValue, JsValue> {
+    ) -> Result<SwapRestoreIndexResponseJs, JsValue> {
         let xpub = str_arg(xpub, "xpub")?;
         let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
-        to_js(
+        to_typed_js(
             &self
                 .inner
                 .post_swap_restore_index(&xpub, derivation_path, gap_limit)

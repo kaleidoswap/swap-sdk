@@ -340,9 +340,23 @@ public router.
 - `SwapMasterKey` — BIP85 swap key and preimage derivation.
 - `isKaleidoSwapError` — narrow a rejection to its stable `code`.
 
-Boltz request and response payloads are Rust-defined and cross the boundary as
-plain objects typed `any`; the rest of the surface is hand-typed. The packaged
-`dist/index.d.ts` carries the full signatures and their documentation.
+`swap()`, the three create methods, `swapRestore()` and `swapRestoreIndex()` use
+public DTOs generated from the Rust/serde definitions. Types such as
+`CreateReverseRequest`, `CreateReverseResponse`, `GetSwapResponse` and
+`SwapRestoreResponse` can be imported from this package. Node, browser and raw
+WASM declarations carry the same types; the packaged `dist/index.d.ts` also
+documents the hand-written helpers.
+
+Restore entries carry the literal `type` discriminator (`"submarine"`,
+`"reverse"` or `"chain"`), with optional claim/refund details. A missing or null
+Rust `Option` becomes `undefined` in responses. Maker status responses preserve
+payout progress and payment audit events. Event `data` is `unknown`: narrow it
+before reading fields. JSON integer encodings inside `data` arrive as `bigint`, including
+small values; floating-point encodings arrive as `number` (`2` becomes `2n`,
+while `2.5` stays `2.5`). Narrow for both
+forms as appropriate. These values are not JSON-serializable as-is:
+`JSON.stringify(event.data)` can throw; use `toJson(event.data)` for persistence.
+Native bindings expose that open audit value as JSON text.
 
 Every rejection produced after an argument reaches the Rust binding is an `Error`
 carrying a `code`. Input the binding rejects — a mistyped string argument, an
@@ -544,9 +558,45 @@ master.deriveSwapKey(0); // TypeError: Cannot convert 0 to a BigInt
 `tsc` rejects the plain-number form ahead of that throw. The same applies to any
 other `bigint` argument, such as the `SwapClient` constructor's `timeoutSecs`.
 
-Fields inside request objects are declared `number` even where the Rust type
-behind them is 64-bit, because those objects are deserialized rather than passed
-on the ABI. Pass what the field declares and both cases are correct.
+64-bit fields inside swap request objects accept `bigint | number`, because
+serde deserializes those objects. Use BigInt for values above
+`Number.MAX_SAFE_INTEGER`; unsafe Numbers are rejected before sending the create
+request. Optional request fields also accept `null`.
+
+64-bit response fields are always `bigint`, including amounts, event timestamps,
+`createdAt` and the restore index. Rust `u32`/`u8` fields remain `number`, such as
+restore key indices, output indices and reverse/chain timeout heights. Submarine
+timeout height is a Rust `u64` and therefore `bigint`.
+
+## Swap DTO generation and maker schema checks
+
+From the repository root, run `make generate-swap-types` after editing a Rust DTO.
+`make check-swap-types` regenerates the declarations with pinned `ts-rs` and
+rejects differences. Package CI runs this check and
+`node typescript-sdk/scripts/check-swap-schema.mjs` against the committed
+`tests/fixtures/maker-swap-schema.json` snapshot. The snapshot records the exact
+maker commit and source file; the checker validates routes, supported fields,
+required fields, references, integer representations and restore discriminators. Its explicit exceptions
+cover upstream Boltz extensions and maker routes this SDK does not expose, such
+as BOLT12 offer creation and legacy flat/Arkade chain responses.
+
+To refresh or check the upstream contract, authenticate `gh` with read access to
+the private `kaleidoswap/kaleidoswap-maker-rs` repository, then run:
+
+```bash
+uv run scripts/update_maker_swap_schema.py --check
+uv run scripts/update_maker_swap_schema.py --revision main
+node typescript-sdk/scripts/check-swap-schema.mjs
+```
+
+Review snapshot changes together with the Rust DTOs and any compatibility
+exceptions. CI always validates the pinned snapshot. Live upstream drift
+detection is a separate, owner-triggered **Maker schema drift** workflow. It
+checks trusted default-branch scripts and scopes `MAKER_SCHEMA_READ_TOKEN`
+(read-only maker Contents access) to its single live-check step. Required PR
+builds never receive that token or depend on moving maker `main`; they always
+check the pinned contract. Run the manual workflow after deployment/schema
+changes or refresh locally with authenticated read access as above.
 
 ## Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
 

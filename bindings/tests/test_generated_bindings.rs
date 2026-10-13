@@ -29,6 +29,12 @@ fn submarine() {
 
 #[test]
 #[serial]
+fn typed_swap_dtos() {
+    run_test("tests/bindings/typed_swap_dtos.py");
+}
+
+#[test]
+#[serial]
 fn swap_script_restore() {
     run_test("tests/bindings/swap_script_restore.py");
 }
