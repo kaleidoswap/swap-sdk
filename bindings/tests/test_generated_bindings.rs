@@ -45,3 +45,9 @@ fn auth_recovery() {
 fn rgb() {
     run_test("tests/bindings/rgb.py");
 }
+
+#[test]
+#[serial]
+fn transaction_restore() {
+    run_test("tests/bindings/transaction_restore.py");
+}

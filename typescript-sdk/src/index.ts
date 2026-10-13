@@ -33,6 +33,8 @@ export const wasmUrl = new URL(
 // the README and the LICENSE, where it is recorded in full.
 export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 
+/** Rebuild saved Bitcoin/Liquid transactions with `fromHex(hex, chain)` and
+ * rebroadcast the same bytes through their existing `broadcast` method. */
 export { BtcLikeTransaction };
 export {
   EsploraDataError,
