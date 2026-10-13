@@ -648,6 +648,24 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete()
+        != 51194
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote() != 23968:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request()
+        != 49374
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card()
         != 59966
     ):
@@ -680,6 +698,20 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap() != 17792:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs()
+        != 61489
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap()
+        != 19255
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -1539,6 +1571,31 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.argtypes = 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.c_uint64,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.argtypes = (
     ctypes.c_void_p,
 )
@@ -1575,6 +1632,19 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap.argtypes =
     _UniffiRustBuffer,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap.restype = (
     ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_pairs.argtypes = (
@@ -2259,6 +2329,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.argty
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.argtypes = ()
@@ -2275,6 +2353,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap.argt
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_txs.argtypes = ()
@@ -2602,6 +2684,686 @@ class _UniffiConverterDuration(_UniffiConverterRustBuffer):
         nanoseconds = value.microseconds * 1000
         buf.write_i64(seconds)
         buf.write_u32(nanoseconds)
+
+
+class AtomicCompletion:
+    """
+    The broadcast swap. `completion_json` is the finalized
+    `OnchainSwapCompletion`, for the wallet's `accept_swap_transfers`.
+    """
+
+    id: "str"
+    status: "str"
+    txid: "str"
+    completion_json: "str"
+
+    def __init__(
+        self, *, id: "str", status: "str", txid: "str", completion_json: "str"
+    ):
+        self.id = id
+        self.status = status
+        self.txid = txid
+        self.completion_json = completion_json
+
+    def __str__(self):
+        return "AtomicCompletion(id={}, status={}, txid={}, completion_json={})".format(
+            self.id, self.status, self.txid, self.completion_json
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.status != other.status:
+            return False
+        if self.txid != other.txid:
+            return False
+        if self.completion_json != other.completion_json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicCompletion(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicCompletion(
+            id=_UniffiConverterString.read(buf),
+            status=_UniffiConverterString.read(buf),
+            txid=_UniffiConverterString.read(buf),
+            completion_json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterString.check_lower(value.txid)
+        _UniffiConverterString.check_lower(value.completion_json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterString.write(value.txid, buf)
+        _UniffiConverterString.write(value.completion_json, buf)
+
+
+class AtomicPair:
+    hash: "str"
+    rate: "float"
+    limits: "AtomicPairLimits"
+    fees: "AtomicPairFees"
+
+    def __init__(
+        self,
+        *,
+        hash: "str",
+        rate: "float",
+        limits: "AtomicPairLimits",
+        fees: "AtomicPairFees",
+    ):
+        self.hash = hash
+        self.rate = rate
+        self.limits = limits
+        self.fees = fees
+
+    def __str__(self):
+        return "AtomicPair(hash={}, rate={}, limits={}, fees={})".format(
+            self.hash, self.rate, self.limits, self.fees
+        )
+
+    def __eq__(self, other):
+        if self.hash != other.hash:
+            return False
+        if self.rate != other.rate:
+            return False
+        if self.limits != other.limits:
+            return False
+        if self.fees != other.fees:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicPair(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicPair(
+            hash=_UniffiConverterString.read(buf),
+            rate=_UniffiConverterDouble.read(buf),
+            limits=_UniffiConverterTypeAtomicPairLimits.read(buf),
+            fees=_UniffiConverterTypeAtomicPairFees.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.hash)
+        _UniffiConverterDouble.check_lower(value.rate)
+        _UniffiConverterTypeAtomicPairLimits.check_lower(value.limits)
+        _UniffiConverterTypeAtomicPairFees.check_lower(value.fees)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.hash, buf)
+        _UniffiConverterDouble.write(value.rate, buf)
+        _UniffiConverterTypeAtomicPairLimits.write(value.limits, buf)
+        _UniffiConverterTypeAtomicPairFees.write(value.fees, buf)
+
+
+class AtomicPairFees:
+    percentage: "float"
+    miner_fees: "int"
+
+    def __init__(self, *, percentage: "float", miner_fees: "int"):
+        self.percentage = percentage
+        self.miner_fees = miner_fees
+
+    def __str__(self):
+        return "AtomicPairFees(percentage={}, miner_fees={})".format(
+            self.percentage, self.miner_fees
+        )
+
+    def __eq__(self, other):
+        if self.percentage != other.percentage:
+            return False
+        if self.miner_fees != other.miner_fees:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicPairFees(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicPairFees(
+            percentage=_UniffiConverterDouble.read(buf),
+            miner_fees=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterDouble.check_lower(value.percentage)
+        _UniffiConverterUInt64.check_lower(value.miner_fees)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterDouble.write(value.percentage, buf)
+        _UniffiConverterUInt64.write(value.miner_fees, buf)
+
+
+class AtomicPairLimits:
+    minimal: "int"
+    maximal: "int"
+
+    def __init__(self, *, minimal: "int", maximal: "int"):
+        self.minimal = minimal
+        self.maximal = maximal
+
+    def __str__(self):
+        return "AtomicPairLimits(minimal={}, maximal={})".format(
+            self.minimal, self.maximal
+        )
+
+    def __eq__(self, other):
+        if self.minimal != other.minimal:
+            return False
+        if self.maximal != other.maximal:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicPairLimits(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicPairLimits(
+            minimal=_UniffiConverterUInt64.read(buf),
+            maximal=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt64.check_lower(value.minimal)
+        _UniffiConverterUInt64.check_lower(value.maximal)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt64.write(value.minimal, buf)
+        _UniffiConverterUInt64.write(value.maximal, buf)
+
+
+class AtomicProposal:
+    """
+    The maker's unsigned `OnchainSwapProposal`, for the wallet's
+    `complete_swap_proposal`.
+    """
+
+    id: "str"
+    status: "str"
+    proposal_json: "str"
+
+    def __init__(self, *, id: "str", status: "str", proposal_json: "str"):
+        self.id = id
+        self.status = status
+        self.proposal_json = proposal_json
+
+    def __str__(self):
+        return "AtomicProposal(id={}, status={}, proposal_json={})".format(
+            self.id, self.status, self.proposal_json
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.status != other.status:
+            return False
+        if self.proposal_json != other.proposal_json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicProposal(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicProposal(
+            id=_UniffiConverterString.read(buf),
+            status=_UniffiConverterString.read(buf),
+            proposal_json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.status)
+        _UniffiConverterString.check_lower(value.proposal_json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.status, buf)
+        _UniffiConverterString.write(value.proposal_json, buf)
+
+
+class AtomicQuote:
+    """
+    A verified quote. `offer_json` is rgb-lib's `OnchainSwapOffer`, for the
+    wallet's `accept_swap_offer`.
+    """
+
+    id: "str"
+    pair: "str"
+    direction: "AtomicAmountDirection"
+    from_amount: "int"
+    to_amount: "int"
+    asset_id: "str"
+    network_fee_sat: "int"
+    service_fee: "int"
+    expires_at: "int"
+    offer_expires_at: "int"
+    offer_json: "str"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        pair: "str",
+        direction: "AtomicAmountDirection",
+        from_amount: "int",
+        to_amount: "int",
+        asset_id: "str",
+        network_fee_sat: "int",
+        service_fee: "int",
+        expires_at: "int",
+        offer_expires_at: "int",
+        offer_json: "str",
+    ):
+        self.id = id
+        self.pair = pair
+        self.direction = direction
+        self.from_amount = from_amount
+        self.to_amount = to_amount
+        self.asset_id = asset_id
+        self.network_fee_sat = network_fee_sat
+        self.service_fee = service_fee
+        self.expires_at = expires_at
+        self.offer_expires_at = offer_expires_at
+        self.offer_json = offer_json
+
+    def __str__(self):
+        return "AtomicQuote(id={}, pair={}, direction={}, from_amount={}, to_amount={}, asset_id={}, network_fee_sat={}, service_fee={}, expires_at={}, offer_expires_at={}, offer_json={})".format(
+            self.id,
+            self.pair,
+            self.direction,
+            self.from_amount,
+            self.to_amount,
+            self.asset_id,
+            self.network_fee_sat,
+            self.service_fee,
+            self.expires_at,
+            self.offer_expires_at,
+            self.offer_json,
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.pair != other.pair:
+            return False
+        if self.direction != other.direction:
+            return False
+        if self.from_amount != other.from_amount:
+            return False
+        if self.to_amount != other.to_amount:
+            return False
+        if self.asset_id != other.asset_id:
+            return False
+        if self.network_fee_sat != other.network_fee_sat:
+            return False
+        if self.service_fee != other.service_fee:
+            return False
+        if self.expires_at != other.expires_at:
+            return False
+        if self.offer_expires_at != other.offer_expires_at:
+            return False
+        if self.offer_json != other.offer_json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicQuote(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicQuote(
+            id=_UniffiConverterString.read(buf),
+            pair=_UniffiConverterString.read(buf),
+            direction=_UniffiConverterTypeAtomicAmountDirection.read(buf),
+            from_amount=_UniffiConverterUInt64.read(buf),
+            to_amount=_UniffiConverterUInt64.read(buf),
+            asset_id=_UniffiConverterString.read(buf),
+            network_fee_sat=_UniffiConverterUInt64.read(buf),
+            service_fee=_UniffiConverterUInt64.read(buf),
+            expires_at=_UniffiConverterInt64.read(buf),
+            offer_expires_at=_UniffiConverterInt64.read(buf),
+            offer_json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterTypeAtomicAmountDirection.check_lower(value.direction)
+        _UniffiConverterUInt64.check_lower(value.from_amount)
+        _UniffiConverterUInt64.check_lower(value.to_amount)
+        _UniffiConverterString.check_lower(value.asset_id)
+        _UniffiConverterUInt64.check_lower(value.network_fee_sat)
+        _UniffiConverterUInt64.check_lower(value.service_fee)
+        _UniffiConverterInt64.check_lower(value.expires_at)
+        _UniffiConverterInt64.check_lower(value.offer_expires_at)
+        _UniffiConverterString.check_lower(value.offer_json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterTypeAtomicAmountDirection.write(value.direction, buf)
+        _UniffiConverterUInt64.write(value.from_amount, buf)
+        _UniffiConverterUInt64.write(value.to_amount, buf)
+        _UniffiConverterString.write(value.asset_id, buf)
+        _UniffiConverterUInt64.write(value.network_fee_sat, buf)
+        _UniffiConverterUInt64.write(value.service_fee, buf)
+        _UniffiConverterInt64.write(value.expires_at, buf)
+        _UniffiConverterInt64.write(value.offer_expires_at, buf)
+        _UniffiConverterString.write(value.offer_json, buf)
+
+
+class AtomicQuoteExpectations:
+    asset_id: "str"
+    bitcoin_network: "str"
+    proxy_url: "typing.Optional[str]"
+    max_network_fee_sat: "typing.Optional[int]"
+    max_service_fee: "typing.Optional[int]"
+    min_to_amount: "typing.Optional[int]"
+    max_from_amount: "typing.Optional[int]"
+    max_offer_ttl_secs: "typing.Optional[int]"
+
+    def __init__(
+        self,
+        *,
+        asset_id: "str",
+        bitcoin_network: "str",
+        proxy_url: "typing.Optional[str]",
+        max_network_fee_sat: "typing.Optional[int]",
+        max_service_fee: "typing.Optional[int]",
+        min_to_amount: "typing.Optional[int]",
+        max_from_amount: "typing.Optional[int]",
+        max_offer_ttl_secs: "typing.Optional[int]",
+    ):
+        self.asset_id = asset_id
+        self.bitcoin_network = bitcoin_network
+        self.proxy_url = proxy_url
+        self.max_network_fee_sat = max_network_fee_sat
+        self.max_service_fee = max_service_fee
+        self.min_to_amount = min_to_amount
+        self.max_from_amount = max_from_amount
+        self.max_offer_ttl_secs = max_offer_ttl_secs
+
+    def __str__(self):
+        return "AtomicQuoteExpectations(asset_id={}, bitcoin_network={}, proxy_url={}, max_network_fee_sat={}, max_service_fee={}, min_to_amount={}, max_from_amount={}, max_offer_ttl_secs={})".format(
+            self.asset_id,
+            self.bitcoin_network,
+            self.proxy_url,
+            self.max_network_fee_sat,
+            self.max_service_fee,
+            self.min_to_amount,
+            self.max_from_amount,
+            self.max_offer_ttl_secs,
+        )
+
+    def __eq__(self, other):
+        if self.asset_id != other.asset_id:
+            return False
+        if self.bitcoin_network != other.bitcoin_network:
+            return False
+        if self.proxy_url != other.proxy_url:
+            return False
+        if self.max_network_fee_sat != other.max_network_fee_sat:
+            return False
+        if self.max_service_fee != other.max_service_fee:
+            return False
+        if self.min_to_amount != other.min_to_amount:
+            return False
+        if self.max_from_amount != other.max_from_amount:
+            return False
+        if self.max_offer_ttl_secs != other.max_offer_ttl_secs:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicQuoteExpectations(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicQuoteExpectations(
+            asset_id=_UniffiConverterString.read(buf),
+            bitcoin_network=_UniffiConverterString.read(buf),
+            proxy_url=_UniffiConverterOptionalString.read(buf),
+            max_network_fee_sat=_UniffiConverterOptionalUInt64.read(buf),
+            max_service_fee=_UniffiConverterOptionalUInt64.read(buf),
+            min_to_amount=_UniffiConverterOptionalUInt64.read(buf),
+            max_from_amount=_UniffiConverterOptionalUInt64.read(buf),
+            max_offer_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.asset_id)
+        _UniffiConverterString.check_lower(value.bitcoin_network)
+        _UniffiConverterOptionalString.check_lower(value.proxy_url)
+        _UniffiConverterOptionalUInt64.check_lower(value.max_network_fee_sat)
+        _UniffiConverterOptionalUInt64.check_lower(value.max_service_fee)
+        _UniffiConverterOptionalUInt64.check_lower(value.min_to_amount)
+        _UniffiConverterOptionalUInt64.check_lower(value.max_from_amount)
+        _UniffiConverterOptionalUInt64.check_lower(value.max_offer_ttl_secs)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.asset_id, buf)
+        _UniffiConverterString.write(value.bitcoin_network, buf)
+        _UniffiConverterOptionalString.write(value.proxy_url, buf)
+        _UniffiConverterOptionalUInt64.write(value.max_network_fee_sat, buf)
+        _UniffiConverterOptionalUInt64.write(value.max_service_fee, buf)
+        _UniffiConverterOptionalUInt64.write(value.min_to_amount, buf)
+        _UniffiConverterOptionalUInt64.write(value.max_from_amount, buf)
+        _UniffiConverterOptionalUInt64.write(value.max_offer_ttl_secs, buf)
+
+
+class AtomicQuoteRequest:
+    pair: "str"
+    amount: "int"
+    direction: "AtomicAmountDirection"
+
+    def __init__(
+        self, *, pair: "str", amount: "int", direction: "AtomicAmountDirection"
+    ):
+        self.pair = pair
+        self.amount = amount
+        self.direction = direction
+
+    def __str__(self):
+        return "AtomicQuoteRequest(pair={}, amount={}, direction={})".format(
+            self.pair, self.amount, self.direction
+        )
+
+    def __eq__(self, other):
+        if self.pair != other.pair:
+            return False
+        if self.amount != other.amount:
+            return False
+        if self.direction != other.direction:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicQuoteRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicQuoteRequest(
+            pair=_UniffiConverterString.read(buf),
+            amount=_UniffiConverterUInt64.read(buf),
+            direction=_UniffiConverterTypeAtomicAmountDirection.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterUInt64.check_lower(value.amount)
+        _UniffiConverterTypeAtomicAmountDirection.check_lower(value.direction)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterUInt64.write(value.amount, buf)
+        _UniffiConverterTypeAtomicAmountDirection.write(value.direction, buf)
+
+
+class AtomicSwapStatus:
+    id: "str"
+    pair: "str"
+    status: "AtomicSwapState"
+    state: "str"
+    from_amount: "int"
+    to_amount: "int"
+    asset_id: "str"
+    network_fee_sat: "int"
+    txid: "typing.Optional[str]"
+    confirmations: "int"
+    expires_at: "int"
+    offer_expires_at: "int"
+    created_at: "int"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        pair: "str",
+        status: "AtomicSwapState",
+        state: "str",
+        from_amount: "int",
+        to_amount: "int",
+        asset_id: "str",
+        network_fee_sat: "int",
+        txid: "typing.Optional[str]",
+        confirmations: "int",
+        expires_at: "int",
+        offer_expires_at: "int",
+        created_at: "int",
+    ):
+        self.id = id
+        self.pair = pair
+        self.status = status
+        self.state = state
+        self.from_amount = from_amount
+        self.to_amount = to_amount
+        self.asset_id = asset_id
+        self.network_fee_sat = network_fee_sat
+        self.txid = txid
+        self.confirmations = confirmations
+        self.expires_at = expires_at
+        self.offer_expires_at = offer_expires_at
+        self.created_at = created_at
+
+    def __str__(self):
+        return "AtomicSwapStatus(id={}, pair={}, status={}, state={}, from_amount={}, to_amount={}, asset_id={}, network_fee_sat={}, txid={}, confirmations={}, expires_at={}, offer_expires_at={}, created_at={})".format(
+            self.id,
+            self.pair,
+            self.status,
+            self.state,
+            self.from_amount,
+            self.to_amount,
+            self.asset_id,
+            self.network_fee_sat,
+            self.txid,
+            self.confirmations,
+            self.expires_at,
+            self.offer_expires_at,
+            self.created_at,
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.pair != other.pair:
+            return False
+        if self.status != other.status:
+            return False
+        if self.state != other.state:
+            return False
+        if self.from_amount != other.from_amount:
+            return False
+        if self.to_amount != other.to_amount:
+            return False
+        if self.asset_id != other.asset_id:
+            return False
+        if self.network_fee_sat != other.network_fee_sat:
+            return False
+        if self.txid != other.txid:
+            return False
+        if self.confirmations != other.confirmations:
+            return False
+        if self.expires_at != other.expires_at:
+            return False
+        if self.offer_expires_at != other.offer_expires_at:
+            return False
+        if self.created_at != other.created_at:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicSwapStatus(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicSwapStatus(
+            id=_UniffiConverterString.read(buf),
+            pair=_UniffiConverterString.read(buf),
+            status=_UniffiConverterTypeAtomicSwapState.read(buf),
+            state=_UniffiConverterString.read(buf),
+            from_amount=_UniffiConverterUInt64.read(buf),
+            to_amount=_UniffiConverterUInt64.read(buf),
+            asset_id=_UniffiConverterString.read(buf),
+            network_fee_sat=_UniffiConverterUInt64.read(buf),
+            txid=_UniffiConverterOptionalString.read(buf),
+            confirmations=_UniffiConverterUInt32.read(buf),
+            expires_at=_UniffiConverterInt64.read(buf),
+            offer_expires_at=_UniffiConverterInt64.read(buf),
+            created_at=_UniffiConverterInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterString.check_lower(value.pair)
+        _UniffiConverterTypeAtomicSwapState.check_lower(value.status)
+        _UniffiConverterString.check_lower(value.state)
+        _UniffiConverterUInt64.check_lower(value.from_amount)
+        _UniffiConverterUInt64.check_lower(value.to_amount)
+        _UniffiConverterString.check_lower(value.asset_id)
+        _UniffiConverterUInt64.check_lower(value.network_fee_sat)
+        _UniffiConverterOptionalString.check_lower(value.txid)
+        _UniffiConverterUInt32.check_lower(value.confirmations)
+        _UniffiConverterInt64.check_lower(value.expires_at)
+        _UniffiConverterInt64.check_lower(value.offer_expires_at)
+        _UniffiConverterInt64.check_lower(value.created_at)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterString.write(value.pair, buf)
+        _UniffiConverterTypeAtomicSwapState.write(value.status, buf)
+        _UniffiConverterString.write(value.state, buf)
+        _UniffiConverterUInt64.write(value.from_amount, buf)
+        _UniffiConverterUInt64.write(value.to_amount, buf)
+        _UniffiConverterString.write(value.asset_id, buf)
+        _UniffiConverterUInt64.write(value.network_fee_sat, buf)
+        _UniffiConverterOptionalString.write(value.txid, buf)
+        _UniffiConverterUInt32.write(value.confirmations, buf)
+        _UniffiConverterInt64.write(value.expires_at, buf)
+        _UniffiConverterInt64.write(value.offer_expires_at, buf)
+        _UniffiConverterInt64.write(value.created_at, buf)
 
 
 class BoltzWsConfig:
@@ -8135,6 +8897,126 @@ class _UniffiConverterTypeAmountSide(_UniffiConverterRustBuffer):
             buf.write_i32(2)
 
 
+class AtomicAmountDirection(enum.Enum):
+    FROM = 0
+
+    TO = 1
+
+
+class _UniffiConverterTypeAtomicAmountDirection(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return AtomicAmountDirection.FROM
+        if variant == 2:
+            return AtomicAmountDirection.TO
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == AtomicAmountDirection.FROM:
+            return
+        if value == AtomicAmountDirection.TO:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == AtomicAmountDirection.FROM:
+            buf.write_i32(1)
+        if value == AtomicAmountDirection.TO:
+            buf.write_i32(2)
+
+
+class AtomicSwapState(enum.Enum):
+    CREATED = 0
+
+    REQUESTED = 1
+
+    PROPOSED = 2
+
+    MEMPOOL = 3
+
+    CONFIRMED = 4
+
+    CLAIMED = 5
+
+    EXPIRED = 6
+
+    CANCELLED = 7
+
+    FAILED = 8
+
+
+class _UniffiConverterTypeAtomicSwapState(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return AtomicSwapState.CREATED
+        if variant == 2:
+            return AtomicSwapState.REQUESTED
+        if variant == 3:
+            return AtomicSwapState.PROPOSED
+        if variant == 4:
+            return AtomicSwapState.MEMPOOL
+        if variant == 5:
+            return AtomicSwapState.CONFIRMED
+        if variant == 6:
+            return AtomicSwapState.CLAIMED
+        if variant == 7:
+            return AtomicSwapState.EXPIRED
+        if variant == 8:
+            return AtomicSwapState.CANCELLED
+        if variant == 9:
+            return AtomicSwapState.FAILED
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == AtomicSwapState.CREATED:
+            return
+        if value == AtomicSwapState.REQUESTED:
+            return
+        if value == AtomicSwapState.PROPOSED:
+            return
+        if value == AtomicSwapState.MEMPOOL:
+            return
+        if value == AtomicSwapState.CONFIRMED:
+            return
+        if value == AtomicSwapState.CLAIMED:
+            return
+        if value == AtomicSwapState.EXPIRED:
+            return
+        if value == AtomicSwapState.CANCELLED:
+            return
+        if value == AtomicSwapState.FAILED:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == AtomicSwapState.CREATED:
+            buf.write_i32(1)
+        if value == AtomicSwapState.REQUESTED:
+            buf.write_i32(2)
+        if value == AtomicSwapState.PROPOSED:
+            buf.write_i32(3)
+        if value == AtomicSwapState.MEMPOOL:
+            buf.write_i32(4)
+        if value == AtomicSwapState.CONFIRMED:
+            buf.write_i32(5)
+        if value == AtomicSwapState.CLAIMED:
+            buf.write_i32(6)
+        if value == AtomicSwapState.EXPIRED:
+            buf.write_i32(7)
+        if value == AtomicSwapState.CANCELLED:
+            buf.write_i32(8)
+        if value == AtomicSwapState.FAILED:
+            buf.write_i32(9)
+
+
 class BitcoinChain(enum.Enum):
     BITCOIN = 0
 
@@ -10090,6 +10972,38 @@ class _UniffiConverterSequenceTypeSwapRestoreResponse(_UniffiConverterRustBuffer
         return [_UniffiConverterTypeSwapRestoreResponse.read(buf) for i in range(count)]
 
 
+class _UniffiConverterMapStringTypeAtomicPair(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, items):
+        for key, value in items.items():
+            _UniffiConverterString.check_lower(key)
+            _UniffiConverterTypeAtomicPair.check_lower(value)
+
+    @classmethod
+    def write(cls, items, buf):
+        buf.write_i32(len(items))
+        for key, value in items.items():
+            _UniffiConverterString.write(key, buf)
+            _UniffiConverterTypeAtomicPair.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative map size")
+
+        # It would be nice to use a dict comprehension,
+        # but in Python 3.7 and before the evaluation order is not according to spec,
+        # so we we're reading the value before the key.
+        # This loop makes the order explicit: first reading the key, then the value.
+        d = {}
+        for i in range(count):
+            key = _UniffiConverterString.read(buf)
+            val = _UniffiConverterTypeAtomicPair.read(buf)
+            d[key] = val
+        return d
+
+
 class _UniffiConverterMapStringTypeChainPair(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, items):
@@ -10214,6 +11128,38 @@ class _UniffiConverterMapStringTypeSubmarinePair(_UniffiConverterRustBuffer):
         for i in range(count):
             key = _UniffiConverterString.read(buf)
             val = _UniffiConverterTypeSubmarinePair.read(buf)
+            d[key] = val
+        return d
+
+
+class _UniffiConverterMapStringMapStringTypeAtomicPair(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, items):
+        for key, value in items.items():
+            _UniffiConverterString.check_lower(key)
+            _UniffiConverterMapStringTypeAtomicPair.check_lower(value)
+
+    @classmethod
+    def write(cls, items, buf):
+        buf.write_i32(len(items))
+        for key, value in items.items():
+            _UniffiConverterString.write(key, buf)
+            _UniffiConverterMapStringTypeAtomicPair.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative map size")
+
+        # It would be nice to use a dict comprehension,
+        # but in Python 3.7 and before the evaluation order is not according to spec,
+        # so we we're reading the value before the key.
+        # This loop makes the order explicit: first reading the key, then the value.
+        d = {}
+        for i in range(count):
+            key = _UniffiConverterString.read(buf)
+            val = _UniffiConverterMapStringTypeAtomicPair.read(buf)
             d[key] = val
         return d
 
@@ -11335,6 +12281,35 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def atomic_complete(self, swap_id: "str", completion_json: "str"):
+        """
+        Post the wallet's signed `OnchainSwapCompletion` JSON; the maker signs
+        last and broadcasts.
+        """
+
+        raise NotImplementedError
+
+    def atomic_quote(
+        self,
+        request: "AtomicQuoteRequest",
+        expectations: "AtomicQuoteExpectations",
+        now_secs: "int",
+    ):
+        """
+        Quote an atomic swap and verify it against `request` and
+        `expectations` at `now_secs` (unix seconds).
+        """
+
+        raise NotImplementedError
+
+    def atomic_request(self, swap_id: "str", request_json: "str"):
+        """
+        Post the wallet's `OnchainSwapRequest` JSON; returns the maker's
+        unsigned proposal.
+        """
+
+        raise NotImplementedError
+
     def corridor_card(
         self,
     ):
@@ -11372,6 +12347,22 @@ class SwapClientProtocol(typing.Protocol):
         raise NotImplementedError
 
     def create_swap(self, swap_request: "CreateSubmarineRequest"):
+        raise NotImplementedError
+
+    def get_atomic_pairs(
+        self,
+    ):
+        """
+        `GET /v2/swap/atomic/pairs`: from currency -> to currency -> card.
+        """
+
+        raise NotImplementedError
+
+    def get_atomic_swap(self, swap_id: "str"):
+        """
+        `GET /v2/swap/atomic/{id}`. Poll until the status is terminal.
+        """
+
         raise NotImplementedError
 
     def get_chain_pairs(
@@ -11697,6 +12688,93 @@ class SwapClient:
             )
         )
 
+    async def atomic_complete(
+        self, swap_id: "str", completion_json: "str"
+    ) -> "AtomicCompletion":
+        """
+        Post the wallet's signed `OnchainSwapCompletion` JSON; the maker signs
+        last and broadcasts.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterString.check_lower(completion_json)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterString.lower(completion_json),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicCompletion.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def atomic_quote(
+        self,
+        request: "AtomicQuoteRequest",
+        expectations: "AtomicQuoteExpectations",
+        now_secs: "int",
+    ) -> "AtomicQuote":
+        """
+        Quote an atomic swap and verify it against `request` and
+        `expectations` at `now_secs` (unix seconds).
+        """
+
+        _UniffiConverterTypeAtomicQuoteRequest.check_lower(request)
+
+        _UniffiConverterTypeAtomicQuoteExpectations.check_lower(expectations)
+
+        _UniffiConverterUInt64.check_lower(now_secs)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeAtomicQuoteRequest.lower(request),
+                _UniffiConverterTypeAtomicQuoteExpectations.lower(expectations),
+                _UniffiConverterUInt64.lower(now_secs),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicQuote.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def atomic_request(
+        self, swap_id: "str", request_json: "str"
+    ) -> "AtomicProposal":
+        """
+        Post the wallet's `OnchainSwapRequest` JSON; returns the maker's
+        unsigned proposal.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterString.check_lower(request_json)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterString.lower(request_json),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicProposal.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def corridor_card(
         self,
     ) -> "typing.Optional[CorridorCard]":
@@ -11808,6 +12886,46 @@ class SwapClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeCreateSubmarineResponse.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_atomic_pairs(
+        self,
+    ) -> "dict[str, dict[str, AtomicPair]]":
+        """
+        `GET /v2/swap/atomic/pairs`: from currency -> to currency -> card.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterMapStringMapStringTypeAtomicPair.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def get_atomic_swap(self, swap_id: "str") -> "AtomicSwapStatus":
+        """
+        `GET /v2/swap/atomic/{id}`. Poll until the status is terminal.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeAtomicSwapStatus.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -13270,6 +14388,8 @@ async def resolve_lightning_address(address: "str", amount_sat: "int") -> "str":
 __all__ = [
     "InternalError",
     "AmountSide",
+    "AtomicAmountDirection",
+    "AtomicSwapState",
     "BitcoinChain",
     "Chain",
     "ClientConnection",
@@ -13285,6 +14405,15 @@ __all__ = [
     "SubSwapStates",
     "SwapRestoreType",
     "TransactionChain",
+    "AtomicCompletion",
+    "AtomicPair",
+    "AtomicPairFees",
+    "AtomicPairLimits",
+    "AtomicProposal",
+    "AtomicQuote",
+    "AtomicQuoteExpectations",
+    "AtomicQuoteRequest",
+    "AtomicSwapStatus",
     "BoltzWsConfig",
     "CardAsset",
     "CardMarket",

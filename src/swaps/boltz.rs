@@ -1390,6 +1390,69 @@ impl BoltzApiClientV2 {
         }
     }
 
+    /// `GET /v2/swap/atomic/pairs` — the atomic rate cards.
+    pub async fn atomic_pairs(&self) -> Result<super::atomic::GetAtomicPairsResponse, Error> {
+        self.get_json("swap/atomic/pairs").await
+    }
+
+    /// `POST /v2/swap/atomic/quote`, checked with
+    /// [`super::atomic::AtomicQuote::verify`] before it is returned.
+    ///
+    /// `now` is unix seconds; the caller supplies it because the browser
+    /// build has no system clock.
+    pub async fn atomic_quote(
+        &self,
+        request: &super::atomic::AtomicQuoteRequest,
+        expect: &super::atomic::AtomicQuoteExpectations,
+        now: u64,
+    ) -> Result<super::atomic::AtomicQuote, Error> {
+        let quote: super::atomic::AtomicQuote =
+            self.post_json("swap/atomic/quote", request).await?;
+        quote.verify(request, expect, now)?;
+        Ok(quote)
+    }
+
+    /// `POST /v2/swap/atomic/{id}/request` with the wallet's
+    /// `OnchainSwapRequest`. Refuses a proposal for another swap or request.
+    pub async fn atomic_request(
+        &self,
+        id: &str,
+        request: &Value,
+    ) -> Result<super::atomic::AtomicProposal, Error> {
+        let answer = self
+            .post_json(
+                &format!("swap/atomic/{id}/request"),
+                serde_json::json!({ "request": request }),
+            )
+            .await?;
+        super::atomic::check_proposal(id, request, &answer)?;
+        Ok(answer)
+    }
+
+    /// `POST /v2/swap/atomic/{id}/complete` with the wallet's signed
+    /// `OnchainSwapCompletion`. The maker signs last and broadcasts; this
+    /// refuses an answer whose txid or proposal is not the one signed.
+    pub async fn atomic_complete(
+        &self,
+        id: &str,
+        completion: &Value,
+    ) -> Result<super::atomic::AtomicCompletion, Error> {
+        let answer = self
+            .post_json(
+                &format!("swap/atomic/{id}/complete"),
+                serde_json::json!({ "completion": completion }),
+            )
+            .await?;
+        super::atomic::check_completion(id, completion, &answer)?;
+        Ok(answer)
+    }
+
+    /// `GET /v2/swap/atomic/{id}` — where an atomic swap stands. Poll until
+    /// [`super::atomic::AtomicSwapState::is_terminal`].
+    pub async fn atomic_swap(&self, id: &str) -> Result<super::atomic::AtomicSwapStatus, Error> {
+        self.get_json(&format!("swap/atomic/{id}")).await
+    }
+
     pub async fn get_submarine_claim_tx_details(
         &self,
         id: &String,

@@ -146,6 +146,28 @@ current maker does not register their exact public routes. Correct the parity
 alias for WASM cooperative chain claims to native `construct_claim`, and check
 the route/export policy in CI against a pinned maker router inventory.
 
+### Added — atomic BTC <-> USDT-RGB swaps on L1
+
+A typed client for KaleidoSwap Maker 0.8.0's `/v2/swap/atomic` routes, in the
+Rust core (`kaleidorg_swap_sdk::atomic`, `BoltzApiClientV2::atomic_*`), the
+UniFFI binding and the TypeScript package (`AtomicSwaps`). One transaction
+moves both legs; there is no HTLC and no refund. The SDK quotes, verifies and
+tracks. The wallet's rgb-lib accepts the offer, signs the proposal and accepts
+the transfers; the SDK does not bundle rgb-lib.
+
+`atomicQuote` refuses a quote that answers another pair, direction or amount,
+names another asset, network or proxy than the caller expects, exceeds a fee,
+slippage or offer-lifetime ceiling, or has passed its request deadline. It
+also refuses a quote whose rgb-lib offer moves other amounts or another asset
+than the quote, reserves another miner fee, expires at another time or adds a
+platform fee: the wallet signs the offer, not the quote. `atomicRequest` and
+`atomicComplete` refuse a proposal for another request and a broadcast of
+another transaction. rgb-lib messages cross the JS and UniFFI boundaries as
+JSON text, because their 64-bit seal blindings do not survive JS numbers.
+
+`createChainSwap` still refuses USDT-RGB: atomic swaps are not Boltz chain
+swaps.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit
