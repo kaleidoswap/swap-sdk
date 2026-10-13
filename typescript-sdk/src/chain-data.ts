@@ -105,15 +105,10 @@ export async function esploraFeeEstimates(
       status,
     );
   }
-  if (
-    raw === null ||
-    typeof raw !== "object" ||
-    Array.isArray(raw) ||
-    Object.keys(raw).length === 0
-  ) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     throw new EsploraDataError(
       "HTTPResponseBodyInvalid",
-      "Esplora fee estimates must contain confirmation targets",
+      "Esplora fee estimates must be an object",
       status,
     );
   }
@@ -135,6 +130,38 @@ export async function esploraFeeEstimates(
     estimates[Number(target)] = rate;
   }
   return Object.freeze(estimates);
+}
+
+/** Choose the largest available confirmation target <= the requested target.
+ * This uses an equally fast or faster estimate, never a slower-target fallback.
+ * No estimate (including an empty map) returns undefined; there is no default.
+ * Rates remain in sat/vB, including fractional Liquid values. */
+export function selectEsploraFeeRate(
+  estimates: EsploraFeeEstimates,
+  target: number,
+): number | undefined {
+  if (!Number.isInteger(target) || target <= 0 || target > 0xffff_ffff) {
+    throw new TypeError("target must be a positive uint32 block count");
+  }
+  let selected = 0;
+  let rate: number | undefined;
+  for (const [key, value] of Object.entries(estimates)) {
+    if (value === undefined) continue;
+    const blocks = Number(key);
+    if (
+      !/^[1-9][0-9]*$/.test(key) ||
+      blocks > 0xffff_ffff ||
+      !Number.isFinite(value) ||
+      value <= 0
+    ) {
+      throw new TypeError("invalid confirmation target or sat/vB estimate");
+    }
+    if (blocks <= target && blocks > selected) {
+      selected = blocks;
+      rate = value;
+    }
+  }
+  return rate;
 }
 
 /** Fetch `GET <esplora base>/blocks/tip/height`. An unavailable or malformed

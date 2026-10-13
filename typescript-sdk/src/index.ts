@@ -37,6 +37,7 @@ export { BtcLikeTransaction };
 export {
   EsploraDataError,
   esploraFeeEstimates,
+  selectEsploraFeeRate,
   esploraTipHeight,
   type EsploraDataOptions,
   type EsploraFeeEstimates,

@@ -44,6 +44,7 @@ and are also exported from the main package:
 ```ts
 import {
   esploraFeeEstimates,
+  selectEsploraFeeRate,
   esploraTipHeight,
 } from "@kaleidorg/swap-sdk/chain-data";
 
@@ -52,7 +53,7 @@ const [fees, tipHeight] = await Promise.all([
   esploraFeeEstimates(baseUrl, { timeoutMs: 10_000 }),
   esploraTipHeight(baseUrl, { timeoutMs: 10_000 }),
 ]);
-const feeRateSatVb = fees[2]; // Confirmation target: two blocks; unit: sat/vB.
+const feeRateSatVb = selectEsploraFeeRate(fees, 2); // Target: two blocks; sat/vB.
 if (feeRateSatVb === undefined)
   throw new Error("No estimate for the requested target");
 ```
@@ -61,13 +62,21 @@ Fee estimates map positive confirmation targets to positive, finite **sat/vB**
 rates; fractional Liquid rates are preserved. Missing targets stay `undefined`.
 The tip is an integer block height. An Esplora genesis tip of zero is valid;
 missing, failed or malformed tip data rejects rather than producing zero.
-These read-only helpers make one request per call and do not cache, retry, select
+The fetch helpers make one request per call and do not cache, retry, select
 another target, substitute a fixed fee or switch endpoints. The default deadline
 is 30 seconds, including reading the response body; `signal` supports cancellation
 and `fetch` supports injected transports. HTTP errors report their status via
 `EsploraDataError`, separately from malformed successful responses. Network and
 cancellation errors propagate. Requests omit cookies and maker credentials and
-refuse redirects.
+refuse redirects. A configured URL that redirects (including HTTP→HTTPS)
+fails as a network error; configure the final URL directly.
+
+An empty `{}` fee map is valid when the explorer has no estimates yet.
+`selectEsploraFeeRate(fees, target)` chooses the largest available target at or
+below the requested block count (equally fast or faster). Missing eligible
+estimates return `undefined`; it never substitutes a slower target or a default
+fee. Fractional Liquid rates remain fractional. Postpone construction or apply
+an explicit application policy when no eligible estimate exists.
 
 Select the endpoint alongside the spend's existing Esplora configuration. Bitcoin,
 Liquid, testnet and regtest are distinct, and Mutinynet is not vanilla signet.

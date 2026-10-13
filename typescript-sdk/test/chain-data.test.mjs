@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   EsploraDataError,
   esploraFeeEstimates,
+  selectEsploraFeeRate,
   esploraTipHeight,
 } from "../dist/chain-data.js";
 
@@ -11,6 +12,8 @@ test("chain data helpers are available through both public entry points", async 
   const node = await import("../dist/index.node.js");
   const browser = await import("../dist/index.js");
   assert.equal(node.esploraFeeEstimates, esploraFeeEstimates);
+  assert.equal(node.selectEsploraFeeRate, selectEsploraFeeRate);
+  assert.equal(browser.selectEsploraFeeRate, selectEsploraFeeRate);
   assert.equal(browser.esploraTipHeight, esploraTipHeight);
 });
 
@@ -73,7 +76,6 @@ test("missing or malformed chain data never becomes a default fee or height", as
     "not JSON",
     "null",
     "[]",
-    "{}",
     '{"1":0}',
     '{"1":-1}',
     '{"1":"2"}',
@@ -208,4 +210,37 @@ test("URL and timeout validation precede I/O; fetch gets no maker authentication
     }),
     (error) => error === failure,
   );
+});
+
+test("empty fee estimates are valid and distinguishable from malformed data", async () => {
+  const fees = await esploraFeeEstimates("https://esplora.example", {
+    fetch: async () => Response.json({}),
+  });
+  assert.deepEqual(fees, {});
+  assert.ok(Object.isFrozen(fees));
+  assert.equal(selectEsploraFeeRate(fees, 2), undefined);
+});
+
+test("fee selector uses the nearest equally fast or faster target with no silent default", () => {
+  const fees = Object.freeze({ 1: 12, 3: 5.5, 25: 1.2, 144: 0.1 });
+  for (const [target, expected] of [
+    [1, 12],
+    [2, 12],
+    [3, 5.5],
+    [30, 1.2],
+    [144, 0.1],
+    [1008, 0.1],
+  ]) {
+    assert.equal(selectEsploraFeeRate(fees, target), expected);
+  }
+  assert.equal(
+    selectEsploraFeeRate({ 3: 5 }, 2),
+    undefined,
+    "a slower target is never substituted",
+  );
+  assert.equal(selectEsploraFeeRate({ 1: undefined }, 2), undefined);
+  for (const target of [0, -1, 1.5, NaN, Infinity, 4294967296])
+    assert.throws(() => selectEsploraFeeRate(fees, target), TypeError);
+  for (const fees of [{ 0: 1 }, { 1: NaN }, { 1: 0 }, { 1.5: 2 }])
+    assert.throws(() => selectEsploraFeeRate(fees, 2), TypeError);
 });
