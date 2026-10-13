@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import test from "node:test";
 import {
@@ -178,3 +179,70 @@ test("rgb-lib messages must be JSON text", async () => {
     hasCode("InvalidArgument", /requestJson/),
   );
 });
+
+// A real maker's bodies (`tests/fixtures/atomic-v1`), replayed byte for byte.
+const CAPTURE = JSON.parse(
+  readFileSync(
+    new URL(
+      "../../tests/fixtures/atomic-v1/wire-capture.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+).swaps;
+
+for (const [pair, capture] of Object.entries(CAPTURE)) {
+  test(`a real ${pair} swap replays through AtomicSwaps with every digit intact`, async () => {
+    const maker = await mockMaker(
+      ["quote", "request", "complete", "status"].map((name) => [
+        200,
+        capture[name],
+      ]),
+    );
+    try {
+      const atomic = new AtomicSwaps(new SwapClient(maker.url));
+      const quote = await atomic.quote(
+        { pair, amount: BigInt(JSON.parse(capture.quoteSent).amount) },
+        {
+          assetId: JSON.parse(capture.quote).assetId,
+          bitcoinNetwork: "Regtest",
+          maxNetworkFeeSat: 2_000n,
+          maxOfferTtlSecs: 600n,
+        },
+        BigInt(capture.now),
+      );
+      // rgb-lib's request and completion, as the wallet wrote them.
+      const request = capture.requestSent.slice('{"request":'.length, -1);
+      const completion = capture.completeSent.slice(
+        '{"completion":'.length,
+        -1,
+      );
+      const proposed = await atomic.request(quote.id, request);
+      const done = await atomic.complete(quote.id, completion);
+      const status = await atomic.status(quote.id);
+
+      assert.equal(status.status, "transaction.claimed");
+      assert.equal(status.txid, done.txid);
+      assert.deepEqual(
+        maker.seen.map((r) => `${r.method} ${r.url}`),
+        [
+          "POST /v2/swap/atomic/quote",
+          `POST /v2/swap/atomic/${quote.id}/request`,
+          `POST /v2/swap/atomic/${quote.id}/complete`,
+          `GET /v2/swap/atomic/${quote.id}`,
+        ],
+      );
+      // Every blinding above 2^53 reaches the maker and comes back as written.
+      const blindings = request.match(/"(?:taker|maker)_rgb_blinding":\d+/g);
+      assert.ok(blindings.length > 0);
+      for (const blinding of blindings) {
+        assert.ok(BigInt(blinding.split(":")[1]) > 2n ** 53n);
+        assert.ok(maker.seen[1].body.includes(blinding), blinding);
+        assert.ok(proposed.proposal.includes(blinding), blinding);
+      }
+      assert.ok(done.completion.includes(blindings[0]));
+    } finally {
+      maker.close();
+    }
+  });
+}

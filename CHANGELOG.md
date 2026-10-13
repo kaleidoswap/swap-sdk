@@ -165,6 +165,11 @@ platform fee: the wallet signs the offer, not the quote. `atomicRequest` and
 another transaction. rgb-lib messages cross the JS and UniFFI boundaries as
 JSON text, because their 64-bit seal blindings do not survive JS numbers.
 
+The checks are pinned to a real maker: `tests/fixtures/atomic-v1` holds every
+wire body of two settled regtest swaps, one per pair, captured from maker-rs's
+`atomic_regtest` with real rgb-lib wallets. Rust and TypeScript replay them
+byte for byte, and changed copies of the real offers are refused.
+
 `createChainSwap` still refuses USDT-RGB: atomic swaps are not Boltz chain
 swaps.
 
