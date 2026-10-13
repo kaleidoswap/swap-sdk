@@ -17,6 +17,13 @@ build targets and packaging, not new bindings code.
 Everything exported here must stay in step with `bindings-wasm/`, the browser
 surface. `make check-binding-parity` enforces that.
 
+The [maker/upstream support matrix](../docs/compatibility.md) records deliberate
+exceptions. Native `SwapScript.submarine_cooperative_claim` already exists for
+compatible upstream servers; KaleidoSwap does not register its required public
+claim routes. This differs from a cooperative chain claim through
+`construct_claim` and `TransactionOptions.chain_claim`. Raw maker broadcast and
+Boltz-shaped BOLT12 client methods remain Rust-only.
+
 ## Python
 
 ### Installation

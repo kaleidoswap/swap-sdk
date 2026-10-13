@@ -4,11 +4,56 @@
 //! commits value.
 
 use kaleidorg_swap_sdk::corridor::{
-    self, AmountSide, LightningReceiveRequest, LightningSendRequest, QuoteProfile, RefusalReason,
-    RfqQuote, RfqRefusal, RfqState, RfqStatus,
+    self, AmountSide, CardAsset, CardMarket, CardNostrTransport, CardTransports, CorridorCard,
+    LightningReceiveRequest, LightningSendRequest, QuoteProfile, RefusalReason, RfqQuote,
+    RfqRefusal, RfqState, RfqStatus,
 };
 
 use crate::boltz::{Error, SwapClient};
+
+/// Unverified maker card. The signature has NOT been checked against discovery_pubkey.
+/// Use corridor_card_raw for verification; the typed record discards unknown fields.
+#[uniffi::remote(Record)]
+pub struct CorridorCard {
+    pub version: u32,
+    pub name: String,
+    pub discovery_pubkey: String,
+    pub transports: CardTransports,
+    pub markets: Vec<CardMarket>,
+    /// Unverified signature; it does not establish authenticity or trust.
+    pub sig: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct CardTransports {
+    pub nostr: CardNostrTransport,
+}
+
+#[uniffi::remote(Record)]
+pub struct CardNostrTransport {
+    pub relays: Vec<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct CardAsset {
+    pub id: String,
+    pub name: String,
+    pub ticker: String,
+    pub decimals: u8,
+}
+
+#[uniffi::remote(Record)]
+pub struct CardMarket {
+    pub pair: String,
+    pub base_asset: CardAsset,
+    pub quote_asset: CardAsset,
+    pub quote_corridor: String,
+    pub fee_bps: u32,
+    pub min_base_amount: String,
+    pub max_base_amount: String,
+    pub min_quote_amount: String,
+    pub max_quote_amount: String,
+}
 
 #[uniffi::remote(Enum)]
 pub enum AmountSide {
@@ -140,6 +185,20 @@ impl SwapClient {
     #[uniffi::method]
     pub fn corridor_url(&self) -> Result<String, Error> {
         Ok(self.inner.corridor_root()?)
+    }
+
+    /// Signed discovery card, or `None` when unavailable/withdrawn (404).
+    /// Fetching does not verify the signature or establish identity trust.
+    #[uniffi::method]
+    pub async fn corridor_card(&self) -> Result<Option<CorridorCard>, Error> {
+        Ok(self.inner.corridor_card().await?)
+    }
+
+    /// Exact unverified card JSON for lossless verification. 404 is None.
+    /// Hash the maker's compact ordered JSON without sig, preserving all fields.
+    #[uniffi::method]
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, Error> {
+        Ok(self.inner.corridor_card_raw().await?)
     }
 
     /// Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup

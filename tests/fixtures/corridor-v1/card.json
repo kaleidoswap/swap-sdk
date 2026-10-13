@@ -1,0 +1,36 @@
+{
+  "version": 0,
+  "name": "Test maker",
+  "discovery_pubkey": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+  "transports": {
+    "nostr": {
+      "relays": [
+        "wss://relay.example"
+      ]
+    }
+  },
+  "markets": [
+    {
+      "pair": "BTC/lightning:BTC",
+      "base_asset": {
+        "id": "btc",
+        "name": "Bitcoin",
+        "ticker": "BTC",
+        "decimals": 8
+      },
+      "quote_asset": {
+        "id": "btc",
+        "name": "Bitcoin",
+        "ticker": "BTC",
+        "decimals": 8
+      },
+      "quote_corridor": "lightning",
+      "fee_bps": 25,
+      "min_base_amount": "0",
+      "max_base_amount": "0",
+      "min_quote_amount": "1000",
+      "max_quote_amount": "9007199254740993"
+    }
+  ],
+  "sig": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+}

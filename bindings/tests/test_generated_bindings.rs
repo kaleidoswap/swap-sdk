@@ -45,9 +45,27 @@ fn auth_recovery() {
     run_test("tests/bindings/auth_recovery.py");
 }
 
+#[test]
+#[serial]
+fn lightning_address() {
+    run_test("tests/bindings/lightning_address.py");
+}
+
+#[test]
+#[serial]
+fn corridor_card() {
+    run_test("tests/bindings/corridor_card.py");
+}
+
 /// RGB create and spend bindings use a local HTTP stub, without regtest daemons.
 #[test]
 #[serial]
 fn rgb() {
     run_test("tests/bindings/rgb.py");
+}
+
+#[test]
+#[serial]
+fn transaction_restore() {
+    run_test("tests/bindings/transaction_restore.py");
 }
