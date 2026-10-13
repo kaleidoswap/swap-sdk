@@ -130,6 +130,101 @@ falling back to that placeholder or the maker's fixed fee. Selecting a fee rate
 does not prove that a particular transaction will relay. Liquid relay validation
 must cover the intended network and transaction types separately.
 
+## Stateless claim/refund reconciliation
+
+The TypeScript helpers `canRefund`, `canClaim`, `refundSubmarineSwap`,
+`refundChainSwap`, `claimReverseSwap` and `claimChainSwap` compose the existing
+validated `SwapScript` constructors. They return a signed transaction or
+`{ kind: "not-yet", reason }`; they keep no state, run no timers and do not
+broadcast. Rust/native retain the lower-level constructors.
+
+```ts
+import { refundSubmarineSwap } from "@kaleidorg/swap-sdk";
+
+const result = await refundSubmarineSwap({
+  status, // fresh maker status for this swap
+  tipHeight, // trusted tip of the chain being refunded
+  createResponse, // original verified response / timeout
+  script, // validated submarine script for this same swap
+  params: {
+    outputAddress,
+    swapId,
+    keysSecretHex,
+    swapAuth,
+    network,
+    makerBaseUrl,
+    bitcoinEsploraUrl,
+    feeSatPerVb: 2, // choose explicitly; fractional Liquid rates work
+  },
+});
+if (result.kind === "signed") {
+  // Persist { swapId, action, path, hex, txid, chain } BEFORE broadcasting.
+  // Store secrets separately. Application storage/scheduling are your own.
+  const hex = result.transaction.hex();
+  const txid = result.transaction.txid();
+  // await saveSpend(...);
+  // await result.transaction.broadcast(network, bitcoinEsploraUrl, liquidEsploraUrl);
+}
+```
+
+Refund `mode: "auto"` attempts authenticated cooperation on failed/expired swaps
+before the timeout, and uses the script path once the lockup chain tip reaches
+`timeoutBlockHeight`. At maturity, stale `swap.created`, `invoice.pending` and
+unknown maker states cannot veto a unilateral refund. States indicating payment,
+claiming or a completed claim remain blocked. UTXO availability and consensus
+still decide whether a refund can be mined. `mode: "cooperative"` always requires
+the maker, and **refund** refusals propagate without a fallback. Local eligibility
+cannot authorize a maker signature or bypass its financial rules (#674).
+
+Claims require independently verified receiving-side chain evidence:
+`lockup: { chain: "bitcoin" | "liquid", hex, txid, confirmations }`. Obtain raw
+bytes, transaction ID and confirmation count from the application's trusted
+chain backend, verify the swap output, and refresh the evidence before signing.
+The maker's status is not confirmation proof. Missing evidence or fewer than
+`minConfirmations` (default 1) yields `not-yet` before any preimage disclosure.
+The WASM constructor verifies the raw transaction's txid and pins input selection
+to that transaction; it neither discovers a different mempool HTLC nor
+rebroadcasts the lockup. `allowZeroConf: true` explicitly accepts an unconfirmed
+lockup, but still requires its raw bytes and txid.
+
+Claims stop before the deadline by `claimSafetyMarginBlocks`: default 6 blocks
+for Bitcoin and 60 for Liquid. Override this policy explicitly; 0 accepts an
+expiry race. These margins cannot guarantee confirmation in time. Chain swaps
+use **lockup** tip/timeouts for refunds and **claim** tip/timeouts for claims.
+Pass the full response with `lockupDetails`/`claimDetails` or the appropriate
+side's details. Snapshots can be stale or reorged; construction/broadcast errors
+still propagate, and a signed result must be saved and broadcast promptly.
+
+Reverse claims in `mode: "auto"` prefer cooperation. Chain claims prefer it when
+both `lockupScript` and the distinct `refundKeysSecretHex` are provided. If a
+cooperative claim fails, auto mode immediately builds the unilateral script
+claim against the same pinned lockup: the maker may already know the preimage.
+Explicit `mode: "cooperative"` propagates failures, and callers must urgently
+switch to `mode: "script"` after a refusal. If both paths fail, the coded
+`ClaimFallbackFailed` error carries both causes and requires urgent script-path
+recovery. There is no automatic broadcast or network retry.
+
+Every construction needs exactly one positive `feeSatPerVb` or integer
+`feeAbsoluteSat`. Optional `feeLimits: { maxFeeSatPerVb, maxFeeAbsoluteSat }`
+rejects an excessive configured fee before signing. No maker fee default is
+assumed. The explicit Esplora helpers from [PR #112](https://github.com/kaleidoswap/swap-sdk/pull/112)
+provide fee estimates and tip heights; lockup confirmation/status and raw bytes
+must also come from the trusted chain source. Restore scripts using the
+validated create response or `SwapScript.fromRestored` from [PR #111](https://github.com/kaleidoswap/swap-sdk/pull/111).
+
+To retry a lost broadcast, pass the saved/recovered `SignedSwapSpend` as
+`previous`. The helper returns that exact transaction before inspecting new
+status, height or fees, and rejects a different swap ID/action. After restart,
+rebuild `previous.transaction` with `BtcLikeTransaction.fromHex(saved.hex,
+saved.chain)` from [PR #109](https://github.com/kaleidoswap/swap-sdk/pull/109),
+retaining the recorded chain/action/path. These companion APIs are delivered by
+their separate PRs and must be included in the installed SDK release. Never re-sign simply because
+a broadcast response was lost. Apps must serialize concurrent operations per
+swap and durably retain the first signed result; a stateless helper cannot
+deduplicate two concurrent calls without shared saved state. Treat duplicate
+broadcast responses as successful only after independently checking that the
+original txid is known on the intended chain.
+
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.
 

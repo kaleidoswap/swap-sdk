@@ -194,7 +194,8 @@ try {
   writeFileSync(
     join(consumerRoot, "smoke.mjs"),
     `
-      import { BtcLikeTransaction, SwapMasterKey, init, toJson } from "@kaleidorg/swap-sdk";
+      import { BtcLikeTransaction, SwapMasterKey, init, toJson, canClaim, canRefund,
+        refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap } from "@kaleidorg/swap-sdk";
       import { esploraFeeEstimates, esploraTipHeight } from "@kaleidorg/swap-sdk/chain-data";
 
       const fees = await esploraFeeEstimates("https://esplora.example/api", {
@@ -204,6 +205,10 @@ try {
         fetch: async () => new Response("123"),
       });
       if (fees[2] !== 0.1 || tip !== 123) throw new Error("packaged chain data helpers failed");
+
+      for (const helper of [canClaim, canRefund, refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap]) {
+        if (typeof helper !== "function") throw new Error("packaged reconciliation export missing");
+      }
 
       // Zero-argument init is the call a consumer actually writes, and the only
       // one that behaves identically in Node and the browser. Asserting the

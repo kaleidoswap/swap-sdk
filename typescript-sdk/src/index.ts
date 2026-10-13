@@ -28,6 +28,8 @@ export { BoltzClient as SwapClient } from "../vendor/bindings_wasm.js";
 /** Rebuild saved Bitcoin/Liquid transactions with `fromHex(hex, chain)` and
  * rebroadcast the same bytes through their existing `broadcast` method. */
 export { BtcLikeTransaction };
+export * from "./reconcile.js";
+
 export { resolveLightningAddress } from "../vendor/bindings_wasm.js";
 
 export type {
@@ -162,6 +164,8 @@ export {
 
 /** Parameters for `SwapScript.constructClaim` / `constructRefund`. */
 export interface TxParams {
+  /** Trusted, already observed claim lockup. Pins input selection; never broadcasts it. */
+  claimLockup?: { chain: "bitcoin" | "liquid"; hex: string; txid: string };
   /** Where the claimed/refunded funds are sent. */
   outputAddress: string;
   swapId: string;
