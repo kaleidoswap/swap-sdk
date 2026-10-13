@@ -1,4 +1,5 @@
 use crate::error::Error;
+use bitcoin::hashes::Hash;
 use lightning_invoice::Bolt11Invoice;
 use lnurl::lightning_address::LightningAddress;
 use lnurl::withdraw::WithdrawalResponse;
@@ -59,42 +60,189 @@ pub async fn resolve_lightning_address(address: &str, amount_sat: u64) -> Result
     fetch_invoice(address, amount_msats).await
 }
 
-pub async fn fetch_invoice(address: &str, amount_msats: u64) -> Result<String, Error> {
-    let address = address.to_lowercase();
-    let lnurl = match LnUrl::from_str(&address) {
-        Ok(lnurl) => lnurl,
-        Err(_) => match LightningAddress::from_str(&address) {
-            Ok(lightning_address) => lightning_address.lnurl(),
-            Err(_) => return Err(Error::Generic("Not a valid LnUrl or LnAddress".to_string())),
-        },
-    };
+/// LNURL-pay transport policy: HTTPS on clearnet, HTTP only for onion services,
+/// no credentials/fragments/redirects, and a deadline including the body read.
+struct PayHttp {
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    client: reqwest::Client,
+    timeout: std::time::Duration,
+    #[cfg(test)]
+    allow_loopback: bool,
+}
 
-    let client = Builder::default()
-        .build_async()
-        .map_err(|e| Error::Generic(e.to_string()))?;
-    let res = client
-        .make_request(&lnurl.url)
-        .await
-        .map_err(from_lnurl_error)?;
-
-    match res {
-        LnUrlResponse::LnUrlPayResponse(pay) => {
-            let pay_result = client
-                .get_invoice(&pay, amount_msats, None, None)
-                .await
-                .map_err(from_lnurl_error)?;
-            let invoice = Bolt11Invoice::from_str(pay_result.invoice()).map_err(Error::Bolt11)?;
-
-            if invoice.amount_milli_satoshis() != Some(amount_msats) {
-                return Err(Error::Generic(
-                    "Invoice amount doesn't match requested amount".to_string(),
-                ));
-            }
-
-            Ok(pay_result.invoice().to_string())
-        }
-        _ => Err(Error::Generic("Unexpected response type".to_string())),
+impl PayHttp {
+    fn new() -> Result<Self, Error> {
+        Ok(Self {
+            #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()?,
+            timeout: std::time::Duration::from_secs(30),
+            #[cfg(test)]
+            allow_loopback: false,
+        })
     }
+
+    fn url(&self, value: &str) -> Result<url::Url, Error> {
+        let url = url::Url::parse(value)?;
+        let host = url.host_str().unwrap_or_default();
+        let secure =
+            url.scheme() == "https" || (url.scheme() == "http" && host.ends_with(".onion"));
+        #[cfg(test)]
+        let secure =
+            secure || (self.allow_loopback && url.scheme() == "http" && host == "127.0.0.1");
+        if !secure
+            || host.is_empty()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(Error::Protocol("LNURL requires HTTPS (HTTP only for onion services), without URL credentials or fragments".into()));
+        }
+        Ok(url)
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    async fn get(&self, url: &url::Url) -> Result<String, Error> {
+        let response = self
+            .client
+            .get(url.clone())
+            .timeout(self.timeout)
+            .send()
+            .await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(Error::HTTPStatusNotSuccess(status, serde_json::Value::Null));
+        }
+        Ok(response.text().await?)
+    }
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    async fn get(&self, url: &url::Url) -> Result<String, Error> {
+        use wasm_bindgen::{JsCast, JsValue};
+        use wasm_bindgen_futures::JsFuture;
+        fn failure(_: JsValue) -> Error {
+            Error::Generic("LNURL fetch failed or exceeded its deadline".into())
+        }
+        struct AbortOnDrop(web_sys::AbortController);
+        impl Drop for AbortOnDrop {
+            fn drop(&mut self) {
+                self.0.abort();
+            }
+        }
+        let abort = AbortOnDrop(web_sys::AbortController::new().map_err(failure)?);
+        let controller = abort.0.clone();
+        let _timer = gloo_timers::callback::Timeout::new(
+            self.timeout.as_millis().min(u32::MAX as u128) as u32,
+            move || controller.abort(),
+        );
+        let init = web_sys::RequestInit::new();
+        init.set_redirect(web_sys::RequestRedirect::Error);
+        init.set_credentials(web_sys::RequestCredentials::Omit);
+        init.set_signal(Some(&abort.0.signal()));
+        let request =
+            web_sys::Request::new_with_str_and_init(url.as_str(), &init).map_err(failure)?;
+        let global = js_sys::global();
+        let fetch = js_sys::Reflect::get(&global, &JsValue::from_str("fetch"))
+            .map_err(failure)?
+            .dyn_into::<js_sys::Function>()
+            .map_err(failure)?;
+        let promise = fetch
+            .call1(&global, &request)
+            .map_err(failure)?
+            .dyn_into::<js_sys::Promise>()
+            .map_err(failure)?;
+        let response = JsFuture::from(promise)
+            .await
+            .map_err(failure)?
+            .dyn_into::<web_sys::Response>()
+            .map_err(failure)?;
+        if response.redirected() || response.url() != url.as_str() {
+            return Err(Error::Protocol("LNURL redirects are not supported".into()));
+        }
+        if !response.ok() {
+            return Err(Error::HTTPStatusNotSuccess(
+                reqwest::StatusCode::from_u16(response.status())
+                    .map_err(|_| Error::Protocol("Invalid LNURL HTTP status".into()))?,
+                serde_json::Value::Null,
+            ));
+        }
+        JsFuture::from(response.text().map_err(failure)?)
+            .await
+            .map_err(failure)?
+            .as_string()
+            .ok_or_else(|| Error::Protocol("LNURL body is not text".into()))
+    }
+}
+
+fn provider_error(body: &str) -> Result<(), Error> {
+    let value: serde_json::Value = serde_json::from_str(body)?;
+    if value.get("status").and_then(serde_json::Value::as_str) == Some("ERROR") {
+        return Err(Error::Protocol(format!(
+            "LNURL provider rejected request: {}",
+            value
+                .get("reason")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unspecified reason")
+        )));
+    }
+    Ok(())
+}
+
+pub async fn fetch_invoice(address: &str, amount_msats: u64) -> Result<String, Error> {
+    fetch_invoice_with_http(address, amount_msats, &PayHttp::new()?).await
+}
+
+async fn fetch_invoice_with_http(
+    address: &str,
+    amount_msats: u64,
+    http: &PayHttp,
+) -> Result<String, Error> {
+    let address = address.to_lowercase();
+    let lnurl = LnUrl::from_str(&address)
+        .or_else(|_| LightningAddress::from_str(&address).map(|value| value.lnurl()))
+        .map_err(|_| Error::Protocol("Not a valid LNURL or Lightning address".into()))?;
+    let url = http.url(&lnurl.url)?;
+    let body = http.get(&url).await?;
+    provider_error(&body)?;
+    let pay = match lnurl::decode_ln_url_response(&body).map_err(from_lnurl_error)? {
+        LnUrlResponse::LnUrlPayResponse(pay) => pay,
+        _ => return Err(Error::Protocol("Expected an LNURL-pay request".into())),
+    };
+    if amount_msats == 0
+        || pay.min_sendable == 0
+        || pay.min_sendable > pay.max_sendable
+        || amount_msats < pay.min_sendable
+        || amount_msats > pay.max_sendable
+    {
+        return Err(Error::Protocol(format!(
+            "LNURL amount must be between {} and {} millisatoshis",
+            pay.min_sendable, pay.max_sendable
+        )));
+    }
+    let mut callback = http.url(&pay.callback)?;
+    callback
+        .query_pairs_mut()
+        .append_pair("amount", &amount_msats.to_string());
+    let body = http.get(&callback).await?;
+    provider_error(&body)?;
+    let result: lnurl::pay::LnURLPayInvoice = serde_json::from_str(&body)?;
+    let invoice = Bolt11Invoice::from_str(result.invoice()).map_err(Error::Bolt11)?;
+    if invoice.amount_milli_satoshis() != Some(amount_msats) {
+        return Err(Error::Protocol(
+            "Invoice amount doesn't match requested amount".into(),
+        ));
+    }
+    match invoice.description() {
+        lightning_invoice::Bolt11InvoiceDescriptionRef::Hash(hash)
+            if hash.0.to_byte_array() == pay.metadata_hash() => {}
+        _ => {
+            return Err(Error::Protocol(
+                "Invoice description_hash does not match LNURL metadata".into(),
+            ))
+        }
+    }
+    Ok(result.invoice().to_owned())
 }
 
 pub async fn create_withdraw_response(voucher: &str) -> Result<WithdrawalResponse, Error> {
@@ -132,6 +280,167 @@ pub async fn process_withdrawal(withdraw: &WithdrawalResponse, invoice: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn secure_url_policy() {
+        let http = PayHttp::new().unwrap();
+        for url in [
+            "https://pay.example/a?token=kept",
+            "http://service.onion/pay",
+        ] {
+            assert!(http.url(url).is_ok());
+        }
+        for url in [
+            "http://pay.example/a",
+            "http://127.0.0.1/pay",
+            "https://user:secret@pay.example/a",
+            "https://pay.example/a#fragment",
+            "file:///etc/passwd",
+        ] {
+            assert!(http.url(url).is_err());
+        }
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn secure_server(
+        replies: Vec<(u16, String)>,
+        delay_ms: u64,
+    ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let thread_base = base.clone();
+        let server = std::thread::spawn(move || {
+            let mut requests = Vec::new();
+            for (status, body) in replies {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(std::time::Duration::from_secs(2)))
+                    .unwrap();
+                let mut bytes = Vec::new();
+                while !bytes.windows(4).any(|w| w == b"\r\n\r\n") {
+                    let mut buffer = [0; 1024];
+                    let count = stream.read(&mut buffer).unwrap();
+                    if count == 0 {
+                        break;
+                    }
+                    bytes.extend_from_slice(&buffer[..count]);
+                }
+                requests.push(String::from_utf8(bytes).unwrap());
+                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                let body = body.replace("{BASE}", &thread_base);
+                let _ = write!(stream, "HTTP/1.1 {} Test\r\nContent-Type: application/json\r\nLocation: http://127.0.0.1:1/forbidden\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", status, body.len(), body);
+            }
+            requests
+        });
+        (LnUrl::from_url(format!("{base}/pay")).encode(), server)
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    fn secure_pay(callback: &str, metadata: &str) -> String {
+        serde_json::json!({"tag":"payRequest", "callback":callback, "minSendable":1000, "maxSendable":200_000_000, "metadata":metadata}).to_string()
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn secure_resolution_metadata_limits_and_provider_errors() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/lnurl-v1/invoice.json"))
+                .unwrap();
+        let invoice = fixture["invoice"].as_str().unwrap();
+        let metadata = "[[\"text/plain\",\"test\"]]";
+        let mut http = PayHttp::new().unwrap();
+        http.allow_loopback = true;
+        for (requested, description, expected) in [
+            (100_000_000, metadata, None),
+            (
+                100_001_000,
+                metadata,
+                Some("doesn't match requested amount"),
+            ),
+            (
+                100_000_000,
+                "[[\"text/plain\",\"different payee\"]]",
+                Some("description_hash"),
+            ),
+        ] {
+            let (address, server) = secure_server(
+                vec![
+                    (200, secure_pay("{BASE}/invoice?token=kept", description)),
+                    (200, serde_json::json!({"pr": invoice}).to_string()),
+                ],
+                0,
+            );
+            let result = fetch_invoice_with_http(&address, requested, &http).await;
+            match expected {
+                None => assert_eq!(result.unwrap(), invoice),
+                Some(text) => assert!(result.unwrap_err().message().contains(text)),
+            }
+            let requests = server.join().unwrap();
+            assert!(
+                requests[1].starts_with(&format!("GET /invoice?token=kept&amount={requested} "))
+            );
+        }
+        for replies in [
+            vec![(
+                200,
+                r#"{"status":"ERROR","reason":"Service unavailable"}"#.into(),
+            )],
+            vec![
+                (200, secure_pay("{BASE}/invoice", metadata)),
+                (
+                    200,
+                    r#"{"status":"ERROR","reason":"Service unavailable"}"#.into(),
+                ),
+            ],
+        ] {
+            let (address, server) = secure_server(replies, 0);
+            assert!(fetch_invoice_with_http(&address, 100_000_000, &http)
+                .await
+                .unwrap_err()
+                .message()
+                .contains("Service unavailable"));
+            server.join().unwrap();
+        }
+        let (address, server) = secure_server(
+            vec![(200, secure_pay("http://pay.example/invoice", metadata))],
+            0,
+        );
+        assert!(fetch_invoice_with_http(&address, 100_000_000, &http)
+            .await
+            .unwrap_err()
+            .message()
+            .contains("HTTPS"));
+        assert_eq!(server.join().unwrap().len(), 1);
+        let (address, server) =
+            secure_server(vec![(200, secure_pay("{BASE}/invoice", metadata))], 0);
+        assert!(fetch_invoice_with_http(&address, 1, &http)
+            .await
+            .unwrap_err()
+            .message()
+            .contains("between 1000 and 200000000"));
+        assert_eq!(server.join().unwrap().len(), 1);
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    #[tokio::test]
+    async fn secure_transport_rejects_redirects_and_bounds_stalls() {
+        let mut http = PayHttp::new().unwrap();
+        http.allow_loopback = true;
+        let (address, server) = secure_server(vec![(302, String::new())], 0);
+        assert!(
+            matches!(fetch_invoice_with_http(&address, 1000, &http).await.unwrap_err(), Error::HTTPStatusNotSuccess(status, _) if status.as_u16() == 302)
+        );
+        server.join().unwrap();
+        http.timeout = std::time::Duration::from_millis(30);
+        let (address, server) = secure_server(vec![(200, "{}".into())], 150);
+        let start = std::time::Instant::now();
+        assert!(
+            matches!(fetch_invoice_with_http(&address, 1000, &http).await.unwrap_err(), Error::HTTP(error) if error.is_timeout())
+        );
+        assert!(start.elapsed() < std::time::Duration::from_millis(140));
+        server.join().unwrap();
+    }
 
     /// The reclassification, and the cause it exists to keep.
     ///

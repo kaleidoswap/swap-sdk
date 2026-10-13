@@ -1,6 +1,1 @@
-The invoice is the synthetic 100,000 sat regtest invoice already used by the
-TypeScript pay-through tests (generated with lightning-invoice, timestamp
-1800000000). It is not a live payment request. The encoded LNURL names
-`https://pay.example/lnurl`; WASM tests provide in-memory fetch responses and
-native core tests use a loopback HTTP service. These tests verify transport and
-fixed-amount resolution, not live provider behavior, expiry or metadata binding.
+Synthetic 100,000 sat regtest BOLT11, signed with the test secret `[1; 32]`, payment hash SHA256(`[3; 32]`), payment secret `[2; 32]`, timestamp1800000000 and CLTV144. Its description_hash is SHA256 of the exact LNURL metadata `[["text/plain","test"]]`. It is not a live payment request. Public-path tests reject plain HTTP; native success/stall tests use a loopback exception compiled only for unit tests. WASM tests use in-memory fetch responses and enforce redirect rejection and omitted credentials.

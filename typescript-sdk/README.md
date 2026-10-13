@@ -49,16 +49,23 @@ The resolver also accepts an encoded `lnurl1...` pay request (including uppercas
 encoding). `amountSat` is a positive **bigint in whole satoshis**; unsafe types,
 zero, negative values and amounts that overflow the millisatoshi conversion are
 rejected. It reuses the Rust LNURL resolver, checks the provider's advertised
-amount limits, parses the returned BOLT11 and requires its exact amount to match.
+amount limits, parses the returned BOLT11 and requires its exact amount and LNURL
+metadata description hash to match.
 Service and transport errors reject the promise. Native/Python exposes
 `await resolve_lightning_address(address, amount_sat)` with the same satoshi unit.
 
-Lookup contacts the address provider's HTTPS well-known URL and its advertised
-callback. It creates no swap and sends no payment or maker credentials. Browser
-providers must allow CORS. The existing resolver does not select or pin the invoice
-network, check expiry or verify the LNURL metadata description hash; callers must
-apply their invoice and provider trust policy before using the result. Do not
+Lookup requires HTTPS for clearnet service and callback URLs; HTTP is accepted
+only for onion services (native callers must provide Tor connectivity). Redirects,
+URL credentials and fragments are rejected. Each request, including body reads,
+has a 30-second deadline in native and browser/Node WASM. It creates no swap
+and sends no payment or maker credentials. Browser providers must allow CORS. The resolver does not select or pin the invoice
+network or check expiry; callers must apply their invoice and provider trust
+policy before using the result. Do not
 interpret successful lookup as payment settlement.
+
+When the `lnurl` feature is enabled, HTTPS now uses Rustls with WebPKI roots,
+matching the SDK transport and avoiding system OpenSSL dependencies in wheels.
+An enterprise CA installed only in the OS trust store is not automatically trusted.
 
 Bundlers must emit the packaged `vendor/bindings_wasm_bg.wasm` asset referenced
 by the generated module.

@@ -1,6 +1,7 @@
 {
-  "invoice": "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36",
+  "invoice": "lnbcrt1m1p45n5sqhp5plegz60wa3rk9cxru5wtzfdxq32hh50rga6aa6eeh2gl6q0z9g8qpp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5qgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpqyqszqgpq9qrsgqcqzysnzv43tqey4zern2j2gdgd3t4r35ldu6an57ds8p96muzukvkr82qyahg6uevvkgzlevhmp2ymagtgvlqvl3ygu240zpxnx83y33d2scqkhsfx9",
   "amountSat": 100000,
   "lnurl": "lnurl1dp68gurn8ghj7urp0yhx27rpd4cxcef0d3h82unvwd0urc",
-  "url": "https://pay.example/lnurl"
+  "url": "https://pay.example/lnurl",
+  "insecureLnurl": "lnurl1dp68gup69uhhqcte9ejhsctdwpkx2tmvde6hymqxfmmqu"
 }
