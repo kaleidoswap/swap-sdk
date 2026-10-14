@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { packJson } from "./npm-pack.mjs";
+
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-npm-"));
 const suppliedTarball = process.argv[2];
@@ -71,13 +73,7 @@ try {
     // it must satisfy the same allowlist as one we pack ourselves.
     assertPackageContents(listTarball(tarballPath));
   } else {
-    const packResult = JSON.parse(
-      execFileSync("npm", ["pack", "--json"], {
-        cwd: packageRoot,
-        encoding: "utf8",
-      }),
-    );
-    const [{ filename, files }] = packResult;
+    const { filename, files } = packJson(packageRoot);
     tarballPath = join(packageRoot, filename);
     removeTarball = true;
     assertPackageContents(files.map(({ path }) => path));

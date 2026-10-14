@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import { extname, isAbsolute, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { packJson } from "./npm-pack.mjs";
+
 // The tarball argument is optional, as in smoke-package.mjs: a release passes the
 // exact archive it is about to publish, and a pull request packs a throwaway one
 // so `npm run smoke:browser-package` needs no setup.
@@ -36,12 +38,7 @@ const contentTypes = new Map([
 
 try {
   if (!tarballPath) {
-    const [{ filename }] = JSON.parse(
-      execFileSync("npm", ["pack", "--json"], {
-        cwd: packageRoot,
-        encoding: "utf8",
-      }),
-    );
+    const { filename } = packJson(packageRoot);
     tarballPath = join(packageRoot, filename);
     removeTarball = true;
   }
