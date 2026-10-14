@@ -28,14 +28,20 @@ services:
       timeout: 5s
       retries: 30
   ldk-maker:
-    image: km-e2e/ldk-server:pinned
+    image: ${RGB_LDK_IMAGE:-km-e2e/ldk-server:pinned}
+    # The caller's uid (set by regtest.sh), so the bridge can read the node's
+    # api_key from the bind-mounted data dir on Linux, where root would own it.
+    user: "${RGB_LDK_USER:-0:0}"
     command: ["/config/ldk-maker.toml"]
     depends_on:
       bitcoind: {condition: service_healthy}
     volumes: ["./run/ldk-maker.toml:/config/ldk-maker.toml:ro", "./run/certs:/certs:ro", "./run/ldk-maker:/data"]
     ports: ["127.0.0.1:23636:13636"]
   ldk-taker:
-    image: km-e2e/ldk-server:pinned
+    image: ${RGB_LDK_IMAGE:-km-e2e/ldk-server:pinned}
+    # The caller's uid (set by regtest.sh), so the bridge can read the node's
+    # api_key from the bind-mounted data dir on Linux, where root would own it.
+    user: "${RGB_LDK_USER:-0:0}"
     command: ["/config/ldk-taker.toml"]
     depends_on:
       bitcoind: {condition: service_healthy}

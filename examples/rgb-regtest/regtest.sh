@@ -2,6 +2,8 @@
 set -euo pipefail
 example_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 compose=(docker compose -f "$example_dir/compose.yaml")
+# The LDK nodes write their api_key into run/; run them as the caller.
+export RGB_LDK_USER="${RGB_LDK_USER:-$(id -u):$(id -g)}"
 cli() { "${compose[@]}" exec -T bitcoind bitcoin-cli -regtest -rpcuser=user -rpcpassword=pass "$@"; }
 case "${1:-}" in
   up)

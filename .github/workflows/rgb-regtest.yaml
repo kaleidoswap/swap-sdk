@@ -1,0 +1,102 @@
+name: RGB regtest
+
+# The TypeScript RGB examples (examples/rgb-regtest/ts-run.ts) against a real
+# maker daemon, rgb-lib wallets, Bitcoin Core and two Lightning nodes on a
+# fresh regtest stack. Owner-triggered, like the schema-drift check: it builds
+# the private maker, so it needs read-only Contents access to
+# kaleidoswap-maker-rs in MAKER_SCHEMA_READ_TOKEN, and it takes most of an hour.
+on:
+  workflow_dispatch:
+    inputs:
+      maker_ref:
+        description: kaleidoswap-maker-rs revision to build the maker and LDK image from
+        required: true
+        default: 3bda0902e74f2862b8308e5b5d3c947d85a04036
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.23.1"
+  RUST_VERSION: "1.88.0"
+  NATIVE_RUST_VERSION: "1.96.0"
+  WASM_PACK_VERSION: "0.14.0"
+  RGB_LDK_IMAGE: rgb-sdk-regtest/ldk-server:ci
+
+jobs:
+  typescript-rgb-regtest:
+    name: TypeScript RGB swaps on regtest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check the maker access token
+        env:
+          GH_TOKEN: ${{ secrets.MAKER_SCHEMA_READ_TOKEN }}
+        run: |
+          test -n "$GH_TOKEN" || { echo "Configure read-only maker Contents access in MAKER_SCHEMA_READ_TOKEN"; exit 1; }
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Checkout the maker
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kaleidoswap/kaleidoswap-maker-rs
+          ref: ${{ inputs.maker_ref }}
+          token: ${{ secrets.MAKER_SCHEMA_READ_TOKEN }}
+          path: maker
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: typescript-sdk/package-lock.json
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Set up pinned Rust
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --target wasm32-unknown-unknown
+          rustup toolchain install "${NATIVE_RUST_VERSION}" --profile minimal
+          rustup default "${RUST_VERSION}"
+      - name: Install pinned wasm-pack
+        run: cargo install wasm-pack --version "${WASM_PACK_VERSION}" --locked
+      # The maker pins NATIVE_RUST_VERSION in its rust-toolchain.toml. rustup
+      # picks the toolchain from the working directory, so the bridge, built
+      # from this repository's root (1.88), names it explicitly.
+      - name: Build the maker daemon
+        working-directory: maker
+        run: cargo build --locked -p maker-bin --bin kaleidoswap-maker --features ldk-server
+      - name: Build the pinned LDK server image
+        working-directory: maker
+        run: docker build -f e2e/Dockerfile.ldk-server -t "${RGB_LDK_IMAGE}" .
+      - name: Build the TypeScript package
+        run: |
+          npm --prefix typescript-sdk ci --ignore-scripts --no-audit --no-fund
+          make wasm-pack-build
+          npm --prefix typescript-sdk run build
+      - name: Build the rgb-lib wallet bridge
+        run: cargo "+${NATIVE_RUST_VERSION}" build --manifest-path examples/rgb-regtest/Cargo.toml --locked
+      - name: Start the regtest stack
+        run: examples/rgb-regtest/regtest.sh up
+      - name: Bootstrap wallets, asset and channel
+        env:
+          RGB_MAKER_BIN: ${{ github.workspace }}/maker/target/debug/kaleidoswap-maker
+        run: examples/rgb-regtest/target/debug/rgb-sdk-regtest bootstrap
+      - name: Run the TypeScript swaps
+        env:
+          RGB_MAKER_BIN: ${{ github.workspace }}/maker/target/debug/kaleidoswap-maker
+        run: |
+          RGB_MAKER_REVISION="$(git -C maker rev-parse HEAD)" \
+          RGB_SDK_REVISION="$(git rev-parse HEAD)" \
+          node examples/rgb-regtest/ts-run.ts
+      # run/ holds mnemonics, keys, preimages and swap credentials. Only the
+      # sanitized report leaves the runner.
+      - name: Upload the sanitized report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rgb-regtest-ts-report
+          path: examples/rgb-regtest/run/ts-report.json
+          if-no-files-found: warn
+      - name: Stop the regtest stack
+        if: always()
+        run: examples/rgb-regtest/regtest.sh down
