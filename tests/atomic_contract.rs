@@ -102,6 +102,8 @@ fn expect(capture: &Value) -> AtomicQuoteExpectations {
         min_to_amount: None,
         max_from_amount: None,
         max_offer_ttl_secs: Some(600),
+        // The real offers carry 1,000 sat per RGB output.
+        max_rgb_output_sat: Some(1_000),
     }
 }
 
@@ -133,6 +135,24 @@ async fn a_real_atomic_swap_replays_through_the_client() {
             .await
             .unwrap_or_else(|e| panic!("{pair}: the real proposal is refused: {e:?}"));
         assert_eq!(proposed.status, "transaction.proposed");
+        // The maker's coins come back for the wallet to check, and none of
+        // them is one of the request's own inputs.
+        let makers = &proposed.proposal["maker_inputs"];
+        assert_eq!(
+            proposed.maker_inputs.len(),
+            makers.as_array().unwrap().len()
+        );
+        assert!(!proposed.maker_inputs.is_empty(), "{pair}");
+        for (outpoint, raw) in proposed.maker_inputs.iter().zip(makers.as_array().unwrap()) {
+            assert_eq!(outpoint.txid, raw["outpoint"]["txid"].as_str().unwrap());
+            assert_eq!(
+                u64::from(outpoint.vout),
+                raw["outpoint"]["vout"].as_u64().unwrap()
+            );
+            for taker in request["taker_inputs"].as_array().unwrap() {
+                assert_ne!(&raw["outpoint"], &taker["outpoint"], "{pair}");
+            }
+        }
 
         let completion = json(&capture, "completeSent")["completion"].clone();
         let done = client

@@ -160,10 +160,19 @@ names another asset, network or proxy than the caller expects, exceeds a fee,
 slippage or offer-lifetime ceiling, or has passed its request deadline. It
 also refuses a quote whose rgb-lib offer moves other amounts or another asset
 than the quote, reserves another miner fee, expires at another time or adds a
-platform fee: the wallet signs the offer, not the quote. `atomicRequest` and
-`atomicComplete` refuse a proposal for another request and a broadcast of
-another transaction. rgb-lib messages cross the JS and UniFFI boundaries as
-JSON text, because their 64-bit seal blindings do not survive JS numbers.
+platform fee: the wallet signs the offer, not the quote. An optional
+`maxRgbOutputSat` caps the sats each RGB receive output carries.
+Expectations are in each asset's base units: sats, or the RGB contract's
+smallest unit (6 decimals for USDT-RGB), never the pair card's display units.
+
+`atomicRequest` refuses a proposal for another request, or one that lists one
+of the request's own `taker_inputs` among the maker's. It returns the maker's
+inputs as `makerInputs`. Wallets need rgb-lib with kaleidoswap/rgb-lib#18,
+which stops rgb-lib signing a coin the counterparty listed as its own. On an
+earlier rgb-lib, a wallet checks `makerInputs` against `list_unspents` before
+`complete_swap_proposal`. `atomicComplete` refuses a broadcast of another
+transaction. rgb-lib messages cross the JS and UniFFI boundaries as JSON text,
+because their 64-bit seal blindings do not survive JS numbers.
 
 The checks are pinned to a real maker: `tests/fixtures/atomic-v1` holds every
 wire body of two settled regtest swaps, one per pair, captured from maker-rs's

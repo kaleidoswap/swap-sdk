@@ -36,7 +36,7 @@
 //! that the proposal's maker inputs are not the taker's own UTXOs; that needs
 //! the wallet.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
 
@@ -45,6 +45,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::Error;
+use crate::swaps::boltz::BoltzApiClientV2;
 
 /// The pair that sends BTC and receives USDT-RGB.
 pub const ATOMIC_BTC_TO_USDT_RGB: &str = "BTC/USDT-RGB";
@@ -100,6 +101,10 @@ pub struct AtomicQuote {
 }
 
 /// What the caller expects of a quote, beyond what it asked for.
+///
+/// Amounts are in each asset's base units, the ones the quote itself uses:
+/// sats for BTC, and the RGB contract's smallest unit for USDT-RGB, which has
+/// 6 decimals (1 USDT = 1_000_000). Never the pair card's display units.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AtomicQuoteExpectations {
@@ -115,15 +120,25 @@ pub struct AtomicQuoteExpectations {
     /// Ceiling on the miner fee the taker funds, sats.
     #[serde(default)]
     pub max_network_fee_sat: Option<u64>,
-    /// Ceiling on the maker's fee, in the output asset's units.
+    /// Ceiling on the maker's fee, in the output asset's base units: sats
+    /// when the taker receives BTC, the RGB contract's smallest unit when it
+    /// receives USDT-RGB.
     #[serde(default)]
     pub max_service_fee: Option<u64>,
-    /// For a `from` quote: the least the taker accepts to receive.
+    /// For a `from` quote: the least the taker accepts to receive, in the
+    /// output asset's base units.
     #[serde(default)]
     pub min_to_amount: Option<u64>,
-    /// For a `to` quote: the most the taker accepts to send.
+    /// For a `to` quote: the most the taker accepts to send, in the input
+    /// asset's base units.
     #[serde(default)]
     pub max_from_amount: Option<u64>,
+    /// Ceiling on `rgb_output_sat`: the sats each RGB receive output carries.
+    /// The taker funds it into its own coloured UTXO, so nothing is lost, but
+    /// without a ceiling a maker could tie up any amount of the taker's BTC
+    /// there.
+    #[serde(default)]
+    pub max_rgb_output_sat: Option<u64>,
     /// Longest the offer may stay open, seconds from now. A long-lived offer
     /// is an option on the price held by the maker.
     #[serde(default)]
@@ -166,6 +181,8 @@ struct OfferTerms {
     bitcoin_network: String,
     #[serde(deserialize_with = "u64_from_str_or_number")]
     network_fee_sat: u64,
+    #[serde(default, deserialize_with = "opt_u64_from_str_or_number")]
+    rgb_output_sat: Option<u64>,
     #[serde(default, deserialize_with = "opt_u64_from_str_or_number")]
     expiration_timestamp: Option<u64>,
     #[serde(default)]
@@ -383,6 +400,17 @@ impl AtomicQuote {
                 ),
             ));
         }
+        if let Some(max) = expect.max_rgb_output_sat {
+            let output = offer
+                .rgb_output_sat
+                .ok_or_else(|| mismatch(self, "offer does not say what its RGB output carries"))?;
+            if output > max {
+                return Err(mismatch(
+                    self,
+                    format!("offer puts {output} sat in each RGB output, more than {max}"),
+                ));
+            }
+        }
         if offer.platform_fee_sat.unwrap_or(0) != 0
             || offer.fee_recipient_script_pubkey_hex.is_some()
         {
@@ -432,6 +460,19 @@ impl AtomicQuote {
     }
 }
 
+/// A coin an rgb-lib swap message spends.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AtomicOutpoint {
+    pub txid: String,
+    pub vout: u32,
+}
+
+impl fmt::Display for AtomicOutpoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.txid, self.vout)
+    }
+}
+
 /// `POST /v2/swap/atomic/{id}/request` — the maker's unsigned proposal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AtomicProposal {
@@ -440,6 +481,16 @@ pub struct AtomicProposal {
     /// rgb-lib's `OnchainSwapProposal`, for the wallet's
     /// `complete_swap_proposal`.
     pub proposal: Value,
+    /// The coins the proposal says are the maker's (`proposal.maker_inputs`).
+    ///
+    /// The SDK refuses a proposal that lists one of the request's own
+    /// `taker_inputs` here, but it cannot see the rest of the taker's wallet.
+    /// rgb-lib before kaleidoswap/rgb-lib#18 signs every input it can, so a
+    /// wallet on such a version should check these against its
+    /// `list_unspents` before `complete_swap_proposal`: a maker could list
+    /// another of the taker's coins and take its value.
+    #[serde(rename = "makerInputs", default, skip_deserializing)]
+    pub maker_inputs: Vec<AtomicOutpoint>,
 }
 
 /// `POST /v2/swap/atomic/{id}/complete` — the broadcast swap.
@@ -554,11 +605,44 @@ impl GetAtomicPairsResponse {
 /// Check the proposal answers the request that was posted: rgb-lib embeds
 /// the request in the proposal, and the wallet only signs a proposal for the
 /// request it saved, so a mismatch here is a proposal it will refuse.
+/// The outpoints of an rgb-lib input list (`[{ "outpoint": { "txid", "vout" } }]`).
+fn input_outpoints(inputs: Option<&Value>, what: &str) -> Result<Vec<AtomicOutpoint>, Error> {
+    let malformed = || Error::Protocol(format!("atomic swap {what} is not a list of inputs"));
+    let Some(inputs) = inputs else {
+        return Ok(Vec::new());
+    };
+    inputs
+        .as_array()
+        .ok_or_else(malformed)?
+        .iter()
+        .map(|input| {
+            let outpoint = input.get("outpoint").ok_or_else(malformed)?;
+            let txid = outpoint
+                .get("txid")
+                .and_then(Value::as_str)
+                .ok_or_else(malformed)?;
+            let vout = match outpoint.get("vout") {
+                Some(Value::Number(n)) => n.as_u64(),
+                Some(Value::String(s)) => s.parse().ok(),
+                _ => None,
+            }
+            .and_then(|vout| u32::try_from(vout).ok())
+            .ok_or_else(malformed)?;
+            Ok(AtomicOutpoint {
+                txid: txid.to_owned(),
+                vout,
+            })
+        })
+        .collect()
+}
+
+/// Check the proposal answers the request that was posted, and spends none of
+/// the request's own inputs as the maker's. Returns the maker's inputs.
 pub(crate) fn check_proposal(
     id: &str,
     request: &Value,
     answer: &AtomicProposal,
-) -> Result<(), Error> {
+) -> Result<Vec<AtomicOutpoint>, Error> {
     if answer.id != id {
         return Err(Error::Protocol(format!(
             "atomic swap {id}: proposal answers swap {}",
@@ -570,7 +654,20 @@ pub(crate) fn check_proposal(
             "atomic swap {id}: proposal is not for the request that was sent"
         )));
     }
-    Ok(())
+    let taker: HashSet<AtomicOutpoint> =
+        input_outpoints(request.get("taker_inputs"), "request's taker_inputs")?
+            .into_iter()
+            .collect();
+    let maker = input_outpoints(
+        answer.proposal.get("maker_inputs"),
+        "proposal's maker_inputs",
+    )?;
+    if let Some(stolen) = maker.iter().find(|outpoint| taker.contains(*outpoint)) {
+        return Err(Error::Protocol(format!(
+            "atomic swap {id}: proposal lists the taker's own input {stolen} as the maker's"
+        )));
+    }
+    Ok(maker)
 }
 
 /// Check the broadcast answers the completion that was posted.
@@ -599,6 +696,68 @@ pub(crate) fn check_completion(
         )));
     }
     Ok(())
+}
+
+// Atomic swaps are not part of the Boltz protocol, so their routes live here
+// rather than in `boltz.rs`, which tracks upstream boltz-rust.
+impl BoltzApiClientV2 {
+    /// `GET /v2/swap/atomic/pairs` — the atomic rate cards.
+    pub async fn atomic_pairs(&self) -> Result<GetAtomicPairsResponse, Error> {
+        self.get_json("swap/atomic/pairs").await
+    }
+
+    /// `POST /v2/swap/atomic/quote`, checked with
+    /// [`AtomicQuote::verify`] before it is returned.
+    ///
+    /// `now` is unix seconds; the caller supplies it because the browser
+    /// build has no system clock.
+    pub async fn atomic_quote(
+        &self,
+        request: &AtomicQuoteRequest,
+        expect: &AtomicQuoteExpectations,
+        now: u64,
+    ) -> Result<AtomicQuote, Error> {
+        let quote: AtomicQuote = self.post_json("swap/atomic/quote", request).await?;
+        quote.verify(request, expect, now)?;
+        Ok(quote)
+    }
+
+    /// `POST /v2/swap/atomic/{id}/request` with the wallet's
+    /// `OnchainSwapRequest`. Refuses a proposal for another swap or request.
+    pub async fn atomic_request(&self, id: &str, request: &Value) -> Result<AtomicProposal, Error> {
+        let mut answer: AtomicProposal = self
+            .post_json(
+                &format!("swap/atomic/{id}/request"),
+                serde_json::json!({ "request": request }),
+            )
+            .await?;
+        answer.maker_inputs = check_proposal(id, request, &answer)?;
+        Ok(answer)
+    }
+
+    /// `POST /v2/swap/atomic/{id}/complete` with the wallet's signed
+    /// `OnchainSwapCompletion`. The maker signs last and broadcasts; this
+    /// refuses an answer whose txid or proposal is not the one signed.
+    pub async fn atomic_complete(
+        &self,
+        id: &str,
+        completion: &Value,
+    ) -> Result<AtomicCompletion, Error> {
+        let answer = self
+            .post_json(
+                &format!("swap/atomic/{id}/complete"),
+                serde_json::json!({ "completion": completion }),
+            )
+            .await?;
+        check_completion(id, completion, &answer)?;
+        Ok(answer)
+    }
+
+    /// `GET /v2/swap/atomic/{id}` — where an atomic swap stands. Poll until
+    /// [`AtomicSwapState::is_terminal`].
+    pub async fn atomic_swap(&self, id: &str) -> Result<AtomicSwapStatus, Error> {
+        self.get_json(&format!("swap/atomic/{id}")).await
+    }
 }
 
 #[cfg(test)]
@@ -750,6 +909,22 @@ mod tests {
     }
 
     #[test]
+    fn an_rgb_output_above_the_ceiling_is_refused() {
+        let mut e = expect();
+        e.max_rgb_output_sat = Some(1_000);
+        quote().verify(&request(), &e, NOW).unwrap();
+
+        e.max_rgb_output_sat = Some(999);
+        assert!(refused(&quote(), &e).contains("1000 sat in each RGB output"));
+
+        let mut q = quote();
+        q.offer.as_object_mut().unwrap().remove("rgb_output_sat");
+        assert!(refused(&q, &e).contains("does not say what its RGB output carries"));
+        // Without a ceiling the field is not required.
+        q.verify(&request(), &expect(), NOW).unwrap();
+    }
+
+    #[test]
     fn an_expired_quote_is_refused() {
         let q = quote();
         let err = q
@@ -802,11 +977,80 @@ mod tests {
             id: "01JATOMICSWAP".to_string(),
             status: "transaction.proposed".to_string(),
             proposal: json!({ "request": request, "psbt": "cHNidP8=" }),
+            maker_inputs: vec![],
         };
         check_proposal("01JATOMICSWAP", &request, &answer).unwrap();
         assert!(check_proposal("01JOTHER", &request, &answer).is_err());
         let other = json!({ "offer": { "swap_id": "rgbswap2" }, "taker_inputs": [] });
         assert!(check_proposal("01JATOMICSWAP", &other, &answer).is_err());
+    }
+
+    #[test]
+    fn a_proposal_spends_none_of_the_takers_inputs_as_the_makers() {
+        let input = |txid: &str, vout: Value| json!({ "outpoint": { "txid": txid, "vout": vout }, "amount_sat": 1000 });
+        let request = json!({
+            "offer": { "swap_id": "rgbswap1" },
+            "taker_inputs": [input(&"aa".repeat(32), json!(0)), input(&"bb".repeat(32), json!(1))],
+        });
+        let proposal = |maker_inputs: Value| AtomicProposal {
+            id: "01JATOMICSWAP".to_string(),
+            status: "transaction.proposed".to_string(),
+            proposal: json!({ "request": request, "maker_inputs": maker_inputs }),
+            maker_inputs: vec![],
+        };
+
+        // The maker's own coins come back, in order, for the wallet to check.
+        let maker = check_proposal(
+            "01JATOMICSWAP",
+            &request,
+            &proposal(json!([
+                input(&"cc".repeat(32), json!(2)),
+                input(&"bb".repeat(32), json!(0))
+            ])),
+        )
+        .unwrap();
+        assert_eq!(
+            maker,
+            vec![
+                AtomicOutpoint {
+                    txid: "cc".repeat(32),
+                    vout: 2
+                },
+                AtomicOutpoint {
+                    txid: "bb".repeat(32),
+                    vout: 0
+                },
+            ]
+        );
+
+        // One of the taker's own inputs listed as the maker's, vout as a
+        // number or (as rgb-lib may write it) a string.
+        for vout in [json!(1), json!("1")] {
+            let error = check_proposal(
+                "01JATOMICSWAP",
+                &request,
+                &proposal(json!([
+                    input(&"cc".repeat(32), json!(2)),
+                    input(&"bb".repeat(32), vout)
+                ])),
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("{}:1", "bb".repeat(32))),
+                "{error}"
+            );
+        }
+
+        // A list rgb-lib could not have written is refused, not skipped.
+        assert!(check_proposal("01JATOMICSWAP", &request, &proposal(json!({}))).is_err());
+        assert!(check_proposal(
+            "01JATOMICSWAP",
+            &request,
+            &proposal(json!([{ "outpoint": { "txid": "cc" } }]))
+        )
+        .is_err());
     }
 
     #[test]

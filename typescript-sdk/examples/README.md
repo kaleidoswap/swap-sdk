@@ -77,6 +77,19 @@ money moves. That file carries the `swapAuth` credential — issued once, never
 re-issued — and the material a refund needs. It is gitignored; treat it as
 secret.
 
+## Atomic swaps and rgb-lib
+
+`06-atomic.ts` leaves the signing to the wallet's rgb-lib. Use an rgb-lib with
+kaleidoswap/rgb-lib#18. Earlier versions sign every input the wallet owns, so a
+maker could list one of the taker's coins among its own inputs and take its
+value. The SDK refuses a proposal that lists one of the request's own inputs
+as the maker's. It cannot see the rest of the wallet, so on an older rgb-lib,
+check `makerInputs` against `list_unspents` before `complete_swap_proposal`.
+
+Quote expectations are in each asset's base units: sats for BTC, and the RGB
+contract's smallest unit for USDT-RGB (6 decimals). They are not the pair
+card's display units.
+
 ## RGB wallet adapter
 
 [`05-rgb-spend.ts`](05-rgb-spend.ts) exports claim/refund integration helpers for

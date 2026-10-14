@@ -78,6 +78,8 @@ try {
           (net === "regtest" ? "Regtest" : "Signet"),
         maxNetworkFeeSat: BigInt(optionalInt("ATOMIC_MAX_FEE_SAT", 10_000)),
         maxOfferTtlSecs: 3_600n,
+        // Sats each RGB receive output carries; rgb-lib's default is 1,000.
+        maxRgbOutputSat: 2_000n,
       },
     );
     await writeFile(join(dir, "offer.json"), quote.offer);
@@ -95,8 +97,13 @@ try {
   } else if (step === "request") {
     const id = required("ATOMIC_SWAP_ID", "the quote id");
     const request = await readFile(join(dir, "request.json"), "utf8");
-    const { proposal, status } = await atomic.request(id, request);
+    const { proposal, status, makerInputs } = await atomic.request(id, request);
     await writeFile(join(dir, "proposal.json"), proposal);
+    // rgb-lib before kaleidoswap/rgb-lib#18 signs every input it owns. The
+    // SDK refused any of the request's own inputs; the wallet must also make
+    // sure none of these is one of its other coins (list_unspents).
+    console.log(`maker inputs, none of which may be yours:`);
+    for (const { txid, vout } of makerInputs) console.log(`  ${txid}:${vout}`);
     console.log(
       `${id}: ${status}. Run complete_swap_proposal on proposal.json,`,
     );

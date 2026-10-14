@@ -2747,6 +2747,44 @@ class _UniffiConverterTypeAtomicCompletion(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.completion_json, buf)
 
 
+class AtomicOutpoint:
+    txid: "str"
+    vout: "int"
+
+    def __init__(self, *, txid: "str", vout: "int"):
+        self.txid = txid
+        self.vout = vout
+
+    def __str__(self):
+        return "AtomicOutpoint(txid={}, vout={})".format(self.txid, self.vout)
+
+    def __eq__(self, other):
+        if self.txid != other.txid:
+            return False
+        if self.vout != other.vout:
+            return False
+        return True
+
+
+class _UniffiConverterTypeAtomicOutpoint(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return AtomicOutpoint(
+            txid=_UniffiConverterString.read(buf),
+            vout=_UniffiConverterUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.txid)
+        _UniffiConverterUInt32.check_lower(value.vout)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.txid, buf)
+        _UniffiConverterUInt32.write(value.vout, buf)
+
+
 class AtomicPair:
     hash: "str"
     rate: "float"
@@ -2897,15 +2935,30 @@ class AtomicProposal:
     id: "str"
     status: "str"
     proposal_json: "str"
+    maker_inputs: "typing.List[AtomicOutpoint]"
+    """
+    The coins the proposal says are the maker's. None is one of the
+    request's own inputs; a wallet on rgb-lib before
+    kaleidoswap/rgb-lib#18 should also check them against its
+    `list_unspents` before `complete_swap_proposal`.
+    """
 
-    def __init__(self, *, id: "str", status: "str", proposal_json: "str"):
+    def __init__(
+        self,
+        *,
+        id: "str",
+        status: "str",
+        proposal_json: "str",
+        maker_inputs: "typing.List[AtomicOutpoint]",
+    ):
         self.id = id
         self.status = status
         self.proposal_json = proposal_json
+        self.maker_inputs = maker_inputs
 
     def __str__(self):
-        return "AtomicProposal(id={}, status={}, proposal_json={})".format(
-            self.id, self.status, self.proposal_json
+        return "AtomicProposal(id={}, status={}, proposal_json={}, maker_inputs={})".format(
+            self.id, self.status, self.proposal_json, self.maker_inputs
         )
 
     def __eq__(self, other):
@@ -2914,6 +2967,8 @@ class AtomicProposal:
         if self.status != other.status:
             return False
         if self.proposal_json != other.proposal_json:
+            return False
+        if self.maker_inputs != other.maker_inputs:
             return False
         return True
 
@@ -2925,6 +2980,7 @@ class _UniffiConverterTypeAtomicProposal(_UniffiConverterRustBuffer):
             id=_UniffiConverterString.read(buf),
             status=_UniffiConverterString.read(buf),
             proposal_json=_UniffiConverterString.read(buf),
+            maker_inputs=_UniffiConverterSequenceTypeAtomicOutpoint.read(buf),
         )
 
     @staticmethod
@@ -2932,12 +2988,14 @@ class _UniffiConverterTypeAtomicProposal(_UniffiConverterRustBuffer):
         _UniffiConverterString.check_lower(value.id)
         _UniffiConverterString.check_lower(value.status)
         _UniffiConverterString.check_lower(value.proposal_json)
+        _UniffiConverterSequenceTypeAtomicOutpoint.check_lower(value.maker_inputs)
 
     @staticmethod
     def write(value, buf):
         _UniffiConverterString.write(value.id, buf)
         _UniffiConverterString.write(value.status, buf)
         _UniffiConverterString.write(value.proposal_json, buf)
+        _UniffiConverterSequenceTypeAtomicOutpoint.write(value.maker_inputs, buf)
 
 
 class AtomicQuote:
@@ -3081,6 +3139,7 @@ class AtomicQuoteExpectations:
     min_to_amount: "typing.Optional[int]"
     max_from_amount: "typing.Optional[int]"
     max_offer_ttl_secs: "typing.Optional[int]"
+    max_rgb_output_sat: "typing.Optional[int]"
 
     def __init__(
         self,
@@ -3093,6 +3152,7 @@ class AtomicQuoteExpectations:
         min_to_amount: "typing.Optional[int]",
         max_from_amount: "typing.Optional[int]",
         max_offer_ttl_secs: "typing.Optional[int]",
+        max_rgb_output_sat: "typing.Optional[int]",
     ):
         self.asset_id = asset_id
         self.bitcoin_network = bitcoin_network
@@ -3102,9 +3162,10 @@ class AtomicQuoteExpectations:
         self.min_to_amount = min_to_amount
         self.max_from_amount = max_from_amount
         self.max_offer_ttl_secs = max_offer_ttl_secs
+        self.max_rgb_output_sat = max_rgb_output_sat
 
     def __str__(self):
-        return "AtomicQuoteExpectations(asset_id={}, bitcoin_network={}, proxy_url={}, max_network_fee_sat={}, max_service_fee={}, min_to_amount={}, max_from_amount={}, max_offer_ttl_secs={})".format(
+        return "AtomicQuoteExpectations(asset_id={}, bitcoin_network={}, proxy_url={}, max_network_fee_sat={}, max_service_fee={}, min_to_amount={}, max_from_amount={}, max_offer_ttl_secs={}, max_rgb_output_sat={})".format(
             self.asset_id,
             self.bitcoin_network,
             self.proxy_url,
@@ -3113,6 +3174,7 @@ class AtomicQuoteExpectations:
             self.min_to_amount,
             self.max_from_amount,
             self.max_offer_ttl_secs,
+            self.max_rgb_output_sat,
         )
 
     def __eq__(self, other):
@@ -3132,6 +3194,8 @@ class AtomicQuoteExpectations:
             return False
         if self.max_offer_ttl_secs != other.max_offer_ttl_secs:
             return False
+        if self.max_rgb_output_sat != other.max_rgb_output_sat:
+            return False
         return True
 
 
@@ -3147,6 +3211,7 @@ class _UniffiConverterTypeAtomicQuoteExpectations(_UniffiConverterRustBuffer):
             min_to_amount=_UniffiConverterOptionalUInt64.read(buf),
             max_from_amount=_UniffiConverterOptionalUInt64.read(buf),
             max_offer_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
+            max_rgb_output_sat=_UniffiConverterOptionalUInt64.read(buf),
         )
 
     @staticmethod
@@ -3159,6 +3224,7 @@ class _UniffiConverterTypeAtomicQuoteExpectations(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.check_lower(value.min_to_amount)
         _UniffiConverterOptionalUInt64.check_lower(value.max_from_amount)
         _UniffiConverterOptionalUInt64.check_lower(value.max_offer_ttl_secs)
+        _UniffiConverterOptionalUInt64.check_lower(value.max_rgb_output_sat)
 
     @staticmethod
     def write(value, buf):
@@ -3170,6 +3236,7 @@ class _UniffiConverterTypeAtomicQuoteExpectations(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.write(value.min_to_amount, buf)
         _UniffiConverterOptionalUInt64.write(value.max_from_amount, buf)
         _UniffiConverterOptionalUInt64.write(value.max_offer_ttl_secs, buf)
+        _UniffiConverterOptionalUInt64.write(value.max_rgb_output_sat, buf)
 
 
 class AtomicQuoteRequest:
@@ -10884,6 +10951,28 @@ class _UniffiConverterSequenceString(_UniffiConverterRustBuffer):
         return [_UniffiConverterString.read(buf) for i in range(count)]
 
 
+class _UniffiConverterSequenceTypeAtomicOutpoint(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeAtomicOutpoint.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeAtomicOutpoint.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeAtomicOutpoint.read(buf) for i in range(count)]
+
+
 class _UniffiConverterSequenceTypeCardMarket(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -14406,6 +14495,7 @@ __all__ = [
     "SwapRestoreType",
     "TransactionChain",
     "AtomicCompletion",
+    "AtomicOutpoint",
     "AtomicPair",
     "AtomicPairFees",
     "AtomicPairLimits",

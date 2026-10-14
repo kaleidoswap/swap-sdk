@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use kaleidorg_swap_sdk::atomic::{
-    self, AtomicAmountDirection, AtomicPair, AtomicPairFees, AtomicPairLimits,
+    self, AtomicAmountDirection, AtomicOutpoint, AtomicPair, AtomicPairFees, AtomicPairLimits,
     AtomicQuoteExpectations, AtomicQuoteRequest, AtomicSwapState, AtomicSwapStatus,
 };
 
@@ -50,6 +50,13 @@ pub struct AtomicQuoteExpectations {
     pub min_to_amount: Option<u64>,
     pub max_from_amount: Option<u64>,
     pub max_offer_ttl_secs: Option<u64>,
+    pub max_rgb_output_sat: Option<u64>,
+}
+
+#[uniffi::remote(Record)]
+pub struct AtomicOutpoint {
+    pub txid: String,
+    pub vout: u32,
 }
 
 #[uniffi::remote(Record)]
@@ -131,6 +138,11 @@ pub struct AtomicProposal {
     pub id: String,
     pub status: String,
     pub proposal_json: String,
+    /// The coins the proposal says are the maker's. None is one of the
+    /// request's own inputs; a wallet on rgb-lib before
+    /// kaleidoswap/rgb-lib#18 should also check them against its
+    /// `list_unspents` before `complete_swap_proposal`.
+    pub maker_inputs: Vec<AtomicOutpoint>,
 }
 
 /// The broadcast swap. `completion_json` is the finalized
@@ -187,6 +199,7 @@ impl SwapClient {
             id: answer.id,
             status: answer.status,
             proposal_json: answer.proposal.to_string(),
+            maker_inputs: answer.maker_inputs,
         })
     }
 

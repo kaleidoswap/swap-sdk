@@ -1157,7 +1157,22 @@ impl BoltzClient {
             .atomic_request(&swap_id, &request)
             .await
             .map_err(core_err)?;
-        rgb_message_to_js(&proposal, "proposal")
+        // Not through `rgb_message_to_js`: its JSON detour would turn the
+        // `u32` `vout`s into BigInts.
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Proposal<'a> {
+            id: &'a str,
+            status: &'a str,
+            proposal: String,
+            maker_inputs: &'a [atomic::AtomicOutpoint],
+        }
+        to_js(&Proposal {
+            id: &proposal.id,
+            status: &proposal.status,
+            proposal: proposal.proposal.to_string(),
+            maker_inputs: &proposal.maker_inputs,
+        })
     }
 
     /// Post the wallet's signed `OnchainSwapCompletion` (JSON text). The

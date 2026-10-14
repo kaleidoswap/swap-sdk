@@ -208,6 +208,7 @@ for (const [pair, capture] of Object.entries(CAPTURE)) {
           bitcoinNetwork: "Regtest",
           maxNetworkFeeSat: 2_000n,
           maxOfferTtlSecs: 600n,
+          maxRgbOutputSat: 1_000n,
         },
         BigInt(capture.now),
       );
@@ -218,6 +219,16 @@ for (const [pair, capture] of Object.entries(CAPTURE)) {
         -1,
       );
       const proposed = await atomic.request(quote.id, request);
+      // The maker's coins, for a wallet on an unpatched rgb-lib to check.
+      const makers = JSON.parse(proposed.proposal).maker_inputs;
+      assert.ok(makers.length > 0);
+      assert.deepEqual(
+        proposed.makerInputs,
+        makers.map(({ outpoint }) => ({
+          txid: outpoint.txid,
+          vout: outpoint.vout,
+        })),
+      );
       const done = await atomic.complete(quote.id, completion);
       const status = await atomic.status(quote.id);
 
@@ -246,3 +257,47 @@ for (const [pair, capture] of Object.entries(CAPTURE)) {
     }
   });
 }
+
+test("a proposal listing one of the taker's own inputs as the maker's is refused", async () => {
+  const outpoint = { txid: "cc".repeat(32), vout: 3 };
+  const request = REQUEST_JSON.replace(
+    '"taker_inputs":[]',
+    `"taker_inputs":[{"outpoint":${JSON.stringify(outpoint)},"amount_sat":5000}]`,
+  );
+  const proposal = PROPOSAL_JSON.replace(REQUEST_JSON, request).replace(
+    '"maker_inputs":[]',
+    `"maker_inputs":[{"outpoint":${JSON.stringify(outpoint)},"amount_sat":5000}]`,
+  );
+  const maker = await mockMaker([
+    [
+      200,
+      `{"id":"01JATOMICSWAP","status":"transaction.proposed","proposal":${proposal}}`,
+    ],
+  ]);
+  try {
+    const atomic = new AtomicSwaps(new SwapClient(maker.url));
+    await assert.rejects(
+      atomic.request("01JATOMICSWAP", request),
+      hasCode("Protocol", /taker's own input/),
+    );
+  } finally {
+    maker.close();
+  }
+});
+
+test("an offer whose RGB output exceeds maxRgbOutputSat is refused", async () => {
+  const maker = await mockMaker([[201, QUOTE_BODY]]);
+  try {
+    const atomic = new AtomicSwaps(new SwapClient(maker.url));
+    await assert.rejects(
+      atomic.quote(
+        { pair: ATOMIC_BTC_TO_USDT_RGB, amount: 100_000n },
+        { ...EXPECT, maxRgbOutputSat: 999n },
+        NOW,
+      ),
+      hasCode("Protocol", /RGB output/),
+    );
+  } finally {
+    maker.close();
+  }
+});

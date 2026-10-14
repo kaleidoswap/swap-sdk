@@ -879,6 +879,13 @@ export interface AtomicQuoteRequest {
 }
 
 /** What the caller expects of a quote, beyond what it asked for. */
+/**
+ * What the caller expects of a quote, beyond what it asked for.
+ *
+ * Amounts are in each asset's base units, the ones the quote itself uses:
+ * sats for BTC, and the RGB contract's smallest unit for USDT-RGB, which has
+ * 6 decimals (1 USDT = `1_000_000n`). Never the pair card's display units.
+ */
 export interface AtomicQuoteExpectations {
   /** The USDT-RGB contract id the wallet trades. */
   assetId: string;
@@ -886,15 +893,28 @@ export interface AtomicQuoteExpectations {
   bitcoinNetwork: string;
   /** RGB proxy the wallet requires, if any. */
   proxyUrl?: string;
+  /** Ceiling on the miner fee the taker funds, sats. */
   maxNetworkFeeSat?: bigint;
-  /** In the output asset's units. */
+  /** Ceiling on the maker's fee, in the output asset's base units. */
   maxServiceFee?: bigint;
-  /** For a `from` quote: the least the taker accepts to receive. */
+  /** For a `from` quote: the least the taker accepts to receive, in the output asset's base units. */
   minToAmount?: bigint;
-  /** For a `to` quote: the most the taker accepts to send. */
+  /** For a `to` quote: the most the taker accepts to send, in the input asset's base units. */
   maxFromAmount?: bigint;
   /** Longest the offer may stay open, seconds from now. */
   maxOfferTtlSecs?: bigint;
+  /**
+   * Ceiling on the sats each RGB receive output carries. The taker funds
+   * them into its own coloured UTXO; the ceiling stops a maker from tying up
+   * an arbitrary amount of the taker's BTC there.
+   */
+  maxRgbOutputSat?: bigint;
+}
+
+/** A coin an rgb-lib swap message spends. */
+export interface AtomicOutpoint {
+  txid: string;
+  vout: number;
 }
 
 /** A quote that passed verification. */
@@ -924,6 +944,14 @@ export interface AtomicProposal {
   status: string;
   /** rgb-lib `OnchainSwapProposal` JSON, for `complete_swap_proposal`. */
   proposal: string;
+  /**
+   * The coins the proposal says are the maker's. The SDK has refused any that
+   * is one of the request's own inputs, but cannot see the rest of the
+   * wallet: on rgb-lib before kaleidoswap/rgb-lib#18, check these against
+   * `list_unspents` before `complete_swap_proposal`, or a maker could list
+   * another of the taker's coins and take its value.
+   */
+  makerInputs: AtomicOutpoint[];
 }
 
 export interface AtomicCompletion {
