@@ -1589,4 +1589,158 @@ mod tests {
 
         assert!(verify_submarine_preimage(&invoice, "not-hex").is_err());
     }
+
+    /// Serve a minimal Esplora that fails every request, recording each
+    /// request line.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn recording_esplora() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { return };
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 4096];
+                loop {
+                    let read = stream.read(&mut buf).unwrap_or(0);
+                    if read == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buf[..read]);
+                    let Some(head_end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+                        continue;
+                    };
+                    let body_len: usize = String::from_utf8_lossy(&raw[..head_end])
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().ok())?
+                        })
+                        .unwrap_or(0);
+                    if raw.len() >= head_end + 4 + body_len {
+                        break;
+                    }
+                }
+                let request = String::from_utf8_lossy(&raw);
+                seen.lock()
+                    .unwrap()
+                    .push(request.lines().next().unwrap_or_default().to_string());
+                let body = "unexpected request";
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 500 Internal Server Error\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        (url, requests)
+    }
+
+    /// A claim pinned to an existing lockup spends that transaction's swap
+    /// output, picked by script rather than position. It neither rebroadcasts
+    /// the lockup nor asks Esplora or the maker where the lockup is.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn btc_claim_spends_the_existing_lockup_tx() {
+        use crate::network::esplora::EsploraBitcoinClient;
+        use crate::util::secrets::Preimage;
+
+        let secp = Secp256k1::new();
+        let our_keys = Keypair::from_seckey_slice(&secp, &[0x11; 32]).unwrap();
+        let maker_keys = Keypair::from_seckey_slice(&secp, &[0x22; 32]).unwrap();
+        let preimage = Preimage::from_vec(vec![0x33; 32]).unwrap();
+        let amount = 50_000;
+        let btc_script = BtcSwapScript {
+            swap_type: SwapType::ReverseSubmarine,
+            side: None,
+            funding_addrs: None,
+            hashlock: preimage.hash160,
+            receiver_pubkey: PublicKey::new(our_keys.public_key()),
+            locktime: LockTime::from_height(200).unwrap(),
+            sender_pubkey: PublicKey::new(maker_keys.public_key()),
+            expected_amount: amount,
+            rgb: None,
+        };
+        let chain = crate::network::BitcoinChain::BitcoinRegtest;
+        let swap_spk = btc_script.to_address(chain).unwrap().script_pubkey();
+        let script = SwapScript::new(
+            SwapScriptImpl::bitcoin(btc_script),
+            Some(Amount::from_sat(amount)),
+            None,
+        );
+        // An unrelated output first, so a claim that picked by position
+        // rather than by script would spend the wrong one.
+        let lockup = bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+            input: vec![bitcoin::TxIn {
+                previous_output: bitcoin::OutPoint::new(
+                    bitcoin::Txid::from_byte_array([0x44; 32]),
+                    0,
+                ),
+                ..Default::default()
+            }],
+            output: vec![
+                bitcoin::TxOut {
+                    value: Amount::from_sat(70_000),
+                    script_pubkey: bitcoin::ScriptBuf::new_p2wpkh(
+                        &bitcoin::WPubkeyHash::from_byte_array([0x55; 20]),
+                    ),
+                },
+                bitcoin::TxOut {
+                    value: Amount::from_sat(amount),
+                    script_pubkey: swap_spk,
+                },
+            ],
+        };
+        let lockup_txid = lockup.compute_txid();
+        let lockup_hex = bitcoin::consensus::encode::serialize_hex(&lockup);
+
+        let (esplora_url, requests) = recording_esplora();
+        let chain_client =
+            ChainClient::new().with_bitcoin(EsploraBitcoinClient::new(chain, &esplora_url, 5));
+        // Nothing listens here: any maker request fails the claim.
+        let boltz_api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".to_string(), None);
+        let payout = bitcoin::Address::p2wpkh(
+            &bitcoin::CompressedPublicKey(our_keys.public_key()),
+            bitcoin::Network::Regtest,
+        );
+
+        let claim = script
+            .construct_claim(
+                &preimage,
+                SwapTransactionParams {
+                    keys: our_keys,
+                    output_address: payout.to_string(),
+                    fee: Fee::Absolute(500),
+                    swap_id: "reverse".to_string(),
+                    chain_client: &chain_client,
+                    boltz_api: &boltz_api,
+                    options: Some(
+                        TransactionOptions::default()
+                            .with_cooperative(false)
+                            .with_existing_lockup_tx(
+                                BtcLikeTransaction::from_hex_bitcoin(&lockup_hex).unwrap(),
+                            ),
+                    ),
+                },
+            )
+            .await
+            .unwrap();
+
+        let claim = claim.as_bitcoin().unwrap();
+        assert_eq!(claim.input.len(), 1);
+        assert_eq!(
+            claim.input[0].previous_output,
+            bitcoin::OutPoint::new(lockup_txid, 1)
+        );
+        assert_eq!(claim.output[0].value, Amount::from_sat(amount - 500));
+        assert_eq!(claim.output[0].script_pubkey, payout.script_pubkey());
+        assert!(requests.lock().unwrap().is_empty());
+    }
 }
