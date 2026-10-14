@@ -94,6 +94,20 @@ errors. Only schema v0 is accepted. Raw JSON is available through
 `corridor_card_raw()` / `IntentsCorridor.cardRaw()` for lossless verification;
 card fetching does not verify the advertised signature.
 
+### Added — opt-in live tests against a real maker
+
+`npm run test:live` in `typescript-sdk` runs the TypeScript package against a
+regtest KaleidoSwap maker (maker-rs's e2e stack, 0.8.0 or later). It covers:
+- BTC and L-BTC submarine swaps, paid out and refunded after the timelock;
+- BTC cooperative refunds with the create-time and the recovered `swapAuth`;
+- L-BTC reverse claims;
+- WebSocket status;
+- `SwapMasterKey` restore.
+
+Where the maker co-signs only Bitcoin L1 lockups, the tests assert its refusal.
+The suite skips unless `KALEIDO_LIVE=1`, and neither `npm test` nor CI runs it.
+`test/live/README.md` has the configuration.
+
 ### Fixed — a WebSocket status stream can be stopped
 
 `run_ws_loop` holds a handle to its own stream, so dropping the last one never

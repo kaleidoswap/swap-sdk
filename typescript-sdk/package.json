@@ -69,6 +69,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run build && node --test test/*.test.mjs",
+    "test:live": "node --test --test-concurrency=1 --test-timeout=900000 test/live/*.live.test.mjs",
     "prepack": "npm run vendor:wasm && npm run build",
     "build": "tsc",
     "smoke:package": "node scripts/smoke-package.mjs",

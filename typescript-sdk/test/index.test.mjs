@@ -641,6 +641,122 @@ test("the renamed client carries the static constructors", () => {
   );
 });
 
+// A BTC reverse swap built from fixed test keys (`11…`, ours; `22…`, the
+// maker's) and preimage `33…`; the same values as the Rust test
+// `btc_claim_spends_the_existing_lockup_tx`. Its lockup pays an unrelated
+// output first and the 50,000-sat swap output second.
+const LOCKUP_REVERSE = {
+  id: "reverse",
+  swapTree: {
+    claimLeaf: {
+      version: 192,
+      output:
+        "82012088a914cfb21d36b8551e32a32a4331a394460d7c43a90a88204f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aaac",
+    },
+    refundLeaf: {
+      version: 192,
+      output:
+        "20466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27ad02c800b1",
+    },
+  },
+  lockupAddress:
+    "bcrt1ppm80f8gx33wmfw4m233axe9tmrsvawh7ser8y9m7q973hd89khhsz6v2q0",
+  refundPublicKey:
+    "02466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+  timeoutBlockHeight: 200,
+  onchainAmount: 50000n,
+};
+const LOCKUP_OUR_PUBKEY =
+  "034f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b704075871aa";
+const LOCKUP_TXID =
+  "90c0533cd7108084f09d7f6fb7f9eef9f36a99489e2a533a7a38d2acebe70119";
+const LOCKUP_TX_HEX =
+  "020000000144444444444444444444444444444444444444444444444444444444444444440000000000ffffffff027011010000000000160014555555555555555555555555555555555555555550c30000000000002251200ecef49d068c5db4babb5463d364abd8e0cebafe864672177e017d1bb4e5b5ef00000000";
+
+/** The first input's previous outpoint of a serialized segwit transaction. */
+function firstPrevout(txHex) {
+  // version (4 bytes), segwit marker and flag (2), input count (1).
+  const txid = txHex.slice(14, 78).match(/../g).reverse().join("");
+  const vout = Buffer.from(txHex.slice(78, 86), "hex").readUInt32LE(0);
+  return `${txid}:${vout}`;
+}
+
+function lockupReverseScript() {
+  return SwapScript.fromReverse(
+    "bitcoin",
+    "regtest",
+    LOCKUP_REVERSE,
+    LOCKUP_OUR_PUBKEY,
+  );
+}
+
+test("constructClaim spends the claimLockup and asks nobody where it is", async () => {
+  const { createServer } = await import("node:http");
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push(`${req.method} ${req.url}`);
+    req.resume();
+    req.on("end", () => {
+      res.statusCode = 500;
+      res.end("unexpected request");
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const claim = await lockupReverseScript().constructClaim("33".repeat(32), {
+      ...CLAIM_PARAMS,
+      swapId: "reverse",
+      // Nothing listens here: a maker request fails the claim.
+      makerBaseUrl: "http://127.0.0.1:1/v2",
+      bitcoinEsploraUrl: `http://127.0.0.1:${server.address().port}`,
+      cooperative: false,
+      feeAbsoluteSat: 500n,
+      claimLockup: { chain: "bitcoin", hex: LOCKUP_TX_HEX, txid: LOCKUP_TXID },
+    });
+
+    assert.equal(firstPrevout(claim.hex()), `${LOCKUP_TXID}:1`);
+    // Pinned and never rebroadcast: no Esplora request at all.
+    assert.deepEqual(requests, []);
+  } finally {
+    server.close();
+  }
+});
+
+test("a claimLockup whose hex does not match its txid is rejected", async () => {
+  await assertInvalidArgument(
+    () =>
+      lockupReverseScript().constructClaim("33".repeat(32), {
+        ...CLAIM_PARAMS,
+        claimLockup: {
+          chain: "bitcoin",
+          hex: LOCKUP_TX_HEX,
+          txid: "00".repeat(32),
+        },
+      }),
+    /claimLockup hex does not match its trusted txid/,
+  );
+});
+
+test("a claimLockup on an unknown chain is rejected", async () => {
+  await assertInvalidArgument(
+    () =>
+      lockupReverseScript().constructClaim("33".repeat(32), {
+        ...CLAIM_PARAMS,
+        claimLockup: { chain: "ark", hex: LOCKUP_TX_HEX, txid: LOCKUP_TXID },
+      }),
+    /claimLockup.chain must be bitcoin or liquid/,
+  );
+});
+
+test("a Bitcoin claimLockup labelled liquid does not decode", async () => {
+  await assert.rejects(() =>
+    lockupReverseScript().constructClaim("33".repeat(32), {
+      ...CLAIM_PARAMS,
+      claimLockup: { chain: "liquid", hex: LOCKUP_TX_HEX, txid: LOCKUP_TXID },
+    }),
+  );
+});
+
 // `makerBaseUrl` is renamed in this layer only — the wasm boundary still
 // deserializes `boltzBaseUrl`, so the mapping is load-bearing and silent when
 // wrong: a dropped field would surface as a confusing error from a later step.
