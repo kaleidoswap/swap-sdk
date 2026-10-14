@@ -157,6 +157,8 @@ export function createKaleidoMakerClient(
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
 // the background), `await subscribeSwap(id)`, then poll `updates().next()`.
 // `next()` resolves with a `SwapStatus` (untyped `any` — Boltz-protocol-defined).
+// `await close()` when done: it closes the socket and ends the loop, which
+// `free()` cannot do while the loop runs.
 export {
   BoltzWsApi as SwapWsApi,
   BoltzWsUpdates as SwapWsUpdates,
