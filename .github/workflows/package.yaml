@@ -12,6 +12,7 @@ permissions:
 env:
   MATURIN_VERSION: "1.14.1"
   NODE_VERSION: "22.23.1"
+  NPM_NEXT_VERSION: "12.2.0"
   PYTHON_VERSION: "3.11.9"
   RUST_VERSION: "1.88.0"
   UV_VERSION: "0.11.16"
@@ -211,6 +212,16 @@ jobs:
       - name: Pack and install in a clean consumer
         working-directory: typescript-sdk
         run: npm run smoke:package
+      # npm 12 changed the shape of `npm pack --json` (npm/cli#9247). Node 22
+      # still ships npm 10, so pack once more with npm 12 itself: the next such
+      # change then fails here rather than on the first runner that upgrades.
+      - name: Pack and install with npm 12
+        working-directory: typescript-sdk
+        run: |
+          npm install --no-audit --no-fund --prefix "${RUNNER_TEMP}/npm-next" "npm@${NPM_NEXT_VERSION}"
+          export PATH="${RUNNER_TEMP}/npm-next/node_modules/.bin:${PATH}"
+          test "$(npm --version)" = "${NPM_NEXT_VERSION}"
+          npm run smoke:package
       # The browser entry is the one every bundler resolves, and nothing else on a
       # pull request loads it in a browser. Firefox ships with this runner image,
       # which is the same one the release build runs this script on.
