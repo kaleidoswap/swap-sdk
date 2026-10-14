@@ -9,6 +9,7 @@ import {
   NETWORK,
   freshMaster,
   live,
+  pairCard,
   settled,
   skip,
   until,
@@ -31,14 +32,13 @@ describe("reverse", { skip }, () => {
     master = freshMaster();
   });
 
-  async function card(chain) {
-    return (await env.client.reversePairs())?.BTC?.[chain.to];
+  function card(chain) {
+    return pairCard(() => env.client.reversePairs(), "BTC", chain.to);
   }
 
   /** A Lightning -> `chain` reverse swap, its invoice paid. */
   async function paidReverse(chain, amount = 60_000n) {
     const pair = await card(chain);
-    assert.ok(pair, `the maker serves no BTC -> ${chain.to} reverse pair`);
     const at = index++;
     const key = master.deriveSwapKey(at);
     const preimage = master.derivePreimage(at);
@@ -141,7 +141,7 @@ describe("reverse", { skip }, () => {
   });
 
   test("BTC: a cooperative claim settles the invoice", async (t) => {
-    if (!(await card(BTC))) {
+    if (!(await env.client.reversePairs())?.BTC?.BTC) {
       t.skip("the maker publishes no BTC -> BTC reverse pair");
       return;
     }

@@ -8,6 +8,7 @@ import {
   NETWORK,
   freshMaster,
   live,
+  pairCard,
   mineTo,
   settled,
   skip,
@@ -43,9 +44,11 @@ describe("submarine", { skip }, () => {
 
   /** A submarine swap from `chain` paying `invoice`, with its refund key. */
   async function create(chain, invoice) {
-    const pairs = await env.client.submarinePairs();
-    const card = pairs?.[chain.from]?.BTC;
-    assert.ok(card, `the maker serves no ${chain.from} -> BTC submarine pair`);
+    const card = await pairCard(
+      () => env.client.submarinePairs(),
+      chain.from,
+      "BTC",
+    );
     const key = master.deriveSwapKey(index++);
     const response = await env.client.createSubmarineSwap(NETWORK, {
       from: chain.from,
