@@ -102,7 +102,10 @@ regtest KaleidoSwap maker (maker-rs's e2e stack, 0.8.0 or later). It covers:
 - BTC cooperative refunds with the create-time and the recovered `swapAuth`;
 - L-BTC reverse claims;
 - WebSocket status;
-- `SwapMasterKey` restore.
+- `SwapMasterKey` restore;
+- L-USDT through the caller-funded PSET path: a reverse claim, a submarine
+  paid out or refunded after the timelock, and the BTC → L-USDT chain swap;
+- the packed package in headless Firefox, running a whole reverse swap.
 
 Where the maker co-signs only Bitcoin L1 lockups, the tests assert its refusal.
 The suite skips unless `KALEIDO_LIVE=1`, and neither `npm test` nor CI runs it.

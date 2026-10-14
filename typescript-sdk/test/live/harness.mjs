@@ -82,9 +82,29 @@ export class Node {
     return this.rpc("getnewaddress");
   }
 
-  /** Pays `sats` to `address`; resolves to the txid. */
-  send(address, sats) {
-    return this.rpc("sendtoaddress", address, Number(sats) / 1e8);
+  /**
+   * Pays `sats` (the asset's base units) to `address`; resolves to the txid.
+   * `asset` is a Liquid asset id; the default is the chain's own coin.
+   */
+  send(address, sats, asset) {
+    const amount = Number(sats) / 1e8;
+    if (!asset) return this.rpc("sendtoaddress", address, amount);
+    return this.rpcNamed("sendtoaddress", {
+      address,
+      amount,
+      assetlabel: asset,
+    });
+  }
+
+  async rpcNamed(method, params) {
+    const response = await fetch(this.url, {
+      method: "POST",
+      headers: { authorization: this.auth, "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "1.0", id: method, method, params }),
+    });
+    const { result, error } = await response.json();
+    if (error) throw new Error(`${this.chain} ${method}: ${error.message}`);
+    return result;
   }
 
   async mine(blocks = 1) {
@@ -97,6 +117,32 @@ export class Node {
 
   rawTransaction(txid) {
     return this.rpc("getrawtransaction", txid);
+  }
+
+  /**
+   * A new address with no blinding key (`unconfidential` on Liquid), and its
+   * script. Payments to it are explicit, so the PSET helpers can spend them.
+   */
+  async explicitAddress() {
+    const address = await this.newAddress();
+    const info = await this.rpc("getaddressinfo", address);
+    return {
+      address: this.chain === "liquid" ? info.unconfidential : address,
+      scriptHex: info.scriptPubKey,
+    };
+  }
+
+  /** A confirmed explicit policy-asset UTXO of `sats` this wallet can sign. */
+  async explicitUtxo(sats) {
+    const { address, scriptHex } = await this.explicitAddress();
+    const txid = await this.send(address, sats);
+    await this.mine(1);
+    const tx = await this.rpc("getrawtransaction", txid, true);
+    const vout = tx.vout.findIndex(
+      (out) => out.scriptPubKey?.hex === scriptHex,
+    );
+    if (vout < 0) throw new Error(`${txid} pays no output to ${address}`);
+    return { txid, vout, sats: BigInt(sats), scriptHex };
   }
 
   /** Whether `txid` is in the mempool or a block. */
@@ -187,6 +233,21 @@ export async function settled(build, { timeoutMs = 60_000 } = {}) {
     },
     { timeoutMs, everyMs: 2_000 },
   );
+}
+
+/**
+ * The rate card for `from` -> `to` from `list` (e.g. `client.reversePairs`).
+ * A maker lists Liquid pairs only while its Liquid wallet is ready, so a
+ * card that is missing for a moment is waited for, briefly.
+ */
+export async function pairCard(list, from, to) {
+  let card;
+  await until(
+    `the maker to list ${from} -> ${to}`,
+    async () => (card = (await list())?.[from]?.[to]),
+    { timeoutMs: 60_000, everyMs: 2_000 },
+  );
+  return card;
 }
 
 /** Mines `node` until its tip passes `height`. */

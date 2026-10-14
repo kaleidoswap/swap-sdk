@@ -15,9 +15,18 @@ Without `KALEIDO_LIVE=1` every test is skipped.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `submarine.live.test.mjs` | BTC and L-BTC submarine: the maker pays and claims; an underpaid lockup is refunded after the timelock; BTC refunds cooperatively with the create-time and recovered `swapAuth`                                                                                |
 | `reverse.live.test.mjs`   | L-BTC reverse: a script-path claim, and the maker's refusal of a cooperative one; a BTC cooperative claim when the maker publishes BTC reverse; the WebSocket reports the swap to `invoice.settled`; `SwapMasterKey.restore` and `restoreIndex` find the swaps |
+| `lusdt.live.test.mjs`     | L-USDT through the caller-funded PSET path: a reverse claim; a submarine paid out, and refunded after the timelock when the payment fails; the BTC → L-USDT chain swap claimed. An underpaid L-USDT lockup is refused, as the SDK requires the exact amount    |
+| `browser.live.test.mjs`   | Headless Firefox loads the packed package and runs an L-BTC reverse swap in the page: create, validate, WebSocket status, claim, broadcast                                                                                                                     |
 
 Each run derives its keys from a fresh random passphrase, so swaps never
 collide with an earlier run's, and nothing secret is printed.
+
+The L-USDT tests play the Liquid wallet with elementsd: `pset.mjs` appends an
+explicit L-BTC input and its change and fee outputs to the SDK's PSET
+template, and `walletprocesspsbt` signs that input. The browser test needs
+Firefox (`BROWSER_BIN` to use another binary); its page reaches the maker and
+the Liquid esplora through the test's own server, as neither sends CORS
+headers.
 
 ## The stack
 

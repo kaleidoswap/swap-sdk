@@ -160,6 +160,29 @@ export class LdkServer {
     return { invoice: str(answer, 1), paymentHash: str(answer, 2) };
   }
 
+  /**
+   * An invoice for a payment hash whose preimage this node does not know: an
+   * HTLC for it is held until `fail` (or a claim) settles it.
+   */
+  async invoiceForHash(
+    amountSat,
+    paymentHashHex,
+    description = "swap-sdk live test",
+  ) {
+    const message = Buffer.concat([
+      uint(1, BigInt(amountSat) * 1000n),
+      bytes(2, bytes(1, description)),
+      uint(3, 3600),
+      bytes(4, paymentHashHex),
+    ]);
+    return str(await this.#call("Bolt11ReceiveForHash", message), 1);
+  }
+
+  /** Reject the held HTLC for `paymentHashHex`, failing the sender's payment. */
+  async fail(paymentHashHex) {
+    await this.#call("Bolt11FailForHash", bytes(1, paymentHashHex));
+  }
+
   /** Start paying `invoice`; resolves to the payment id at once. */
   async pay(invoice) {
     return str(await this.#call("Bolt11Send", bytes(1, invoice)), 1);
