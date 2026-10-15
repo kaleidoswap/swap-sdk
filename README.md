@@ -96,14 +96,73 @@ claiming a receive lockup needs an Ark wallet, which is the
 Build that venue's transport from the same maker URL with
 `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
-## Partner attribution (organization API keys)
+## Partner attribution
 
 A partner organization can have the swaps it originates attributed to it, so the
-volume and fees it drives show up in its own statistics. Attribution is opt-in
-and needs an **organization API key** from the KaleidoSwap partner panel — a
-`kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
-production. Without one, every client here behaves exactly as before and creates
-unattributed swaps.
+volume and fees it drives show up in its own statistics. Attribution is opt-in,
+and there are two ways to do it. Without either, every client here behaves
+exactly as before and creates unattributed swaps.
+
+- **Client-side software** (a web page, an extension, a mobile or desktop app)
+  uses the organization's public **organization key**. There is nothing secret
+  in it to ship.
+- **Servers** may instead use a secret **organization API key**, which also
+  unlocks what a public label cannot: a rate-limit budget of the organization's
+  own and access to a partners-only maker.
+
+### Organization keys (client-side)
+
+An organization key is the 64-hex x-only secp256k1 public key the organization
+registered in the partner panel, proving with a signature that it holds the
+private half. That private half is used only to claim a revshare payout, on the
+organization's own machine; no KaleidoSwap software, this SDK included, ever
+asks for it.
+
+The key is a **label, never a credential**. Anyone can copy it, so it buys the
+caller nothing: no rate-limit budget of its own, no discount, no access in the
+maker's partners-only mode. That is what makes it safe in a bundle.
+
+```rust
+use kaleidorg_swap_sdk::kaleido::{KaleidoOrgClient, KaleidoOrgClientOptions, OrgKey};
+
+let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
+    maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
+    org_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798".parse::<OrgKey>()?,
+    timeout: None,
+})?;
+```
+
+```python
+client = kaleidorg_swap_sdk.SwapClient.kaleido_org(
+    "https://maker.signet.kaleidoswap.com/v2", ORG_KEY, None
+)
+```
+
+```ts
+import { createKaleidoOrgClient } from "@kaleidorg/swap-sdk";
+
+const client = createKaleidoOrgClient({
+  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+  orgKey: import.meta.env.VITE_KALEIDOSWAP_ORG_KEY,
+});
+```
+
+The key goes out in `X-Kaleido-Org-Key` on swap creation only — `POST
+/v2/swap/{submarine,reverse,chain}`, `POST /v2/swap/pay` and the corridor's
+`POST /v1/swap` — and only to the configured maker URL, which must be `https`
+unless it is a loopback address. A value that is not a point on the curve is
+rejected locally rather than reaching the maker as `400 org_key_malformed`. The
+maker answers every creation with `X-Kaleido-Attribution: none | api_key |
+org_key`; when an org-keyed creation comes back as anything but `org_key` (a
+maker with organization keys switched off, say), the swap still goes ahead and
+the SDK logs a warning. A page on another origin also needs the maker's edge to
+allow the header in CORS. The TypeScript `PayThroughClient` and
+`kaleidoswapHttpTransport` take an `orgKey` option too.
+
+### Organization API keys (servers)
+
+The secret key comes from the same panel: a `kld_test_…` key for signet and
+staging, `kld_live_…` for mainnet and production.
 
 The key answers one question — *which partner organization created this swap?* —
 and nothing else. It authorizes no claim, no refund, no fund movement and no
@@ -158,9 +217,10 @@ same answer a revoked key gets.
 
 **Server and native integrations only.** A key in a browser bundle is visible to
 every visitor, who can then attribute their own swaps to — or exhaust the limits
-of — an organization that is not theirs. Keep it in server-side configuration
-and leave browser code on the unauthenticated client; a publishable attribution
-key with allowed origins and per-key rate limits is a separate, later concept.
+of — an organization that is not theirs. Keep it in server-side configuration;
+for attribution from client-side code, use an organization key instead. A
+client carries one or the other, never both: the maker refuses a request with
+both as `400 attribution_conflict`.
 
 ## Repository structure
 

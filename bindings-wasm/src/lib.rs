@@ -380,7 +380,10 @@ use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
 use kaleidorg_swap_sdk::corridor;
-use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+use kaleidorg_swap_sdk::kaleido::{
+    ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
+    KaleidoOrgClientOptions, OrgKey,
+};
 
 fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
@@ -561,6 +564,59 @@ impl KaleidoMakerOptions {
     }
 }
 
+/// `{ makerUrl, orgKey, timeoutSecs? }` for [`BoltzClient::for_kaleido_org`].
+struct KaleidoOrgOptions {
+    maker_url: String,
+    org_key: String,
+    timeout_secs: Option<u64>,
+}
+
+/// The properties [`KaleidoOrgOptions`] reads, for the unknown-key check.
+const KALEIDO_ORG_OPTION_KEYS: [&str; 3] = ["makerUrl", "orgKey", "timeoutSecs"];
+
+impl KaleidoOrgOptions {
+    /// Read the options object by hand, the same way and for the same reason
+    /// as [`KaleidoMakerOptions::from_js_options`]: an `apiKey` passed here by
+    /// mistake must not be echoed by a serde error.
+    fn from_js_options(options: JsValue) -> Result<Self, JsValue> {
+        let shape = "forKaleidoOrg expects an options object \
+                     `{ makerUrl, orgKey, timeoutSecs? }`";
+        if !options.is_object() || js_sys::Array::is_array(&options) {
+            return Err(arg_err(shape));
+        }
+        let options: js_sys::Object = options.unchecked_into();
+
+        // An `apiKey` here is a caller holding both kinds of attribution. The
+        // maker refuses a request carrying both, so one client never sends
+        // both; saying which constructor takes it beats "unknown option".
+        if js_sys::Reflect::has(&options, &JsValue::from_str("apiKey")).unwrap_or(false) {
+            return Err(arg_err(
+                "forKaleidoOrg takes an organization key, not an API key — a client \
+                 attributes its swaps one way or the other, never both. Use \
+                 forKaleidoMaker for a `kld_` key",
+            ));
+        }
+        let unknown: Vec<String> = js_sys::Object::keys(&options)
+            .iter()
+            .filter_map(|key| key.as_string())
+            .filter(|key| !KALEIDO_ORG_OPTION_KEYS.contains(&key.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(arg_err(format!(
+                "unknown option{} {} — {shape}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+            )));
+        }
+
+        Ok(Self {
+            maker_url: required_string_option(&options, "makerUrl")?,
+            org_key: required_string_option(&options, "orgKey")?,
+            timeout_secs: timeout_secs_option(&options)?,
+        })
+    }
+}
+
 /// Whether this looks like a document context — i.e. a browser.
 ///
 /// One wasm artifact serves both Node and the browser, so there is no
@@ -736,6 +792,42 @@ impl BoltzClient {
         Ok(BoltzClient {
             inner: client.into_inner(),
         })
+    }
+
+    /// `BoltzClient.forKaleidoOrg({ makerUrl, orgKey, timeoutSecs? })` — a
+    /// client that attributes the swaps it creates to a partner organization
+    /// by its public organization key.
+    ///
+    /// `orgKey` is the 64-hex x-only public key the organization registered in
+    /// the partner panel. It is public, which is the point: this constructor
+    /// works in a page, a Web Worker, an extension service worker and Node
+    /// alike, with nothing to hide in any of them. The key is a label, never a
+    /// credential — it buys the caller no rate limit, discount or access of its
+    /// own — and it goes out in `X-Kaleido-Org-Key` on swap creation only, to
+    /// `makerUrl` only, which must be `https` unless it is a loopback address.
+    ///
+    /// In a browser the maker's edge must allow `X-Kaleido-Org-Key` in CORS for
+    /// a page on another origin to send it; an extension's host permissions
+    /// make that moot.
+    #[wasm_bindgen(js_name = forKaleidoOrg)]
+    pub fn for_kaleido_org(options: JsValue) -> Result<BoltzClient, JsValue> {
+        let options = KaleidoOrgOptions::from_js_options(options)?;
+        let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
+            maker_url: options.maker_url,
+            org_key: OrgKey::parse(&options.org_key).map_err(core_err)?,
+            timeout: options.timeout_secs.map(std::time::Duration::from_secs),
+        })
+        .map_err(core_err)?;
+        Ok(BoltzClient {
+            inner: client.into_inner(),
+        })
+    }
+
+    /// The organization key this client attributes its swaps to, as 64
+    /// lowercase hex, or `undefined` for a client built without one.
+    #[wasm_bindgen(getter, js_name = orgKey)]
+    pub fn org_key(&self) -> Option<String> {
+        self.inner.org_key().map(|key| key.to_string())
     }
 
     /// The environment the configured organization key is scoped to — `"test"`

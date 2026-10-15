@@ -627,3 +627,58 @@ test("caller can retry in-flight with the unchanged key and recover the original
     ],
   );
 });
+
+const ORG_KEY =
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+test("pay-through sends the org key on create only, in any runtime", async () => {
+  const seen = [];
+  const client = new PayThroughClient({
+    makerUrl: "https://maker.example/v2",
+    orgKey: ` ${ORG_KEY.toUpperCase()}\n`,
+    fetch: async (url, init) => {
+      seen.push({
+        url,
+        orgKey: init.headers["X-Kaleido-Org-Key"],
+        authorization: init.headers.Authorization,
+      });
+      if (url.endsWith("/version")) {
+        return Response.json({ capabilities: [] });
+      }
+      return Response.json(created, { status: 201 });
+    },
+  });
+  await client.supportsIdempotency();
+  await client.create({ destination: "bcrt1test", invoiceAmount: 100000 });
+  assert.deepEqual(seen, [
+    {
+      url: "https://maker.example/v2/version",
+      orgKey: undefined,
+      authorization: undefined,
+    },
+    {
+      url: "https://maker.example/v2/swap/pay",
+      orgKey: ORG_KEY,
+      authorization: undefined,
+    },
+  ]);
+});
+
+test("pay-through refuses a malformed org key and an org key beside an API key", () => {
+  for (const orgKey of ["", ORG_KEY.slice(1), "z".repeat(64)]) {
+    assert.throws(
+      () =>
+        new PayThroughClient({ makerUrl: "https://maker.example/v2", orgKey }),
+      /orgKey must be/,
+    );
+  }
+  assert.throws(
+    () =>
+      new PayThroughClient({
+        makerUrl: "https://maker.example/v2",
+        orgKey: ORG_KEY,
+        apiKey: "kld_test_abc_secret",
+      }),
+    /not both/,
+  );
+});

@@ -126,10 +126,10 @@ export interface KaleidoMakerClientOptions {
  * organization credential with no origin binding and no per-key rate limit, so a
  * key in a browser bundle is visible to every visitor — who can then attribute
  * their own swaps to, or exhaust the limits of, an organization that is not
- * theirs. Nothing in the bundle can prevent that; a publishable attribution key
- * with allowed origins and per-key limits is a separate, later concept. Put the
- * key in server-side configuration, talk to the maker from there, and leave the
- * browser bundle on the unauthenticated `SwapClient` constructor.
+ * theirs. Nothing in the bundle can prevent that. Put the key in server-side
+ * configuration and talk to the maker from there; for attribution from a
+ * browser, an extension or a mobile app, use {@link createKaleidoOrgClient}
+ * with the organization's public key instead.
  *
  * One protection is also weaker under `fetch` than on a server: `fetch` owns
  * redirect handling and the SDK can set no policy on it, so a `3xx` away from
@@ -152,6 +152,62 @@ export function createKaleidoMakerClient(
   options: KaleidoMakerClientOptions,
 ): WasmSwapClient {
   return WasmSwapClient.forKaleidoMaker(options);
+}
+
+export {
+  ATTRIBUTION_HEADER,
+  ORG_KEY_HEADER,
+  normalizeOrgKey,
+} from "./org-key.js";
+
+/** Options for {@link createKaleidoOrgClient}. */
+export interface KaleidoOrgClientOptions {
+  /** The maker's `/v2` base URL — the only origin the key is sent to. */
+  makerUrl: string;
+  /**
+   * The organization key: the 64-hex x-only public key the organization
+   * registered in the KaleidoSwap partner panel.
+   */
+  orgKey: string;
+  /** Per-request timeout in seconds. Omit to leave it to the HTTP stack. */
+  timeoutSecs?: number;
+}
+
+/**
+ * A {@link SwapClient} that attributes the swaps it creates to a partner
+ * organization by its public organization key. Works in a page, a Web Worker,
+ * an extension service worker, React Native and Node alike.
+ *
+ * The organization key is public by design: the organization proved it holds
+ * the private half when it registered the key, and the private half is used
+ * only to claim a revshare payout, on the organization's own machine. So there
+ * is nothing in the bundle to steal. The key is a **label, never a
+ * credential** — it buys the caller no rate limit, discount or access of its
+ * own, which is exactly why copying it is harmless.
+ *
+ * It goes out in `X-Kaleido-Org-Key` on swap creation only, to `makerUrl`
+ * only, which must be `https` unless it is a loopback address. A value that is
+ * not a point on the curve is rejected here rather than reaching the maker as
+ * `400 org_key_malformed`. A maker with organization keys switched off still
+ * creates the swap, unattributed, and the SDK logs a warning.
+ *
+ * ```ts
+ * import { init, createKaleidoOrgClient } from "@kaleidorg/swap-sdk";
+ *
+ * await init();
+ * const client = createKaleidoOrgClient({
+ *   makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+ *   orgKey: import.meta.env.VITE_KALEIDOSWAP_ORG_KEY,
+ * });
+ * ```
+ *
+ * A page on another origin also needs the maker's edge to allow
+ * `X-Kaleido-Org-Key` in CORS; an extension's host permissions make that moot.
+ */
+export function createKaleidoOrgClient(
+  options: KaleidoOrgClientOptions,
+): WasmSwapClient {
+  return WasmSwapClient.forKaleidoOrg(options);
 }
 
 // WebSocket swap-status stream. Call `runWsLoop()` WITHOUT awaiting (it runs in
