@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — React Native: `SwapClient.kaleidoMaker` refuses to run in an app
+
+`SwapClient.kaleidoMaker(makerUrl, apiKey, timeout)` in
+`@kaleidorg/swap-sdk-react-native` had no guard, so a secret `kld_` partner key
+could be shipped inside a mobile app, where every user can read it. It now
+throws `Exception.Generic` before the key reaches native code. An app that
+builds this client on purpose must pass the new fourth argument:
+`kaleidoMaker(makerUrl, apiKey, timeout, { allowMobile: true })`. This mirrors
+`allowBrowser: true` on the WASM/TypeScript `forKaleidoMaker`. The recommended
+fix is to create attributed swaps from a server instead. The Python binding is
+unchanged. Part of phase 0 of
+[kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578).
+
 ### Added — pay-through idempotency keys
 
 `PayThroughClient.create(request, { idempotencyKey, signal })` accepts a

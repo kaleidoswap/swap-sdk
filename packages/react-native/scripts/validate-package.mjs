@@ -2,10 +2,12 @@
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { isGuarded } from "./guard-kaleido-maker.mjs";
 import { ARCHIVES, sha256, validateManifest } from "./native-artifacts.mjs";
 
 const required = [
   "src/index.tsx",
+  "src/generated/kaleidorg_swap_sdk.ts",
   "react-native.config.js",
   "KaleidoswapSwapSdk.podspec",
   "android/CMakeLists.txt",
@@ -22,6 +24,15 @@ for (const path of required) {
 if (missing.length > 0) {
   throw new Error(
     `refusing to pack an incomplete native module; run npm run ubrn:build first (missing: ${missing.join(", ")})`,
+  );
+}
+
+// `ubrn:fixup` adds the in-app refusal to `kaleidoMaker`. A module generated
+// without it (by running `ubrn` directly, say) would ship the secret-key
+// constructor unguarded.
+if (!isGuarded(await readFile("src/generated/kaleidorg_swap_sdk.ts", "utf8"))) {
+  throw new Error(
+    "refusing to pack a module whose kaleidoMaker is unguarded; run npm run ubrn:fixup",
   );
 }
 
