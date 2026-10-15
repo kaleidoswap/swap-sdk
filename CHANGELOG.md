@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — WASM/TypeScript: `forKaleidoMaker` refuses workers and extensions
+
+`BoltzClient.forKaleidoMaker` / `createKaleidoMakerClient` already refused a
+document context, but looked for nothing else, so the attributed client built
+in a Web Worker and in an MV3 extension's service worker — neither has a
+`document`. It now also refuses any context exposing `WorkerGlobalScope`,
+`ServiceWorkerGlobalScope` or `SharedWorkerGlobalScope`, and any browser
+extension context (`chrome.runtime.id` or `browser.runtime.id`). Plain Node is
+unaffected. A worker or extension that builds this client on purpose must now
+pass `allowBrowser: true`, as a page already had to. Part of phase 0 of
+[kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578).
+
 ### Added — pay-through idempotency keys
 
 `PayThroughClient.create(request, { idempotencyKey, signal })` accepts a
