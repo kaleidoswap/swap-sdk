@@ -895,7 +895,12 @@ export interface AtomicQuoteExpectations {
   proxyUrl?: string;
   /** Ceiling on the miner fee the taker funds, sats. */
   maxNetworkFeeSat?: bigint;
-  /** Ceiling on the maker's fee, in the output asset's base units. */
+  /**
+   * Ceiling on the fee the maker declares (`serviceFee`), in the output
+   * asset's base units. Not price protection: a maker can declare no fee and
+   * take its cut in the rate. Only `minToAmount` / `maxFromAmount` bound what
+   * the taker actually gets or pays.
+   */
   maxServiceFee?: bigint;
   /** For a `from` quote: the least the taker accepts to receive, in the output asset's base units. */
   minToAmount?: bigint;
@@ -945,11 +950,8 @@ export interface AtomicProposal {
   /** rgb-lib `OnchainSwapProposal` JSON, for `complete_swap_proposal`. */
   proposal: string;
   /**
-   * The coins the proposal says are the maker's. The SDK has refused any that
-   * is one of the request's own inputs, but cannot see the rest of the
-   * wallet: on rgb-lib before kaleidoswap/rgb-lib#18, check these against
-   * `list_unspents` before `complete_swap_proposal`, or a maker could list
-   * another of the taker's coins and take its value.
+   * The coins the proposal says are the maker's. None of them is one of the
+   * `walletOutpoints` passed to `request`, and none repeats.
    */
   makerInputs: AtomicOutpoint[];
 }
@@ -1057,12 +1059,25 @@ export class AtomicSwaps {
     ) as Promise<AtomicQuote>;
   }
 
-  /** Post the wallet's `OnchainSwapRequest` JSON; resolves with the maker's
-   * unsigned proposal, checked to answer that request. */
-  request(swapId: string, requestJson: string): Promise<AtomicProposal> {
+  /**
+   * Post the wallet's `OnchainSwapRequest` JSON; resolves with the maker's
+   * unsigned proposal, checked to answer that request.
+   *
+   * `walletOutpoints` is every coin the wallet holds: rgb-lib's
+   * `list_unspents`, as `unspents.map((u) => u.utxo.outpoint)`. It must
+   * include the request's own inputs. A proposal that lists any of these
+   * coins as the maker's is refused: rgb-lib before kaleidoswap/rgb-lib#18
+   * would sign it and hand its value to the maker.
+   */
+  request(
+    swapId: string,
+    requestJson: string,
+    walletOutpoints: readonly AtomicOutpoint[],
+  ): Promise<AtomicProposal> {
     return this.client.atomicRequest(
       swapId,
       requestJson,
+      walletOutpoints,
     ) as Promise<AtomicProposal>;
   }
 

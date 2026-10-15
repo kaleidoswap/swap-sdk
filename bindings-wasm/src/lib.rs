@@ -1144,17 +1144,25 @@ impl BoltzClient {
 
     /// Post the wallet's `OnchainSwapRequest` (JSON text). Resolves with the
     /// maker's unsigned `OnchainSwapProposal` as JSON text in `proposal`.
+    ///
+    /// `walletOutpoints` is every `{ txid, vout }` the wallet holds (rgb-lib's
+    /// `list_unspents`). A proposal listing any of them as the maker's is
+    /// refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign it away.
     #[wasm_bindgen(js_name = atomicRequest)]
     pub async fn atomic_request(
         &self,
         swap_id: StringArg,
         request_json: StringArg,
+        wallet_outpoints: JsValue,
     ) -> Result<JsValue, JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;
         let request = rgb_message_arg(request_json, "requestJson")?;
+        let wallet: Vec<atomic::AtomicOutpoint> = from_js(wallet_outpoints)
+            .map_err(|_| arg_err("walletOutpoints must be an array of { txid, vout }"))?;
+        atomic::check_wallet_outpoints(&request, &wallet).map_err(|e| arg_err(e.message()))?;
         let proposal = self
             .inner
-            .atomic_request(&swap_id, &request)
+            .atomic_request(&swap_id, &request, &wallet)
             .await
             .map_err(core_err)?;
         // Not through `rgb_message_to_js`: its JSON detour would turn the

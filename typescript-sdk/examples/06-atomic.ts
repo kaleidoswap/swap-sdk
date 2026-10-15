@@ -8,7 +8,9 @@
  *     Feed it to the wallet's accept_swap_offer; save the request.
  *
  *   ATOMIC_SWAP_ID=... node examples/06-atomic.ts request
- *     Posts $ATOMIC_DIR/request.json, writes proposal.json. Feed it to
+ *     Posts $ATOMIC_DIR/request.json, writes proposal.json. Needs the
+ *     wallet's list_unspents output in unspents.json: a proposal that lists
+ *     any of those coins as the maker's is refused. Feed proposal.json to
  *     complete_swap_proposal; save the completion.
  *
  *   ATOMIC_SWAP_ID=... node examples/06-atomic.ts complete
@@ -77,6 +79,15 @@ try {
           process.env.RGB_BITCOIN_NETWORK ??
           (net === "regtest" ? "Regtest" : "Signet"),
         maxNetworkFeeSat: BigInt(optionalInt("ATOMIC_MAX_FEE_SAT", 10_000)),
+        // The price protection: the least you accept to receive, in the
+        // output asset's base units (sats, or USDT-RGB's 6-decimal units).
+        // maxServiceFee alone would not bound it.
+        minToAmount: BigInt(
+          required(
+            "ATOMIC_MIN_TO_AMOUNT",
+            "the least you accept to receive, in base units",
+          ),
+        ),
         maxOfferTtlSecs: 3_600n,
         // Sats each RGB receive output carries; rgb-lib's default is 1,000.
         maxRgbOutputSat: 2_000n,
@@ -97,12 +108,18 @@ try {
   } else if (step === "request") {
     const id = required("ATOMIC_SWAP_ID", "the quote id");
     const request = await readFile(join(dir, "request.json"), "utf8");
-    const { proposal, status, makerInputs } = await atomic.request(id, request);
+    // Every coin the wallet holds: rgb-lib's list_unspents. rgb-lib before
+    // kaleidoswap/rgb-lib#18 signs any of them a proposal lists, so the SDK
+    // refuses a proposal that lists one as the maker's.
+    const unspents: { utxo: { outpoint: { txid: string; vout: number } } }[] =
+      JSON.parse(await readFile(join(dir, "unspents.json"), "utf8"));
+    const { proposal, status, makerInputs } = await atomic.request(
+      id,
+      request,
+      unspents.map(({ utxo }) => utxo.outpoint),
+    );
     await writeFile(join(dir, "proposal.json"), proposal);
-    // rgb-lib before kaleidoswap/rgb-lib#18 signs every input it owns. The
-    // SDK refused any of the request's own inputs; the wallet must also make
-    // sure none of these is one of its other coins (list_unspents).
-    console.log(`maker inputs, none of which may be yours:`);
+    console.log(`maker inputs (none of them yours):`);
     for (const { txid, vout } of makerInputs) console.log(`  ${txid}:${vout}`);
     console.log(
       `${id}: ${status}. Run complete_swap_proposal on proposal.json,`,

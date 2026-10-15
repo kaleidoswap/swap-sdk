@@ -46,6 +46,8 @@ pub struct AtomicQuoteExpectations {
     pub bitcoin_network: String,
     pub proxy_url: Option<String>,
     pub max_network_fee_sat: Option<u64>,
+    /// Bounds only the fee the maker declares, not the rate: use
+    /// `min_to_amount` / `max_from_amount` for price protection.
     pub max_service_fee: Option<u64>,
     pub min_to_amount: Option<u64>,
     pub max_from_amount: Option<u64>,
@@ -139,9 +141,7 @@ pub struct AtomicProposal {
     pub status: String,
     pub proposal_json: String,
     /// The coins the proposal says are the maker's. None is one of the
-    /// request's own inputs; a wallet on rgb-lib before
-    /// kaleidoswap/rgb-lib#18 should also check them against its
-    /// `list_unspents` before `complete_swap_proposal`.
+    /// `wallet_outpoints` given to `atomic_request`, and none repeats.
     pub maker_inputs: Vec<AtomicOutpoint>,
 }
 
@@ -187,14 +187,22 @@ impl SwapClient {
 
     /// Post the wallet's `OnchainSwapRequest` JSON; returns the maker's
     /// unsigned proposal.
+    ///
+    /// `wallet_outpoints` is every outpoint the wallet holds (rgb-lib's
+    /// `list_unspents`). A proposal listing any of them as the maker's is
+    /// refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign it away.
     #[uniffi::method]
     pub async fn atomic_request(
         &self,
         swap_id: String,
         request_json: String,
+        wallet_outpoints: Vec<AtomicOutpoint>,
     ) -> Result<AtomicProposal, Error> {
         let request = message(&request_json, "request_json")?;
-        let answer = self.inner.atomic_request(&swap_id, &request).await?;
+        let answer = self
+            .inner
+            .atomic_request(&swap_id, &request, &wallet_outpoints)
+            .await?;
         Ok(AtomicProposal {
             id: answer.id,
             status: answer.status,

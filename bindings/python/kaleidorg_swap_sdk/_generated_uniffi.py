@@ -660,7 +660,7 @@ def _uniffi_check_api_checksums(lib):
         )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request()
-        != 49374
+        != 30612
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1590,6 +1590,7 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.restype =
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.argtypes = (
     ctypes.c_void_p,
+    _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
 )
@@ -2938,9 +2939,7 @@ class AtomicProposal:
     maker_inputs: "typing.List[AtomicOutpoint]"
     """
     The coins the proposal says are the maker's. None is one of the
-    request's own inputs; a wallet on rgb-lib before
-    kaleidoswap/rgb-lib#18 should also check them against its
-    `list_unspents` before `complete_swap_proposal`.
+    `wallet_outpoints` given to `atomic_request`, and none repeats.
     """
 
     def __init__(
@@ -3136,6 +3135,11 @@ class AtomicQuoteExpectations:
     proxy_url: "typing.Optional[str]"
     max_network_fee_sat: "typing.Optional[int]"
     max_service_fee: "typing.Optional[int]"
+    """
+    Bounds only the fee the maker declares, not the rate: use
+    `min_to_amount` / `max_from_amount` for price protection.
+    """
+
     min_to_amount: "typing.Optional[int]"
     max_from_amount: "typing.Optional[int]"
     max_offer_ttl_secs: "typing.Optional[int]"
@@ -12391,10 +12395,19 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
-    def atomic_request(self, swap_id: "str", request_json: "str"):
+    def atomic_request(
+        self,
+        swap_id: "str",
+        request_json: "str",
+        wallet_outpoints: "typing.List[AtomicOutpoint]",
+    ):
         """
         Post the wallet's `OnchainSwapRequest` JSON; returns the maker's
         unsigned proposal.
+
+        `wallet_outpoints` is every outpoint the wallet holds (rgb-lib's
+        `list_unspents`). A proposal listing any of them as the maker's is
+        refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign it away.
         """
 
         raise NotImplementedError
@@ -12838,22 +12851,32 @@ class SwapClient:
         )
 
     async def atomic_request(
-        self, swap_id: "str", request_json: "str"
+        self,
+        swap_id: "str",
+        request_json: "str",
+        wallet_outpoints: "typing.List[AtomicOutpoint]",
     ) -> "AtomicProposal":
         """
         Post the wallet's `OnchainSwapRequest` JSON; returns the maker's
         unsigned proposal.
+
+        `wallet_outpoints` is every outpoint the wallet holds (rgb-lib's
+        `list_unspents`). A proposal listing any of them as the maker's is
+        refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign it away.
         """
 
         _UniffiConverterString.check_lower(swap_id)
 
         _UniffiConverterString.check_lower(request_json)
 
+        _UniffiConverterSequenceTypeAtomicOutpoint.check_lower(wallet_outpoints)
+
         return await _uniffi_rust_call_async(
             _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterString.lower(request_json),
+                _UniffiConverterSequenceTypeAtomicOutpoint.lower(wallet_outpoints),
             ),
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,

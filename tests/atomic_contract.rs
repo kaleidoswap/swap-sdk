@@ -6,8 +6,8 @@ use std::io::{Read, Write};
 use std::thread::JoinHandle;
 
 use kaleidorg_swap_sdk::atomic::{
-    AtomicAmountDirection, AtomicQuote, AtomicQuoteExpectations, AtomicQuoteRequest,
-    AtomicSwapState, AtomicSwapStatus,
+    AtomicAmountDirection, AtomicOutpoint, AtomicQuote, AtomicQuoteExpectations,
+    AtomicQuoteRequest, AtomicSwapState, AtomicSwapStatus,
 };
 use kaleidorg_swap_sdk::boltz::BoltzApiClientV2;
 use kaleidorg_swap_sdk::error::Error;
@@ -107,6 +107,29 @@ fn expect(capture: &Value) -> AtomicQuoteExpectations {
     }
 }
 
+/// The outpoints of an rgb-lib input list.
+fn outpoints(inputs: &Value) -> Vec<AtomicOutpoint> {
+    inputs
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|input| AtomicOutpoint {
+            txid: input["outpoint"]["txid"].as_str().unwrap().to_owned(),
+            vout: input["outpoint"]["vout"].as_u64().unwrap() as u32,
+        })
+        .collect()
+}
+
+/// The taker's wallet: the request's own inputs and a coin it did not spend.
+fn wallet(request: &Value) -> Vec<AtomicOutpoint> {
+    let mut coins = outpoints(&request["taker_inputs"]);
+    coins.push(AtomicOutpoint {
+        txid: "ee".repeat(32),
+        vout: 7,
+    });
+    coins
+}
+
 fn now(capture: &Value) -> u64 {
     capture["now"].as_u64().unwrap()
 }
@@ -131,7 +154,7 @@ async fn a_real_atomic_swap_replays_through_the_client() {
 
         let request = json(&capture, "requestSent")["request"].clone();
         let proposed = client
-            .atomic_request(&quote.id, &request)
+            .atomic_request(&quote.id, &request, &wallet(&request))
             .await
             .unwrap_or_else(|e| panic!("{pair}: the real proposal is refused: {e:?}"));
         assert_eq!(proposed.status, "transaction.proposed");
@@ -247,7 +270,9 @@ async fn a_real_proposal_for_another_request_is_refused() {
         let client = BoltzApiClientV2::new(base_url, None);
         let id = json(&capture, "quote")["id"].as_str().unwrap().to_owned();
         let request = json(&capture, "requestSent")["request"].clone();
-        let result = client.atomic_request(&id, &request).await;
+        let result = client
+            .atomic_request(&id, &request, &wallet(&request))
+            .await;
         assert!(
             matches!(result, Err(Error::Protocol(_))),
             "{pair}: {result:?}"
@@ -262,5 +287,31 @@ fn the_real_status_parses() {
             serde_json::from_value(json(&capture(pair), "status")).unwrap();
         assert_eq!(status.pair, pair);
         assert_eq!(status.state, "settled");
+    }
+}
+
+#[tokio::test]
+async fn a_real_proposal_spending_another_of_the_takers_coins_is_refused() {
+    // The real proposals, answered to a taker whose wallet also holds the
+    // maker's first input: as if the maker had listed a coin of the taker's
+    // that the request does not spend.
+    for pair in PAIRS {
+        let capture = capture(pair);
+        let answer = json(&capture, "request");
+        let request = json(&capture, "requestSent")["request"].clone();
+        let mut taker = wallet(&request);
+        let stolen = outpoints(&answer["proposal"]["maker_inputs"])[0].clone();
+        taker.push(stolen.clone());
+        let (base_url, _maker) = replay(vec![answer.to_string()]);
+        let client = BoltzApiClientV2::new(base_url, None);
+        let id = json(&capture, "quote")["id"].as_str().unwrap().to_owned();
+        let error = client
+            .atomic_request(&id, &request, &taker)
+            .await
+            .expect_err("the proposal must be refused");
+        assert!(
+            matches!(&error, Error::Protocol(m) if m.contains(&format!("taker's own coin {}:{}", stolen.txid, stolen.vout))),
+            "{pair}: {error:?}"
+        );
     }
 }

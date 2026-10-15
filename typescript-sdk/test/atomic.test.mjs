@@ -89,7 +89,7 @@ test("an atomic swap runs quote, request, complete and track, with rgb-lib JSON 
       direction: "from",
     });
 
-    const proposed = await atomic.request(quote.id, REQUEST_JSON);
+    const proposed = await atomic.request(quote.id, REQUEST_JSON, []);
     // The 64-bit blinding reaches the maker and comes back digit for digit.
     assert.ok(maker.seen[1].body.includes(`"taker_rgb_blinding":${BLINDING}`));
     assert.ok(proposed.proposal.includes(`"taker_rgb_blinding":${BLINDING}`));
@@ -164,7 +164,7 @@ test("a proposal for another request is refused", async () => {
   try {
     const atomic = new AtomicSwaps(new SwapClient(maker.url));
     await assert.rejects(
-      atomic.request("01JATOMICSWAP", REQUEST_JSON),
+      atomic.request("01JATOMICSWAP", REQUEST_JSON, []),
       hasCode("Protocol", /not for the request that was sent/),
     );
   } finally {
@@ -175,7 +175,7 @@ test("a proposal for another request is refused", async () => {
 test("rgb-lib messages must be JSON text", async () => {
   const atomic = new AtomicSwaps(new SwapClient("http://127.0.0.1:1/v2"));
   await assert.rejects(
-    atomic.request("01JATOMICSWAP", "{not json"),
+    atomic.request("01JATOMICSWAP", "{not json", []),
     hasCode("InvalidArgument", /requestJson/),
   );
 });
@@ -218,7 +218,13 @@ for (const [pair, capture] of Object.entries(CAPTURE)) {
         '{"completion":'.length,
         -1,
       );
-      const proposed = await atomic.request(quote.id, request);
+      // The taker's wallet: the request's own inputs and a coin it did not
+      // spend.
+      const wallet = [
+        ...JSON.parse(request).taker_inputs.map(({ outpoint }) => outpoint),
+        { txid: "ee".repeat(32), vout: 7 },
+      ];
+      const proposed = await atomic.request(quote.id, request, wallet);
       // The maker's coins, for a wallet on an unpatched rgb-lib to check.
       const makers = JSON.parse(proposed.proposal).maker_inputs;
       assert.ok(makers.length > 0);
@@ -258,15 +264,18 @@ for (const [pair, capture] of Object.entries(CAPTURE)) {
   });
 }
 
-test("a proposal listing one of the taker's own inputs as the maker's is refused", async () => {
-  const outpoint = { txid: "cc".repeat(32), vout: 3 };
+test("a proposal listing any of the taker's coins as the maker's is refused", async () => {
+  // The request spends aa:0; the wallet also holds dd:5, which the request
+  // does not touch. The maker lists dd:5 as its own.
+  const spent = { txid: "aa".repeat(32), vout: 0 };
+  const other = { txid: "dd".repeat(32), vout: 5 };
   const request = REQUEST_JSON.replace(
     '"taker_inputs":[]',
-    `"taker_inputs":[{"outpoint":${JSON.stringify(outpoint)},"amount_sat":5000}]`,
+    `"taker_inputs":[{"outpoint":${JSON.stringify(spent)},"amount_sat":5000}]`,
   );
   const proposal = PROPOSAL_JSON.replace(REQUEST_JSON, request).replace(
     '"maker_inputs":[]',
-    `"maker_inputs":[{"outpoint":${JSON.stringify(outpoint)},"amount_sat":5000}]`,
+    `"maker_inputs":[{"outpoint":${JSON.stringify(other)},"amount_sat":90000}]`,
   );
   const maker = await mockMaker([
     [
@@ -277,8 +286,25 @@ test("a proposal listing one of the taker's own inputs as the maker's is refused
   try {
     const atomic = new AtomicSwaps(new SwapClient(maker.url));
     await assert.rejects(
-      atomic.request("01JATOMICSWAP", request),
-      hasCode("Protocol", /taker's own input/),
+      atomic.request("01JATOMICSWAP", request, [spent, other]),
+      hasCode("Protocol", /taker's own coin d+:5/),
+    );
+    // Without the whole wallet the SDK cannot tell; it refuses a list that
+    // lacks the request's own inputs before posting anything.
+    for (const wallet of [[], [other]]) {
+      await assert.rejects(
+        atomic.request("01JATOMICSWAP", request, wallet),
+        hasCode("InvalidArgument", /list_unspents/),
+      );
+    }
+    await assert.rejects(
+      atomic.request("01JATOMICSWAP", request, undefined),
+      hasCode("InvalidArgument", /walletOutpoints/),
+    );
+    assert.equal(
+      maker.seen.length,
+      1,
+      "only the full-wallet request was posted",
     );
   } finally {
     maker.close();

@@ -120,13 +120,19 @@ pub struct AtomicQuoteExpectations {
     /// Ceiling on the miner fee the taker funds, sats.
     #[serde(default)]
     pub max_network_fee_sat: Option<u64>,
-    /// Ceiling on the maker's fee, in the output asset's base units: sats
-    /// when the taker receives BTC, the RGB contract's smallest unit when it
-    /// receives USDT-RGB.
+    /// Ceiling on the fee the maker *declares* (`serviceFee`), in the output
+    /// asset's base units: sats when the taker receives BTC, the RGB
+    /// contract's smallest unit when it receives USDT-RGB.
+    ///
+    /// This is not price protection. A maker can declare no fee and take its
+    /// cut as a worse rate in the quoted amounts; only `min_to_amount` (for a
+    /// `from` quote) or `max_from_amount` (for a `to` quote) bounds what the
+    /// taker actually gets or pays.
     #[serde(default)]
     pub max_service_fee: Option<u64>,
     /// For a `from` quote: the least the taker accepts to receive, in the
-    /// output asset's base units.
+    /// output asset's base units. Together with `max_from_amount`, the only
+    /// bound on the price.
     #[serde(default)]
     pub min_to_amount: Option<u64>,
     /// For a `to` quote: the most the taker accepts to send, in the input
@@ -482,13 +488,8 @@ pub struct AtomicProposal {
     /// `complete_swap_proposal`.
     pub proposal: Value,
     /// The coins the proposal says are the maker's (`proposal.maker_inputs`).
-    ///
-    /// The SDK refuses a proposal that lists one of the request's own
-    /// `taker_inputs` here, but it cannot see the rest of the taker's wallet.
-    /// rgb-lib before kaleidoswap/rgb-lib#18 signs every input it can, so a
-    /// wallet on such a version should check these against its
-    /// `list_unspents` before `complete_swap_proposal`: a maker could list
-    /// another of the taker's coins and take its value.
+    /// None of them is one of the wallet outpoints given to
+    /// [`BoltzApiClientV2::atomic_request`], and none repeats.
     #[serde(rename = "makerInputs", default, skip_deserializing)]
     pub maker_inputs: Vec<AtomicOutpoint>,
 }
@@ -636,12 +637,32 @@ fn input_outpoints(inputs: Option<&Value>, what: &str) -> Result<Vec<AtomicOutpo
         .collect()
 }
 
-/// Check the proposal answers the request that was posted, and spends none of
-/// the request's own inputs as the maker's. Returns the maker's inputs.
+/// Check `wallet` can be the taker's whole wallet: it must hold the request's
+/// own `taker_inputs`, which catches an empty or partial list passed by
+/// mistake before anything is sent.
+pub fn check_wallet_outpoints(request: &Value, wallet: &[AtomicOutpoint]) -> Result<(), Error> {
+    let wallet: HashSet<&AtomicOutpoint> = wallet.iter().collect();
+    let requested = input_outpoints(request.get("taker_inputs"), "request's taker_inputs")?;
+    if let Some(missing) = requested.iter().find(|outpoint| !wallet.contains(outpoint)) {
+        return Err(Error::Generic(format!(
+            "wallet outpoints must be every outpoint the wallet holds (list_unspents); \
+             they lack the request's own input {missing}"
+        )));
+    }
+    Ok(())
+}
+
+/// Check the proposal answers the request that was posted, and lists none of
+/// the taker's coins as the maker's. Returns the maker's inputs.
+///
+/// `wallet` is every outpoint the taker's wallet holds (rgb-lib's
+/// `list_unspents`). It must contain the request's own `taker_inputs`, which
+/// catches an empty or partial list passed by mistake.
 pub(crate) fn check_proposal(
     id: &str,
     request: &Value,
     answer: &AtomicProposal,
+    wallet: &[AtomicOutpoint],
 ) -> Result<Vec<AtomicOutpoint>, Error> {
     if answer.id != id {
         return Err(Error::Protocol(format!(
@@ -654,18 +675,24 @@ pub(crate) fn check_proposal(
             "atomic swap {id}: proposal is not for the request that was sent"
         )));
     }
-    let taker: HashSet<AtomicOutpoint> =
-        input_outpoints(request.get("taker_inputs"), "request's taker_inputs")?
-            .into_iter()
-            .collect();
+    check_wallet_outpoints(request, wallet)?;
+    let wallet: HashSet<&AtomicOutpoint> = wallet.iter().collect();
     let maker = input_outpoints(
         answer.proposal.get("maker_inputs"),
         "proposal's maker_inputs",
     )?;
-    if let Some(stolen) = maker.iter().find(|outpoint| taker.contains(*outpoint)) {
-        return Err(Error::Protocol(format!(
-            "atomic swap {id}: proposal lists the taker's own input {stolen} as the maker's"
-        )));
+    let mut seen = HashSet::new();
+    for outpoint in &maker {
+        if wallet.contains(outpoint) {
+            return Err(Error::Protocol(format!(
+                "atomic swap {id}: proposal lists the taker's own coin {outpoint} as the maker's"
+            )));
+        }
+        if !seen.insert(outpoint) {
+            return Err(Error::Protocol(format!(
+                "atomic swap {id}: proposal lists the maker's input {outpoint} twice"
+            )));
+        }
     }
     Ok(maker)
 }
@@ -724,14 +751,25 @@ impl BoltzApiClientV2 {
 
     /// `POST /v2/swap/atomic/{id}/request` with the wallet's
     /// `OnchainSwapRequest`. Refuses a proposal for another swap or request.
-    pub async fn atomic_request(&self, id: &str, request: &Value) -> Result<AtomicProposal, Error> {
+    ///
+    /// `wallet_outpoints` is every outpoint the taker's wallet holds
+    /// (rgb-lib's `list_unspents`). A proposal that lists any of them as the
+    /// maker's is refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign
+    /// such a coin and hand its value to the maker.
+    pub async fn atomic_request(
+        &self,
+        id: &str,
+        request: &Value,
+        wallet_outpoints: &[AtomicOutpoint],
+    ) -> Result<AtomicProposal, Error> {
+        check_wallet_outpoints(request, wallet_outpoints)?;
         let mut answer: AtomicProposal = self
             .post_json(
                 &format!("swap/atomic/{id}/request"),
                 serde_json::json!({ "request": request }),
             )
             .await?;
-        answer.maker_inputs = check_proposal(id, request, &answer)?;
+        answer.maker_inputs = check_proposal(id, request, &answer, wallet_outpoints)?;
         Ok(answer)
     }
 
@@ -979,78 +1017,99 @@ mod tests {
             proposal: json!({ "request": request, "psbt": "cHNidP8=" }),
             maker_inputs: vec![],
         };
-        check_proposal("01JATOMICSWAP", &request, &answer).unwrap();
-        assert!(check_proposal("01JOTHER", &request, &answer).is_err());
+        check_proposal("01JATOMICSWAP", &request, &answer, &[]).unwrap();
+        assert!(check_proposal("01JOTHER", &request, &answer, &[]).is_err());
         let other = json!({ "offer": { "swap_id": "rgbswap2" }, "taker_inputs": [] });
-        assert!(check_proposal("01JATOMICSWAP", &other, &answer).is_err());
+        assert!(check_proposal("01JATOMICSWAP", &other, &answer, &[]).is_err());
     }
 
-    #[test]
-    fn a_proposal_spends_none_of_the_takers_inputs_as_the_makers() {
-        let input = |txid: &str, vout: Value| json!({ "outpoint": { "txid": txid, "vout": vout }, "amount_sat": 1000 });
+    fn outpoint(txid: &str, vout: u32) -> AtomicOutpoint {
+        AtomicOutpoint {
+            txid: txid.repeat(32),
+            vout,
+        }
+    }
+
+    fn input(outpoint: &AtomicOutpoint, vout: Value) -> Value {
+        json!({ "outpoint": { "txid": outpoint.txid, "vout": vout }, "amount_sat": 1000 })
+    }
+
+    /// A request spending the taker's `aa:0`, from a wallet that also holds
+    /// `bb:1` and `dd:5`.
+    fn taker_side() -> (Value, Vec<AtomicOutpoint>) {
+        let spent = outpoint("aa", 0);
         let request = json!({
             "offer": { "swap_id": "rgbswap1" },
-            "taker_inputs": [input(&"aa".repeat(32), json!(0)), input(&"bb".repeat(32), json!(1))],
+            "taker_inputs": [input(&spent, json!(0))],
         });
-        let proposal = |maker_inputs: Value| AtomicProposal {
+        (request, vec![spent, outpoint("bb", 1), outpoint("dd", 5)])
+    }
+
+    fn proposal_listing(request: &Value, maker_inputs: Value) -> AtomicProposal {
+        AtomicProposal {
             id: "01JATOMICSWAP".to_string(),
             status: "transaction.proposed".to_string(),
             proposal: json!({ "request": request, "maker_inputs": maker_inputs }),
             maker_inputs: vec![],
-        };
+        }
+    }
 
-        // The maker's own coins come back, in order, for the wallet to check.
-        let maker = check_proposal(
-            "01JATOMICSWAP",
-            &request,
-            &proposal(json!([
-                input(&"cc".repeat(32), json!(2)),
-                input(&"bb".repeat(32), json!(0))
-            ])),
-        )
-        .unwrap();
-        assert_eq!(
-            maker,
-            vec![
-                AtomicOutpoint {
-                    txid: "cc".repeat(32),
-                    vout: 2
-                },
-                AtomicOutpoint {
-                    txid: "bb".repeat(32),
-                    vout: 0
-                },
-            ]
-        );
+    #[test]
+    fn a_proposal_lists_none_of_the_takers_coins_as_the_makers() {
+        let (request, wallet) = taker_side();
+        let maker = outpoint("cc", 2);
 
-        // One of the taker's own inputs listed as the maker's, vout as a
-        // number or (as rgb-lib may write it) a string.
-        for vout in [json!(1), json!("1")] {
-            let error = check_proposal(
-                "01JATOMICSWAP",
+        // The maker's own coins come back, in order, for the record.
+        let answer = proposal_listing(&request, json!([input(&maker, json!(2))]));
+        let listed = check_proposal("01JATOMICSWAP", &request, &answer, &wallet).unwrap();
+        assert_eq!(listed, vec![maker.clone()]);
+
+        // Any coin of the wallet, not just the request's own inputs, listed
+        // as the maker's: rgb-lib before #18 would sign it away. `vout` may
+        // be a number or, as rgb-lib may write it, a string.
+        for (coin, vout) in [
+            (outpoint("aa", 0), json!(0)),
+            (outpoint("dd", 5), json!(5)),
+            (outpoint("dd", 5), json!("5")),
+        ] {
+            let answer = proposal_listing(
                 &request,
-                &proposal(json!([
-                    input(&"cc".repeat(32), json!(2)),
-                    input(&"bb".repeat(32), vout)
-                ])),
-            )
-            .unwrap_err();
+                json!([input(&maker, json!(2)), input(&coin, vout)]),
+            );
+            let error = check_proposal("01JATOMICSWAP", &request, &answer, &wallet).unwrap_err();
             assert!(
                 error
                     .to_string()
-                    .contains(&format!("{}:1", "bb".repeat(32))),
+                    .contains(&format!("taker's own coin {coin}")),
                 "{error}"
             );
         }
 
-        // A list rgb-lib could not have written is refused, not skipped.
-        assert!(check_proposal("01JATOMICSWAP", &request, &proposal(json!({}))).is_err());
-        assert!(check_proposal(
-            "01JATOMICSWAP",
+        // The same maker input twice.
+        let answer = proposal_listing(
             &request,
-            &proposal(json!([{ "outpoint": { "txid": "cc" } }]))
-        )
-        .is_err());
+            json!([input(&maker, json!(2)), input(&maker, json!(2))]),
+        );
+        let error = check_proposal("01JATOMICSWAP", &request, &answer, &wallet).unwrap_err();
+        assert!(error.to_string().contains("twice"), "{error}");
+
+        // A list rgb-lib could not have written is refused, not skipped.
+        for malformed in [json!({}), json!([{ "outpoint": { "txid": "cc" } }])] {
+            let answer = proposal_listing(&request, malformed);
+            assert!(check_proposal("01JATOMICSWAP", &request, &answer, &wallet).is_err());
+        }
+    }
+
+    #[test]
+    fn the_wallet_list_must_hold_the_requests_own_inputs() {
+        let (request, wallet) = taker_side();
+        check_wallet_outpoints(&request, &wallet).unwrap();
+        // An empty or partial list, e.g. one passed by mistake, protects
+        // nothing: refused before anything is sent.
+        for partial in [vec![], wallet[1..].to_vec()] {
+            let error = check_wallet_outpoints(&request, &partial).unwrap_err();
+            assert!(error.to_string().contains("list_unspents"), "{error}");
+        }
     }
 
     #[test]
@@ -1197,7 +1256,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(quoted, q);
-        let proposed = client.atomic_request(&q.id, &wallet_request).await.unwrap();
+        let proposed = client
+            .atomic_request(&q.id, &wallet_request, &[])
+            .await
+            .unwrap();
         assert_eq!(proposed.proposal, proposal);
         let done = client.atomic_complete(&q.id, &signed).await.unwrap();
         assert_eq!(done.txid, "aa".repeat(32));
