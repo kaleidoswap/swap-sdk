@@ -35,6 +35,15 @@ android:
   # with any other UniFFI-based library a partner already ships — and a wallet
   # integrating this SDK is exactly the app likely to have one.
   useSharedLibrary: true
+  # The `ubrn:android` script sets `CARGO_PROFILE_RELEASE_STRIP=debuginfo`
+  # because ubrn generates the turbo module from the `.so` it just built.
+  # uniffi reads the components from the ELF symbol table, and the workspace's
+  # `strip = true` removes that table. With it removed, ubrn finds no
+  # components and writes an `index.tsx`, `installRustCrate` and
+  # `CMakeLists.txt` that load nothing, as in 0.11.0. The Android Gradle plugin
+  # strips the library again when an app is packaged. `ubrn:check` fails the
+  # build if this regresses. iOS is unaffected: a static library is not
+  # stripped.
 
 ios:
   # `IPHONEOS_DEPLOYMENT_TARGET` is set in the `ubrn:ios` script rather than
