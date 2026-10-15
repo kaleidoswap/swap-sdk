@@ -9,6 +9,7 @@ import {
   SwapClient,
   SwapWsApi,
   createKaleidoMakerClient,
+  createKaleidoOrgClient,
   init,
   SwapMasterKey,
   SwapScript,
@@ -901,4 +902,149 @@ test("restored keys recover swapAuth through WASM and authorize a re-quote", asy
     client.free();
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// ---------------------------------------------------------------------------
+// Partner attribution: the organization key.
+// ---------------------------------------------------------------------------
+
+// The x coordinate of the secp256k1 generator: certainly on the curve.
+const ORG_KEY =
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+test("an org-key client reads its key back and carries no API key", () => {
+  const client = createKaleidoOrgClient({
+    makerUrl: MAKER_URL,
+    orgKey: ORG_KEY.toUpperCase(),
+  });
+  assert.ok(client instanceof SwapClient);
+  // Lowercase, as the maker, Platform and the panel store it.
+  assert.equal(client.orgKey, ORG_KEY);
+  assert.equal(client.apiKeyId, undefined);
+  assert.equal(client.apiKeyEnvironment, undefined);
+
+  assert.equal(SwapClient.forNetwork("signet").orgKey, undefined);
+  assert.equal(
+    createKaleidoMakerClient({ makerUrl: MAKER_URL, apiKey: API_KEY }).orgKey,
+    undefined,
+  );
+});
+
+test("an org-key client is not refused in a document context", () => {
+  // The whole point of a public key: what forKaleidoMaker refuses in a page,
+  // forKaleidoOrg accepts there.
+  const hadDocument = "document" in globalThis;
+  globalThis.document = {};
+  try {
+    assert.equal(
+      createKaleidoOrgClient({ makerUrl: MAKER_URL, orgKey: ORG_KEY }).orgKey,
+      ORG_KEY,
+    );
+  } finally {
+    if (!hadDocument) delete globalThis.document;
+  }
+});
+
+test("a value that cannot be an organization key is rejected locally", () => {
+  for (const orgKey of [
+    "",
+    ORG_KEY.slice(0, 63),
+    ORG_KEY + "0",
+    "02" + ORG_KEY,
+    ORG_KEY.replace(/7/g, "g"),
+    API_KEY,
+    // BIP-340's off-curve test vectors.
+    "eefdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34",
+    "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30",
+  ]) {
+    assert.throws(
+      () => createKaleidoOrgClient({ makerUrl: MAKER_URL, orgKey }),
+      (error) => isKaleidoSwapError(error),
+      `"${orgKey}" should not have been accepted`,
+    );
+  }
+});
+
+test("an org-key client takes no API key and no plain-HTTP maker", () => {
+  // Both kinds of attribution on one client is a request the maker refuses.
+  assert.throws(
+    () =>
+      SwapClient.forKaleidoOrg({
+        makerUrl: MAKER_URL,
+        orgKey: ORG_KEY,
+        apiKey: API_KEY,
+      }),
+    (error) =>
+      /forKaleidoMaker/.test(error.message) &&
+      !error.message.includes("s3cr3t"),
+  );
+  assert.throws(
+    () => SwapClient.forKaleidoOrg({ makerUrl: MAKER_URL, orgkey: ORG_KEY }),
+    /unknown option orgkey/,
+  );
+  assert.throws(
+    () =>
+      createKaleidoOrgClient({
+        makerUrl: "http://maker.signet.kaleidoswap.com/v2",
+        orgKey: ORG_KEY,
+      }),
+    /plain HTTP/,
+  );
+  assert.ok(
+    createKaleidoOrgClient({
+      makerUrl: "http://127.0.0.1:9001/v2",
+      orgKey: ORG_KEY,
+    }) instanceof SwapClient,
+  );
+});
+
+test("an org-key client sends the key on swap creation and nowhere else", async () => {
+  const seen = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const request = input instanceof Request ? input : undefined;
+    const headers = new Headers(init?.headers ?? request?.headers);
+    const url = request?.url ?? String(input);
+    seen.push({
+      url,
+      method: init?.method ?? request?.method ?? "GET",
+      orgKey: headers.get("x-kaleido-org-key"),
+    });
+    const response = new Response("{}", {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    // A constructed Response has an empty `url`, which reqwest parses as the
+    // origin that answered.
+    Object.defineProperty(response, "url", { value: url });
+    return response;
+  };
+  try {
+    const client = createKaleidoOrgClient({
+      makerUrl: MAKER_URL,
+      orgKey: ORG_KEY,
+    });
+    await client.height().catch(() => {});
+    await client
+      .requestRfq({
+        v: 1,
+        type: "rfq_request",
+        rfq_id: "ab".repeat(32),
+        pair: "arkade:BTC->lightning:BTC",
+        amount_side: "to",
+        amount: 1000,
+        profile: {},
+      })
+      .catch(() => {});
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  const height = seen.find((call) => call.url.endsWith("/v2/chain/heights"));
+  assert.ok(height, JSON.stringify(seen));
+  assert.equal(height.orgKey, null, "a read carries no org key");
+  const create = seen.find((call) => call.url.endsWith("/v1/swap"));
+  assert.ok(create, JSON.stringify(seen));
+  assert.equal(create.method, "POST");
+  assert.equal(create.orgKey, ORG_KEY);
 });

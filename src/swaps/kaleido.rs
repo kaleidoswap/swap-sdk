@@ -42,13 +42,45 @@
 //! the key into a backend that talks to the maker on the browser's behalf, and
 //! leave the browser bundle on the unauthenticated
 //! [`BoltzApiClientV2`].
+//!
+//! # Organization keys: attribution for client-side software
+//!
+//! An app, browser extension or web page cannot keep an API key secret, so it
+//! attributes its swaps with an [`OrgKey`] instead: the organization's x-only
+//! secp256k1 public key, registered in the partner panel with a signature that
+//! proves the organization holds the private half. [`KaleidoOrgClient`] sends it
+//! in [`ORG_KEY_HEADER`] on the swap-creation routes and nowhere else.
+//!
+//! The org key is a **label, not a credential**. Anyone can copy it, so it
+//! buys the caller nothing: no rate-limit budget of its own, no discount, no
+//! access in the maker's partner-keys-only mode. That is why it is safe to ship
+//! in a client, and why it cannot replace an [`ApiKey`] on a server that needs
+//! one of those. The private key is used only to claim a revshare payout on
+//! the partner's own machine; nothing in this SDK asks for it.
+//!
+//! ```no_run
+//! use kaleidorg_swap_sdk::kaleido::{KaleidoOrgClient, KaleidoOrgClientOptions, OrgKey};
+//!
+//! # fn run() -> Result<(), kaleidorg_swap_sdk::error::Error> {
+//! let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
+//!     maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
+//!     org_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+//!         .parse::<OrgKey>()?,
+//!     timeout: None,
+//! })?;
+//! # let _ = client;
+//! # Ok(())
+//! # }
+//! ```
 
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
 use std::time::Duration;
 
+use bitcoin::XOnlyPublicKey;
 use reqwest::header::HeaderValue;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use zeroize::Zeroizing;
 
 use crate::error::Error;
@@ -312,6 +344,147 @@ impl Debug for ApiKey {
     }
 }
 
+/// The header an [`OrgKey`] travels in: 64 lowercase hex, no scheme.
+///
+/// A custom header and not `Authorization`, because the value is not a
+/// credential. Reusing `Authorization` would make the maker read it as a bearer
+/// token, and would make every HTTP stack on the way treat a public label as a
+/// secret to strip on redirect.
+pub const ORG_KEY_HEADER: &str = "X-Kaleido-Org-Key";
+
+/// The header the maker answers every swap creation with: `none`, `api_key` or
+/// `org_key`, naming the attribution the swap was actually stored with.
+///
+/// A maker that has organization keys switched off ignores [`ORG_KEY_HEADER`]
+/// and answers `none`; [`KaleidoOrgClient`] logs a warning when that happens,
+/// so a dropped attribution shows up in the integrator's logs rather than as a
+/// gap in their statistics weeks later. In a browser the header is readable
+/// only where the maker's edge exposes it, and its absence is not reported.
+pub const ATTRIBUTION_HEADER: &str = "X-Kaleido-Attribution";
+
+/// A KaleidoSwap organization key: the BIP-340 x-only public key a partner
+/// registered in the panel, as 32 bytes.
+///
+/// The opposite of [`ApiKey`] on purpose. It is public, so it prints, compares,
+/// serializes and goes in logs and config files like any other identifier, and
+/// it is sent as an ordinary header value — not marked sensitive, not wiped.
+///
+/// Parsing checks that the value is a point on the curve, not that anyone
+/// registered it: a well-formed but unregistered key still attributes the swap
+/// at the maker, and Platform files it as unregistered until the organization
+/// registers it. What parsing buys is that a typo fails here, naming itself,
+/// instead of reaching the maker as a `400 org_key_malformed`.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OrgKey(XOnlyPublicKey);
+
+impl OrgKey {
+    /// Hex characters in a key.
+    const HEX_LEN: usize = 64;
+
+    /// Parse a key from 64 hex characters, either case.
+    ///
+    /// Surrounding ASCII whitespace is trimmed, for the same reason as
+    /// [`ApiKey::parse`]: a value read from a file or an env var routinely
+    /// carries a trailing newline.
+    pub fn parse(raw: &str) -> Result<Self, Error> {
+        let raw = raw.trim_matches(|c: char| c.is_ascii_whitespace());
+        if raw.len() != Self::HEX_LEN {
+            return Err(Self::malformed(&format!(
+                "it is {} characters long, and a key is {}",
+                raw.chars().count(),
+                Self::HEX_LEN
+            )));
+        }
+        if !raw.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(Self::malformed("it has a character that is not hex"));
+        }
+        // Lowercased first so the maker, Platform and this type agree on one
+        // spelling of one key: the registry stores lowercase, and an uppercase
+        // key that parsed here but was compared as text elsewhere would read
+        // as a different organization.
+        XOnlyPublicKey::from_str(&raw.to_ascii_lowercase())
+            .map(Self)
+            .map_err(|_| Self::malformed("it is not a point on the secp256k1 curve"))
+    }
+
+    fn malformed(why: &str) -> Error {
+        Error::Protocol(format!(
+            "not a KaleidoSwap organization key: {why}. An organization key is the \
+             64-hex x-only public key registered in the partner panel"
+        ))
+    }
+
+    /// The key as a secp256k1 x-only public key.
+    pub fn x_only_public_key(&self) -> XOnlyPublicKey {
+        self.0
+    }
+
+    /// The [`ORG_KEY_HEADER`] value this key sends.
+    pub(crate) fn header_value(&self) -> HeaderValue {
+        HeaderValue::from_str(&self.to_string())
+            .expect("64 lowercase hex characters are a valid header value")
+    }
+}
+
+impl From<XOnlyPublicKey> for OrgKey {
+    fn from(key: XOnlyPublicKey) -> Self {
+        Self(key)
+    }
+}
+
+impl FromStr for OrgKey {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+impl TryFrom<&str> for OrgKey {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self, Error> {
+        Self::parse(value)
+    }
+}
+
+impl TryFrom<String> for OrgKey {
+    type Error = Error;
+
+    fn try_from(value: String) -> Result<Self, Error> {
+        Self::parse(&value)
+    }
+}
+
+/// 64 lowercase hex, exactly as the header carries it.
+impl Display for OrgKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+/// The hex, rather than the derive: `XOnlyPublicKey`'s own `Debug` prints the
+/// library's internal 64-byte representation, which matches nothing a partner
+/// can find in the panel.
+impl Debug for OrgKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("OrgKey").field(&self.to_string()).finish()
+    }
+}
+
+impl Serialize for OrgKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for OrgKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw).map_err(|e| serde::de::Error::custom(e.message()))
+    }
+}
+
 /// How to build a [`KaleidoMakerClient`].
 #[derive(Debug)]
 pub struct KaleidoMakerClientOptions {
@@ -498,6 +671,131 @@ impl KaleidoMakerClient {
 }
 
 impl Deref for KaleidoMakerClient {
+    type Target = BoltzApiClientV2;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+/// How to build a [`KaleidoOrgClient`].
+#[derive(Debug, Clone)]
+pub struct KaleidoOrgClientOptions {
+    /// The maker's `/v2` base URL — the only origin the key is sent to.
+    pub maker_url: String,
+    /// The organization key registered in the partner panel.
+    pub org_key: OrgKey,
+    /// Per-request timeout. `None` leaves it to the HTTP stack.
+    pub timeout: Option<Duration>,
+}
+
+/// A [`BoltzApiClientV2`] that attributes the swaps it creates to a partner
+/// organization by its public [`OrgKey`]. Safe to use in client-side software;
+/// see the [module docs][self].
+///
+/// It sends [`ORG_KEY_HEADER`] on the swap-creation routes —
+/// `POST /v2/swap/{submarine,reverse,chain}` and the corridor's `POST /v1/swap`
+/// — and on nothing else: a status read, a claim or a pair list has nothing to
+/// attribute, and a label sent everywhere is a label every response cache and
+/// access log along the way collects for no reason.
+///
+/// A separate type from [`KaleidoMakerClient`] rather than a second key on it,
+/// so one client never carries both. The maker refuses a request with both
+/// (`400 attribution_conflict`).
+#[derive(Debug, Clone)]
+pub struct KaleidoOrgClient {
+    inner: BoltzApiClientV2,
+    org_key: OrgKey,
+}
+
+impl KaleidoOrgClient {
+    /// Build a client that attributes its swaps on `options.maker_url` to
+    /// `options.org_key`.
+    ///
+    /// Fails when the URL is not `https`, or `http` to a loopback host. The key
+    /// is public, so this is not about secrecy: over plain HTTP anything on the
+    /// path can strip or replace the header, and the swap is attributed to
+    /// somebody else or to nobody with no sign of it on either end.
+    pub fn new(options: KaleidoOrgClientOptions) -> Result<Self, Error> {
+        let KaleidoOrgClientOptions {
+            maker_url,
+            org_key,
+            timeout,
+        } = options;
+        Self::validate_maker_url(&maker_url)?;
+        Ok(Self {
+            inner: BoltzApiClientV2::new(maker_url, timeout).with_org_key(org_key),
+            org_key,
+        })
+    }
+
+    /// [`Self::new`] over a caller-supplied `reqwest::ClientBuilder`, keeping
+    /// its proxy, TLS and pool configuration.
+    ///
+    /// The redirect policy is set to [`reqwest::redirect::Policy::none`] here
+    /// for the reason [`KaleidoMakerClient::with_client_builder`] gives: the
+    /// per-swap `swapAuth` this client carries on a chain re-quote is a custom
+    /// header and follows any redirect.
+    pub fn with_client_builder(
+        options: KaleidoOrgClientOptions,
+        http_client: reqwest::ClientBuilder,
+    ) -> Result<Self, Error> {
+        let KaleidoOrgClientOptions {
+            maker_url,
+            org_key,
+            timeout,
+        } = options;
+        Self::validate_maker_url(&maker_url)?;
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        let http_client = http_client.redirect(reqwest::redirect::Policy::none());
+        let http_client = http_client.build()?;
+        Ok(Self {
+            inner: BoltzApiClientV2::with_client(maker_url, http_client, timeout)
+                .with_org_key(org_key),
+            org_key,
+        })
+    }
+
+    fn validate_maker_url(maker_url: &str) -> Result<(), Error> {
+        let url = reqwest::Url::parse(maker_url)?;
+        let Some(host) = url.host_str() else {
+            return Err(Error::Protocol(format!(
+                "maker URL {maker_url} names no host — the organization key is \
+                 bound to one origin and there is nothing here to bind it to"
+            )));
+        };
+        match url.scheme() {
+            "https" => Ok(()),
+            "http" if is_loopback(host) => Ok(()),
+            "http" => Err(Error::Protocol(format!(
+                "refusing to attribute swaps to {maker_url} over plain HTTP — \
+                 anything on the path could strip or replace the organization \
+                 key. Use https, or the unattributed BoltzApiClientV2"
+            ))),
+            scheme => Err(Error::Protocol(format!(
+                "maker URL {maker_url} is {scheme}, and the SDK speaks http(s)"
+            ))),
+        }
+    }
+
+    /// The configured organization key.
+    pub fn org_key(&self) -> OrgKey {
+        self.org_key
+    }
+
+    /// The generic client underneath, for code that takes one by reference.
+    pub fn client(&self) -> &BoltzApiClientV2 {
+        &self.inner
+    }
+
+    /// Take the generic client out. It keeps the key and the origin it is
+    /// bound to.
+    pub fn into_inner(self) -> BoltzApiClientV2 {
+        self.inner
+    }
+}
+
+impl Deref for KaleidoOrgClient {
     type Target = BoltzApiClientV2;
 
     fn deref(&self) -> &Self::Target {
@@ -761,6 +1059,155 @@ mod tests {
         assert!(build("http://maker.signet.kaleidoswap.com/v2").is_err());
         assert!(build("https://ci:hunter2@maker.signet.kaleidoswap.com/v2").is_err());
         assert!(build("ftp://maker.signet.kaleidoswap.com/v2").is_err());
+    }
+
+    /// The x coordinate of the secp256k1 generator: a key that is certainly on
+    /// the curve.
+    const ORG_KEY: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+    /// A key parses from either case and prints back as the lowercase the
+    /// maker, Platform and the panel all store, so one key never reads as two
+    /// organizations.
+    #[test]
+    fn an_org_key_parses_from_either_case_and_prints_lowercase() {
+        let key = OrgKey::parse(ORG_KEY).unwrap();
+        assert_eq!(key.to_string(), ORG_KEY);
+        assert_eq!(OrgKey::parse(&ORG_KEY.to_uppercase()).unwrap(), key);
+        assert_eq!(OrgKey::parse(&format!("  {ORG_KEY}\n")).unwrap(), key);
+        assert_eq!(key.header_value().to_str().unwrap(), ORG_KEY);
+        assert_eq!(
+            OrgKey::from(key.x_only_public_key()),
+            key,
+            "the x-only key round-trips",
+        );
+    }
+
+    /// The key is public, and everything that renders it shows it: unlike an
+    /// [`ApiKey`], the value is what a partner matches against the panel.
+    #[test]
+    fn an_org_key_renders_and_serializes_as_its_hex() {
+        let key = OrgKey::parse(ORG_KEY).unwrap();
+        assert_eq!(format!("{key:?}"), format!("OrgKey(\"{ORG_KEY}\")"));
+
+        let json = serde_json::to_string(&key).unwrap();
+        assert_eq!(json, format!("\"{ORG_KEY}\""));
+        assert_eq!(serde_json::from_str::<OrgKey>(&json).unwrap(), key);
+        assert!(serde_json::from_str::<OrgKey>("\"abc\"").is_err());
+
+        // Header values for a public label are not marked sensitive: there is
+        // nothing to keep out of a header dump.
+        assert!(!key.header_value().is_sensitive());
+    }
+
+    /// A value that cannot be a key fails here, naming what is wrong, rather
+    /// than reaching the maker as `400 org_key_malformed`.
+    ///
+    /// The two off-curve values are BIP-340's own test vectors: an x with no
+    /// point on the curve, and an x past the field size.
+    #[test]
+    fn a_value_that_cannot_be_an_org_key_is_rejected_before_any_request() {
+        for (value, expected) in [
+            (String::new(), "0 characters"),
+            (ORG_KEY[..63].to_string(), "63 characters"),
+            (format!("{ORG_KEY}0"), "65 characters"),
+            (ORG_KEY.replace('7', "g"), "not hex"),
+            (
+                "eefdea4cdb677750a420fee807eacf21eb9898ae79b9768766e4faa04a2d4a34".to_string(),
+                "point on the secp256k1 curve",
+            ),
+            (
+                "fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc30".to_string(),
+                "point on the secp256k1 curve",
+            ),
+            // A compressed key is the wrong shape, not a key to truncate.
+            (format!("02{ORG_KEY}"), "66 characters"),
+            // A kld_ key in the wrong field.
+            (
+                "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t".to_string(),
+                "characters long",
+            ),
+        ] {
+            let err = OrgKey::parse(&value).unwrap_err();
+            assert!(
+                matches!(&err, Error::Protocol(msg) if msg.contains(expected)),
+                "parsing {value:?} should have complained about {expected:?}, got {err:?}",
+            );
+        }
+    }
+
+    /// The org-key client takes the same URL policy as the API-key one, for a
+    /// different reason: the key is public, but over plain HTTP anything on the
+    /// path can strip or swap it.
+    #[test]
+    fn an_org_key_client_refuses_a_url_that_cannot_carry_attribution() {
+        let build = |maker_url: &str| {
+            KaleidoOrgClient::new(KaleidoOrgClientOptions {
+                maker_url: maker_url.to_string(),
+                org_key: OrgKey::parse(ORG_KEY).unwrap(),
+                timeout: None,
+            })
+        };
+
+        for allowed in [
+            "https://maker.signet.kaleidoswap.com/v2",
+            "http://localhost:9001/v2",
+            "http://127.0.0.1:9001/v2",
+            "http://[::1]:9001/v2",
+        ] {
+            assert!(build(allowed).is_ok(), "{allowed} should be allowed");
+        }
+        let err = build("http://maker.signet.kaleidoswap.com/v2").unwrap_err();
+        assert!(
+            matches!(&err, Error::Protocol(msg) if msg.contains("plain HTTP")),
+            "{err:?}",
+        );
+        assert!(build("http://localhost.example.com/v2").is_err());
+        assert!(build("ftp://maker.signet.kaleidoswap.com/v2").is_err());
+        assert!(build("not a url").is_err());
+
+        let with_builder = KaleidoOrgClient::with_client_builder(
+            KaleidoOrgClientOptions {
+                maker_url: "http://maker.signet.kaleidoswap.com/v2".to_string(),
+                org_key: OrgKey::parse(ORG_KEY).unwrap(),
+                timeout: None,
+            },
+            reqwest::Client::builder(),
+        );
+        assert!(
+            with_builder.is_err(),
+            "the builder path has the same policy"
+        );
+    }
+
+    /// An org-key client carries its key and no API key, and keeps the key when
+    /// unwrapped, so handing the inner client on does not drop attribution.
+    #[test]
+    fn an_org_key_client_carries_only_its_org_key() {
+        let key = OrgKey::parse(ORG_KEY).unwrap();
+        let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
+            maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
+            org_key: key,
+            timeout: Some(Duration::from_secs(30)),
+        })
+        .unwrap();
+
+        assert_eq!(client.org_key(), key);
+        assert_eq!(client.client().org_key(), Some(key));
+        assert!(client.api_key().is_none(), "never both on one client");
+        assert_eq!(
+            client.get_ws_url(),
+            "wss://maker.signet.kaleidoswap.com/v2/ws"
+        );
+        assert_eq!(client.into_inner().org_key(), Some(key));
+
+        // ...and the API-key client carries no org key.
+        let api_client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
+            maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
+            api_key: ApiKey::parse(KEY).unwrap(),
+            timeout: None,
+        })
+        .unwrap();
+        assert!(api_client.org_key().is_none());
     }
 
     /// The Kaleido client must be usable everywhere the generic one is, or the
