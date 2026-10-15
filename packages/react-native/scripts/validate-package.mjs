@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { assertGlueLoadsCrate } from "./check-generated-module.mjs";
 import { isGuarded } from "./guard-kaleido-maker.mjs";
 import { ARCHIVES, sha256, validateManifest } from "./native-artifacts.mjs";
 
@@ -11,6 +13,7 @@ const required = [
   "react-native.config.js",
   "KaleidoswapSwapSdk.podspec",
   "android/CMakeLists.txt",
+  "cpp/kaleidoswap-swap-sdk.cpp",
   "cpp/generated/kaleidorg_swap_sdk.cpp",
 ];
 const missing = [];
@@ -25,6 +28,15 @@ if (missing.length > 0) {
   throw new Error(
     `refusing to pack an incomplete native module; run npm run ubrn:build first (missing: ${missing.join(", ")})`,
   );
+}
+
+// Every file can be present and the module still load nothing: ubrn renders
+// the entry and native glue for zero components when it finds none in the
+// library, as it did for 0.11.0.
+try {
+  assertGlueLoadsCrate((path) => readFileSync(path, "utf8"));
+} catch (error) {
+  throw new Error(`refusing to pack: ${error.message}`);
 }
 
 // `ubrn:fixup` adds the in-app refusal to `kaleidoMaker`. A module generated
