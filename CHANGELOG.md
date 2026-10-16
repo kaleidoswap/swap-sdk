@@ -146,6 +146,43 @@ current maker does not register their exact public routes. Correct the parity
 alias for WASM cooperative chain claims to native `construct_claim`, and check
 the route/export policy in CI against a pinned maker router inventory.
 
+### Added — atomic BTC <-> USDT-RGB swaps on L1
+
+A typed client for KaleidoSwap Maker 0.8.0's `/v2/swap/atomic` routes, in the
+Rust core (`kaleidorg_swap_sdk::atomic`, `BoltzApiClientV2::atomic_*`), the
+UniFFI binding and the TypeScript package (`AtomicSwaps`). One transaction
+moves both legs; there is no HTLC and no refund. The SDK quotes, verifies and
+tracks. The wallet's rgb-lib accepts the offer, signs the proposal and accepts
+the transfers; the SDK does not bundle rgb-lib.
+
+`atomicQuote` refuses a quote that answers another pair, direction or amount,
+names another asset, network or proxy than the caller expects, exceeds a fee,
+slippage or offer-lifetime ceiling, or has passed its request deadline. It
+also refuses a quote whose rgb-lib offer moves other amounts or another asset
+than the quote, reserves another miner fee, expires at another time or adds a
+platform fee: the wallet signs the offer, not the quote. An optional
+`maxRgbOutputSat` caps the sats each RGB receive output carries.
+Expectations are in each asset's base units: sats, or the RGB contract's
+smallest unit (6 decimals for USDT-RGB), never the pair card's display units.
+`maxServiceFee` bounds only the fee the maker declares. Only `minToAmount` /
+`maxFromAmount` bound the price.
+
+`atomicRequest` takes the wallet's coins (rgb-lib's `list_unspents`, which must
+include the request's own inputs). It refuses a proposal for another request,
+or one that lists any of the wallet's coins, or the same coin twice, as the
+maker's: rgb-lib before kaleidoswap/rgb-lib#18 would sign such a coin and hand
+its value to the maker. It returns the maker's inputs as `makerInputs`.
+`atomicComplete` refuses a broadcast of another transaction. rgb-lib messages cross the JS and UniFFI boundaries as JSON text,
+because their 64-bit seal blindings do not survive JS numbers.
+
+The checks are pinned to a real maker: `tests/fixtures/atomic-v1` holds every
+wire body of two settled regtest swaps, one per pair, captured from maker-rs's
+`atomic_regtest` with real rgb-lib wallets. Rust and TypeScript replay them
+byte for byte, and changed copies of the real offers are refused.
+
+`createChainSwap` still refuses USDT-RGB: atomic swaps are not Boltz chain
+swaps.
+
 ### Fixed — wait for a complete PyPI inventory after publication
 
 Release verification retries successful PyPI metadata responses that omit

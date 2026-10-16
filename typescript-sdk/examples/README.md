@@ -14,12 +14,13 @@ Node 22+ runs these `.ts` files directly — no bundler, no `tsx`, no build step
 of their own. In your own application the import is the bare package name, which
 is exactly what these files use.
 
-|                   | What it does                                                                      | Needs                                              |
-| ----------------- | --------------------------------------------------------------------------------- | -------------------------------------------------- |
-| `01-pairs.ts`     | Prints every route the maker will trade and on what terms.                        | nothing                                            |
-| `02-submarine.ts` | On-chain BTC → a Lightning invoice. Prints what to fund; refunds with `--refund`. | a swap mnemonic, a BOLT11 invoice, signet bitcoin  |
-| `03-reverse.ts`   | A Lightning payment → L-BTC on Liquid. Claims and broadcasts by itself.           | a swap mnemonic, a Liquid address, 50k signet sats |
-| `04-corridor.ts`  | Quotes the Arkade Intents corridor and shows a refusal.                           | nothing                                            |
+|                   | What it does                                                                      | Needs                                                |
+| ----------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `01-pairs.ts`     | Prints every route the maker will trade and on what terms.                        | nothing                                              |
+| `02-submarine.ts` | On-chain BTC → a Lightning invoice. Prints what to fund; refunds with `--refund`. | a swap mnemonic, a BOLT11 invoice, signet bitcoin    |
+| `03-reverse.ts`   | A Lightning payment → L-BTC on Liquid. Claims and broadcasts by itself.           | a swap mnemonic, a Liquid address, 50k signet sats   |
+| `04-corridor.ts`  | Quotes the Arkade Intents corridor and shows a refusal.                           | nothing                                              |
+| `06-atomic.ts`    | Quotes, verifies and tracks an atomic BTC <-> USDT-RGB L1 swap; rgb-lib signs.    | a regtest maker with atomic pairs, an rgb-lib wallet |
 
 Start with `01-pairs.ts`. If it prints a table, the SDK, its WebAssembly binary
 and the maker are all reachable, and everything else is configuration.
@@ -75,6 +76,24 @@ created on one chain and funded or watched on another.
 money moves. That file carries the `swapAuth` credential — issued once, never
 re-issued — and the material a refund needs. It is gitignored; treat it as
 secret.
+
+## Atomic swaps and rgb-lib
+
+`06-atomic.ts` leaves the signing to the wallet's rgb-lib. Use an rgb-lib with
+kaleidoswap/rgb-lib#18. Earlier versions sign every input the wallet owns, so a
+maker could list one of the taker's coins among its own inputs and take its
+value.
+
+`AtomicSwaps.request` therefore takes the wallet's coins, from rgb-lib's
+`list_unspents`, and refuses a proposal that lists any of them as the maker's.
+The example reads them from `unspents.json`. A list without the request's own
+inputs is refused, so an empty one can't be passed by mistake.
+
+Quote expectations are in each asset's base units: sats for BTC, and the RGB
+contract's smallest unit for USDT-RGB (6 decimals). They are not the pair
+card's display units. `maxServiceFee` bounds only the fee the maker declares,
+so set `minToAmount` (or `maxFromAmount` for a `to` quote) to bound the price;
+the example requires `ATOMIC_MIN_TO_AMOUNT`.
 
 ## RGB wallet adapter
 

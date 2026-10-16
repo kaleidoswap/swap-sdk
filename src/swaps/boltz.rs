@@ -778,7 +778,7 @@ impl BoltzApiClientV2 {
         Ok(self.get_response(end_point).await?.text().await?)
     }
 
-    async fn get_json<T: DeserializeOwned>(&self, end_point: &str) -> Result<T, Error> {
+    pub(crate) async fn get_json<T: DeserializeOwned>(&self, end_point: &str) -> Result<T, Error> {
         let response = self.get_response(end_point).await?;
         Self::parse_json_response(response).await
     }
@@ -787,7 +787,7 @@ impl BoltzApiClientV2 {
         serde_json::from_str::<Value>(&body).unwrap_or(Value::String(body))
     }
 
-    async fn post_json<T: DeserializeOwned>(
+    pub(crate) async fn post_json<T: DeserializeOwned>(
         &self,
         end_point: &str,
         data: impl Serialize,

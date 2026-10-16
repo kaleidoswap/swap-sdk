@@ -62,6 +62,8 @@ ALIASES = {
     # UniFFI expresses that through construct_claim's chain_claim option.
     # submarine_cooperative_claim instead co-signs the server's submarine claim.
     ("SwapScript", "construct_cooperative_claim"): "construct_claim",
+    ("BoltzClient", "atomic_pairs"): "get_atomic_pairs",
+    ("BoltzClient", "atomic_swap"): "get_atomic_swap",
 }
 
 # Capabilities the UniFFI binding intentionally does not mirror. Each entry is a
