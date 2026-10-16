@@ -621,6 +621,7 @@ fn input_outpoints(inputs: Option<&Value>, what: &str) -> Result<Vec<AtomicOutpo
             let txid = outpoint
                 .get("txid")
                 .and_then(Value::as_str)
+                .and_then(|txid| bitcoin::Txid::from_str(txid).ok())
                 .ok_or_else(malformed)?;
             let vout = match outpoint.get("vout") {
                 Some(Value::Number(n)) => n.as_u64(),
@@ -629,9 +630,28 @@ fn input_outpoints(inputs: Option<&Value>, what: &str) -> Result<Vec<AtomicOutpo
             }
             .and_then(|vout| u32::try_from(vout).ok())
             .ok_or_else(malformed)?;
+            // The canonical form: lowercase hex, whatever the message used.
             Ok(AtomicOutpoint {
-                txid: txid.to_owned(),
+                txid: txid.to_string(),
                 vout,
+            })
+        })
+        .collect()
+}
+
+/// An outpoint as compared: the parsed txid, so that two spellings of one
+/// coin (e.g. upper- and lowercase hex) are the same key.
+fn outpoint_key(outpoint: &AtomicOutpoint) -> Option<(bitcoin::Txid, u32)> {
+    Some((bitcoin::Txid::from_str(&outpoint.txid).ok()?, outpoint.vout))
+}
+
+/// The wallet's outpoints as comparison keys.
+fn wallet_keys(wallet: &[AtomicOutpoint]) -> Result<HashSet<(bitcoin::Txid, u32)>, Error> {
+    wallet
+        .iter()
+        .map(|outpoint| {
+            outpoint_key(outpoint).ok_or_else(|| {
+                Error::Generic(format!("wallet outpoint {outpoint} does not name a txid"))
             })
         })
         .collect()
@@ -641,9 +661,12 @@ fn input_outpoints(inputs: Option<&Value>, what: &str) -> Result<Vec<AtomicOutpo
 /// own `taker_inputs`, which catches an empty or partial list passed by
 /// mistake before anything is sent.
 pub fn check_wallet_outpoints(request: &Value, wallet: &[AtomicOutpoint]) -> Result<(), Error> {
-    let wallet: HashSet<&AtomicOutpoint> = wallet.iter().collect();
+    let wallet = wallet_keys(wallet)?;
     let requested = input_outpoints(request.get("taker_inputs"), "request's taker_inputs")?;
-    if let Some(missing) = requested.iter().find(|outpoint| !wallet.contains(outpoint)) {
+    if let Some(missing) = requested
+        .iter()
+        .find(|outpoint| outpoint_key(outpoint).is_none_or(|key| !wallet.contains(&key)))
+    {
         return Err(Error::Generic(format!(
             "wallet outpoints must be every outpoint the wallet holds (list_unspents); \
              they lack the request's own input {missing}"
@@ -676,19 +699,25 @@ pub(crate) fn check_proposal(
         )));
     }
     check_wallet_outpoints(request, wallet)?;
-    let wallet: HashSet<&AtomicOutpoint> = wallet.iter().collect();
+    let wallet = wallet_keys(wallet)?;
     let maker = input_outpoints(
         answer.proposal.get("maker_inputs"),
         "proposal's maker_inputs",
     )?;
     let mut seen = HashSet::new();
     for outpoint in &maker {
-        if wallet.contains(outpoint) {
+        // `input_outpoints` parsed every txid, so this key exists.
+        let key = outpoint_key(outpoint).ok_or_else(|| {
+            Error::Protocol(format!(
+                "atomic swap {id}: maker input {outpoint} is not a txid"
+            ))
+        })?;
+        if wallet.contains(&key) {
             return Err(Error::Protocol(format!(
                 "atomic swap {id}: proposal lists the taker's own coin {outpoint} as the maker's"
             )));
         }
-        if !seen.insert(outpoint) {
+        if !seen.insert(key) {
             return Err(Error::Protocol(format!(
                 "atomic swap {id}: proposal lists the maker's input {outpoint} twice"
             )));
@@ -1084,6 +1113,73 @@ mod tests {
                 "{error}"
             );
         }
+
+        // The same coin under another spelling of its txid: upper or mixed
+        // case hex names the same 32 bytes.
+        for spelling in ["DD".repeat(32), format!("Dd{}", "dd".repeat(31))] {
+            let respelled = AtomicOutpoint {
+                txid: spelling,
+                vout: 5,
+            };
+            let answer = proposal_listing(&request, json!([input(&respelled, json!(5))]));
+            let error = check_proposal("01JATOMICSWAP", &request, &answer, &wallet).unwrap_err();
+            assert!(error.to_string().contains("taker's own coin"), "{error}");
+        }
+        // A wallet list in uppercase still matches the proposal's lowercase.
+        let upper: Vec<AtomicOutpoint> = wallet
+            .iter()
+            .map(|o| AtomicOutpoint {
+                txid: o.txid.to_uppercase(),
+                vout: o.vout,
+            })
+            .collect();
+        let answer = proposal_listing(&request, json!([input(&outpoint("dd", 5), json!(5))]));
+        assert!(check_proposal("01JATOMICSWAP", &request, &answer, &upper).is_err());
+        // Returned maker inputs are canonical, lowercase.
+        let answer = proposal_listing(
+            &request,
+            json!([input(
+                &AtomicOutpoint {
+                    txid: "CC".repeat(32),
+                    vout: 2
+                },
+                json!(2)
+            )]),
+        );
+        let listed = check_proposal("01JATOMICSWAP", &request, &answer, &wallet).unwrap();
+        assert_eq!(listed, vec![maker.clone()]);
+        // One maker coin under two spellings is still listed twice.
+        let answer = proposal_listing(
+            &request,
+            json!([
+                input(&maker, json!(2)),
+                input(
+                    &AtomicOutpoint {
+                        txid: "CC".repeat(32),
+                        vout: 2
+                    },
+                    json!(2)
+                ),
+            ]),
+        );
+        let error = check_proposal("01JATOMICSWAP", &request, &answer, &wallet).unwrap_err();
+        assert!(error.to_string().contains("twice"), "{error}");
+        // Not hex, or not 32 bytes: refused.
+        for txid in ["zz".repeat(32), "aa".repeat(31)] {
+            let answer = proposal_listing(
+                &request,
+                json!([input(&AtomicOutpoint { txid, vout: 0 }, json!(0))]),
+            );
+            assert!(check_proposal("01JATOMICSWAP", &request, &answer, &wallet).is_err());
+        }
+        let bad_wallet = vec![
+            wallet[0].clone(),
+            AtomicOutpoint {
+                txid: "nope".into(),
+                vout: 0,
+            },
+        ];
+        assert!(check_wallet_outpoints(&request, &bad_wallet).is_err());
 
         // The same maker input twice.
         let answer = proposal_listing(

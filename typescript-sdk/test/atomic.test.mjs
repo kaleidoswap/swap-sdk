@@ -327,3 +327,32 @@ test("an offer whose RGB output exceeds maxRgbOutputSat is refused", async () =>
     maker.close();
   }
 });
+
+test("a taker's coin respelled in uppercase hex is still refused", async () => {
+  const spent = { txid: "aa".repeat(32), vout: 0 };
+  const other = { txid: "dd".repeat(32), vout: 5 };
+  const request = REQUEST_JSON.replace(
+    '"taker_inputs":[]',
+    `"taker_inputs":[{"outpoint":${JSON.stringify(spent)},"amount_sat":5000}]`,
+  );
+  const respelled = { txid: "DD".repeat(32), vout: 5 };
+  const proposal = PROPOSAL_JSON.replace(REQUEST_JSON, request).replace(
+    '"maker_inputs":[]',
+    `"maker_inputs":[{"outpoint":${JSON.stringify(respelled)},"amount_sat":90000}]`,
+  );
+  const maker = await mockMaker([
+    [
+      200,
+      `{"id":"01JATOMICSWAP","status":"transaction.proposed","proposal":${proposal}}`,
+    ],
+  ]);
+  try {
+    const atomic = new AtomicSwaps(new SwapClient(maker.url));
+    await assert.rejects(
+      atomic.request("01JATOMICSWAP", request, [spent, other]),
+      hasCode("Protocol", /taker's own coin/),
+    );
+  } finally {
+    maker.close();
+  }
+});
