@@ -364,8 +364,16 @@ export interface ArkadeIntentsVenueOptions {
   contractManager?: ArkadeContractSource;
   /** Unix seconds; injectable for tests. */
   now?: () => number;
+  /** How long past its commitment deadline a `prepared` record must keep
+   * reading `unknown` before it is cancelled. Covers a funding broadcast in
+   * the last seconds of the window and a lagging or flaky indexer: a single
+   * empty read is not proof the lockup was never funded. Seconds; defaults
+   * to {@link DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS}. */
+  unknownLockupGraceSeconds?: number;
   flows?: Partial<ArkadeIntentsFlows>;
 }
+
+export const DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS = 15 * 60;
 
 /**
  * The contract-manager surface this venue and its `RfqSwapManager` use: the
@@ -665,6 +673,7 @@ export class ArkadeIntentsVenue {
   private readonly indexer: LockupSpendIndexer;
   private readonly contracts: ArkadeContractSource;
   private readonly now: () => number;
+  private readonly unknownLockupGraceSeconds: number;
   private readonly flows: ArkadeIntentsFlows;
   private readonly assetSwaps?: AssetSwapRepository;
 
@@ -694,6 +703,14 @@ export class ArkadeIntentsVenue {
       options.contractManager ??
       lazyContractSource(() => wallet.getContractManager());
     this.now = options.now ?? (() => Math.floor(Date.now() / 1000));
+    const grace =
+      options.unknownLockupGraceSeconds ?? DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS;
+    if (!Number.isFinite(grace) || grace < 0) {
+      throw new TypeError(
+        `unknownLockupGraceSeconds must be a finite number >= 0, got ${grace}`,
+      );
+    }
+    this.unknownLockupGraceSeconds = grace;
     this.flows = {
       requestLightningSend,
       requestLightningReceive,
@@ -920,9 +937,11 @@ export class ArkadeIntentsVenue {
    * A `prepared` record past its commitment window is checked directly
    * against chain evidence (not yet handed to the manager, since the
    * manager has no notion of "quoted but maybe never funded"): a lockup the
-   * indexer has never seen is `cancelled`; any other evidence means the
-   * caller's `notifyFunded` call was lost (crash between broadcast and
-   * notify) and the record self-heals to `funded` and is handed off.
+   * indexer still has not seen once the grace window
+   * (`unknownLockupGraceSeconds`) has also passed is `cancelled`; any other
+   * evidence means the caller's `notifyFunded` call was lost (crash between
+   * broadcast and notify) and the record self-heals to `funded` and is
+   * handed off.
    */
   reconcile(): Promise<ReconcileReport> {
     if (this.reconcilePass) return this.reconcilePass;
@@ -1017,6 +1036,9 @@ export class ArkadeIntentsVenue {
       return record;
     }
     if (fate.fate === "unknown") {
+      // Absence has to persist past the grace window: until then the record
+      // stays `prepared` and is re-read on every pass.
+      if (this.now() < deadline + this.unknownLockupGraceSeconds) return record;
       record.phase = "cancelled";
       await this.store.put(record);
       return record;
