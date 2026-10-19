@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — WASM/TypeScript: `forKaleidoMaker` refuses workers and extensions
+
+`BoltzClient.forKaleidoMaker` / `createKaleidoMakerClient` already refused a
+document context, but looked for nothing else, so the attributed client built
+in a Web Worker and in an MV3 extension's service worker — neither has a
+`document`. It now also refuses any context exposing `WorkerGlobalScope`,
+`ServiceWorkerGlobalScope` or `SharedWorkerGlobalScope`, and any browser
+extension context (`chrome.runtime.id` or `browser.runtime.id`). Plain Node is
+unaffected. A worker or extension that builds this client on purpose must now
+pass `allowBrowser: true`, as a page already had to. Part of phase 0 of
+[kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578).
+
+### Added — organization keys for client-side attribution
+
+Apps, extensions and web pages can now attribute their swaps to a partner
+organization without shipping a secret. They use the organization's public
+x-only key, registered in the partner panel with a proof of possession
+([kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578)).
+
+- Rust: `kaleido::OrgKey` (parse, `Display`, serde) and `KaleidoOrgClient`;
+  `BoltzApiClientV2::org_key()`.
+- Python: `SwapClient.kaleido_org(maker_url, org_key, timeout)` and
+  `org_key()`.
+- WASM/TypeScript: `BoltzClient.forKaleidoOrg({ makerUrl, orgKey, timeoutSecs })`
+  and `createKaleidoOrgClient`, with no browser refusal, plus the `orgKey`
+  getter. `PayThroughClient` and `kaleidoswapHttpTransport` take an `orgKey`
+  option.
+
+The key goes out in `X-Kaleido-Org-Key` on swap creation only, and only to the
+configured maker. A client carries an organization key or an API key, never
+both. Makers without organization-key support ignore the header and create the
+swap unattributed. The SDK logs a warning when the maker reports
+`X-Kaleido-Attribution` other than `org_key`.
+
 ### Added — pay-through idempotency keys
 
 `PayThroughClient.create(request, { idempotencyKey, signal })` accepts a
@@ -31,6 +65,13 @@ for reconciliation; errors are not durably cached as final rejections.
   transaction/txid before revealing a preimage. Automatic claims fall back to
   the script path after cooperative failure. Matured refunds tolerate stale
   maker status. Claim safety margins and optional fee ceilings are explicit.
+- Esplora broadcasts check the HTTP status and parse the returned txid. The
+  Liquid client previously returned a rejected broadcast's error text as a
+  successful result.
+- The Arkade venue no longer cancels a `prepared` swap on a single `unknown`
+  lockup read past its deadline. It waits `unknownLockupGraceSeconds`
+  (default 15 minutes) so a late funding or a lagging indexer can still
+  self-heal the record to `funded`.
 
 ### Added
 

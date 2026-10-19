@@ -801,6 +801,10 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_org_key() != 27248:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive()
         != 52299
@@ -996,6 +1000,13 @@ def _uniffi_check_api_checksums(lib):
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_maker()
         != 23116
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_org()
+        != 60446
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1542,6 +1553,15 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_maker.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_maker.restype = (
     ctypes.c_void_p
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_org.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_org.restype = (
+    ctypes.c_void_p
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_new.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
@@ -1735,6 +1755,13 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_swap.argtypes = (
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_swap.restype = (
     ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_org_key.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_org_key.restype = (
+    _UniffiRustBuffer
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_receive.argtypes = (
     ctypes.c_void_p,
@@ -2394,6 +2421,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_swap.argtype
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_swap.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_org_key.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_org_key.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send.argtypes = ()
@@ -2486,6 +2517,8 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_default.res
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_maker.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_maker.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_org.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_org.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_new.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_new.restype = (
     ctypes.c_uint16
@@ -12542,6 +12575,16 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def org_key(
+        self,
+    ):
+        """
+        The organization key this client attributes its swaps to, as 64
+        lowercase hex, or `None` for a client built without one.
+        """
+
+        raise NotImplementedError
+
     def quote_lightning_receive(self, request: "LightningReceiveRequest"):
         """
         Quote `lightning:BTC->arkade:BTC`: the maker mints a hold invoice and
@@ -12710,6 +12753,41 @@ class SwapClient:
             _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_maker,
             _UniffiConverterString.lower(maker_url),
             _UniffiConverterString.lower(api_key),
+            _UniffiConverterOptionalUInt64.lower(timeout),
+        )
+        return cls._make_instance_(pointer)
+
+    @classmethod
+    def kaleido_org(
+        cls, maker_url: "str", org_key: "str", timeout: "typing.Optional[int]"
+    ):
+        """
+        Client for the **KaleidoSwap maker** that attributes the swaps it creates
+        to a partner organization by its public organization key.
+
+        `org_key` is the 64-hex x-only public key the organization registered in
+        the partner panel. Unlike `kaleido_maker`'s API key it is public, so it
+        is safe to ship inside a mobile or desktop app: it is a label, never a
+        credential, and buys the caller no rate limit, discount or access of its
+        own. It goes out in `X-Kaleido-Org-Key` on swap creation only, to
+        `maker_url` only, which must be `https` unless it is a loopback address.
+
+        A value that is not a point on the curve is rejected here rather than
+        reaching the maker as `400 org_key_malformed`.
+        """
+
+        _UniffiConverterString.check_lower(maker_url)
+
+        _UniffiConverterString.check_lower(org_key)
+
+        _UniffiConverterOptionalUInt64.check_lower(timeout)
+
+        # Call the (fallible) function before creating any half-baked object instances.
+        pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_org,
+            _UniffiConverterString.lower(maker_url),
+            _UniffiConverterString.lower(org_key),
             _UniffiConverterOptionalUInt64.lower(timeout),
         )
         return cls._make_instance_(pointer)
@@ -13292,6 +13370,21 @@ class SwapClient:
             _UniffiConverterTypeGetSwapResponse.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
+        )
+
+    def org_key(
+        self,
+    ) -> "typing.Optional[str]":
+        """
+        The organization key this client attributes its swaps to, as 64
+        lowercase hex, or `None` for a client built without one.
+        """
+
+        return _UniffiConverterOptionalString.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_org_key,
+                self._uniffi_clone_pointer(),
+            )
         )
 
     async def quote_lightning_receive(

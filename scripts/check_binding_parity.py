@@ -45,6 +45,7 @@ ALIASES = {
     ("BoltzClient", "create_submarine_swap"): "create_swap",
     ("BoltzClient", "for_network"): "default",
     ("BoltzClient", "for_kaleido_maker"): "kaleido_maker",
+    ("BoltzClient", "for_kaleido_org"): "kaleido_org",
     ("BoltzClient", "fee_estimation"): "get_fee_estimation",
     ("BoltzClient", "height"): "get_height",
     ("BoltzClient", "submarine_pairs"): "get_submarine_pairs",

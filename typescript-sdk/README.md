@@ -578,10 +578,47 @@ use a higher spend rate and wallet BTC inputs when needed. A maker fee quote
 does not guarantee confirmation before the timeout. Contract-id chunk dashes
 are cosmetic; pin a valid id from your trusted wallet or asset registry.
 
-## Partner attribution — `createKaleidoMakerClient`
+## Partner attribution — `createKaleidoOrgClient`
 
-A partner organization can have the swaps it originates attributed to it. That
-needs an **organization API key** from the KaleidoSwap partner panel — a
+A web page, extension or app attributes the swaps it creates with the
+organization's public **organization key**: the 64-hex x-only public key the
+organization registered in the partner panel. It is public, so it is safe in a
+bundle, and this works in a page, a Web Worker, an extension service worker,
+React Native and Node alike.
+
+```ts
+import { init, createKaleidoOrgClient } from "@kaleidorg/swap-sdk";
+
+await init();
+const client = createKaleidoOrgClient({
+  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
+  orgKey: import.meta.env.VITE_KALEIDOSWAP_ORG_KEY,
+});
+
+client.orgKey; // the key, as 64 lowercase hex
+```
+
+The key is a **label, never a credential**: anyone can copy it, so it buys the
+caller no rate limit, discount or access of its own. It goes out in
+`X-Kaleido-Org-Key` on swap creation only, to `makerUrl` only, which must be
+`https` unless it is a loopback address. A value that is not a point on the
+curve is rejected here rather than reaching the maker as
+`400 org_key_malformed`. When the maker answers a creation with
+`X-Kaleido-Attribution` other than `org_key` (organization keys switched off on
+that maker, say), the swap still goes ahead and the SDK logs a warning. A page
+on another origin needs the maker's edge to allow `X-Kaleido-Org-Key` in CORS;
+an extension's host permissions make that moot.
+
+The HTTP-only entry points take the same key:
+
+```ts
+new PayThroughClient({ makerUrl, orgKey }); // on POST /v2/swap/pay
+kaleidoswapHttpTransport(makerUrl, { orgKey }); // on POST /v1/swap
+```
+
+## Partner attribution from a server — `createKaleidoMakerClient`
+
+A server can instead use an **organization API key** from the KaleidoSwap partner panel — a
 `kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
 production. Without one, `SwapClient` behaves exactly as before and creates
 unattributed swaps.
@@ -617,10 +654,11 @@ read as a suspended organization. There is no accessor for the secret half:
 > visible to every visitor — who can then attribute their own swaps to, or
 > exhaust the limits of, an organization that is not theirs. This release
 > supports **server and native integrations only**, and because one wasm
-> artifact serves both runtimes the check is a runtime one: a document context
-> is refused unless you pass `allowBrowser: true`. Call this from Node, keep the
-> key in server-side configuration, and leave browser code on the plain
-> `SwapClient` constructor.
+> artifact serves both runtimes the check is a runtime one: a page, a Web,
+> shared or service worker, and a browser extension (`chrome.runtime.id`) are
+> all refused unless you pass `allowBrowser: true`. Call this from Node, keep the
+> key in server-side configuration, and use `createKaleidoOrgClient` in browser
+> code.
 
 > **Scrub the key in error reporters that capture locals.** It crosses the wasm
 > boundary as a plain `string`, so it is a function argument on a stack frame

@@ -402,7 +402,10 @@ use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
 use kaleidorg_swap_sdk::corridor;
-use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+use kaleidorg_swap_sdk::kaleido::{
+    ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
+    KaleidoOrgClientOptions, OrgKey,
+};
 
 fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
@@ -583,13 +586,111 @@ impl KaleidoMakerOptions {
     }
 }
 
-/// Whether this looks like a document context — i.e. a browser.
+/// `{ makerUrl, orgKey, timeoutSecs? }` for [`BoltzClient::for_kaleido_org`].
+struct KaleidoOrgOptions {
+    maker_url: String,
+    org_key: String,
+    timeout_secs: Option<u64>,
+}
+
+/// The properties [`KaleidoOrgOptions`] reads, for the unknown-key check.
+const KALEIDO_ORG_OPTION_KEYS: [&str; 3] = ["makerUrl", "orgKey", "timeoutSecs"];
+
+impl KaleidoOrgOptions {
+    /// Read the options object by hand, the same way and for the same reason
+    /// as [`KaleidoMakerOptions::from_js_options`]: an `apiKey` passed here by
+    /// mistake must not be echoed by a serde error.
+    fn from_js_options(options: JsValue) -> Result<Self, JsValue> {
+        let shape = "forKaleidoOrg expects an options object \
+                     `{ makerUrl, orgKey, timeoutSecs? }`";
+        if !options.is_object() || js_sys::Array::is_array(&options) {
+            return Err(arg_err(shape));
+        }
+        let options: js_sys::Object = options.unchecked_into();
+
+        // An `apiKey` here is a caller holding both kinds of attribution. The
+        // maker refuses a request carrying both, so one client never sends
+        // both; saying which constructor takes it beats "unknown option".
+        if js_sys::Reflect::has(&options, &JsValue::from_str("apiKey")).unwrap_or(false) {
+            return Err(arg_err(
+                "forKaleidoOrg takes an organization key, not an API key — a client \
+                 attributes its swaps one way or the other, never both. Use \
+                 forKaleidoMaker for a `kld_` key",
+            ));
+        }
+        let unknown: Vec<String> = js_sys::Object::keys(&options)
+            .iter()
+            .filter_map(|key| key.as_string())
+            .filter(|key| !KALEIDO_ORG_OPTION_KEYS.contains(&key.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(arg_err(format!(
+                "unknown option{} {} — {shape}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+            )));
+        }
+
+        Ok(Self {
+            maker_url: required_string_option(&options, "makerUrl")?,
+            org_key: required_string_option(&options, "orgKey")?,
+            timeout_secs: timeout_secs_option(&options)?,
+        })
+    }
+}
+
+/// The global interfaces that only a worker exposes.
+///
+/// `ServiceWorkerGlobalScope` and `SharedWorkerGlobalScope` both inherit
+/// `WorkerGlobalScope`, so the first name alone covers every worker a browser
+/// starts; the other two are listed so a runtime that exposes only the
+/// specific interface is still caught.
+const WORKER_SCOPE_INTERFACES: [&str; 3] = [
+    "WorkerGlobalScope",
+    "ServiceWorkerGlobalScope",
+    "SharedWorkerGlobalScope",
+];
+
+/// Whether this looks like a browser: a page, a worker, or an extension.
 ///
 /// One wasm artifact serves both Node and the browser, so there is no
-/// build-time split to make this decision at. `document` is the cheapest
-/// reliable divider: Node has none, and a bundle that ships to a page does.
+/// build-time split to make this decision at. `document` divides a page from
+/// Node, but not every browser context has one: an MV3 extension's service
+/// worker and any Web Worker run without a `document`, and an extension is
+/// exactly the bundle a store reviewer or a user can unpack. So a context
+/// also counts as a browser when it exposes a worker scope interface, or when
+/// it is an extension (`chrome.runtime.id`, or `browser.runtime.id` in
+/// Firefox). Plain Node has none of these.
 fn in_browser() -> bool {
-    js_sys::Reflect::has(&js_sys::global(), &JsValue::from_str("document")).unwrap_or(false)
+    let global: JsValue = js_sys::global().into();
+    let has = |name: &str| js_sys::Reflect::has(&global, &JsValue::from_str(name)).unwrap_or(false);
+    has("document")
+        || WORKER_SCOPE_INTERFACES.into_iter().any(has)
+        || ["chrome", "browser"]
+            .into_iter()
+            .any(|namespace| extension_runtime_id(&global, namespace).is_truthy())
+}
+
+/// `globalThis[namespace].runtime.id`, or `undefined` anywhere along the way.
+///
+/// A web page in Chrome can have `chrome` and even `chrome.runtime` (for an
+/// extension that lists the page as externally connectable), but only an
+/// extension's own contexts have an `id` there.
+fn extension_runtime_id(global: &JsValue, namespace: &str) -> JsValue {
+    ["runtime", "id"]
+        .into_iter()
+        .fold(property(global, namespace), |value, name| {
+            property(&value, name)
+        })
+}
+
+/// `target[name]`, or `undefined` when `target` is not an object or the read
+/// throws.
+fn property(target: &JsValue, name: &str) -> JsValue {
+    if !target.is_object() {
+        return JsValue::UNDEFINED;
+    }
+    js_sys::Reflect::get(target, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED)
 }
 
 /// An optional boolean property, defaulting to `false`.
@@ -722,7 +823,8 @@ impl BoltzClient {
     /// can prevent it. **This release supports server and native integrations
     /// only:** call this from Node, keep the key in server-side configuration,
     /// and leave the browser bundle on the unauthenticated `BoltzClient`
-    /// constructor.
+    /// constructor. A browser here includes Web, shared and service workers and
+    /// browser extensions, none of which has a `document`; see [`in_browser`].
     ///
     /// One protection is also weaker here than on the server. `fetch` owns
     /// redirect handling and wasm-bindgen can set no policy on it, so a `3xx`
@@ -741,10 +843,11 @@ impl BoltzClient {
             // there for a deliberate exception, so the decision is at least
             // written down at the call site.
             return Err(arg_err(
-                "refusing to build an attributed client in a browser: the \
-                 organization API key is a permanent credential with no origin \
-                 binding and no per-key rate limit, so a key in a page is \
-                 visible to every visitor. Call this from Node with the key in \
+                "refusing to build an attributed client in a browser (a page, \
+                 a worker or an extension): the organization API key is a \
+                 permanent credential with no origin binding and no per-key \
+                 rate limit, so a key in a browser bundle is visible to anyone \
+                 who loads or unpacks it. Call this from Node with the key in \
                  server-side configuration, or pass `allowBrowser: true` if you \
                  have accepted that exposure.",
             ));
@@ -758,6 +861,42 @@ impl BoltzClient {
         Ok(BoltzClient {
             inner: client.into_inner(),
         })
+    }
+
+    /// `BoltzClient.forKaleidoOrg({ makerUrl, orgKey, timeoutSecs? })` — a
+    /// client that attributes the swaps it creates to a partner organization
+    /// by its public organization key.
+    ///
+    /// `orgKey` is the 64-hex x-only public key the organization registered in
+    /// the partner panel. It is public, which is the point: this constructor
+    /// works in a page, a Web Worker, an extension service worker and Node
+    /// alike, with nothing to hide in any of them. The key is a label, never a
+    /// credential — it buys the caller no rate limit, discount or access of its
+    /// own — and it goes out in `X-Kaleido-Org-Key` on swap creation only, to
+    /// `makerUrl` only, which must be `https` unless it is a loopback address.
+    ///
+    /// In a browser the maker's edge must allow `X-Kaleido-Org-Key` in CORS for
+    /// a page on another origin to send it; an extension's host permissions
+    /// make that moot.
+    #[wasm_bindgen(js_name = forKaleidoOrg)]
+    pub fn for_kaleido_org(options: JsValue) -> Result<BoltzClient, JsValue> {
+        let options = KaleidoOrgOptions::from_js_options(options)?;
+        let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
+            maker_url: options.maker_url,
+            org_key: OrgKey::parse(&options.org_key).map_err(core_err)?,
+            timeout: options.timeout_secs.map(std::time::Duration::from_secs),
+        })
+        .map_err(core_err)?;
+        Ok(BoltzClient {
+            inner: client.into_inner(),
+        })
+    }
+
+    /// The organization key this client attributes its swaps to, as 64
+    /// lowercase hex, or `undefined` for a client built without one.
+    #[wasm_bindgen(getter, js_name = orgKey)]
+    pub fn org_key(&self) -> Option<String> {
+        self.inner.org_key().map(|key| key.to_string())
     }
 
     /// The environment the configured organization key is scoped to — `"test"`

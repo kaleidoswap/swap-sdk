@@ -21,6 +21,7 @@ import {
   InMemoryArkadeSwapStore,
   deserializeVhtlcOptions,
   serializeVhtlcOptions,
+  DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS,
 } from "../dist/arkade/index.js";
 
 // Valid x-only points (secp256k1 G.x, 2G.x, BIP-340 vector) so real script
@@ -267,6 +268,7 @@ function makeVenue({
   // `null` leaves the option unset, so the venue falls back to the wallet's.
   contractManager = fakeContracts(indexerProvider),
   wallet = {},
+  unknownLockupGraceSeconds,
   // Flow names to leave at the venue's own default instead of the fakes below.
   defaultFlows = [],
 } = {}) {
@@ -287,6 +289,7 @@ function makeVenue({
     indexerProvider,
     contractManager: contractManager ?? undefined,
     now,
+    unknownLockupGraceSeconds,
     flows: fakedFlows,
   });
   return { venue, store };
@@ -449,13 +452,52 @@ test("notifyFunded refuses to resurrect a terminal record", async () => {
 
 test("reconcile cancels an expired send only when the chain saw no lockup", async () => {
   const { venue, store } = makeVenue({
-    now: () => NOW + 601,
+    now: () => NOW + 600 + DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS + 1,
     flows: { readLockupFate: async () => ({ fate: "unknown" }) },
   });
   await venue.prepareLightningSend({ invoice: {} });
   const report = await venue.reconcile();
   assert.deepEqual(report.cancelled, ["rfq-1"]);
   assert.equal((await store.get("rfq-1")).phase, "cancelled");
+});
+
+test("an unknown lockup read inside the grace window does not cancel the send", async () => {
+  // Funding landed in the last seconds of the quote, or the indexer lags:
+  // one empty read must not take the record out of the pending set.
+  let now = NOW + 601;
+  let fate = "unknown";
+  const { venue, store } = makeVenue({
+    now: () => now,
+    flows: { readLockupFate: async () => ({ fate }) },
+  });
+  await venue.prepareLightningSend({ invoice: {} });
+  let report = await venue.reconcile();
+  assert.deepEqual(report.cancelled, []);
+  assert.deepEqual(report.pending, ["rfq-1"]);
+  assert.equal((await store.get("rfq-1")).phase, "prepared");
+
+  // The lockup shows up on a later pass and the record self-heals.
+  now = NOW + 600 + DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS - 1;
+  fate = "open";
+  report = await venue.reconcile();
+  assert.deepEqual(report.pending, ["rfq-1"]);
+  assert.equal((await store.get("rfq-1")).phase, "funded");
+});
+
+test("the unknown-lockup grace window is configurable and validated", async () => {
+  const { venue } = makeVenue({
+    now: () => NOW + 601,
+    unknownLockupGraceSeconds: 0,
+    flows: { readLockupFate: async () => ({ fate: "unknown" }) },
+  });
+  await venue.prepareLightningSend({ invoice: {} });
+  assert.deepEqual((await venue.reconcile()).cancelled, ["rfq-1"]);
+  for (const bad of [-1, Number.NaN, Infinity]) {
+    assert.throws(
+      () => makeVenue({ unknownLockupGraceSeconds: bad }),
+      /unknownLockupGraceSeconds/,
+    );
+  }
 });
 
 test("a prepared send whose lockup is live self-heals to funded and is tracked", async () => {
@@ -474,7 +516,7 @@ test("a prepared send whose lockup is live self-heals to funded and is tracked",
 
 test("reconcile cancels an unpaid receive after invoice expiry with no chain trace", async () => {
   const { venue, store } = makeVenue({
-    now: () => NOW + 301,
+    now: () => NOW + 300 + DEFAULT_UNKNOWN_LOCKUP_GRACE_SECONDS + 1,
     flows: { readLockupFate: async () => ({ fate: "unknown" }) },
   });
   await venue.prepareLightningReceive({
@@ -484,6 +526,20 @@ test("reconcile cancels an unpaid receive after invoice expiry with no chain tra
   const report = await venue.reconcile();
   assert.deepEqual(report.cancelled, ["rfq-r1"]);
   assert.equal((await store.get("rfq-r1")).phase, "cancelled");
+});
+
+test("an unknown lockup read inside the grace window does not cancel the receive", async () => {
+  const { venue, store } = makeVenue({
+    now: () => NOW + 301,
+    flows: { readLockupFate: async () => ({ fate: "unknown" }) },
+  });
+  await venue.prepareLightningReceive({
+    amountSats: 1_000,
+    decodeInvoice: () => ({}),
+  });
+  const report = await venue.reconcile();
+  assert.deepEqual(report.cancelled, []);
+  assert.equal((await store.get("rfq-r1")).phase, "prepared");
 });
 
 test("a prepared receive that got secretly funded before notifyFunded self-heals", async () => {
@@ -1121,6 +1177,47 @@ test("kaleidoswapHttpTransport posts to /v1/swap and reads /v1/rfq beside the /v
     "https://maker.example",
   );
   await transport.close();
+});
+
+test("kaleidoswapHttpTransport attributes the quote request and nothing else", async () => {
+  const orgKey =
+    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({
+      url: String(url),
+      orgKey: new Headers(init?.headers).get("x-kaleido-org-key"),
+      contentType: new Headers(init?.headers).get("content-type"),
+    });
+    return new Response(JSON.stringify({ type: "nothing" }), { status: 200 });
+  };
+  const transport = kaleidoswapHttpTransport("https://maker.example/v2", {
+    fetchImpl,
+    orgKey: orgKey.toUpperCase(),
+  });
+  await transport
+    .requestQuote({ v: 1, type: "rfq_request", rfq_id: "abc", profile: {} })
+    .catch(() => {});
+  await transport.status("abc");
+
+  assert.deepEqual(calls, [
+    {
+      url: "https://maker.example/v1/swap",
+      orgKey,
+      // The transport's own headers survive the wrapper.
+      contentType: "application/json",
+    },
+    {
+      url: "https://maker.example/v1/rfq/abc",
+      orgKey: null,
+      contentType: null,
+    },
+  ]);
+  assert.throws(
+    () =>
+      kaleidoswapHttpTransport("https://maker.example/v2", { orgKey: "abc" }),
+    /orgKey must be/,
+  );
 });
 
 test("kaleidoswapHttpTransport refuses a base that is not a /v2 maker URL", () => {

@@ -180,10 +180,9 @@ impl BitcoinClient for EsploraBitcoinClient {
             .send()
             .await
             .map_err(|e| Error::Esplora(e.to_string()))?;
+        let status = response.status();
         let raw_text = response.text().await?;
-        let txid = bitcoin::Txid::from_str(&raw_text)
-            .map_err(|e| Error::Esplora(format!("Failed to parse txid {raw_text}: {e}")))?;
-        Ok(txid)
+        parse_broadcast_response::<bitcoin::Txid>(status, &raw_text)
     }
     fn network(&self) -> BitcoinChain {
         self.network
@@ -292,11 +291,30 @@ impl LiquidClient for EsploraLiquidClient {
             .send()
             .await
             .map_err(|e| Error::Esplora(e.to_string()))?;
-        Ok(response.text().await?)
+        let status = response.status();
+        let raw_text = response.text().await?;
+        let txid = parse_broadcast_response::<elements::Txid>(status, &raw_text)?;
+        Ok(txid.to_string())
     }
     fn network(&self) -> LiquidChain {
         self.network
     }
+}
+
+/// Esplora answers a rejected broadcast with a non-2xx status and the node's
+/// error text as the body, so the status must be checked before the body is
+/// read as a txid.
+fn parse_broadcast_response<T: FromStr>(status: reqwest::StatusCode, body: &str) -> Result<T, Error>
+where
+    T::Err: std::fmt::Display,
+{
+    let body = body.trim();
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Broadcast rejected ({status}): {body}"
+        )));
+    }
+    T::from_str(body).map_err(|e| Error::Esplora(format!("Failed to parse txid {body}: {e}")))
 }
 
 async fn get_with_retry(
@@ -445,6 +463,27 @@ mod tests {
             esplora_client.get_genesis_hash().await.unwrap().to_hex(),
             "1466275836220db2944ca059a3a10ef6fd2ea684b0688d2c379296888a206003"
         );
+    }
+
+    #[macros::test_all]
+    fn broadcast_response_rejects_error_status() {
+        let txid = "1111111111111111111111111111111111111111111111111111111111111111";
+        let ok = parse_broadcast_response::<elements::Txid>(reqwest::StatusCode::OK, txid).unwrap();
+        assert_eq!(ok.to_string(), txid);
+
+        let body = "sendrawtransaction RPC error: bad-txns-inputs-missing-or-spent";
+        let err =
+            parse_broadcast_response::<elements::Txid>(reqwest::StatusCode::BAD_REQUEST, body)
+                .unwrap_err();
+        assert!(err.message().contains("bad-txns-inputs-missing-or-spent"));
+
+        // A 200 whose body is not a txid is not a broadcast either.
+        assert!(parse_broadcast_response::<elements::Txid>(reqwest::StatusCode::OK, body).is_err());
+        assert!(parse_broadcast_response::<bitcoin::Txid>(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            txid
+        )
+        .is_err());
     }
 
     #[macros::test_all]

@@ -17,7 +17,7 @@
 //!     output_amount - base_fees - claim_fee
 //! );
 
-use crate::kaleido::{ApiKey, API_KEY_HEADER};
+use crate::kaleido::{ApiKey, OrgKey, API_KEY_HEADER, ATTRIBUTION_HEADER, ORG_KEY_HEADER};
 use crate::network::{BitcoinChain, Currency, Network};
 use crate::swaps::corridor;
 use crate::swaps::rgb::RgbLock;
@@ -583,18 +583,65 @@ fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
         .to_string()
 }
 
+/// The `/v2` routes that create a swap, relative to the client's base URL —
+/// the ones the maker attributes, and the only ones that carry an
+/// [`OrgKey`]. The corridor's `POST /v1/swap` is the fifth; it hangs off the
+/// origin rather than `/v2`, so `BoltzApiClientV2::org_key_for` checks it
+/// separately.
+const SWAP_CREATION_ENDPOINTS: [&str; 4] =
+    ["swap/submarine", "swap/reverse", "swap/chain", "swap/pay"];
+
+/// Log when a swap created with an organization key came back stored as
+/// something else.
+///
+/// The usual cause is a maker with organization keys switched off, which
+/// ignores the header and answers `none` — a correct answer, and one the
+/// caller would otherwise find out about as a hole in their statistics. Only a
+/// successful creation is checked, and only when the header is present: a
+/// browser hides response headers the maker's edge does not expose, and an
+/// absent header proves nothing either way.
+fn warn_if_attribution_dropped(response: &reqwest::Response, org_key: OrgKey) {
+    if !response.status().is_success() {
+        return;
+    }
+    let Some(stored) = response.headers().get(ATTRIBUTION_HEADER) else {
+        return;
+    };
+    let stored = stored.to_str().unwrap_or("<not text>");
+    if stored != "org_key" {
+        log::warn!(
+            "{} sent organization key {org_key}, but the maker stored the swap with              attribution `{stored}`; it is not attributed to that organization",
+            response.url().path(),
+        );
+    }
+}
+
 /// Reference Documnetation: <https://api.boltz.exchange/swagger>
 #[derive(Debug, Clone)]
 pub struct BoltzApiClientV2 {
     base_url: String,
     http_client: reqwest::Client,
     timeout: Option<Duration>,
-    /// The partner organization API key, when one was configured through
-    /// [`KaleidoMakerClient`]. `None` for every generic constructor here — the
-    /// Boltz-compatible client authenticates nothing.
+    /// The partner organization this client attributes its swaps to, when one
+    /// was configured through [`KaleidoMakerClient`] or [`KaleidoOrgClient`].
+    /// `None` for every generic constructor here — the Boltz-compatible client
+    /// attributes nothing.
     ///
     /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
-    api_key: Option<ApiKey>,
+    /// [`KaleidoOrgClient`]: crate::kaleido::KaleidoOrgClient
+    attribution: Option<Attribution>,
+}
+
+/// How a client names its partner organization to the maker. One or the other,
+/// never both: the maker answers a request carrying both with
+/// `400 attribution_conflict`, so a client able to hold both would only be able
+/// to fail.
+#[derive(Debug, Clone)]
+enum Attribution {
+    /// The secret `kld_` key, on every request to the maker.
+    ApiKey(ApiKey),
+    /// The public organization key, on swap creation only.
+    OrgKey(OrgKey),
 }
 
 impl BoltzApiClientV2 {
@@ -603,7 +650,7 @@ impl BoltzApiClientV2 {
             base_url,
             http_client: Self::default_http_client(),
             timeout,
-            api_key: None,
+            attribution: None,
         }
     }
 
@@ -701,7 +748,7 @@ impl BoltzApiClientV2 {
             base_url,
             http_client,
             timeout,
-            api_key: None,
+            attribution: None,
         }
     }
 
@@ -713,14 +760,38 @@ impl BoltzApiClientV2 {
     ///
     /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
     pub(crate) fn with_api_key(mut self, api_key: ApiKey) -> Self {
-        self.api_key = Some(api_key);
+        self.attribution = Some(Attribution::ApiKey(api_key));
+        self
+    }
+
+    /// Bind a partner organization key to this client.
+    ///
+    /// Crate-private for the same reason as [`Self::with_api_key`], and
+    /// replacing rather than adding to it: [`KaleidoOrgClient`] is the only
+    /// caller, and it starts from a client with no attribution.
+    ///
+    /// [`KaleidoOrgClient`]: crate::kaleido::KaleidoOrgClient
+    pub(crate) fn with_org_key(mut self, org_key: OrgKey) -> Self {
+        self.attribution = Some(Attribution::OrgKey(org_key));
         self
     }
 
     /// The partner organization API key this client carries, if any. The key's
     /// secret is not reachable through it — see [`ApiKey`].
     pub fn api_key(&self) -> Option<&ApiKey> {
-        self.api_key.as_ref()
+        match &self.attribution {
+            Some(Attribution::ApiKey(api_key)) => Some(api_key),
+            _ => None,
+        }
+    }
+
+    /// The partner organization key this client attributes its swaps to, if
+    /// any.
+    pub fn org_key(&self) -> Option<OrgKey> {
+        match &self.attribution {
+            Some(Attribution::OrgKey(org_key)) => Some(*org_key),
+            _ => None,
+        }
     }
 
     /// Returns the WebSocket URL for the Boltz server.
@@ -818,7 +889,9 @@ impl BoltzApiClientV2 {
         if swap_auth.is_some() {
             sent.push(SWAP_AUTH_HEADER);
         }
-        if self.api_key.is_some() {
+        // The organization key is not on this list: it is public, so a
+        // redirect that carried it disclosed nothing.
+        if self.api_key().is_some() {
             sent.push(API_KEY_HEADER);
         }
         sent
@@ -1138,16 +1211,24 @@ impl BoltzApiClientV2 {
         swap_auth: Option<&str>,
     ) -> Result<reqwest::Response, Error> {
         let method_str = method.to_string();
+        let org_key = self.org_key_for(&method, &url);
         let req_builder = self.http_client.request(method, &url).json(&data);
         let req_builder = self.maybe_add_timeout(req_builder);
         let req_builder = Self::maybe_add_swap_auth(req_builder, swap_auth)?;
         let req_builder = self.maybe_add_api_key(req_builder, &url)?;
+        let req_builder = match org_key {
+            Some(org_key) => req_builder.header(ORG_KEY_HEADER, org_key.header_value()),
+            None => req_builder,
+        };
         match req_builder.send().await {
             Ok(response) => {
                 self.reject_credential_leaking_redirect(
                     &response,
                     self.credentials_sent(swap_auth),
                 )?;
+                if let Some(org_key) = org_key {
+                    warn_if_attribution_dropped(&response, org_key);
+                }
                 Ok(response)
             }
             Err(e) => {
@@ -1182,7 +1263,7 @@ impl BoltzApiClientV2 {
         req_builder: RequestBuilder,
         url: &str,
     ) -> Result<RequestBuilder, Error> {
-        let Some(api_key) = &self.api_key else {
+        let Some(api_key) = self.api_key() else {
             return Ok(req_builder);
         };
         let configured = reqwest::Url::parse(&self.base_url)?;
@@ -1196,6 +1277,29 @@ impl BoltzApiClientV2 {
             )));
         }
         Ok(req_builder.header(API_KEY_HEADER, api_key.bearer_header_value()?))
+    }
+
+    /// The organization key to send with a request, which is this client's
+    /// key when the request creates a swap and nothing otherwise.
+    ///
+    /// Matched against the exact URLs this client builds for creation, not a
+    /// path suffix, so the key goes only to the origin it was configured for:
+    /// a URL that merely ends in `/swap/chain` on another host is not one of
+    /// them. `swap/pay` is listed though no method here posts to it yet, so the
+    /// route the maker attributes and the routes this sends the key on cannot
+    /// drift apart when one is added.
+    fn org_key_for(&self, method: &Method, url: &str) -> Option<OrgKey> {
+        let org_key = self.org_key()?;
+        if *method != Method::POST {
+            return None;
+        }
+        let creates = SWAP_CREATION_ENDPOINTS
+            .iter()
+            .any(|end_point| url == format!("{}/{end_point}", self.base_url))
+            || self
+                .corridor_root()
+                .is_ok_and(|root| url == format!("{root}/v1/swap"));
+        creates.then_some(org_key)
     }
 
     /// Attach the per-swap taker credential, rejecting a value that cannot be
@@ -4073,6 +4177,160 @@ mod tests {
              error is reporting, and what default_http_client exists to prevent. \
              Got:\n{forwarded}",
         );
+    }
+
+    /// An org key on a client, as [`crate::kaleido::KaleidoOrgClient`] binds it.
+    fn org_keyed(base_url: String) -> (BoltzApiClientV2, OrgKey) {
+        let key: OrgKey = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+            .parse()
+            .unwrap();
+        (BoltzApiClientV2::new(base_url, None).with_org_key(key), key)
+    }
+
+    /// The org key goes out on every route that creates a swap, under the
+    /// header name the maker reads — pinned as a literal, so a rename fails here
+    /// instead of turning every partner's swaps anonymous.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn an_org_key_goes_out_on_every_swap_creation_route() {
+        assert_eq!(ORG_KEY_HEADER, "X-Kaleido-Org-Key");
+
+        for end_point in SWAP_CREATION_ENDPOINTS {
+            let (base_url, maker) = capture_one_request();
+            let (client, key) = org_keyed(base_url);
+            client
+                .post_response(end_point, serde_json::json!({}), None)
+                .await
+                .unwrap();
+            let request = maker.join().unwrap().to_lowercase();
+            assert!(
+                request.starts_with(&format!("post /v2/{end_point} ")),
+                "wrong route, got:\n{request}",
+            );
+            assert!(
+                request.contains(&format!("x-kaleido-org-key: {key}")),
+                "POST /v2/{end_point} must carry the org key, got:\n{request}",
+            );
+            assert!(
+                !request.contains("authorization:"),
+                "an org key is not a bearer credential, got:\n{request}",
+            );
+        }
+
+        // The corridor's create hangs off the origin, not `/v2`.
+        let (base_url, maker) = capture_one_request();
+        let (client, key) = org_keyed(base_url);
+        let url = format!("{}/v1/swap", client.corridor_root().unwrap());
+        client
+            .request_response(Method::POST, url, serde_json::json!({}), None)
+            .await
+            .unwrap();
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(request.starts_with("post /v1/swap "), "got:\n{request}");
+        assert!(
+            request.contains(&format!("x-kaleido-org-key: {key}")),
+            "the corridor create must carry the org key, got:\n{request}",
+        );
+    }
+
+    /// Everything that does not create a swap goes out without the org key: a
+    /// status read, a pair list, a quote acceptance and a chain re-quote have
+    /// nothing to attribute.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn an_org_key_stays_off_every_other_route() {
+        let (base_url, maker) = capture_one_request();
+        let (client, _) = org_keyed(base_url);
+        let _ = client.get_height().await;
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(request.starts_with("get /v2/chain/heights "), "{request}");
+        assert!(!request.contains("x-kaleido-org-key"), "{request}");
+
+        // A POST under a creation path is still not a creation.
+        let (base_url, maker) = capture_one_request();
+        let (client, _) = org_keyed(base_url);
+        client
+            .accept_quote("01KZZYB138E7C3HZX7Q1YBGAQG", 100_000, None)
+            .await
+            .unwrap();
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(
+            request.starts_with("post /v2/swap/chain/01kzzyb138e7c3hzx7q1ybgaqg/quote "),
+            "{request}",
+        );
+        assert!(!request.contains("x-kaleido-org-key"), "{request}");
+    }
+
+    /// The decision is made on the exact URL this client builds, so the key
+    /// cannot go to another origin, another method, or a path that only
+    /// resembles a creation route.
+    #[test]
+    fn the_org_key_is_bound_to_the_exact_creation_urls() {
+        let base_url = "https://maker.signet.kaleidoswap.com/v2";
+        let (client, key) = org_keyed(base_url.to_string());
+
+        assert_eq!(
+            client.org_key_for(&Method::POST, &format!("{base_url}/swap/reverse")),
+            Some(key),
+        );
+        assert_eq!(
+            client.org_key_for(
+                &Method::POST,
+                "https://maker.signet.kaleidoswap.com/v1/swap"
+            ),
+            Some(key),
+        );
+        for (method, url) in [
+            (Method::GET, format!("{base_url}/swap/reverse")),
+            (Method::PATCH, format!("{base_url}/swap/chain")),
+            (Method::POST, format!("{base_url}/swap/reverse/abc")),
+            (Method::POST, format!("{base_url}/swap/submarine/refund")),
+            (
+                Method::POST,
+                "https://maker.signet.kaleidoswap.evil/v2/swap/reverse".to_string(),
+            ),
+            (
+                Method::POST,
+                "https://maker.signet.kaleidoswap.com:8443/v2/swap/reverse".to_string(),
+            ),
+            (
+                Method::POST,
+                "https://maker.signet.kaleidoswap.com/v1/rfq/abc".to_string(),
+            ),
+        ] {
+            assert_eq!(
+                client.org_key_for(&method, &url),
+                None,
+                "{method} {url} must not carry the org key",
+            );
+        }
+
+        // A client without one sends nothing anywhere.
+        let generic = BoltzApiClientV2::new(base_url.to_string(), None);
+        assert_eq!(
+            generic.org_key_for(&Method::POST, &format!("{base_url}/swap/reverse")),
+            None,
+        );
+    }
+
+    /// A maker that ignored the org key still created the swap: the creation
+    /// succeeds and only a warning is logged. Failing it would turn a missing
+    /// statistics row into a failed payment.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_dropped_attribution_does_not_fail_the_creation() {
+        let (base_url, maker) = capture_one_request_answering(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+              X-Kaleido-Attribution: none\r\nContent-Length: 2\r\n\r\n{}"
+                .to_vec(),
+        );
+        let (client, _) = org_keyed(base_url);
+        let response = client
+            .post_response("swap/reverse", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        assert_eq!(response.headers()[ATTRIBUTION_HEADER], "none");
+        maker.join().unwrap();
     }
 
     /// A client built for a partner organization must put the key in
