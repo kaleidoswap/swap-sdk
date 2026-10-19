@@ -907,6 +907,276 @@ export class IntentsCorridor {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Atomic BTC L1 <-> USDT-RGB L1 swaps — the maker's `/v2/swap/atomic` wire.
+//
+// One transaction moves both legs: no HTLC and no refund. The SDK quotes,
+// verifies and tracks; the wallet's rgb-lib accepts the offer
+// (`accept_swap_offer`), signs the proposal (`complete_swap_proposal`) and
+// accepts the transfers (`accept_swap_transfers`). rgb-lib messages cross as
+// JSON text: their 64-bit fields do not survive a round trip through JS
+// numbers or `bigint`.
+// ---------------------------------------------------------------------------
+
+/** Send BTC, receive USDT-RGB. */
+export const ATOMIC_BTC_TO_USDT_RGB = "BTC/USDT-RGB";
+/** Send USDT-RGB, receive BTC. */
+export const ATOMIC_USDT_RGB_TO_BTC = "USDT-RGB/BTC";
+
+export type AtomicPairName =
+  typeof ATOMIC_BTC_TO_USDT_RGB | typeof ATOMIC_USDT_RGB_TO_BTC;
+
+/** Which amount of a quote request is fixed: what the taker sends or receives. */
+export type AtomicAmountDirection = "from" | "to";
+
+export interface AtomicQuoteRequest {
+  pair: AtomicPairName;
+  /** Sats for BTC, the RGB contract's smallest unit for the asset. */
+  amount: bigint;
+  direction?: AtomicAmountDirection;
+}
+
+/** What the caller expects of a quote, beyond what it asked for. */
+/**
+ * What the caller expects of a quote, beyond what it asked for.
+ *
+ * Amounts are in each asset's base units, the ones the quote itself uses:
+ * sats for BTC, and the RGB contract's smallest unit for USDT-RGB, which has
+ * 6 decimals (1 USDT = `1_000_000n`). Never the pair card's display units.
+ */
+export interface AtomicQuoteExpectations {
+  /** The USDT-RGB contract id the wallet trades. */
+  assetId: string;
+  /** rgb-lib's `BitcoinNetwork` of the wallet, e.g. `"Regtest"`, `"Signet"`. */
+  bitcoinNetwork: string;
+  /** RGB proxy the wallet requires, if any. */
+  proxyUrl?: string;
+  /** Ceiling on the miner fee the taker funds, sats. */
+  maxNetworkFeeSat?: bigint;
+  /**
+   * Ceiling on the fee the maker declares (`serviceFee`), in the output
+   * asset's base units. Not price protection: a maker can declare no fee and
+   * take its cut in the rate. Only `minToAmount` / `maxFromAmount` bound what
+   * the taker actually gets or pays.
+   */
+  maxServiceFee?: bigint;
+  /** For a `from` quote: the least the taker accepts to receive, in the output asset's base units. */
+  minToAmount?: bigint;
+  /** For a `to` quote: the most the taker accepts to send, in the input asset's base units. */
+  maxFromAmount?: bigint;
+  /** Longest the offer may stay open, seconds from now. */
+  maxOfferTtlSecs?: bigint;
+  /**
+   * Ceiling on the sats each RGB receive output carries. The taker funds
+   * them into its own coloured UTXO; the ceiling stops a maker from tying up
+   * an arbitrary amount of the taker's BTC there.
+   */
+  maxRgbOutputSat?: bigint;
+}
+
+/** A coin an rgb-lib swap message spends. */
+export interface AtomicOutpoint {
+  txid: string;
+  vout: number;
+}
+
+/** A quote that passed verification. */
+export interface AtomicQuote {
+  id: string;
+  pair: AtomicPairName;
+  direction: AtomicAmountDirection;
+  /** What the taker sends. */
+  fromAmount: bigint;
+  /** What the taker receives, net of the maker's fee. */
+  toAmount: bigint;
+  assetId: string;
+  /** Miner fee the taker funds on top of `fromAmount`, sats. */
+  networkFeeSat: bigint;
+  /** The maker's fee, in the output asset's units. */
+  serviceFee: bigint;
+  /** Unix seconds: post the request before this. */
+  expiresAt: bigint;
+  /** Unix seconds: post the completion before this. */
+  offerExpiresAt: bigint;
+  /** rgb-lib `OnchainSwapOffer` JSON, for the wallet's `accept_swap_offer`. */
+  offer: string;
+}
+
+export interface AtomicProposal {
+  id: string;
+  status: string;
+  /** rgb-lib `OnchainSwapProposal` JSON, for `complete_swap_proposal`. */
+  proposal: string;
+  /**
+   * The coins the proposal says are the maker's. None of them is one of the
+   * `walletOutpoints` passed to `request`, and none repeats.
+   */
+  makerInputs: AtomicOutpoint[];
+}
+
+export interface AtomicCompletion {
+  id: string;
+  status: string;
+  txid: string;
+  /** Finalized rgb-lib `OnchainSwapCompletion` JSON, for `accept_swap_transfers`. */
+  completion: string;
+}
+
+export type AtomicSwapState =
+  | "swap.created"
+  | "swap.requested"
+  | "transaction.proposed"
+  | "transaction.mempool"
+  | "transaction.confirmed"
+  | "transaction.claimed"
+  | "swap.expired"
+  | "swap.cancelled"
+  | "transaction.failed";
+
+/** No update follows these; `transaction.claimed` is the success. */
+export const ATOMIC_TERMINAL_STATES: ReadonlySet<AtomicSwapState> = new Set([
+  "transaction.claimed",
+  "swap.expired",
+  "swap.cancelled",
+  "transaction.failed",
+]);
+
+export interface AtomicSwapStatus {
+  id: string;
+  pair: AtomicPairName;
+  status: AtomicSwapState;
+  /** The maker's internal state, for diagnostics. */
+  state: string;
+  fromAmount: bigint;
+  toAmount: bigint;
+  assetId: string;
+  networkFeeSat: bigint;
+  txid?: string | null;
+  confirmations: number;
+  expiresAt: bigint;
+  offerExpiresAt: bigint;
+  createdAt: bigint;
+}
+
+export interface AtomicPairCard {
+  hash: string;
+  rate: number;
+  limits: { minimal: bigint; maximal: bigint };
+  fees: { percentage: number; minerFees: bigint };
+}
+
+/** from currency -> to currency -> card; empty while the maker is halted. */
+export type AtomicPairs = Record<string, Record<string, AtomicPairCard>>;
+
+export interface AtomicTrackOptions {
+  /** Delay between status reads. Default 5 s. */
+  intervalMs?: number;
+  /** Called with every status read, before the terminal check. */
+  onStatus?: (status: AtomicSwapStatus) => void;
+  signal?: AbortSignal;
+}
+
+/**
+ * Typed façade over a {@link SwapClient}'s atomic-swap methods.
+ *
+ * ```ts
+ * const atomic = new AtomicSwaps(SwapClient.forNetwork("regtest"));
+ * const quote = await atomic.quote(
+ *   { pair: ATOMIC_BTC_TO_USDT_RGB, amount: 100_000n },
+ *   { assetId: USDT_CONTRACT, bitcoinNetwork: "Regtest", maxNetworkFeeSat: 5_000n },
+ * );
+ * const request = wallet.acceptSwapOffer(quote.offer);        // rgb-lib
+ * const { proposal } = await atomic.request(quote.id, request);
+ * const completion = wallet.completeSwapProposal(proposal);   // rgb-lib
+ * const done = await atomic.complete(quote.id, completion);
+ * const final = await atomic.track(quote.id);
+ * ```
+ */
+export class AtomicSwaps {
+  constructor(private readonly client: WasmSwapClient) {}
+
+  pairs(): Promise<AtomicPairs> {
+    return this.client.atomicPairs() as Promise<AtomicPairs>;
+  }
+
+  /**
+   * Quote a swap, then verify it: the quote must answer `request`, match
+   * `expectations`, be unexpired at `nowSecs`, and carry an offer whose legs,
+   * miner fee and expiry are the quote's, with no platform fee. Rejects with
+   * code `Protocol` otherwise; never hand an unverified offer to the wallet.
+   */
+  quote(
+    request: AtomicQuoteRequest,
+    expectations: AtomicQuoteExpectations,
+    nowSecs: bigint = BigInt(Math.floor(Date.now() / 1000)),
+  ): Promise<AtomicQuote> {
+    return this.client.atomicQuote(
+      { direction: "from", ...request },
+      expectations,
+      nowSecs,
+    ) as Promise<AtomicQuote>;
+  }
+
+  /**
+   * Post the wallet's `OnchainSwapRequest` JSON; resolves with the maker's
+   * unsigned proposal, checked to answer that request.
+   *
+   * `walletOutpoints` is every coin the wallet holds: rgb-lib's
+   * `list_unspents`, as `unspents.map((u) => u.utxo.outpoint)`. It must
+   * include the request's own inputs. A proposal that lists any of these
+   * coins as the maker's is refused: rgb-lib before kaleidoswap/rgb-lib#18
+   * would sign it and hand its value to the maker.
+   */
+  request(
+    swapId: string,
+    requestJson: string,
+    walletOutpoints: readonly AtomicOutpoint[],
+  ): Promise<AtomicProposal> {
+    return this.client.atomicRequest(
+      swapId,
+      requestJson,
+      walletOutpoints,
+    ) as Promise<AtomicProposal>;
+  }
+
+  /** Post the wallet's signed `OnchainSwapCompletion` JSON. The maker signs
+   * last and broadcasts; the answer is checked to be the signed transaction. */
+  complete(swapId: string, completionJson: string): Promise<AtomicCompletion> {
+    return this.client.atomicComplete(
+      swapId,
+      completionJson,
+    ) as Promise<AtomicCompletion>;
+  }
+
+  status(swapId: string): Promise<AtomicSwapStatus> {
+    return this.client.atomicSwap(swapId) as Promise<AtomicSwapStatus>;
+  }
+
+  /** Poll {@link status} until a terminal state, and resolve with it. */
+  async track(
+    swapId: string,
+    { intervalMs = 5_000, onStatus, signal }: AtomicTrackOptions = {},
+  ): Promise<AtomicSwapStatus> {
+    for (;;) {
+      signal?.throwIfAborted();
+      const status = await this.status(swapId);
+      onStatus?.(status);
+      if (ATOMIC_TERMINAL_STATES.has(status.status)) return status;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, intervalMs);
+        signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(timer);
+            reject(signal.reason);
+          },
+          { once: true },
+        );
+      });
+    }
+  }
+}
+
 export function toJson(value: unknown, space?: string | number): string {
   return JSON.stringify(
     value,

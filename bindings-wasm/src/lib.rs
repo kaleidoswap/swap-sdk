@@ -163,6 +163,27 @@ extern "C" {
     pub type CorridorCardResult;
 }
 
+// ---- rgb-lib swap messages ---------------------------------------------------
+//
+// rgb-lib's offer, request, proposal and completion cross as JSON text. As JS
+// objects their 64-bit fields (seal blindings among them) would either become
+// `bigint`, which `JSON.stringify` refuses, or lose precision in `JSON.parse`.
+
+/// Serialize `v` for JS with its `field`, an rgb-lib message, as JSON text.
+fn rgb_message_to_js<T: serde::Serialize>(v: &T, field: &str) -> Result<JsValue, JsValue> {
+    let mut value = serde_json::to_value(v).map_err(internal_err)?;
+    if let Some(message) = value.get_mut(field) {
+        *message = serde_json::Value::String(message.to_string());
+    }
+    to_js(&value)
+}
+
+/// Parse an rgb-lib message argument given as JSON text.
+fn rgb_message_arg(v: StringArg, name: &str) -> Result<serde_json::Value, JsValue> {
+    let text = str_arg(v, name)?;
+    serde_json::from_str(&text).map_err(|e| arg_err(format!("argument `{name}` is not JSON: {e}")))
+}
+
 // ---- String arguments -------------------------------------------------------
 
 #[wasm_bindgen]
@@ -376,6 +397,7 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
 // hand-written interfaces.
 // ============================================================================
 
+use kaleidorg_swap_sdk::atomic;
 use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
@@ -1232,6 +1254,98 @@ impl BoltzClient {
     pub async fn mrh_bip21(&self, invoice: StringArg) -> Result<JsValue, JsValue> {
         let invoice = str_arg(invoice, "invoice")?;
         to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
+    }
+    /// `GET /v2/swap/atomic/pairs` — the atomic BTC <-> USDT-RGB rate cards.
+    #[wasm_bindgen(js_name = atomicPairs)]
+    pub async fn atomic_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.atomic_pairs().await.map_err(core_err)?)
+    }
+
+    /// Quote an atomic swap and verify it against `request` and
+    /// `expectations` at `nowSecs`. The quote's `offer` is rgb-lib's
+    /// `OnchainSwapOffer` as JSON text, for the wallet's `accept_swap_offer`.
+    #[wasm_bindgen(js_name = atomicQuote)]
+    pub async fn atomic_quote(
+        &self,
+        request: JsValue,
+        expectations: JsValue,
+        now_secs: u64,
+    ) -> Result<JsValue, JsValue> {
+        let request: atomic::AtomicQuoteRequest = from_js(request)?;
+        let expect: atomic::AtomicQuoteExpectations = from_js(expectations)?;
+        let quote = self
+            .inner
+            .atomic_quote(&request, &expect, now_secs)
+            .await
+            .map_err(core_err)?;
+        rgb_message_to_js(&quote, "offer")
+    }
+
+    /// Post the wallet's `OnchainSwapRequest` (JSON text). Resolves with the
+    /// maker's unsigned `OnchainSwapProposal` as JSON text in `proposal`.
+    ///
+    /// `walletOutpoints` is every `{ txid, vout }` the wallet holds (rgb-lib's
+    /// `list_unspents`). A proposal listing any of them as the maker's is
+    /// refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign it away.
+    #[wasm_bindgen(js_name = atomicRequest)]
+    pub async fn atomic_request(
+        &self,
+        swap_id: StringArg,
+        request_json: StringArg,
+        wallet_outpoints: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let request = rgb_message_arg(request_json, "requestJson")?;
+        let wallet: Vec<atomic::AtomicOutpoint> = from_js(wallet_outpoints)
+            .map_err(|_| arg_err("walletOutpoints must be an array of { txid, vout }"))?;
+        atomic::check_wallet_outpoints(&request, &wallet).map_err(|e| arg_err(e.message()))?;
+        let proposal = self
+            .inner
+            .atomic_request(&swap_id, &request, &wallet)
+            .await
+            .map_err(core_err)?;
+        // Not through `rgb_message_to_js`: its JSON detour would turn the
+        // `u32` `vout`s into BigInts.
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Proposal<'a> {
+            id: &'a str,
+            status: &'a str,
+            proposal: String,
+            maker_inputs: &'a [atomic::AtomicOutpoint],
+        }
+        to_js(&Proposal {
+            id: &proposal.id,
+            status: &proposal.status,
+            proposal: proposal.proposal.to_string(),
+            maker_inputs: &proposal.maker_inputs,
+        })
+    }
+
+    /// Post the wallet's signed `OnchainSwapCompletion` (JSON text). The
+    /// maker signs last and broadcasts; the finalized completion comes back
+    /// as JSON text in `completion`, for `accept_swap_transfers`.
+    #[wasm_bindgen(js_name = atomicComplete)]
+    pub async fn atomic_complete(
+        &self,
+        swap_id: StringArg,
+        completion_json: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let completion = rgb_message_arg(completion_json, "completionJson")?;
+        let done = self
+            .inner
+            .atomic_complete(&swap_id, &completion)
+            .await
+            .map_err(core_err)?;
+        rgb_message_to_js(&done, "completion")
+    }
+
+    /// `GET /v2/swap/atomic/{id}` — where an atomic swap stands.
+    #[wasm_bindgen(js_name = atomicSwap)]
+    pub async fn atomic_swap(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        to_js(&self.inner.atomic_swap(&swap_id).await.map_err(core_err)?)
     }
     pub async fn swap(&self, swap_id: StringArg) -> Result<GetSwapResponseJs, JsValue> {
         let swap_id = str_arg(swap_id, "swapId")?;

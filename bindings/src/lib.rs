@@ -1,3 +1,4 @@
+mod atomic;
 mod boltz;
 mod corridor;
 mod lnurl;
