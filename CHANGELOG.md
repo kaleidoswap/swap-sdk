@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-19
+
+This release adds a client for the maker's single-transaction atomic
+BTC <-> USDT-RGB swaps, organization keys for partner attribution, pay-through
+idempotency keys and typed swap DTOs, and hardens claims, Esplora broadcasts
+and Arkade cancels. Rust, Python, TypeScript and React Native packages share
+version **0.12.0**. It contains two breaking changes, listed below:
+`forKaleidoMaker` refuses workers and extensions, and swap responses are typed
+DTOs in the Rust core and TypeScript.
+
 ### BREAKING — WASM/TypeScript: `forKaleidoMaker` refuses workers and extensions
 
 `BoltzClient.forKaleidoMaker` / `createKaleidoMakerClient` already refused a
