@@ -43,6 +43,13 @@ for reconciliation; errors are not durably cached as final rejections.
   transaction/txid before revealing a preimage. Automatic claims fall back to
   the script path after cooperative failure. Matured refunds tolerate stale
   maker status. Claim safety margins and optional fee ceilings are explicit.
+- Esplora broadcasts check the HTTP status and parse the returned txid. The
+  Liquid client previously returned a rejected broadcast's error text as a
+  successful result.
+- The Arkade venue no longer cancels a `prepared` swap on a single `unknown`
+  lockup read past its deadline. It waits `unknownLockupGraceSeconds`
+  (default 15 minutes) so a late funding or a lagging indexer can still
+  self-heal the record to `funded`.
 
 ### Added
 
