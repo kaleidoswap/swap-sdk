@@ -86,9 +86,10 @@ export interface KaleidoMakerClientOptions {
   /** Per-request timeout in seconds. Omit to leave it to the HTTP stack. */
   timeoutSecs?: number;
   /**
-   * Build the client even in a document context. Off by default, and the
-   * constructor throws rather than running in a browser — see below. Set this
-   * only if you have accepted that every visitor can read the key.
+   * Build the client even in a browser context: a page, a worker or an
+   * extension. Off by default, and the constructor throws rather than running
+   * in a browser — see below. Set this only if you have accepted that every
+   * visitor can read the key.
    */
   allowBrowser?: boolean;
 }
@@ -121,8 +122,9 @@ export interface KaleidoMakerClientOptions {
  * ## Server and native integrations only
  *
  * **This throws if called from a browser.** One wasm artifact serves both Node
- * and the browser, so the check is a runtime one: a document context is
- * refused unless you pass `allowBrowser: true`. The key is a permanent
+ * and the browser, so the check is a runtime one: a document context, a Web,
+ * shared or service worker, and a browser extension (`chrome.runtime.id`) are
+ * all refused unless you pass `allowBrowser: true`. The key is a permanent
  * organization credential with no origin binding and no per-key rate limit, so a
  * key in a browser bundle is visible to every visitor — who can then attribute
  * their own swaps to, or exhaust the limits of, an organization that is not

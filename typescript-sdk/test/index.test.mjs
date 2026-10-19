@@ -484,6 +484,93 @@ test("the options object names the field that is wrong", () => {
   }
 });
 
+// Run `body` with `globals` defined on `globalThis`, restoring whatever was
+// there before. The wasm guard reads the real global object, so this is how a
+// Node test puts it in a worker or an extension.
+function withGlobals(globals, body) {
+  const saved = Object.keys(globals).map((name) => [
+    name,
+    Object.getOwnPropertyDescriptor(globalThis, name),
+  ]);
+  Object.assign(globalThis, globals);
+  try {
+    body();
+  } finally {
+    for (const [name, descriptor] of saved) {
+      if (descriptor) {
+        Object.defineProperty(globalThis, name, descriptor);
+      } else {
+        delete globalThis[name];
+      }
+    }
+  }
+}
+
+// `document` is not the only sign of a browser. An MV3 extension's service
+// worker and any Web Worker have no `document`, and the guard used to look for
+// nothing else — so the client built silently in exactly the runtime an
+// extension uses, with the key sitting in a bundle anyone can unpack.
+test("forKaleidoMaker is refused in workers and extensions, and runs in Node", () => {
+  const options = { makerUrl: MAKER_URL, apiKey: API_KEY };
+  const scope = function () {};
+  const browserContexts = {
+    "a document context": { document: {} },
+    "a dedicated worker": { WorkerGlobalScope: scope },
+    "a service worker": {
+      WorkerGlobalScope: scope,
+      ServiceWorkerGlobalScope: scope,
+    },
+    "a runtime exposing only ServiceWorkerGlobalScope": {
+      ServiceWorkerGlobalScope: scope,
+    },
+    "a shared worker": { SharedWorkerGlobalScope: scope },
+    "a Chrome extension": { chrome: { runtime: { id: "abcdefghijklmnop" } } },
+    "a Firefox extension": { browser: { runtime: { id: "ext@example.com" } } },
+  };
+
+  for (const [context, globals] of Object.entries(browserContexts)) {
+    withGlobals(globals, () => {
+      assert.throws(
+        () => SwapClient.forKaleidoMaker(options),
+        (error) =>
+          isKaleidoSwapError(error) &&
+          /browser/.test(error.message) &&
+          !error.message.includes(API_KEY),
+        `forKaleidoMaker should be refused in ${context}`,
+      );
+      assert.ok(
+        SwapClient.forKaleidoMaker({
+          ...options,
+          allowBrowser: true,
+        }) instanceof SwapClient,
+        `allowBrowser: true should still build in ${context}`,
+      );
+    });
+  }
+
+  // A page can carry `chrome` and even `chrome.runtime` (for an extension that
+  // lists it as externally connectable); only an extension's own contexts have
+  // an id there. Without a `document` this is not a browser by any other sign.
+  for (const chrome of [{}, { runtime: {} }, { runtime: { id: "" } }]) {
+    withGlobals({ chrome }, () => {
+      assert.ok(SwapClient.forKaleidoMaker(options) instanceof SwapClient);
+    });
+  }
+
+  // Plain Node has none of these, and is where the constructor is meant to run.
+  for (const name of [
+    "document",
+    "WorkerGlobalScope",
+    "ServiceWorkerGlobalScope",
+    "SharedWorkerGlobalScope",
+    "chrome",
+    "browser",
+  ]) {
+    assert.equal(name in globalThis, false, `Node unexpectedly has ${name}`);
+  }
+  assert.ok(SwapClient.forKaleidoMaker(options) instanceof SwapClient);
+});
+
 // A rejected call must name the property and never quote its contents.
 //
 // The options object is deserialized by hand for this reason. Routing it

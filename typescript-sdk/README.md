@@ -654,8 +654,9 @@ read as a suspended organization. There is no accessor for the secret half:
 > visible to every visitor — who can then attribute their own swaps to, or
 > exhaust the limits of, an organization that is not theirs. This release
 > supports **server and native integrations only**, and because one wasm
-> artifact serves both runtimes the check is a runtime one: a document context
-> is refused unless you pass `allowBrowser: true`. Call this from Node, keep the
+> artifact serves both runtimes the check is a runtime one: a page, a Web,
+> shared or service worker, and a browser extension (`chrome.runtime.id`) are
+> all refused unless you pass `allowBrowser: true`. Call this from Node, keep the
 > key in server-side configuration, and use `createKaleidoOrgClient` in browser
 > code.
 
