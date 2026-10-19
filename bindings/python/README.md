@@ -44,10 +44,34 @@ async def main():
 asyncio.run(main())
 ```
 
-## Partner attribution (organization API keys)
+## Partner attribution from an app (organization keys)
 
-A partner organization can have the swaps it originates attributed to it. That
-needs an **organization API key** from the KaleidoSwap partner panel — a
+An app attributes its swaps with the organization's public **organization
+key**: the 64-hex x-only public key the organization registered in the partner
+panel. It is public, so it is safe to ship inside a mobile or desktop app.
+
+```python
+import kaleidorg_swap_sdk
+
+client = kaleidorg_swap_sdk.SwapClient.kaleido_org(
+    "https://maker.signet.kaleidoswap.com/v2",
+    ORG_KEY,  # 64 hex, from the partner panel
+    None,  # timeout in seconds
+)
+
+client.org_key()  # the key, as 64 lowercase hex
+```
+
+The key is a label, never a credential: it buys the caller no rate limit,
+discount or access of its own. It goes out in `X-Kaleido-Org-Key` on swap
+creation only, to that maker URL only, which must be `https` unless it is a
+loopback address. A value that is not a point on the curve is rejected here
+rather than reaching the maker as `400 org_key_malformed`. A client holds an
+organization key or an API key, never both.
+
+## Partner attribution from a server (organization API keys)
+
+A server can instead use an **organization API key** from the KaleidoSwap partner panel — a
 `kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
 production. Without one, `SwapClient` behaves exactly as before and
 creates unattributed swaps.

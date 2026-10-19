@@ -47,6 +47,12 @@ fn kaleido_auth() {
 
 #[test]
 #[serial]
+fn kaleido_org() {
+    run_test("tests/bindings/kaleido_org.py");
+}
+
+#[test]
+#[serial]
 fn auth_recovery() {
     run_test("tests/bindings/auth_recovery.py");
 }

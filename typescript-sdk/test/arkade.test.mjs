@@ -1179,6 +1179,47 @@ test("kaleidoswapHttpTransport posts to /v1/swap and reads /v1/rfq beside the /v
   await transport.close();
 });
 
+test("kaleidoswapHttpTransport attributes the quote request and nothing else", async () => {
+  const orgKey =
+    "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({
+      url: String(url),
+      orgKey: new Headers(init?.headers).get("x-kaleido-org-key"),
+      contentType: new Headers(init?.headers).get("content-type"),
+    });
+    return new Response(JSON.stringify({ type: "nothing" }), { status: 200 });
+  };
+  const transport = kaleidoswapHttpTransport("https://maker.example/v2", {
+    fetchImpl,
+    orgKey: orgKey.toUpperCase(),
+  });
+  await transport
+    .requestQuote({ v: 1, type: "rfq_request", rfq_id: "abc", profile: {} })
+    .catch(() => {});
+  await transport.status("abc");
+
+  assert.deepEqual(calls, [
+    {
+      url: "https://maker.example/v1/swap",
+      orgKey,
+      // The transport's own headers survive the wrapper.
+      contentType: "application/json",
+    },
+    {
+      url: "https://maker.example/v1/rfq/abc",
+      orgKey: null,
+      contentType: null,
+    },
+  ]);
+  assert.throws(
+    () =>
+      kaleidoswapHttpTransport("https://maker.example/v2", { orgKey: "abc" }),
+    /orgKey must be/,
+  );
+});
+
 test("kaleidoswapHttpTransport refuses a base that is not a /v2 maker URL", () => {
   assert.throws(
     () => kaleidoswapHttpTransport("https://maker.example"),

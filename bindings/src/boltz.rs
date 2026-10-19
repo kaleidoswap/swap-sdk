@@ -8,7 +8,10 @@ use kaleidorg_swap_sdk::boltz::{
     ChannelInfo, FailureReasonIncorrectAmounts, SubSwapStates, SwapStatus, TransactionInfo,
 };
 use kaleidorg_swap_sdk::error::Error as CoreError;
-use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+use kaleidorg_swap_sdk::kaleido::{
+    ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
+    KaleidoOrgClientOptions, OrgKey,
+};
 use kaleidorg_swap_sdk::network::{Chain, Currency, Network};
 use kaleidorg_swap_sdk::swaps::boltz::*;
 use kaleidorg_swap_sdk::swaps::RgbLock;
@@ -132,6 +135,41 @@ impl SwapClient {
             })?
             .into_inner(),
         })
+    }
+
+    /// Client for the **KaleidoSwap maker** that attributes the swaps it creates
+    /// to a partner organization by its public organization key.
+    ///
+    /// `org_key` is the 64-hex x-only public key the organization registered in
+    /// the partner panel. Unlike `kaleido_maker`'s API key it is public, so it
+    /// is safe to ship inside a mobile or desktop app: it is a label, never a
+    /// credential, and buys the caller no rate limit, discount or access of its
+    /// own. It goes out in `X-Kaleido-Org-Key` on swap creation only, to
+    /// `maker_url` only, which must be `https` unless it is a loopback address.
+    ///
+    /// A value that is not a point on the curve is rejected here rather than
+    /// reaching the maker as `400 org_key_malformed`.
+    #[uniffi::constructor]
+    pub fn kaleido_org(
+        maker_url: &str,
+        org_key: &str,
+        timeout: Option<u64>,
+    ) -> Result<Self, Error> {
+        Ok(Self {
+            inner: KaleidoOrgClient::new(KaleidoOrgClientOptions {
+                maker_url: maker_url.to_string(),
+                org_key: OrgKey::parse(org_key)?,
+                timeout: timeout.map(Duration::from_secs),
+            })?
+            .into_inner(),
+        })
+    }
+
+    /// The organization key this client attributes its swaps to, as 64
+    /// lowercase hex, or `None` for a client built without one.
+    #[uniffi::method]
+    pub fn org_key(&self) -> Option<String> {
+        self.inner.org_key().map(|key| key.to_string())
     }
 
     /// The environment the configured organization key is scoped to — `"test"`

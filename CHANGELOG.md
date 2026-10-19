@@ -16,6 +16,28 @@ unaffected. A worker or extension that builds this client on purpose must now
 pass `allowBrowser: true`, as a page already had to. Part of phase 0 of
 [kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578).
 
+### Added — organization keys for client-side attribution
+
+Apps, extensions and web pages can now attribute their swaps to a partner
+organization without shipping a secret. They use the organization's public
+x-only key, registered in the partner panel with a proof of possession
+([kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578)).
+
+- Rust: `kaleido::OrgKey` (parse, `Display`, serde) and `KaleidoOrgClient`;
+  `BoltzApiClientV2::org_key()`.
+- Python: `SwapClient.kaleido_org(maker_url, org_key, timeout)` and
+  `org_key()`.
+- WASM/TypeScript: `BoltzClient.forKaleidoOrg({ makerUrl, orgKey, timeoutSecs })`
+  and `createKaleidoOrgClient`, with no browser refusal, plus the `orgKey`
+  getter. `PayThroughClient` and `kaleidoswapHttpTransport` take an `orgKey`
+  option.
+
+The key goes out in `X-Kaleido-Org-Key` on swap creation only, and only to the
+configured maker. A client carries an organization key or an API key, never
+both. Makers without organization-key support ignore the header and create the
+swap unattributed. The SDK logs a warning when the maker reports
+`X-Kaleido-Attribution` other than `org_key`.
+
 ### Added — pay-through idempotency keys
 
 `PayThroughClient.create(request, { idempotencyKey, signal })` accepts a

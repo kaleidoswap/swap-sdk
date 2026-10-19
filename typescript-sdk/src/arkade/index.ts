@@ -51,6 +51,7 @@
 
 import type { IContractManager, IWallet } from "@arkade-os/sdk";
 import { corridorRootFromMakerUrl } from "../corridor-url.js";
+import { ORG_KEY_HEADER, normalizeOrgKey } from "../org-key.js";
 export { corridorRootFromMakerUrl };
 import {
   ArkAddress,
@@ -485,12 +486,60 @@ export interface PreparedLightningReceive {
  *   transport: kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2"),
  * });
  * ```
+ *
+ * Pass `orgKey` — the 64-hex public key an organization registered in the
+ * partner panel — to attribute the swaps this transport creates. It goes out in
+ * `X-Kaleido-Org-Key` on `POST /v1/swap` to this maker only; status reads carry
+ * nothing. It is public, so it is safe in an app bundle.
  */
 export function kaleidoswapHttpTransport(
   makerUrl: string,
-  options?: { fetchImpl?: typeof fetch },
+  options?: { fetchImpl?: typeof fetch; orgKey?: string },
 ): RfqTransport {
-  return httpTransport(corridorRootFromMakerUrl(makerUrl), options);
+  const root = corridorRootFromMakerUrl(makerUrl);
+  const fetchImpl = options?.fetchImpl;
+  if (options?.orgKey === undefined) {
+    return httpTransport(root, { fetchImpl });
+  }
+  return httpTransport(root, {
+    fetchImpl: attributingFetch(
+      fetchImpl ?? ((input, init) => fetch(input, init)),
+      `${root}/v1/swap`,
+      normalizeOrgKey(options.orgKey),
+    ),
+  });
+}
+
+/**
+ * `fetch` that adds the organization key to the one request that creates a
+ * swap: a `POST` to exactly `createUrl`. Everything else passes through
+ * untouched, so the key cannot reach a status read, another route, or another
+ * origin through this transport.
+ */
+function attributingFetch(
+  fetchImpl: typeof fetch,
+  createUrl: string,
+  orgKey: string,
+): typeof fetch {
+  return (input, init) => {
+    const request =
+      typeof Request !== "undefined" && input instanceof Request
+        ? input
+        : undefined;
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (request?.url ?? String(input));
+    const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
+    if (method !== "POST" || url !== createUrl) {
+      return fetchImpl(input, init);
+    }
+    const headers = new Headers(init?.headers ?? request?.headers);
+    headers.set(ORG_KEY_HEADER, orgKey);
+    return fetchImpl(input, { ...init, headers });
+  };
 }
 
 const hex = {
