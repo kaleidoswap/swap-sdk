@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-19
+
+This release adds organization-key attribution, pay-through idempotency keys,
+typed swap DTOs and a client for atomic BTC <-> USDT-RGB swaps on L1. It works
+with KaleidoSwap Maker 0.8.0 and later. Pay-through idempotency needs Maker
+0.9.0 or later; organization-key attribution needs Maker 0.10.0 or later with
+organization keys enabled by the operator. Older makers ignore both headers.
+It contains breaking changes for Rust and TypeScript callers; see the
+BREAKING sections below.
+
+### Changed — React Native accepts the 0.12 core
+
+`@kaleidorg/swap-sdk-react-native` accepts `@kaleidorg/swap-sdk >=0.9.0 <0.13.0`.
+The `./arkade` entry it re-exports only gained optional parameters
+(`orgKey`, `unknownLockupGraceSeconds`).
+
 ### BREAKING — WASM/TypeScript: `forKaleidoMaker` refuses workers and extensions
 
 `BoltzClient.forKaleidoMaker` / `createKaleidoMakerClient` already refused a
