@@ -2,7 +2,7 @@
 
 **KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
 Bitcoin, Lightning, and Liquid, for Rust, Python, the browser, and React
-Native. Product overview: [kaleidoswap.com/products/sdk](https://kaleidoswap.com/products/sdk).
+Native.
 
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
@@ -430,8 +430,7 @@ The maker also serves single-transaction atomic swaps between on-chain BTC and
 USDT-RGB (`BTC/USDT-RGB`, `USDT-RGB/BTC`) over `/v2/swap/atomic/*`. These are
 not Boltz chain swaps: one transaction moves both legs, with no HTLC, no
 timelock and no refund. Either it confirms and both sides are paid, or it never
-reaches the chain. For background, see
-[how RGB on Taproot makes atomic swaps possible](https://kaleidoswap.com/blog/rgb-taproot-atomic-swaps).
+reaches the chain.
 
 The SDK quotes, verifies and tracks; the taker's rgb-lib wallet signs. The
 offer, request, proposal and completion are rgb-lib messages passed through as
@@ -685,3 +684,7 @@ Special thanks (from the upstream project) to:
 - [stratospher](https://github.com/stratospher) for contributions and pairing through liquid
   confidential transactions
 - [RCasatta](https://github.com/RCasatta) for guidance on liquid
+
+---
+
+Product overview on the dedicated [website page](https://kaleidoswap.com/products/sdk).
