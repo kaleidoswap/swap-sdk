@@ -2,7 +2,7 @@
 
 **KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
 Bitcoin, Lightning, and Liquid, for Rust, Python, the browser, and React
-Native.
+Native. Product overview: [kaleidoswap.com/products/sdk](https://kaleidoswap.com/products/sdk).
 
 The published surface is **swaps-only**: quote/create/watch a swap against the
 KaleidoSwap maker, derive per-swap keys and preimages, and build the claim /
@@ -237,12 +237,12 @@ both as `400 attribution_conflict`.
 
 | Surface | Install | Supported runtime |
 |---|---|---|
-| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.12.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
 | Python | `pip install kaleidorg_swap_sdk` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
 | TypeScript | `npm install @kaleidorg/swap-sdk` | Browsers and Node 22+; `await init()` takes no argument in either |
 | React Native | `npm install @kaleidorg/swap-sdk-react-native` | iOS and Android, new architecture; a bare or prebuilt app, not Expo Go |
 
-Both registries are live and carry every release through `0.6.0`:
+Both registries are live and carry every release through `0.12.0`:
 `kaleidorg_swap_sdk` on PyPI (five platform wheels plus an sdist) and
 `@kaleidorg/swap-sdk` on npm. npm has no `0.1.0` — that version reached PyPI
 only; see the `0.1.1` changelog entry. The Rust crate is not published to
@@ -423,6 +423,62 @@ See [the RGB design and integration status](docs/rgb-swaps-plan.md),
 [Python](bindings/python/examples/rgb_spend.py) and
 [TypeScript](typescript-sdk/examples/05-rgb-spend.ts) examples demonstrate the
 wallet adapter boundary. Live rgb-lib regtest validation is recorded in [the native example](examples/rgb-regtest/README.md).
+
+## Atomic BTC <-> USDT-RGB swaps on L1
+
+The maker also serves single-transaction atomic swaps between on-chain BTC and
+USDT-RGB (`BTC/USDT-RGB`, `USDT-RGB/BTC`) over `/v2/swap/atomic/*`. These are
+not Boltz chain swaps: one transaction moves both legs, with no HTLC, no
+timelock and no refund. Either it confirms and both sides are paid, or it never
+reaches the chain. For background, see
+[how RGB on Taproot makes atomic swaps possible](https://kaleidoswap.com/blog/rgb-taproot-atomic-swaps).
+
+The SDK quotes, verifies and tracks; the taker's rgb-lib wallet signs. The
+offer, request, proposal and completion are rgb-lib messages passed through as
+JSON:
+
+1. `quote` — the quote is verified against the request and your
+   `expectations` (asset id, network, fee ceilings, `minToAmount` /
+   `maxFromAmount`), and the offer against the quote, before it is returned.
+   Feed `quote.offer` to the wallet's `accept_swap_offer`.
+2. `request` — posts the wallet's `OnchainSwapRequest` and returns the maker's
+   unsigned proposal. It takes the wallet's coins (rgb-lib's `list_unspents`)
+   and refuses a proposal that lists any of them as the maker's. Sign it with
+   `complete_swap_proposal`.
+3. `complete` — posts the signed `OnchainSwapCompletion`; the maker signs last
+   and broadcasts. Finish in the wallet with `accept_swap_transfers`.
+4. `status` / `track` — poll until a terminal state (`transaction.claimed`
+   means settled).
+
+```ts
+import { AtomicSwaps, ATOMIC_BTC_TO_USDT_RGB, SwapClient, init } from "@kaleidorg/swap-sdk";
+
+await init();
+const atomic = new AtomicSwaps(new SwapClient(makerUrl));
+
+const quote = await atomic.quote(
+  { pair: ATOMIC_BTC_TO_USDT_RGB, amount: 100_000n, direction: "from" },
+  { assetId, bitcoinNetwork: "Regtest", maxNetworkFeeSat: 10_000n, minToAmount },
+);
+// wallet: accept_swap_offer(quote.offer) -> requestJson
+const { proposal } = await atomic.request(quote.id, requestJson, walletOutpoints);
+// wallet: complete_swap_proposal(proposal) -> completionJson
+const { txid } = await atomic.complete(quote.id, completionJson);
+const final = await atomic.track(quote.id);
+```
+
+Amounts are in base units (sats, or USDT-RGB's 6-decimal units), not the pair
+card's display units. `maxServiceFee` only bounds the fee the maker declares,
+so set `minToAmount` (or `maxFromAmount` for a `to` quote) to bound the price.
+
+The same flow is `kaleidorg_swap_sdk::atomic` with
+`BoltzApiClientV2::atomic_pairs` / `atomic_quote` / `atomic_request` /
+`atomic_complete` / `atomic_swap` in Rust, and `SwapClient.get_atomic_pairs` /
+`atomic_quote` / `atomic_request` / `atomic_complete` / `get_atomic_swap` in
+Python. The full walkthrough is
+[`typescript-sdk/examples/06-atomic.ts`](typescript-sdk/examples/06-atomic.ts).
+Wallets need an rgb-lib with kaleidoswap/rgb-lib#18. The live signet maker
+ships atomic pairs disabled; use a regtest maker.
 
 ---
 
