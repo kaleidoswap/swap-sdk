@@ -314,6 +314,9 @@ impl MakerProcess {
                 "MAKER_DATABASE__URL",
                 "postgres://postgres:postgres@127.0.0.1:25433/maker",
             )
+            // This isolated regtest opens private channels and has no public graph.
+            // Keep node/sync health checks, but do not require an announced peer.
+            .env("MAKER_NODE_HEALTH__REQUIRE_ANNOUNCED_PEER", "false")
             .env("MAKER_LDK_SERVER__ADDRESS", "localhost:23636")
             .env("MAKER_LDK_SERVER__MACAROON_PATH", macaroon_path)
             .env(
