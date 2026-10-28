@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — React Native: `SwapClient.kaleidoMaker` refuses to run in an app
+
+`SwapClient.kaleidoMaker(makerUrl, apiKey, timeout)` in
+`@kaleidorg/swap-sdk-react-native` had no guard, so a secret `kld_` partner key
+could be shipped inside a mobile app, where every user can read it. It now
+throws `Exception.Generic` before the key reaches native code. An app that
+builds this client on purpose must pass the new fourth argument:
+`kaleidoMaker(makerUrl, apiKey, timeout, { allowMobile: true })`. This mirrors
+`allowBrowser: true` on the WASM/TypeScript `forKaleidoMaker`. The recommended
+fix is to create attributed swaps from a server instead. The Python binding is
+unchanged. Part of phase 0 of
+[kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578).
+
+### Fixed — React Native: the package loads the SDK again
+
+`@kaleidorg/swap-sdk-react-native@0.11.0` loaded none of the SDK.
+`import { SwapClient } from "@kaleidorg/swap-sdk-react-native"` failed. The
+entry exported only `uniffiInitAsync`, and the native `installRustCrate` did
+not register the module. The Android build generates the turbo module from
+the `.so` it builds, and the workspace's `strip = true` had removed the ELF
+symbol table that uniffi reads the components from. ubrn found no components
+and rewrote `src/index.tsx`, `cpp/kaleidoswap-swap-sdk.cpp` and
+`android/CMakeLists.txt` for zero modules. It runs after the iOS build, so its
+output replaced the correct files. The bindings left over from iOS made the
+package look complete.
+
+`ubrn:android` now builds with `CARGO_PROFILE_RELEASE_STRIP=debuginfo`. The
+Android Gradle plugin still strips the library when an app is packaged. A new
+check makes `ubrn:build`, `prepack` and the tarball smoke test refuse any of
+those three files when it does not load `kaleidorg_swap_sdk`. The Python wheel
+and the iOS static library are unchanged.
+
 ### BREAKING — L-USDT on testnet and regtest requires a pinned asset id
 
 The L-USDT asset a swap must carry was anchored only to the maker's pair card:
