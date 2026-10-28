@@ -125,11 +125,7 @@ try {
   // swap's timeout. `claimReverseSwap` checks that snapshot, and the WASM
   // core re-checks the chain itself before signing.
   await waitForStatus(client, response.id, "transaction.confirmed");
-  const lockup = await liquidLockupEvidence(
-    client,
-    response.id,
-    liquidEsplora,
-  );
+  const lockup = await liquidLockupEvidence(client, response.id, liquidEsplora);
   const result = await claimReverseSwap({
     status: "transaction.confirmed",
     tipHeight: lockup.tipHeight,

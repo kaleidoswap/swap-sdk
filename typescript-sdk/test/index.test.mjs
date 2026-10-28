@@ -944,15 +944,39 @@ test("validateReverseTimeoutHeadroom refuses a mature or tight timeout", async (
     lockupDetails: details(100 + 288),
     claimDetails: details(5000 + 1440),
   };
-  validateChainTimeoutHeadroom(chain, "regtest", "bitcoin", 100, "liquid", 5000, 60);
+  validateChainTimeoutHeadroom(
+    chain,
+    "regtest",
+    "bitcoin",
+    100,
+    "liquid",
+    5000,
+    60,
+  );
   assert.throws(
     () =>
-      validateChainTimeoutHeadroom(chain, "regtest", "bitcoin", 100, "liquid", 6400, 60),
+      validateChainTimeoutHeadroom(
+        chain,
+        "regtest",
+        "bitcoin",
+        100,
+        "liquid",
+        6400,
+        60,
+      ),
     /leaves no headroom/,
   );
   assert.throws(
     () =>
-      validateChainTimeoutHeadroom(chain, "regtest", "bitcoin", 380, "liquid", 5000, 60),
+      validateChainTimeoutHeadroom(
+        chain,
+        "regtest",
+        "bitcoin",
+        380,
+        "liquid",
+        5000,
+        60,
+      ),
     /does not outlast/,
   );
 });
