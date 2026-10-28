@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Magic routing hints bound the BIP21 amount by the invoice. The maker signs
+  only the address, so `check_for_mrh` now refuses a BIP21 amount of zero or
+  above the invoice amount (smaller is fine: the maker deducts its fees) and
+  requires an invoice with an amount. The validated destination is exposed to
+  every binding as `SwapClient.check_mrh(invoice, chain)` (Python/UniFFI) and
+  `BoltzClient.checkMrh(invoice, chain, network)` (WASM); the raw
+  `get_mrh_bip21` / `mrhBip21` accessors stay for compatibility but return the
+  maker's unvalidated response and should not be paid directly. Security
+  review 2026-10-28, finding 7.
+
 ## [0.12.0] - 2026-10-19
 
 This release adds a client for the maker's single-transaction atomic

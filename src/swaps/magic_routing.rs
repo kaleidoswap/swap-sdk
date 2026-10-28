@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use super::boltz::BoltzApiClientV2;
+use super::boltz::{BoltzApiClientV2, MrhResponse};
 use crate::network::LiquidChain;
 use crate::{error::Error, network::Chain};
 use bitcoin::{
@@ -11,19 +11,25 @@ use bitcoin::{
     PublicKey,
 };
 use lightning_invoice::{Bolt11Invoice, RouteHintHop};
+use serde::{Deserialize, Serialize};
 
 const MAGIC_ROUTING_HINT_CONSTANT: u64 = 596385002596073472;
 pub type Bip21Components = (String, String, bitcoin::Amount, Option<String>);
 
 /// Decodes the provided invoice to find the magic routing hint.
 pub fn find_magic_routing_hint(invoice: &str) -> Result<Option<RouteHintHop>, Error> {
-    let invoice = Bolt11Invoice::from_str(invoice)?;
-    Ok(invoice
+    Ok(find_magic_routing_hint_in(&Bolt11Invoice::from_str(
+        invoice,
+    )?))
+}
+
+fn find_magic_routing_hint_in(invoice: &Bolt11Invoice) -> Option<RouteHintHop> {
+    invoice
         .private_routes()
         .iter()
         .flat_map(|route| &route.0)
         .find(|hint| hint.short_channel_id == MAGIC_ROUTING_HINT_CONSTANT)
-        .cloned())
+        .cloned()
 }
 
 /// Parse a BIP21 String and get the network, address, asset_id if present
@@ -89,6 +95,18 @@ pub fn parse_bip21(uri: &str) -> Result<Bip21Components, Error> {
     Ok((network.into(), address.into(), amount, assetid))
 }
 
+/// A magic-routing destination that passed every check in
+/// [`verify_mrh_response`]: the maker's signature over the address, the
+/// BIP21 scheme, address network and asset against the swap's chain, and the
+/// amount against the invoice. Paying `amount` to `address` on-chain settles
+/// the invoice without a swap.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MrhDestination {
+    pub address: String,
+    pub amount_sat: u64,
+}
+
 /// Check for magic routing hint in invoice. If present, get the BIP21 from Boltz and verify it.
 /// Returns the BIP21 (address, amount) tupple.
 pub async fn check_for_mrh(
@@ -96,26 +114,104 @@ pub async fn check_for_mrh(
     invoice: &str,
     network: Chain,
 ) -> Result<Option<(String, bitcoin::Amount)>, Error> {
-    if let Some(route_hint) = find_magic_routing_hint(invoice)? {
-        let mrh_resp = boltz_api_v2.get_mrh_bip21(invoice).await?;
+    Ok(check_mrh(boltz_api_v2, invoice, network)
+        .await?
+        .map(|destination| {
+            (
+                destination.address,
+                bitcoin::Amount::from_sat(destination.amount_sat),
+            )
+        }))
+}
 
-        let (bip21_network, address, amount, assetid) = verify_mrh_signature(
-            &mrh_resp.bip21,
-            &route_hint.src_node_id.to_string(),
-            &mrh_resp.signature,
-        )?;
-        validate_mrh_destination(
-            &bip21_network,
-            &address,
-            amount,
-            assetid.as_deref(),
-            network,
-        )?;
-
-        Ok(Some((address, amount)))
-    } else {
-        Ok(None)
+/// The validated magic-routing destination for `invoice` on `network`, or
+/// `None` when the invoice carries no hint. Fetches the maker's BIP21 and
+/// runs it through [`verify_mrh_response`]; the bindings expose this so no
+/// caller has to validate a raw [`MrhResponse`] itself.
+pub async fn check_mrh(
+    boltz_api_v2: &BoltzApiClientV2,
+    invoice: &str,
+    network: Chain,
+) -> Result<Option<MrhDestination>, Error> {
+    let parsed = Bolt11Invoice::from_str(invoice)?;
+    if find_magic_routing_hint_in(&parsed).is_none() {
+        return Ok(None);
     }
+    let mrh_resp = boltz_api_v2.get_mrh_bip21(invoice).await?;
+    verify_mrh_response_parsed(&parsed, &mrh_resp, network).map(Some)
+}
+
+/// Verify a maker's `GET /swap/reverse/{invoice}/bip21` response against the
+/// invoice it was fetched for and the chain the caller intends to pay on.
+///
+/// The maker signs only the address, so everything else in the BIP21 is
+/// unauthenticated and is checked here: the scheme and address must belong to
+/// `network`, the asset must be the chain's bitcoin, and the amount must be
+/// positive and at most the invoice amount. It may legitimately be smaller
+/// (the maker deducts its service and on-chain fees), never larger: an
+/// inflated amount would make an obedient sender overpay a signed address.
+/// An invoice without an amount cannot bound the payment and is refused.
+///
+/// Errors when the invoice carries no magic routing hint, since then the
+/// response has no route hint to be signed by.
+pub fn verify_mrh_response(
+    invoice: &str,
+    response: &MrhResponse,
+    network: Chain,
+) -> Result<MrhDestination, Error> {
+    verify_mrh_response_parsed(&Bolt11Invoice::from_str(invoice)?, response, network)
+}
+
+fn verify_mrh_response_parsed(
+    invoice: &Bolt11Invoice,
+    response: &MrhResponse,
+    network: Chain,
+) -> Result<MrhDestination, Error> {
+    let route_hint = find_magic_routing_hint_in(invoice)
+        .ok_or_else(|| Error::Protocol("Invoice carries no magic routing hint".to_string()))?;
+    let (bip21_network, address, amount, assetid) = verify_mrh_signature(
+        &response.bip21,
+        &route_hint.src_node_id.to_string(),
+        &response.signature,
+    )?;
+    validate_mrh_destination(
+        &bip21_network,
+        &address,
+        amount,
+        assetid.as_deref(),
+        network,
+    )?;
+    validate_mrh_amount(invoice, amount)?;
+    Ok(MrhDestination {
+        address,
+        amount_sat: amount.to_sat(),
+    })
+}
+
+/// The BIP21 amount is outside the maker's signature. Bound it by the invoice:
+/// zero is refused, and so is anything above the invoice amount. Smaller is
+/// fine, since the maker takes its fees out of the on-chain leg.
+fn validate_mrh_amount(invoice: &Bolt11Invoice, amount: bitcoin::Amount) -> Result<(), Error> {
+    let invoice_msat = invoice.amount_milli_satoshis().ok_or_else(|| {
+        Error::Protocol(
+            "Magic Routing Hint requires an invoice with an amount to bound the BIP21 amount"
+                .to_string(),
+        )
+    })?;
+    let bip21_msat = amount.to_sat().checked_mul(1_000).ok_or_else(|| {
+        Error::Protocol("Magic Routing Hint amount does not fit in millisatoshis".to_string())
+    })?;
+    if bip21_msat == 0 {
+        return Err(Error::Protocol(
+            "Magic Routing Hint amount must be greater than zero".to_string(),
+        ));
+    }
+    if bip21_msat > invoice_msat {
+        return Err(Error::Protocol(format!(
+            "Magic Routing Hint amount exceeds the invoice amount: {bip21_msat} msat > {invoice_msat} msat"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_mrh_destination(
@@ -209,10 +305,13 @@ mod tests {
     use bitcoin::key::Keypair;
     use bitcoin::secp256k1::{Secp256k1, SecretKey};
 
-    use crate::network::{Chain, LiquidChain};
+    use bitcoin::hashes::{sha256, Hash};
+
+    use crate::network::{BitcoinChain, Chain, LiquidChain};
+    use crate::swaps::boltz::MrhResponse;
     use crate::swaps::magic_routing::{
         find_magic_routing_hint, parse_bip21, sign_address, validate_mrh_destination,
-        verify_mrh_signature, MAGIC_ROUTING_HINT_CONSTANT,
+        verify_mrh_response, verify_mrh_signature, MrhDestination, MAGIC_ROUTING_HINT_CONSTANT,
     };
 
     #[macros::test_all]
@@ -331,6 +430,150 @@ mod tests {
             chain,
         )
         .is_err());
+    }
+
+    /// A regtest invoice signed by a throwaway node key, carrying the magic
+    /// routing hint from `maker` and `amount_msat` if given.
+    fn mrh_invoice(maker: &Keypair, amount_msat: Option<u64>) -> String {
+        use lightning_invoice::{
+            Currency, InvoiceBuilder, PaymentSecret, RouteHint, RouteHintHop, RoutingFees,
+        };
+
+        let secp = Secp256k1::new();
+        let node_key = SecretKey::from_slice(&[41u8; 32]).expect("valid test secret");
+        let hint = RouteHint(vec![RouteHintHop {
+            src_node_id: maker.public_key(),
+            short_channel_id: MAGIC_ROUTING_HINT_CONSTANT,
+            fees: RoutingFees {
+                base_msat: 0,
+                proportional_millionths: 0,
+            },
+            cltv_expiry_delta: 80,
+            htlc_minimum_msat: None,
+            htlc_maximum_msat: None,
+        }]);
+        let mut builder = InvoiceBuilder::new(Currency::Regtest)
+            .description("magic routing hint test".to_string())
+            .payment_hash(sha256::Hash::hash(&[9u8; 32]))
+            .payment_secret(PaymentSecret([7u8; 32]))
+            .duration_since_epoch(std::time::Duration::from_secs(1_726_000_000))
+            .min_final_cltv_expiry_delta(144)
+            .private_route(hint);
+        if let Some(amount_msat) = amount_msat {
+            builder = builder.amount_milli_satoshis(amount_msat);
+        }
+        builder
+            .build_signed(|hash| secp.sign_ecdsa_recoverable(hash, &node_key))
+            .unwrap()
+            .to_string()
+    }
+
+    /// The maker's signed BIP21 for `address`, with an unsigned `amount`.
+    fn mrh_response(maker: &Keypair, address: &str, amount: bitcoin::Amount) -> MrhResponse {
+        MrhResponse {
+            bip21: format!(
+                "bitcoin:{address}?amount={}",
+                amount.to_string_in(bitcoin::Denomination::Bitcoin)
+            ),
+            signature: sign_address(address, maker).unwrap().to_string(),
+        }
+    }
+
+    #[macros::test_all]
+    fn mrh_amount_is_bounded_by_the_invoice() {
+        let secp = Secp256k1::new();
+        let maker = Keypair::from_secret_key(
+            &secp,
+            &SecretKey::from_slice(&[0x42; 32]).expect("valid test secret"),
+        );
+        let address = bitcoin::Address::p2wpkh(
+            &bitcoin::CompressedPublicKey(maker.public_key()),
+            bitcoin::Network::Regtest,
+        )
+        .to_string();
+        let chain = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let invoice = mrh_invoice(&maker, Some(100_000_000));
+
+        // The maker deducts its fees from the on-chain leg, so equal and
+        // smaller amounts are both how a genuine hint looks.
+        for amount_sat in [100_000, 99_000, 1] {
+            let response = mrh_response(&maker, &address, bitcoin::Amount::from_sat(amount_sat));
+            assert_eq!(
+                verify_mrh_response(&invoice, &response, chain).unwrap(),
+                MrhDestination {
+                    address: address.clone(),
+                    amount_sat,
+                },
+                "amount {amount_sat} should be accepted"
+            );
+        }
+
+        // The amount is outside the signature: an inflated one must not make
+        // a sender overpay a correctly signed address.
+        for amount_sat in [100_001, 1_000_000] {
+            let response = mrh_response(&maker, &address, bitcoin::Amount::from_sat(amount_sat));
+            let err = verify_mrh_response(&invoice, &response, chain).unwrap_err();
+            assert!(
+                err.to_string().contains("exceeds the invoice amount"),
+                "amount {amount_sat} should be rejected, got: {err}"
+            );
+        }
+
+        let zero = mrh_response(&maker, &address, bitcoin::Amount::ZERO);
+        assert!(verify_mrh_response(&invoice, &zero, chain).is_err());
+    }
+
+    #[macros::test_all]
+    fn mrh_requires_an_invoice_amount_and_a_routing_hint() {
+        let secp = Secp256k1::new();
+        let maker = Keypair::from_secret_key(
+            &secp,
+            &SecretKey::from_slice(&[0x42; 32]).expect("valid test secret"),
+        );
+        let address = bitcoin::Address::p2wpkh(
+            &bitcoin::CompressedPublicKey(maker.public_key()),
+            bitcoin::Network::Regtest,
+        )
+        .to_string();
+        let chain = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let response = mrh_response(&maker, &address, bitcoin::Amount::from_sat(1_000));
+
+        // Without an invoice amount nothing bounds the BIP21 amount.
+        let amountless = mrh_invoice(&maker, None);
+        let err = verify_mrh_response(&amountless, &response, chain).unwrap_err();
+        assert!(
+            err.to_string().contains("invoice with an amount"),
+            "unexpected error: {err}"
+        );
+
+        // Without a hint there is no maker key the signature could be from.
+        let plain = mrh_invoice_without_hint();
+        assert!(verify_mrh_response(&plain, &response, chain).is_err());
+
+        // A hint from a different node than the one that signed the address.
+        let other = Keypair::from_secret_key(
+            &secp,
+            &SecretKey::from_slice(&[0x43; 32]).expect("valid test secret"),
+        );
+        let foreign = mrh_invoice(&other, Some(1_000_000));
+        assert!(verify_mrh_response(&foreign, &response, chain).is_err());
+    }
+
+    fn mrh_invoice_without_hint() -> String {
+        use lightning_invoice::{Currency, InvoiceBuilder, PaymentSecret};
+
+        let secp = Secp256k1::new();
+        let node_key = SecretKey::from_slice(&[41u8; 32]).expect("valid test secret");
+        InvoiceBuilder::new(Currency::Regtest)
+            .description("no hint".to_string())
+            .payment_hash(sha256::Hash::hash(&[9u8; 32]))
+            .payment_secret(PaymentSecret([7u8; 32]))
+            .duration_since_epoch(std::time::Duration::from_secs(1_726_000_000))
+            .min_final_cltv_expiry_delta(144)
+            .amount_milli_satoshis(1_000_000)
+            .build_signed(|hash| secp.sign_ecdsa_recoverable(hash, &node_key))
+            .unwrap()
+            .to_string()
     }
 
     #[macros::test_all]
