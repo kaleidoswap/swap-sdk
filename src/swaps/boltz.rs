@@ -2145,6 +2145,69 @@ fn ensure_plain_btc_response(currency: Currency, rgb: Option<&RgbLock>) -> Resul
     }
 }
 
+/// The Lightning network a swap on `chain` settles on: the Bitcoin network of
+/// the chain itself, or the Bitcoin network a Liquid network is pegged to.
+fn expected_invoice_network(chain: Chain) -> bitcoin::Network {
+    match Network::from(chain) {
+        Network::Mainnet => bitcoin::Network::Bitcoin,
+        Network::Testnet => bitcoin::Network::Testnet,
+        Network::Signet => bitcoin::Network::Signet,
+        Network::Regtest => bitcoin::Network::Regtest,
+    }
+}
+
+/// A maker-issued invoice must be for the network the swap was created on.
+fn ensure_invoice_network(invoice: &Bolt11Invoice, chain: Chain) -> Result<(), Error> {
+    let expected = expected_invoice_network(chain);
+    let actual = invoice.network();
+    if actual != expected {
+        return Err(Error::Protocol(format!(
+            "Invoice is for network {actual}, swap is on {expected}"
+        )));
+    }
+    Ok(())
+}
+
+/// The least the maker can lock for `amount` under a rate card: the amount
+/// converted at `rate`, less every fee the card lists.
+///
+/// It over-deducts on purpose (the card's `total` includes fees the caller
+/// pays itself, such as its own claim), so it is a floor a legitimate
+/// response clears with room, and a response below it was priced off a
+/// different card than the caller accepted.
+fn minimum_payout(amount: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+    let converted = convert_at_rate(amount, rate)?;
+    Ok(converted.saturating_sub(total_fees))
+}
+
+/// The most a caller can be asked to lock for a `payout` under a rate card:
+/// the payout converted back at `rate`, plus every fee the card lists.
+fn maximum_funding(payout: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+    if !(rate.is_finite() && rate > 0.0) {
+        return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
+    }
+    let converted = ((payout as f64) / rate).ceil();
+    if !converted.is_finite() || converted > u64::MAX as f64 {
+        return Err(Error::Protocol(
+            "Pair rate conversion overflows".to_string(),
+        ));
+    }
+    Ok((converted as u64).saturating_add(total_fees))
+}
+
+fn convert_at_rate(amount: u64, rate: f64) -> Result<u64, Error> {
+    if !(rate.is_finite() && rate > 0.0) {
+        return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
+    }
+    let converted = ((amount as f64) * rate).floor();
+    if !converted.is_finite() || converted > u64::MAX as f64 {
+        return Err(Error::Protocol(
+            "Pair rate conversion overflows".to_string(),
+        ));
+    }
+    Ok(converted as u64)
+}
+
 impl CreateSubmarineResponse {
     /// Validate a KaleidoSwap `USDT-RGB → BTC` submarine response before the
     /// asset is locked.
@@ -2714,7 +2777,7 @@ impl CreateReverseResponse {
         chain: BitcoinChain,
         expected_contract_id: &str,
     ) -> Result<(), Error> {
-        self.validate_invoice_hash(preimage)?;
+        self.validate_invoice(preimage, Chain::Bitcoin(chain))?;
         let script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
         script.validate_response_tree(&self.swap_tree)?;
         ensure_hashlock(&script.hashlock, &preimage.hash160)?;
@@ -2732,7 +2795,13 @@ impl CreateReverseResponse {
             )
     }
 
-    fn validate_invoice_hash(&self, preimage: &Preimage) -> Result<(), Error> {
+    /// Check the maker-generated invoice, when there is one, against the
+    /// preimage and the swap's network.
+    ///
+    /// The network check keeps a response from steering the payer onto another
+    /// chain's Lightning network: an invoice for a chain other than the one the
+    /// swap was created on is rejected before anything is paid.
+    fn validate_invoice(&self, preimage: &Preimage, chain: Chain) -> Result<(), Error> {
         if let Some(invoice) = &self.invoice {
             // Boltz will only return a BOLT11 invoice if the invoice is not provided
             let invoice = Bolt11Invoice::from_str(invoice)?;
@@ -2741,6 +2810,79 @@ impl CreateReverseResponse {
                     "Preimage hash mismatch : {},{}",
                     &invoice.payment_hash().to_string(),
                     preimage.sha256
+                )));
+            }
+            ensure_invoice_network(&invoice, chain)?;
+        }
+        Ok(())
+    }
+
+    /// Bind the response's economic terms to the request that produced it.
+    ///
+    /// The tree, hashlock and address checks prove the maker built the HTLC
+    /// the caller asked for; they say nothing about *how much* the caller is
+    /// about to pay. When the request carried `invoiceAmount`, the maker
+    /// generates the invoice, so this requires that invoice to be present,
+    /// to carry an amount, and for that amount to be exactly
+    /// `invoiceAmount` sats (compared in millisatoshis with checked
+    /// arithmetic). Without it an automated payer takes the amount from the
+    /// invoice and pays whatever the maker put there.
+    ///
+    /// With `pair` — the rate card the caller accepted before creating the
+    /// swap, not one fetched again now — `onchainAmount` must also be at least
+    /// `floor(invoiceAmount × rate) − fees.total(invoiceAmount)`. That is a
+    /// floor, not an equality: a maker that charges less than its card
+    /// advertises passes, one that pays out less than the card promised does
+    /// not. Pass the card for sat-denominated routes; on an asset route the
+    /// rate expresses the asset's units and the same bound applies.
+    ///
+    /// Call this alongside [`Self::validate`] (or its variants) before paying
+    /// the invoice. A request that supplied its own invoice has nothing to
+    /// bind here: the caller already holds the amount it agreed to.
+    pub fn validate_amounts(
+        &self,
+        request: &CreateReverseRequest,
+        pair: Option<&ReversePair>,
+    ) -> Result<(), Error> {
+        let Some(invoice_amount) = request.invoice_amount else {
+            return Ok(());
+        };
+        if invoice_amount == 0 {
+            return Err(Error::Protocol(
+                "Reverse swap invoiceAmount must be positive".to_string(),
+            ));
+        }
+        let expected_msat = invoice_amount.checked_mul(1_000).ok_or_else(|| {
+            Error::Protocol("Reverse swap invoiceAmount does not fit in millisatoshis".to_string())
+        })?;
+        let invoice = self.invoice.as_deref().ok_or_else(|| {
+            Error::Protocol(
+                "Reverse swap response carries no invoice for the requested invoiceAmount"
+                    .to_string(),
+            )
+        })?;
+        let invoice = Bolt11Invoice::from_str(invoice)?;
+        match invoice.amount_milli_satoshis() {
+            Some(amount_msat) if amount_msat == expected_msat => {}
+            Some(amount_msat) => {
+                return Err(Error::Protocol(format!(
+                    "Reverse swap invoice amount mismatch: invoice carries {amount_msat} msat, requested {expected_msat} msat"
+                )));
+            }
+            None => {
+                return Err(Error::Protocol(
+                    "Reverse swap invoice carries no amount; requested a fixed invoiceAmount"
+                        .to_string(),
+                ));
+            }
+        }
+        if let Some(pair) = pair {
+            let minimum =
+                minimum_payout(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+            if self.onchain_amount < minimum {
+                return Err(Error::Protocol(format!(
+                    "Reverse swap onchainAmount {} is below the {minimum} the accepted pair card implies for invoiceAmount {invoice_amount}",
+                    self.onchain_amount
                 )));
             }
         }
@@ -2779,7 +2921,7 @@ impl CreateReverseResponse {
         currency: Option<Currency>,
         expected_asset_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
-        self.validate_invoice_hash(preimage)?;
+        self.validate_invoice(preimage, chain)?;
 
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
@@ -2991,6 +3133,85 @@ impl CreateChainResponse {
             None,
             None,
         )
+    }
+
+    /// Bind both legs' amounts to the request that produced the response.
+    ///
+    /// The tree, hashlock and address checks prove the maker built the HTLCs
+    /// the caller asked for, and the later lockup checks only enforce whatever
+    /// amounts this response carries. Nothing else ties those amounts to the
+    /// request: a response could ask the caller to lock ten times
+    /// `userLockAmount`, or promise a fraction of `serverLockAmount`, and
+    /// still validate. So whenever the request fixed a leg, that leg must
+    /// come back exactly as requested: `lockupDetails.amount ==
+    /// userLockAmount` and `claimDetails.amount == serverLockAmount`. Both
+    /// legs must be non-zero.
+    ///
+    /// The leg the maker computed is bounded with `pair` — the rate card the
+    /// caller accepted before creating the swap, not one fetched again now.
+    /// With `userLockAmount` fixed, `claimDetails.amount` must be at least
+    /// `floor(userLockAmount × rate) − fees.total(userLockAmount)`; with
+    /// `serverLockAmount` fixed, `lockupDetails.amount` must be at most
+    /// `ceil(serverLockAmount ÷ rate) + fees.total(serverLockAmount)`. Both
+    /// are bounds, not equalities: a maker charging less than its card
+    /// advertises passes, one pricing off a card the caller never accepted
+    /// does not.
+    ///
+    /// Call this alongside [`Self::validate`] (or its variants) before
+    /// funding the lockup.
+    pub fn validate_amounts(
+        &self,
+        request: &CreateChainRequest,
+        pair: Option<&ChainPair>,
+    ) -> Result<(), Error> {
+        if self.lockup_details.amount == 0 || self.claim_details.amount == 0 {
+            return Err(Error::Protocol(
+                "Chain swap response carries a zero lockup or claim amount".to_string(),
+            ));
+        }
+        if let Some(user_lock_amount) = request.user_lock_amount {
+            if self.lockup_details.amount != user_lock_amount {
+                return Err(Error::Protocol(format!(
+                    "Chain swap lockup amount mismatch: response asks for {}, requested userLockAmount {user_lock_amount}",
+                    self.lockup_details.amount
+                )));
+            }
+            if let Some(pair) = pair {
+                let minimum = minimum_payout(
+                    user_lock_amount,
+                    pair.rate,
+                    pair.fees.total(user_lock_amount),
+                )?;
+                if self.claim_details.amount < minimum {
+                    return Err(Error::Protocol(format!(
+                        "Chain swap claim amount {} is below the {minimum} the accepted pair card implies for userLockAmount {user_lock_amount}",
+                        self.claim_details.amount
+                    )));
+                }
+            }
+        }
+        if let Some(server_lock_amount) = request.server_lock_amount {
+            if self.claim_details.amount != server_lock_amount {
+                return Err(Error::Protocol(format!(
+                    "Chain swap claim amount mismatch: response promises {}, requested serverLockAmount {server_lock_amount}",
+                    self.claim_details.amount
+                )));
+            }
+            if let Some(pair) = pair {
+                let maximum = maximum_funding(
+                    server_lock_amount,
+                    pair.rate,
+                    pair.fees.total(server_lock_amount),
+                )?;
+                if self.lockup_details.amount > maximum {
+                    return Err(Error::Protocol(format!(
+                        "Chain swap lockup amount {} is above the {maximum} the accepted pair card implies for serverLockAmount {server_lock_amount}",
+                        self.lockup_details.amount
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Validate both create-response legs against their requested currencies
@@ -3664,6 +3885,7 @@ pub struct SwapPayoutStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::hashes::Hash as _;
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
@@ -3894,6 +4116,307 @@ mod tests {
             value["swapAuth"] = serde_json::json!(swap_auth);
         }
         value
+    }
+
+    /// A BOLT11 invoice on `network` for `amount_msat`, signed with a fixed
+    /// test key, committing to `payment_hash`.
+    fn signed_invoice(
+        network: lightning_invoice::Currency,
+        amount_msat: Option<u64>,
+        payment_hash: sha256::Hash,
+    ) -> String {
+        use lightning_invoice::{InvoiceBuilder, PaymentSecret};
+        let secp = secp256k1::Secp256k1::new();
+        let key = secp256k1::SecretKey::from_slice(&[41u8; 32]).unwrap();
+        let builder = InvoiceBuilder::new(network)
+            .description("reverse swap".to_string())
+            .payment_hash(payment_hash)
+            .payment_secret(PaymentSecret([7u8; 32]))
+            .duration_since_epoch(std::time::Duration::from_secs(1_726_000_000))
+            .min_final_cltv_expiry_delta(144);
+        let builder = match amount_msat {
+            Some(amount_msat) => builder.amount_milli_satoshis(amount_msat),
+            None => builder,
+        };
+        builder
+            .build_signed(|hash| secp.sign_ecdsa_recoverable(hash, &key))
+            .unwrap()
+            .to_string()
+    }
+
+    fn reverse_create_response(
+        invoice: Option<String>,
+        onchain_amount: u64,
+    ) -> CreateReverseResponse {
+        serde_json::from_value(serde_json::json!({
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "invoice": invoice,
+            "swapTree": {
+                "claimLeaf": {"output": "00", "version": 196},
+                "refundLeaf": {"output": "01", "version": 196},
+            },
+            "lockupAddress": "bcrt1qlockup",
+            "refundPublicKey":
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            "timeoutBlockHeight": 200,
+            "onchainAmount": onchain_amount,
+        }))
+        .unwrap()
+    }
+
+    fn reverse_create_request(invoice_amount: Option<u64>) -> CreateReverseRequest {
+        CreateReverseRequest {
+            from: "BTC".to_string(),
+            to: "BTC".to_string(),
+            claim_public_key: PublicKey::from_str(
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            )
+            .unwrap(),
+            invoice: None,
+            invoice_amount,
+            preimage_hash: None,
+            description: None,
+            description_hash: None,
+            address: None,
+            address_signature: None,
+            referral_id: None,
+            webhook: None,
+            pair_hash: None,
+        }
+    }
+
+    fn chain_create_request(
+        user_lock_amount: Option<u64>,
+        server_lock_amount: Option<u64>,
+    ) -> CreateChainRequest {
+        CreateChainRequest {
+            from: "BTC".to_string(),
+            to: "L-BTC".to_string(),
+            preimage_hash: sha256::Hash::hash(&[1u8; 32]),
+            claim_public_key: None,
+            refund_public_key: None,
+            user_lock_amount,
+            server_lock_amount,
+            pair_hash: None,
+            referral_id: None,
+            webhook: None,
+        }
+    }
+
+    fn chain_create_response(lockup_amount: u64, claim_amount: u64) -> CreateChainResponse {
+        let mut value = chain_create_response_json(None);
+        value["lockupDetails"]["amount"] = serde_json::json!(lockup_amount);
+        value["claimDetails"]["amount"] = serde_json::json!(claim_amount);
+        serde_json::from_value(value).unwrap()
+    }
+
+    /// The maker generates the invoice, so its amount has to be the one the
+    /// caller asked for: an automated payer pays whatever the invoice says.
+    #[test]
+    fn reverse_invoice_amount_must_match_the_request() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice_for = |sat: Option<u64>| {
+            Some(signed_invoice(
+                LnCurrency::Regtest,
+                sat.map(|sat| sat * 1_000),
+                hash,
+            ))
+        };
+
+        reverse_create_response(invoice_for(Some(100_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap();
+
+        // A tenfold invoice with the right payment hash.
+        let err = reverse_create_response(invoice_for(Some(1_000_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("amount mismatch"), "{err}");
+
+        // An amountless invoice lets the payer pick, which is the maker's
+        // choice again once it is in a "pay this" instruction.
+        let err = reverse_create_response(invoice_for(None), 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("no amount"), "{err}");
+
+        // No invoice at all for a request the maker should have invoiced.
+        let err = reverse_create_response(None, 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("no invoice"), "{err}");
+
+        // Checked arithmetic: a request amount that does not fit in msat.
+        assert!(reverse_create_response(invoice_for(Some(100_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(u64::MAX)), None)
+            .is_err());
+        assert!(reverse_create_response(invoice_for(Some(100_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(0)), None)
+            .is_err());
+
+        // A request that brought its own invoice has nothing to bind here.
+        reverse_create_response(invoice_for(Some(1_000_000)), 99_000)
+            .validate_amounts(&reverse_create_request(None), None)
+            .unwrap();
+    }
+
+    /// With the accepted rate card, the payout must clear the floor the card
+    /// implies — a floor, so a cheaper maker passes.
+    #[test]
+    fn reverse_payout_is_bounded_by_the_accepted_pair_card() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice = Some(signed_invoice(LnCurrency::Regtest, Some(100_000_000), hash));
+        let pair: ReversePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.0,
+            "limits": { "maximal": 25_000_000, "minimal": 10_000 },
+            "fees": { "percentage": 0.5, "minerFees": { "lockup": 300, "claim": 200 } },
+        }))
+        .unwrap();
+        // 100_000 - 500 (0.5%) - 300 - 200 = 99_000.
+        let request = reverse_create_request(Some(100_000));
+        reverse_create_response(invoice.clone(), 99_000)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        reverse_create_response(invoice.clone(), 99_500)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = reverse_create_response(invoice, 98_999)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+    }
+
+    /// A maker-issued invoice for another network is refused before anything
+    /// is paid, on Bitcoin and on the Liquid network pegged to it alike.
+    #[test]
+    fn maker_invoice_must_be_for_the_swap_network() {
+        use lightning_invoice::Currency as LnCurrency;
+        let preimage = Preimage::from_vec(vec![5u8; 32]).unwrap();
+        let regtest = reverse_create_response(
+            Some(signed_invoice(
+                LnCurrency::Regtest,
+                Some(1_000),
+                preimage.sha256,
+            )),
+            1,
+        );
+        let mainnet = reverse_create_response(
+            Some(signed_invoice(
+                LnCurrency::Bitcoin,
+                Some(1_000),
+                preimage.sha256,
+            )),
+            1,
+        );
+        let bitcoin_regtest = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let liquid_regtest = Chain::Liquid(crate::network::LiquidChain::LiquidRegtest);
+
+        regtest
+            .validate_invoice(&preimage, bitcoin_regtest)
+            .unwrap();
+        regtest.validate_invoice(&preimage, liquid_regtest).unwrap();
+        let err = mainnet
+            .validate_invoice(&preimage, bitcoin_regtest)
+            .unwrap_err();
+        assert!(err.to_string().contains("network"), "{err}");
+        assert!(mainnet.validate_invoice(&preimage, liquid_regtest).is_err());
+        mainnet
+            .validate_invoice(&preimage, Chain::Bitcoin(BitcoinChain::Bitcoin))
+            .unwrap();
+        // The hash check still comes first.
+        let other = Preimage::from_vec(vec![6u8; 32]).unwrap();
+        assert!(regtest.validate_invoice(&other, bitcoin_regtest).is_err());
+    }
+
+    /// Whichever leg the request fixed must come back exactly as requested;
+    /// the later lockup checks only enforce what the response says.
+    #[test]
+    fn chain_amounts_must_match_the_request() {
+        chain_create_response(60_000, 59_000)
+            .validate_amounts(&chain_create_request(Some(60_000), None), None)
+            .unwrap();
+        // The response asks the caller to lock ten times the request.
+        let err = chain_create_response(600_000, 59_000)
+            .validate_amounts(&chain_create_request(Some(60_000), None), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("lockup amount mismatch"), "{err}");
+
+        chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(None, Some(60_000)), None)
+            .unwrap();
+        // The response promises a fraction of the requested payout.
+        let err = chain_create_response(61_000, 6_000)
+            .validate_amounts(&chain_create_request(None, Some(60_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("claim amount mismatch"), "{err}");
+
+        // Both fixed, both must hold.
+        chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(Some(61_000), Some(60_000)), None)
+            .unwrap();
+        assert!(chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(Some(61_000), Some(60_001)), None)
+            .is_err());
+
+        // Neither fixed: no binding, but never a zero leg.
+        chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(None, None), None)
+            .unwrap();
+        assert!(chain_create_response(0, 60_000)
+            .validate_amounts(&chain_create_request(None, None), None)
+            .is_err());
+        assert!(chain_create_response(61_000, 0)
+            .validate_amounts(&chain_create_request(None, Some(0)), None)
+            .is_err());
+    }
+
+    /// The leg the maker computes is bounded by the accepted rate card.
+    #[test]
+    fn chain_computed_leg_is_bounded_by_the_accepted_pair_card() {
+        let pair: ChainPair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.0,
+            "limits": { "maximal": 25_000_000, "minimal": 10_000, "maximalZeroConf": 0 },
+            "fees": {
+                "percentage": 0.1,
+                "minerFees": { "server": 100, "user": { "lockup": 200, "claim": 300 } },
+            },
+        }))
+        .unwrap();
+        // total(100_000) = 100 (0.1%) + 300 + 200 + 100 = 700.
+        let user_fixed = chain_create_request(Some(100_000), None);
+        chain_create_response(100_000, 99_300)
+            .validate_amounts(&user_fixed, Some(&pair))
+            .unwrap();
+        chain_create_response(100_000, 99_800)
+            .validate_amounts(&user_fixed, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(100_000, 99_299)
+            .validate_amounts(&user_fixed, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+
+        let server_fixed = chain_create_request(None, Some(100_000));
+        chain_create_response(100_700, 100_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap();
+        chain_create_response(100_200, 100_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(100_701, 100_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
+
+        // An unusable rate is an error, not a pass.
+        let mut broken = pair.clone();
+        broken.rate = 0.0;
+        assert!(chain_create_response(100_000, 99_300)
+            .validate_amounts(&user_fixed, Some(&broken))
+            .is_err());
     }
 
     /// Every create response must keep the maker's per-swap taker credential.
