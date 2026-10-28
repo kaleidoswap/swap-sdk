@@ -214,8 +214,23 @@ test(
       let body = "";
       for await (const chunk of req) body += chunk;
       requests.push({ path: req.url, body });
-      // Any address discovery would expose the bug: there could be a different
-      // unconfirmed HTLC here. Claims must use only the pinned raw transaction.
+      // Chain evidence is independent of maker status and must refer only to
+      // the pinned transaction. Address discovery remains unsupported.
+      const evidence =
+        req.url === "/blocks/tip/height"
+          ? "100"
+          : req.url === `/tx/${txid}/status`
+            ? { confirmed: true, block_height: 100 }
+            : req.url === `/tx/${txid}/outspend/0`
+              ? { spent: false }
+              : undefined;
+      if (evidence !== undefined) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          typeof evidence === "string" ? evidence : JSON.stringify(evidence),
+        );
+        return;
+      }
       res.writeHead(503, { "content-type": "application/json" });
       res.end('{"error":"signature_refused"}');
     });
@@ -259,9 +274,19 @@ test(
       result = await claimReverseSwap(options);
       assert.equal(result.kind, "signed");
       assert.equal(result.path, "script");
-      assert.equal(requests.length, 1);
-      assert.equal(requests[0].path, `/v2/swap/reverse/${response.id}/claim`);
-      assert.equal(JSON.parse(requests[0].body).preimage, vector.preimageHex);
+      const disclosures = requests.filter((r) => r.path.startsWith("/v2/"));
+      assert.equal(disclosures.length, 1);
+      assert.equal(
+        disclosures[0].path,
+        `/v2/swap/reverse/${response.id}/claim`,
+      );
+      assert.equal(
+        JSON.parse(disclosures[0].body).preimage,
+        vector.preimageHex,
+      );
+      assert.ok(requests.some((r) => r.path === `/tx/${txid}/status`));
+      assert.ok(requests.some((r) => r.path === `/tx/${txid}/outspend/0`));
+      assert.ok(requests.every((r) => !r.path.startsWith("/address/")));
       assert.ok(result.transaction.hex().includes(vector.preimageHex));
       await assert.rejects(
         claimReverseSwap({
@@ -271,13 +296,14 @@ test(
         /fallback failed/,
       );
       assert.equal(
-        requests.length,
+        requests.filter((r) => r.path.startsWith("/v2/")).length,
         1,
         "bad lockup identity must fail before preimage disclosure",
       );
     } finally {
       result?.transaction.free();
       script.free();
+      server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
     }
   },

@@ -44,6 +44,7 @@ const names = {
   SwapTree: "SwapTree",
   Leaf: "SwapLeaf",
   RgbLock: "RgbLock",
+  InternalHopRef: "InternalHopRef",
   Webhook: "WebhookConfig",
 };
 

@@ -209,16 +209,24 @@ impl SwapClient {
             false,
             swap_request.rgb_contract_id.as_deref(),
         )?;
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (Currency::LUsdt, _) | (_, Currency::LUsdt)
-        ) {
-            self.inner
-                .get_submarine_pairs()
-                .await?
-                .expected_liquid_asset_context(from_currency, to_currency)?
-        } else {
-            None
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context = match LiquidAssetContext::trusted_lusdt_for_swap(
+            swap_request.from,
+            swap_request.to,
+            from_currency,
+            to_currency,
+            swap_request.lusdt_asset_id.as_deref(),
+        )? {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_submarine_pairs()
+                    .await?
+                    .expected_liquid_asset_context(from_currency, to_currency)?;
+                Some(trusted.cross_check_pair_card(pair_card)?)
+            }
+            None => None,
         };
         let response = self
             .inner
@@ -272,40 +280,46 @@ impl SwapClient {
             true,
             swap_request.rgb_contract_id.as_deref(),
         )?;
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (Currency::LUsdt, _) | (_, Currency::LUsdt)
-        ) {
-            self.inner
-                .get_reverse_pairs()
-                .await?
-                .expected_liquid_asset_context(from_currency, to_currency)?
-        } else {
-            None
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context = match LiquidAssetContext::trusted_lusdt_for_swap(
+            swap_request.from,
+            swap_request.to,
+            from_currency,
+            to_currency,
+            swap_request.lusdt_asset_id.as_deref(),
+        )? {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_reverse_pairs()
+                    .await?
+                    .expected_liquid_asset_context(from_currency, to_currency)?;
+                Some(trusted.cross_check_pair_card(pair_card)?)
+            }
+            None => None,
         };
-        let response = self
-            .inner
-            .post_reverse_req(boltz::CreateReverseRequest {
-                invoice_amount: Some(swap_request.invoice_amount),
-                invoice: None,
-                from: from_currency.to_string(),
-                to: to_currency.to_string(),
-                preimage_hash: Some(
-                    swap_request
-                        .preimage_hash
-                        .parse::<sha256::Hash>()
-                        .map_err(|e| Error::Generic(e.to_string()))?,
-                ),
-                claim_public_key: swap_request.claim_public_key,
-                pair_hash: swap_request.pair_hash,
-                description: swap_request.description,
-                description_hash: swap_request.description_hash,
-                address: swap_request.address,
-                address_signature: swap_request.address_signature,
-                referral_id: swap_request.referral_id,
-                webhook: None,
-            })
-            .await?;
+        let request = boltz::CreateReverseRequest {
+            invoice_amount: Some(swap_request.invoice_amount),
+            invoice: None,
+            from: from_currency.to_string(),
+            to: to_currency.to_string(),
+            preimage_hash: Some(
+                swap_request
+                    .preimage_hash
+                    .parse::<sha256::Hash>()
+                    .map_err(|e| Error::Generic(e.to_string()))?,
+            ),
+            claim_public_key: swap_request.claim_public_key,
+            pair_hash: swap_request.pair_hash,
+            description: swap_request.description,
+            description_hash: swap_request.description_hash,
+            address: swap_request.address,
+            address_signature: swap_request.address_signature,
+            referral_id: swap_request.referral_id,
+            webhook: None,
+        };
+        let response = self.inner.post_reverse_req(request.clone()).await?;
         if let Some(contract_id) = rgb_contract_id {
             let Chain::Bitcoin(chain) = swap_request.to else {
                 unreachable!("USDT-RGB resolves only on Bitcoin")
@@ -317,14 +331,16 @@ impl SwapClient {
                 contract_id,
             )?;
         } else {
-            response.validate_with_currency_and_asset_context(
+            response.validate_with_source_and_asset_context(
                 &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
                 &swap_request.claim_public_key,
+                swap_request.from,
                 swap_request.to,
                 Some(to_currency),
                 expected_asset_context,
             )?;
         }
+        response.validate_amounts(&request, None)?;
         Ok(response)
     }
 
@@ -342,16 +358,24 @@ impl SwapClient {
                 "USDT-RGB chain swaps are unsupported".into(),
             ));
         }
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (Currency::LUsdt, _) | (_, Currency::LUsdt)
-        ) {
-            self.inner
-                .get_chain_pairs()
-                .await?
-                .expected_liquid_asset_context(from_currency, to_currency)?
-        } else {
-            None
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context = match LiquidAssetContext::trusted_lusdt_for_swap(
+            swap_request.from,
+            swap_request.to,
+            from_currency,
+            to_currency,
+            swap_request.lusdt_asset_id.as_deref(),
+        )? {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_chain_pairs()
+                    .await?
+                    .expected_liquid_asset_context(from_currency, to_currency)?;
+                Some(trusted.cross_check_pair_card(pair_card)?)
+            }
+            None => None,
         };
         let (from_asset_context, to_asset_context): (
             Option<LiquidAssetContext>,
@@ -365,21 +389,19 @@ impl SwapClient {
             .preimage_hash
             .parse::<sha256::Hash>()
             .map_err(|e| Error::Generic(e.to_string()))?;
-        let response = self
-            .inner
-            .post_chain_req(boltz::CreateChainRequest {
-                from: from_currency.to_string(),
-                to: to_currency.to_string(),
-                preimage_hash,
-                claim_public_key: Some(swap_request.claim_public_key),
-                refund_public_key: Some(swap_request.refund_public_key),
-                user_lock_amount: swap_request.user_lock_amount,
-                server_lock_amount: swap_request.server_lock_amount,
-                pair_hash: swap_request.pair_hash,
-                referral_id: swap_request.referral_id,
-                webhook: None,
-            })
-            .await?;
+        let request = boltz::CreateChainRequest {
+            from: from_currency.to_string(),
+            to: to_currency.to_string(),
+            preimage_hash,
+            claim_public_key: Some(swap_request.claim_public_key),
+            refund_public_key: Some(swap_request.refund_public_key),
+            user_lock_amount: swap_request.user_lock_amount,
+            server_lock_amount: swap_request.server_lock_amount,
+            pair_hash: swap_request.pair_hash,
+            referral_id: swap_request.referral_id,
+            webhook: None,
+        };
+        let response = self.inner.post_chain_req(request.clone()).await?;
         response.validate_with_currency_and_asset_context(
             &swap_request.claim_public_key,
             &swap_request.refund_public_key,
@@ -391,6 +413,7 @@ impl SwapClient {
             from_asset_context,
             to_asset_context,
         )?;
+        response.validate_amounts(&request, None)?;
         Ok(response)
     }
 
@@ -725,6 +748,13 @@ pub struct CreateSubmarineRequest {
     pub pair_hash: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// The L-USDT asset the swap must carry, pinned locally and never sent
+    /// to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    /// any other value; testnet and regtest issue USDT per deployment, so
+    /// there it is required. The maker's pair card is only cross-checked
+    /// against it. Ignored unless a side is `L-USDT`.
+    #[uniffi(default = None)]
+    pub lusdt_asset_id: Option<String>,
     /// Expected RGB contract, pinned locally and never sent to the maker.
     #[uniffi(default = None)]
     pub rgb_contract_id: Option<String>,
@@ -757,6 +787,13 @@ pub struct CreateReverseRequest {
     pub address_signature: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// The L-USDT asset the swap must carry, pinned locally and never sent
+    /// to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    /// any other value; testnet and regtest issue USDT per deployment, so
+    /// there it is required. The maker's pair card is only cross-checked
+    /// against it. Ignored unless a side is `L-USDT`.
+    #[uniffi(default = None)]
+    pub lusdt_asset_id: Option<String>,
     /// Expected RGB contract, pinned locally and never sent to the maker.
     #[uniffi(default = None)]
     pub rgb_contract_id: Option<String>,
@@ -816,7 +853,13 @@ pub struct RgbLock {
 }
 
 #[uniffi::remote(Record)]
+pub struct InternalHopRef {
+    pub payee_id: String,
+}
+
+#[uniffi::remote(Record)]
 pub struct CreateSubmarineResponse {
+    pub internal_hop: Option<InternalHopRef>,
     pub accept_zero_conf: bool,
     pub address: String,
     pub bip21: String,
@@ -875,6 +918,13 @@ pub struct CreateChainRequest {
     pub pair_hash: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// The L-USDT asset the swap must carry, pinned locally and never sent
+    /// to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    /// any other value; testnet and regtest issue USDT per deployment, so
+    /// there it is required. The maker's pair card is only cross-checked
+    /// against it. Ignored unless a side is `L-USDT`.
+    #[uniffi(default = None)]
+    pub lusdt_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -1252,4 +1302,43 @@ pub struct SwapRestoreResponse {
 #[uniffi::remote(Record)]
 pub struct SwapRestoreIndexResponse {
     pub index: i64,
+}
+
+/// Refuse to pay a reverse swap whose lockup timeout is mature or within
+/// `min_headroom_blocks` of `current_height`, which must be the lockup chain's
+/// tip from a `ChainClient` (`bitcoin_tip_height` / `liquid_tip_height`), not
+/// the maker's `get_height`. Security review 2026-10-28, finding 2.
+#[uniffi::export]
+pub fn validate_reverse_timeout_headroom(
+    response: CreateReverseResponse,
+    current_height: u32,
+    min_headroom_blocks: u32,
+) -> Result<(), Error> {
+    response
+        .validate_timeout_headroom(current_height, min_headroom_blocks)
+        .map_err(Error::from)
+}
+
+/// Refuse to fund a chain swap whose claim leg (`to_chain`, the server's
+/// lock) is within `min_claim_headroom_blocks` of its timeout at `to_height`,
+/// or whose lockup leg on `from_chain` does not outlast it. Both heights come
+/// from trusted chain clients.
+#[uniffi::export]
+pub fn validate_chain_timeout_headroom(
+    response: CreateChainResponse,
+    from_chain: Chain,
+    from_height: u32,
+    to_chain: Chain,
+    to_height: u32,
+    min_claim_headroom_blocks: u32,
+) -> Result<(), Error> {
+    response
+        .validate_timeout_headroom(
+            from_chain,
+            from_height,
+            to_chain,
+            to_height,
+            min_claim_headroom_blocks,
+        )
+        .map_err(Error::from)
 }

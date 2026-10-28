@@ -118,12 +118,33 @@ pub enum LiquidChain {
 const ASSET_ID_REGTEST: &str = "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225";
 const ASSET_ID_TESTNET: &str = "144c654344aa716d6f3abcc1ca90e5641e4e2a7f633bc09fe3baf64585819a49";
 
+/// Tether USDt on Liquid mainnet, as issued by Tether and listed by the
+/// Liquid asset registry. The only L-USDT asset id this SDK trusts without a
+/// caller pin: see [`LiquidChain::canonical_lusdt`].
+pub const LIQUID_USDT_ASSET_ID: &str =
+    "ce091c998b83c78bb71a632313ba3760f1763d9cfcffae02258ffa9865a37bd2";
+
 impl LiquidChain {
     pub fn bitcoin(self) -> AssetId {
         match self {
             LiquidChain::Liquid => AssetId::LIQUID_BTC,
             LiquidChain::LiquidTestnet => AssetId::from_str(ASSET_ID_TESTNET).unwrap(),
             LiquidChain::LiquidRegtest => AssetId::from_str(ASSET_ID_REGTEST).unwrap(),
+        }
+    }
+
+    /// The L-USDT asset this network is known to carry, independently of any
+    /// maker.
+    ///
+    /// Only Liquid mainnet has one: [`LIQUID_USDT_ASSET_ID`]. Testnet and
+    /// regtest USDT is issued per deployment, so there the asset id has to be
+    /// pinned by the caller (`lusdt_asset_id` on the create requests) and this
+    /// returns `None`. A pair card is never a source for it: the maker that
+    /// serves the card is the party a substituted asset would benefit.
+    pub fn canonical_lusdt(self) -> Option<AssetId> {
+        match self {
+            LiquidChain::Liquid => Some(AssetId::from_str(LIQUID_USDT_ASSET_ID).unwrap()),
+            LiquidChain::LiquidTestnet | LiquidChain::LiquidRegtest => None,
         }
     }
 }
@@ -199,6 +220,44 @@ impl From<Chain> for Network {
     }
 }
 
+/// What a chain source knows about one transaction output.
+///
+/// This is the evidence a claim needs before it reveals the preimage: the
+/// maker's status strings say what the maker wants us to believe, this says
+/// what the chain source has actually seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutputStatus {
+    /// Height of the block that includes the funding transaction, `None`
+    /// while it is only in the mempool.
+    pub block_height: Option<u32>,
+    /// Whether a transaction spending this output has been seen. An
+    /// unconfirmed spend is still a conflict: it may be a replacement of the
+    /// lockup's value or a competing claim.
+    pub spend: OutputSpend,
+}
+
+/// Spend status of an output as a chain source sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputSpend {
+    Unspent,
+    /// A spending transaction is in the mempool.
+    SpentUnconfirmed,
+    /// A spending transaction is in a block.
+    SpentConfirmed,
+}
+
+impl OutputStatus {
+    /// Confirmations relative to `tip_height`: 0 while unconfirmed, 1 in the
+    /// tip block. A height above the tip (a source answering from two views
+    /// of the chain) counts as one confirmation, never more.
+    pub fn confirmations(&self, tip_height: u32) -> u32 {
+        match self.block_height {
+            Some(height) => tip_height.saturating_sub(height).saturating_add(1),
+            None => 0,
+        }
+    }
+}
+
 #[macros::async_trait]
 pub trait BitcoinClient: Send + Sync {
     async fn get_address_balance(&self, address: &bitcoin::Address) -> Result<(u64, i64), Error>;
@@ -211,6 +270,19 @@ pub trait BitcoinClient: Send + Sync {
     async fn get_tx(&self, txid: bitcoin::Txid) -> Result<bitcoin::Transaction, Error>;
 
     async fn broadcast_tx(&self, signed_tx: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error>;
+
+    /// Height of the chain tip as this source sees it.
+    async fn get_tip_height(&self) -> Result<u32, Error>;
+
+    /// Chain-inclusion and spend status of one output. `script_pubkey` is the
+    /// script that output pays to: Esplora indexes outputs directly, Electrum
+    /// only through the script's history. `None` when the source has not seen
+    /// the funding transaction at all.
+    async fn get_output_status(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        script_pubkey: &bitcoin::Script,
+    ) -> Result<Option<OutputStatus>, Error>;
 
     fn network(&self) -> BitcoinChain;
 }
@@ -227,6 +299,17 @@ pub trait LiquidClient: Send + Sync {
     async fn get_tx(&self, txid: elements::Txid) -> Result<elements::Transaction, Error>;
 
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error>;
+
+    /// Height of the chain tip as this source sees it.
+    async fn get_tip_height(&self) -> Result<u32, Error>;
+
+    /// Chain-inclusion and spend status of one output; see
+    /// [`BitcoinClient::get_output_status`].
+    async fn get_output_status(
+        &self,
+        outpoint: &elements::OutPoint,
+        script_pubkey: &elements::Script,
+    ) -> Result<Option<OutputStatus>, Error>;
 
     fn network(&self) -> LiquidChain;
 }

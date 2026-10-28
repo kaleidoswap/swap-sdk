@@ -37,18 +37,19 @@ The suite expects
 0.8.0 or later. 0.7.4 leaves failed payouts at `invoice.pending` and reports
 L-BTC reverse lockups before it has broadcast them.
 
-| Variable                      | e2e stack value                                       |
-| ----------------------------- | ----------------------------------------------------- |
-| `KALEIDO_LIVE`                | `1`                                                   |
-| `KALEIDO_LIVE_MAKER_URL`      | `http://127.0.0.1:9420/v2`                            |
-| `KALEIDO_LIVE_WS_URL`         | optional; defaults to the maker URL's `/ws`           |
-| `KALEIDO_LIVE_BTC_ESPLORA`    | `http://127.0.0.1:3002`                               |
-| `KALEIDO_LIVE_LIQUID_ESPLORA` | `http://127.0.0.1:3003`                               |
-| `KALEIDO_LIVE_BITCOIND_RPC`   | `http://<user>:<pass>@127.0.0.1:18443/wallet/miner`   |
-| `KALEIDO_LIVE_ELEMENTSD_RPC`  | `http://<user>:<pass>@127.0.0.1:18884/wallet/liquidw` |
-| `KALEIDO_LIVE_LDK_GRPC`       | `127.0.0.1:13646`                                     |
-| `KALEIDO_LIVE_LDK_CERT`       | `<maker-rs>/e2e/run/certs/taker.crt`                  |
-| `KALEIDO_LIVE_LDK_API_KEY`    | the taker node's `/data/regtest/api_key`, hex-encoded |
+| Variable                      | e2e stack value                                         |
+| ----------------------------- | ------------------------------------------------------- |
+| `KALEIDO_LIVE`                | `1`                                                     |
+| `KALEIDO_LIVE_MAKER_URL`      | `http://127.0.0.1:9420/v2`                              |
+| `KALEIDO_LIVE_WS_URL`         | optional; defaults to the maker URL's `/ws`             |
+| `KALEIDO_LIVE_BTC_ESPLORA`    | `http://127.0.0.1:3002`                                 |
+| `KALEIDO_LIVE_LIQUID_ESPLORA` | `http://127.0.0.1:3003`                                 |
+| `KALEIDO_LIVE_LUSDT_ASSET_ID` | the regtest L-USDT asset id, pinned by the L-USDT tests |
+| `KALEIDO_LIVE_BITCOIND_RPC`   | `http://<user>:<pass>@127.0.0.1:18443/wallet/miner`     |
+| `KALEIDO_LIVE_ELEMENTSD_RPC`  | `http://<user>:<pass>@127.0.0.1:18884/wallet/liquidw`   |
+| `KALEIDO_LIVE_LDK_GRPC`       | `127.0.0.1:13646`                                       |
+| `KALEIDO_LIVE_LDK_CERT`       | `<maker-rs>/e2e/run/certs/taker.crt`                    |
+| `KALEIDO_LIVE_LDK_API_KEY`    | the taker node's `/data/regtest/api_key`, hex-encoded   |
 
 The RPC credentials are in the stack's `docker-compose.regtest.yml`. To read
 the API key without printing it:

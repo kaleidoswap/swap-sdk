@@ -30,7 +30,7 @@ services:
   ldk-maker:
     image: ${RGB_LDK_IMAGE:-km-e2e/ldk-server:pinned}
     # The caller's uid (set by regtest.sh), so the bridge can read the node's
-    # api_key from the bind-mounted data dir on Linux, where root would own it.
+    # admin macaroon from the bind-mounted data dir on Linux, where root would own it.
     user: "${RGB_LDK_USER:-0:0}"
     command: ["/config/ldk-maker.toml"]
     depends_on:
@@ -40,7 +40,7 @@ services:
   ldk-taker:
     image: ${RGB_LDK_IMAGE:-km-e2e/ldk-server:pinned}
     # The caller's uid (set by regtest.sh), so the bridge can read the node's
-    # api_key from the bind-mounted data dir on Linux, where root would own it.
+    # admin macaroon from the bind-mounted data dir on Linux, where root would own it.
     user: "${RGB_LDK_USER:-0:0}"
     command: ["/config/ldk-taker.toml"]
     depends_on:

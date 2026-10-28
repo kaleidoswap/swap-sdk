@@ -4,8 +4,159 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — security integration and maker compatibility
+
+- LNURL ignores environment proxies so DNS egress checks cannot be bypassed.
+- Reverse swaps validate the invoice on the source Lightning network, including
+  Signet-to-Liquid-testnet routes, independently of the destination HTLC.
+- RGB claim preparation now requires a confirmed, unspent lockup with enough
+  time before refund, using the same conservative default policy as other claims.
+- Add the maker's optional `internalHop.payeeId` response field across bindings
+  and refresh the authenticated schema to maker `823d5677` (v0.11.0 plus the
+  legacy seed compatibility fix).
+- React Native guidance now recommends the available public organization keys.
+- The RGB regtest bridge uses the current LDK macaroon credentials, channel
+  amount API and actual inbound payment IDs instead of treating hashes as IDs.
+
+
+### BREAKING — React Native: `SwapClient.kaleidoMaker` refuses to run in an app
+
+`SwapClient.kaleidoMaker(makerUrl, apiKey, timeout)` in
+`@kaleidorg/swap-sdk-react-native` had no guard, so a secret `kld_` partner key
+could be shipped inside a mobile app, where every user can read it. It now
+throws `Exception.Generic` before the key reaches native code. An app that
+builds this client on purpose must pass the new fourth argument:
+`kaleidoMaker(makerUrl, apiKey, timeout, { allowMobile: true })`. This mirrors
+`allowBrowser: true` on the WASM/TypeScript `forKaleidoMaker`. The recommended
+fix is to create attributed swaps from a server instead. The Python binding is
+unchanged. Part of phase 0 of
+[kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578).
+
+### Fixed — React Native: the package loads the SDK again
+
+`@kaleidorg/swap-sdk-react-native@0.11.0` loaded none of the SDK.
+`import { SwapClient } from "@kaleidorg/swap-sdk-react-native"` failed. The
+entry exported only `uniffiInitAsync`, and the native `installRustCrate` did
+not register the module. The Android build generates the turbo module from
+the `.so` it builds, and the workspace's `strip = true` had removed the ELF
+symbol table that uniffi reads the components from. ubrn found no components
+and rewrote `src/index.tsx`, `cpp/kaleidoswap-swap-sdk.cpp` and
+`android/CMakeLists.txt` for zero modules. It runs after the iOS build, so its
+output replaced the correct files. The bindings left over from iOS made the
+package look complete.
+
+`ubrn:android` now builds with `CARGO_PROFILE_RELEASE_STRIP=debuginfo`. The
+Android Gradle plugin still strips the library when an app is packaged. A new
+check makes `ubrn:build`, `prepack` and the tarball smoke test refuse any of
+those three files when it does not load `kaleidorg_swap_sdk`. The Python wheel
+and the iOS static library are unchanged.
+
+### BREAKING — L-USDT on testnet and regtest requires a pinned asset id
+
+The L-USDT asset a swap must carry was anchored only to the maker's pair card:
+the create response was validated against asset ids the same maker served, so
+a maker advertising a worthless asset as L-USDT passed every check and a
+submarine or chain swap would pay real BTC for it (security review 2026-10-28,
+finding 3). The asset now has to come from something the maker does not
+control.
+
+- Rust: `LiquidAssetContext::trusted_lusdt(network, pinned_asset_id)` and
+  `trusted_lusdt_for_swap(...)` resolve the trusted context without I/O: the
+  canonical Liquid USDt (`network::LIQUID_USDT_ASSET_ID`,
+  `LiquidChain::canonical_lusdt`) on mainnet, else the caller's pin, which is
+  required on testnet and regtest where USDT is issued per deployment.
+  `cross_check_pair_card` then refuses a maker whose pair card advertises
+  another asset; `expected_liquid_asset_context` on the pair responses is now
+  that cross-check, not a trust anchor. On mainnet
+  `validate_currency` also refuses an L-USDT response whose asset is not the
+  canonical one whatever context the caller passed.
+- UniFFI/Python: `CreateSubmarineRequest`, `CreateReverseRequest` and
+  `CreateChainRequest` take `lusdt_asset_id` (optional, never sent to the
+  maker). An L-USDT create on testnet or regtest without it is refused before
+  any request is posted.
+- WASM/TypeScript: `createSubmarineSwap`, `createReverseSwap` and
+  `createChainSwap` take a trailing optional `lusdtAssetId` with the same
+  rules.
+- Examples: `LUSDT_ASSET_ID` pins the asset for `lusdt_submarine` and
+  `lusdt_reverse`.
+
+BTC, L-BTC and USDT-RGB swaps are unaffected.
+### BREAKING — claims check the chain before revealing the preimage
+
+`SwapScript::construct_claim` (and `prepare_liquid_claim`) now ask the chain
+client, in the Rust core, for the tip height and the lockup output's status
+before any cooperative request or script-path witness reveals the preimage, so
+UniFFI/Python/React Native, WASM/TypeScript and direct Rust callers all inherit
+the check (security review 2026-10-28, findings 1 and 2). By default a claim is
+refused when the chain source has not seen the lockup, when it has fewer than
+one confirmation, when a spend of it is visible in the mempool or in a block,
+or when the tip is within the safety margin (6 blocks on Bitcoin, 60 on Liquid)
+of the swap's refund timeout. The maker's status strings are never used for
+this. Zero-conf claims, including a lockup passed to `with_lockup_tx` and
+broadcast in the same call, now need an explicit opt-in. The policy lives in
+`ClaimPolicy` on `TransactionOptions` (`with_min_confirmations`,
+`with_allow_zero_conf`, `with_claim_safety_margin_blocks`,
+`with_allow_conflicting_spend`), in the UniFFI `TransactionOptions` record
+(`min_confirmations`, `allow_zero_conf`, `claim_safety_margin_blocks`,
+`allow_conflicting_spend`, also on `LiquidPsetParams.options`), and in the WASM
+`TxParams` / `LiquidPsetParams` (`minConfirmations`, `allowZeroConf`,
+`claimSafetyMarginBlocks`, `allowConflictingSpend`). The TypeScript
+`claimReverseSwap` / `claimChainSwap` helpers forward their options, and their
+own snapshot checks are unchanged.
+
+Implementors of the `BitcoinClient` / `LiquidClient` traits must add
+`get_tip_height` and `get_output_status`; the Esplora and Electrum clients
+implement them (`/blocks/tip/height`, `/tx/:txid/status`,
+`/tx/:txid/outspend/:vout`; script history on Electrum). Bitcoin Esplora
+discovery still lists unconfirmed outputs, but a claim no longer proceeds on
+one.
+
+### Added — create-time timeout headroom checks
+
+`CreateReverseResponse::validate_timeout_headroom(current_height,
+min_headroom_blocks)` and `CreateChainResponse::validate_timeout_headroom(
+from_chain, from_height, to_chain, to_height, min_claim_headroom_blocks)`
+refuse a response whose timeout is already mature or too close to a trusted
+tip; the chain variant also requires our own lock to outlast the server's.
+Exposed as `validate_reverse_timeout_headroom` / `validate_chain_timeout_headroom`
+in UniFFI and `validateReverseTimeoutHeadroom` / `validateChainTimeoutHeadroom`
+in WASM/TypeScript. UniFFI `ChainClient` gains `bitcoin_tip_height` and
+`liquid_tip_height` so native callers have a trusted tip; TypeScript already has
+`esploraTipHeight`. The reverse-swap example demonstrates both checks.
+
 ### Security
 
+- WASM/TypeScript: browser requests to the maker no longer follow redirects.
+  Native clients already refused them, but reqwest hands `fetch` no
+  `redirect` mode in the browser, so a `302` from the maker was followed —
+  and `fetch` strips only `Authorization` on a cross-origin hop, never a
+  custom header. The per-swap `X-Swap-Auth` credential (and an organization
+  key on a creation request) therefore rode along to whatever host the
+  `Location` named, and the post-response guard could only report the
+  disclosure afterwards. The WASM build now issues every maker request itself
+  with `redirect: "error"`: the browser rejects the request at the first
+  `3xx` and the credential never leaves the maker's origin. The maker API
+  redirects nowhere, so a well-behaved maker sees no change; a redirecting
+  one now fails the call with an error naming the refusal. Security review
+  2026-10-28, finding 8.
+- Create responses are bound to the amounts the caller requested. A reverse
+  response's maker-generated invoice had only its payment hash checked, so a
+  maker could return an invoice for ten times `invoiceAmount` and an automated
+  payer paid it; a chain response's `lockupDetails.amount` and
+  `claimDetails.amount` were never compared with `userLockAmount` and
+  `serverLockAmount`, and the later lockup checks only enforced whatever the
+  response said. New `CreateReverseResponse::validate_amounts(request, pair)`
+  requires the invoice to be present, carry an amount, and equal
+  `invoiceAmount` (compared in millisatoshis with checked arithmetic); new
+  `CreateChainResponse::validate_amounts(request, pair)` requires exact
+  equality on every leg the request fixed and non-zero legs. With the pair
+  card the caller accepted, both also bound the leg the maker computed
+  (`floor(amount × rate) − fees.total(amount)` as a floor on the payout, the
+  inverse as a ceiling on the funding). A maker-issued invoice must now also
+  be for the swap's network. Python/UniFFI `create_reverse_swap` and
+  `create_chain_swap`, and WASM/TypeScript `createReverseSwap` and
+  `createChainSwap`, run these checks before returning the response. Security
+  review 2026-10-28, findings 4 and 5.
 - Magic routing hints bound the BIP21 amount by the invoice. The maker signs
   only the address, so `check_for_mrh` now refuses a BIP21 amount of zero or
   above the invoice amount (smaller is fine: the maker deducts its fees) and
@@ -28,6 +179,30 @@ All notable changes to this project will be documented in this file.
   `blinding_key`, as `LiquidSwapScript` already did. The key unblinds the
   swap's confidential outputs, so a logged create or restore response gave the
   reader every amount and asset behind them.
+- LNURL-withdraw (`create_withdraw_response`, `process_withdrawal`) runs over
+  the same hardened transport as LNURL-pay: HTTPS on clearnet (HTTP only for
+  onion services), no URL credentials or fragments, no redirects, a 30-second
+  deadline per request. It previously used lnurl-rs's default client, which
+  accepted plain HTTP and followed redirects while carrying the replayable
+  `k1` withdrawal capability. The callback is now built by the SDK and bound
+  to the validated request: it must pass the transport policy, `k1` must be
+  present, the invoice must carry an amount within the advertised limits, and
+  the service must answer `status: OK`.
+- Every LNURL request (pay and withdraw, discovery and callback) refuses
+  non-public destinations: loopback, RFC 1918, link-local, CGNAT, multicast,
+  unspecified, documentation and the other reserved ranges, for IPv4 and IPv6
+  including IPv4-mapped, IPv4-compatible and 6to4 addresses. Literal hosts are
+  checked before any request; on native every name is resolved through a
+  vetting resolver and the connection pinned to the vetted addresses, so a
+  rebinding name is judged again on each connection. A server resolving an
+  attacker-chosen Lightning address or voucher could otherwise be steered at
+  services reachable only from its own network. `LnurlOptions
+  { allow_private_hosts: true }` (`*_with_options` variants of
+  `resolve_lightning_address`, `fetch_invoice`, `create_withdraw_response`,
+  `process_withdrawal`) opts a development setup back in; it also permits
+  plain HTTP to those private hosts, never to the clearnet.
+  `blocked_ip_reason` exposes the classification. The policy is in the Rust
+  core, so the UniFFI and WASM `resolveLightningAddress` inherit the default.
 
 ## [0.12.0] - 2026-10-19
 

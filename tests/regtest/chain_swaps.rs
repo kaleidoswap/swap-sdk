@@ -18,6 +18,7 @@ use kaleidorg_swap_sdk::Keypair;
 use kaleidorg_swap_sdk::Secp256k1;
 use serial_test::serial;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
@@ -214,8 +215,7 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
             .await
             .expect_err("Underpaid claim script should throw");
 
-        let tx = claim_script
-            .construct_claim(&preimage, swap_params.clone())
+        let tx = construct_claim_when_indexed(&claim_script, &preimage, swap_params.clone())
             .await
             .unwrap();
 
@@ -233,13 +233,42 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
         chain_client.broadcast_tx(&tx).await.unwrap();
         log::info!("Successfully broadcasted claim tx!");
 
-        // Constructing a chain tx more than once should work...
+        // The broadcast claim is now a visible spend of the server lock, so a
+        // plain re-construction is refused: the SDK will not reveal the
+        // preimage against an output something else is already spending...
+        // (once the indexer has seen the claim; it lags the node by a poll).
+        let mut refused = None;
+        for _ in 0..60 {
+            match claim_script
+                .construct_claim(&preimage, swap_params.clone())
+                .await
+            {
+                Ok(_) => sleep(Duration::from_secs(1)).await,
+                Err(error) => {
+                    refused = Some(error);
+                    break;
+                }
+            }
+        }
+        let refused =
+            refused.expect("re-construction over our own unconfirmed claim must be refused");
+        assert!(
+            refused.to_string().contains("conflicting spend"),
+            "refused for the wrong reason: {refused}"
+        );
+
+        // ... unless the caller says this is a fee-bump of their own claim,
+        // in which case constructing more than once works...
+        let mut rebuild = swap_params.clone();
+        rebuild.options = rebuild
+            .options
+            .map(|options| options.with_allow_conflicting_spend(true));
         let _tx = claim_script
-            .construct_claim(&preimage, swap_params.clone())
+            .construct_claim(&preimage, rebuild.clone())
             .await
             .unwrap();
         let _tx = claim_script
-            .construct_claim(&preimage, swap_params)
+            .construct_claim(&preimage, rebuild)
             .await
             .unwrap();
 

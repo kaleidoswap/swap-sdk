@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
+import { assertGlueLoadsCrate } from "./check-generated-module.mjs";
 import { validateManifest } from "./native-artifacts.mjs";
 
 const PACKAGE = "@kaleidorg/swap-sdk-react-native";
@@ -122,6 +123,10 @@ try {
   // The manifest inside the tarball is what postinstall will trust. It must be
   // valid for this exact version before anything is published under it.
   validateManifest(JSON.parse(readMember(tarballPath, "native-artifacts.json")), manifest.version);
+
+  // The entry and native glue must load the crate, not just exist: 0.11.0
+  // shipped all of them generated for zero components.
+  assertGlueLoadsCrate((path) => readMember(tarballPath, path));
 
   writeFileSync(
     join(consumerRoot, "package.json"),

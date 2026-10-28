@@ -359,7 +359,12 @@ impl GetSubmarinePairsResponse {
         self.get("USDT-RGB", "BTC").cloned()
     }
 
-    /// Resolve the Liquid assets committed by the selected public pair card.
+    /// The Liquid assets the selected public pair card advertises.
+    ///
+    /// This is the maker's claim, not a trust anchor: resolve the trusted
+    /// context with [`LiquidAssetContext::trusted_lusdt`], pass this to its
+    /// `cross_check_pair_card`, and validate the create response against the
+    /// trusted context.
     pub fn expected_liquid_asset_context(
         &self,
         from: Currency,
@@ -425,7 +430,12 @@ impl GetReversePairsResponse {
         self.get("BTC", "USDT-RGB").cloned()
     }
 
-    /// Resolve the Liquid assets committed by the selected public pair card.
+    /// The Liquid assets the selected public pair card advertises.
+    ///
+    /// This is the maker's claim, not a trust anchor: resolve the trusted
+    /// context with [`LiquidAssetContext::trusted_lusdt`], pass this to its
+    /// `cross_check_pair_card`, and validate the create response against the
+    /// trusted context.
     pub fn expected_liquid_asset_context(
         &self,
         from: Currency,
@@ -485,7 +495,12 @@ impl GetChainPairsResponse {
         self.get("BTC", "L-USDT").cloned()
     }
 
-    /// Resolve the Liquid assets committed by the selected public pair card.
+    /// The Liquid assets the selected public pair card advertises.
+    ///
+    /// This is the maker's claim, not a trust anchor: resolve the trusted
+    /// context with [`LiquidAssetContext::trusted_lusdt`], pass this to its
+    /// `cross_check_pair_card`, and validate the create response against the
+    /// trusted context.
     pub fn expected_liquid_asset_context(
         &self,
         from: Currency,
@@ -600,7 +615,7 @@ const SWAP_CREATION_ENDPOINTS: [&str; 4] =
 /// successful creation is checked, and only when the header is present: a
 /// browser hides response headers the maker's edge does not expose, and an
 /// absent header proves nothing either way.
-fn warn_if_attribution_dropped(response: &reqwest::Response, org_key: OrgKey) {
+fn warn_if_attribution_dropped(response: &MakerResponse, org_key: OrgKey) {
     if !response.status().is_success() {
         return;
     }
@@ -614,6 +629,193 @@ fn warn_if_attribution_dropped(response: &reqwest::Response, org_key: OrgKey) {
             response.url().path(),
         );
     }
+}
+
+/// A maker's answer, read to the end as it arrived: the status, the URL the
+/// request ended at, the headers and the body text.
+///
+/// One shape on both targets. Native fills it from a [`reqwest::Response`];
+/// the browser from the [`web_sys::Response`] of a `fetch` that
+/// [`BoltzApiClientV2::send`] issued itself, so that the redirect policy is
+/// the SDK's on both. Reading the body up front costs nothing here — every
+/// caller reads it — and keeps the per-request deadline covering the whole
+/// exchange on both targets.
+#[derive(Debug)]
+pub(crate) struct MakerResponse {
+    status: reqwest::StatusCode,
+    url: reqwest::Url,
+    headers: reqwest::header::HeaderMap,
+    body: String,
+}
+
+impl MakerResponse {
+    pub fn status(&self) -> reqwest::StatusCode {
+        self.status
+    }
+
+    /// The URL the response came from. With redirects refused it is the one
+    /// the request was addressed to; a caller-supplied native client that
+    /// follows them may end elsewhere, which
+    /// [`BoltzApiClientV2::reject_credential_leaking_redirect`] reports.
+    pub fn url(&self) -> &reqwest::Url {
+        &self.url
+    }
+
+    pub fn headers(&self) -> &reqwest::header::HeaderMap {
+        &self.headers
+    }
+
+    pub fn into_text(self) -> String {
+        self.body
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    async fn from_reqwest(response: reqwest::Response) -> Result<Self, Error> {
+        let status = response.status();
+        let url = response.url().clone();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+        Ok(Self {
+            status,
+            url,
+            headers,
+            body,
+        })
+    }
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    async fn from_browser(
+        response: web_sys::Response,
+        sent_to: reqwest::Url,
+    ) -> Result<Self, Error> {
+        use wasm_bindgen_futures::JsFuture;
+
+        let failure = |cause: wasm_bindgen::JsValue| fetch_failure(&sent_to, cause);
+        let status = reqwest::StatusCode::from_u16(response.status()).map_err(|_| {
+            Error::Protocol(format!(
+                "the maker at {sent_to} answered with HTTP status {}, which is not one",
+                response.status()
+            ))
+        })?;
+        // `Response.url` is the final URL of the fetch, or empty for a
+        // synthetic response; an empty one is read as "where it was sent".
+        let url = match response.url() {
+            url if url.is_empty() => sent_to.clone(),
+            url => reqwest::Url::parse(&url)?,
+        };
+        let mut headers = reqwest::header::HeaderMap::new();
+        // The browser exposes only the headers CORS lets this origin read; the
+        // rest are absent here as they are absent to any script on the page.
+        for entry in js_sys::try_iter(&response.headers().entries())
+            .map_err(failure)?
+            .into_iter()
+            .flatten()
+        {
+            let entry = entry.map_err(failure)?;
+            let pair = js_sys::Array::from(&entry);
+            let (Some(name), Some(value)) = (pair.get(0).as_string(), pair.get(1).as_string())
+            else {
+                continue;
+            };
+            if let (Ok(name), Ok(value)) = (
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+                HeaderValue::from_str(&value),
+            ) {
+                headers.append(name, value);
+            }
+        }
+        let body = JsFuture::from(response.text().map_err(failure)?)
+            .await
+            .map_err(failure)?
+            .as_string()
+            .ok_or_else(|| {
+                Error::Protocol(format!(
+                    "the maker at {sent_to} answered with a body that is not text"
+                ))
+            })?;
+        Ok(Self {
+            status,
+            url,
+            headers,
+            body,
+        })
+    }
+}
+
+/// Owns a fetch's `AbortController` and aborts it on drop, so an exchange that
+/// is abandoned — by its deadline or by the caller dropping the future — does
+/// not keep running in the browser.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+struct AbortOnDrop(web_sys::AbortController);
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// The browser's `fetch` request for a maker request reqwest has built:
+/// method, URL, headers and body carried over, `redirect: "error"` set.
+///
+/// `redirect: "error"` is what keeps a credential on the maker's origin. The
+/// browser rejects the fetch at the first `3xx` instead of following it, so
+/// [`SWAP_AUTH_HEADER`] — a custom header, which `fetch` does *not* strip on a
+/// cross-origin hop the way it strips `Authorization` — never leaves for the
+/// host a `Location` names. No `credentials` mode is set: the maker API uses
+/// no cookies, and the default (`same-origin`) attaches none cross-origin.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn browser_fetch_request(
+    request: &reqwest::Request,
+) -> Result<(web_sys::Request, AbortOnDrop), Error> {
+    let url = request.url();
+    let failure = |cause: wasm_bindgen::JsValue| fetch_failure(url, cause);
+    let abort = AbortOnDrop(web_sys::AbortController::new().map_err(failure)?);
+    let init = web_sys::RequestInit::new();
+    init.set_method(request.method().as_str());
+    init.set_redirect(web_sys::RequestRedirect::Error);
+    init.set_signal(Some(&abort.0.signal()));
+    let headers = web_sys::Headers::new().map_err(failure)?;
+    for (name, value) in request.headers() {
+        let value = value.to_str().map_err(|_| {
+            Error::Protocol(format!(
+                "header {name} is not text and cannot be sent by a browser"
+            ))
+        })?;
+        headers.append(name.as_str(), value).map_err(failure)?;
+    }
+    init.set_headers(&headers);
+    if let Some(body) = request.body() {
+        let bytes = body.as_bytes().ok_or_else(|| {
+            Error::Protocol(format!(
+                "a streaming body cannot be sent to {url} from a browser"
+            ))
+        })?;
+        init.set_body(&js_sys::Uint8Array::from(bytes));
+    }
+    let request = web_sys::Request::new_with_str_and_init(url.as_str(), &init).map_err(failure)?;
+    Ok((request, abort))
+}
+
+/// A `fetch` that was rejected before any response arrived.
+///
+/// The browser reports a refused redirect, a CORS failure, a network error
+/// and an aborted deadline all as one `TypeError`, so the message names each.
+/// What it can promise is the negative: nothing was followed, so whatever the
+/// request carried went to the maker's origin and nowhere else.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn fetch_failure(url: &reqwest::Url, cause: wasm_bindgen::JsValue) -> Error {
+    use wasm_bindgen::JsCast;
+    let cause = cause
+        .dyn_ref::<js_sys::Error>()
+        .map(|error| String::from(error.message()))
+        .or_else(|| cause.as_string())
+        .unwrap_or_else(|| "no detail".to_string());
+    Error::Generic(format!(
+        "the browser rejected the request to {url} ({cause}): a redirect the SDK refuses \
+         to follow, a CORS failure, a network error or the deadline; nothing was sent \
+         anywhere but that origin"
+    ))
 }
 
 /// Reference Documnetation: <https://api.boltz.exchange/swagger>
@@ -677,15 +879,89 @@ impl BoltzApiClientV2 {
             .expect("reqwest client with a redirect policy and no other configuration")
     }
 
-    /// `reqwest` sets no `RequestInit.redirect` on wasm, so `fetch` follows
-    /// redirects and there is no policy to set here. A cross-origin hop does
-    /// need a CORS preflight for [`SWAP_AUTH_HEADER`], but the host the
-    /// `Location` names answers that preflight itself, so it is no barrier.
-    /// [`Self::reject_credential_leaking_redirect`] catches it after the fact
-    /// instead — the browser path can report the disclosure, not prevent it.
+    /// `reqwest` sets no `RequestInit.redirect` on wasm, so a client built here
+    /// carries no redirect policy — and none is needed, because in the browser
+    /// this module does not let reqwest send at all. [`Self::send`] builds the
+    /// request through reqwest, so the headers and the deadline are assembled
+    /// the same way on both targets, then issues the `fetch` itself with
+    /// `redirect: "error"`, which is the one place the browser lets a caller
+    /// decline to follow a redirect.
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn default_http_client() -> reqwest::Client {
         reqwest::Client::new()
+    }
+
+    /// Send a request to the maker and read its answer in full.
+    ///
+    /// Native: reqwest sends it. The client from [`Self::default_http_client`]
+    /// follows no redirects, and a caller-supplied one ([`Self::with_client`])
+    /// is the caller's own policy, which
+    /// [`Self::reject_credential_leaking_redirect`] then reports on.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    async fn send(&self, req_builder: RequestBuilder) -> Result<MakerResponse, Error> {
+        MakerResponse::from_reqwest(req_builder.send().await?).await
+    }
+
+    /// Send a request to the maker and read its answer in full.
+    ///
+    /// Browser: reqwest only *builds* the request. Its wasm backend hands
+    /// `fetch` a `RequestInit` with no `redirect` set, so the browser follows
+    /// every redirect — and `fetch` strips only `Authorization` and the other
+    /// CORS non-wildcard headers across an origin hop, not a custom one.
+    /// [`SWAP_AUTH_HEADER`] would therefore ride a `302` to whatever host the
+    /// `Location` names; that host answers its own CORS preflight, so the
+    /// preflight is no barrier either. Reporting the hop afterwards
+    /// ([`Self::reject_credential_leaking_redirect`]) cannot undo it, and
+    /// cannot even see a detour that ends back at the maker.
+    ///
+    /// So the fetch is issued here with `redirect: "error"`, which makes the
+    /// browser reject the request at the first `3xx` without following it —
+    /// the credential never leaves for another host. This applies to every
+    /// maker request, not only the credential-bearing ones, matching the
+    /// native client: the maker API redirects nowhere, so a redirect is a
+    /// fault to surface, not a route to take.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    async fn send(&self, req_builder: RequestBuilder) -> Result<MakerResponse, Error> {
+        use wasm_bindgen::{JsCast, JsValue};
+        use wasm_bindgen_futures::JsFuture;
+
+        let request = req_builder.build()?;
+        let url = request.url().clone();
+        let failure = |cause: JsValue| fetch_failure(&url, cause);
+        let (js_request, abort) = browser_fetch_request(&request)?;
+        // Aborts the fetch if the deadline passes, and is a no-op once the body
+        // is in: the timer and the controller both live to the end of this
+        // function.
+        let _timer = request.timeout().map(|timeout| {
+            let controller = abort.0.clone();
+            gloo_timers::callback::Timeout::new(
+                timeout.as_millis().min(u32::MAX as u128) as u32,
+                move || controller.abort(),
+            )
+        });
+        let global = js_sys::global();
+        let fetch = js_sys::Reflect::get(&global, &JsValue::from_str("fetch"))
+            .map_err(failure)?
+            .dyn_into::<js_sys::Function>()
+            .map_err(failure)?;
+        let promise = fetch
+            .call1(&global, &js_request)
+            .map_err(failure)?
+            .dyn_into::<js_sys::Promise>()
+            .map_err(failure)?;
+        let response = JsFuture::from(promise)
+            .await
+            .map_err(failure)?
+            .dyn_into::<web_sys::Response>()
+            .map_err(failure)?;
+        // `redirect: "error"` makes this unreachable; it stays as the assertion
+        // that the policy was in force rather than as a second line of defence.
+        if response.redirected() {
+            return Err(Error::Protocol(format!(
+                "a request to {url} was redirected although redirects are refused"
+            )));
+        }
+        MakerResponse::from_browser(response, url).await
     }
 
     /// Client pointed at the default **KaleidoSwap maker** for a network.
@@ -738,7 +1014,9 @@ impl BoltzApiClientV2 {
     /// `swapAuth`: reqwest forwards custom headers across a cross-origin
     /// redirect, so a redirect-following client can hand [`SWAP_AUTH_HEADER`]
     /// to another host. [`Self::new`] does this for you — see
-    /// [`Self::default_http_client`].
+    /// [`Self::default_http_client`]. In the browser the client's own policy is
+    /// moot: reqwest only builds the request there, and [`Self::send`] issues
+    /// the fetch with `redirect: "error"` regardless of the client passed in.
     pub fn with_client(
         base_url: String,
         http_client: reqwest::Client,
@@ -827,7 +1105,7 @@ impl BoltzApiClientV2 {
     }
 
     /// Make a GET request. Returns the Response
-    async fn get_response(&self, end_point: &str) -> Result<reqwest::Response, Error> {
+    async fn get_response(&self, end_point: &str) -> Result<MakerResponse, Error> {
         self.get_response_at(format!("{}/{}", self.base_url, end_point))
             .await
     }
@@ -835,23 +1113,23 @@ impl BoltzApiClientV2 {
     /// GET an absolute URL with every guard a `/v2` GET gets. Split out so
     /// the corridor, which lives beside `/v2` rather than under it, reaches
     /// the same origin through the same checks instead of a second client.
-    async fn get_response_at(&self, url: String) -> Result<reqwest::Response, Error> {
+    async fn get_response_at(&self, url: String) -> Result<MakerResponse, Error> {
         let req_builder = self.http_client.get(&url);
         let req_builder = self.maybe_add_timeout(req_builder);
         let req_builder = self.maybe_add_api_key(req_builder, &url)?;
-        let response = req_builder.send().await?;
+        let response = self.send(req_builder).await?;
         self.reject_credential_leaking_redirect(&response, self.credentials_sent(None))?;
         Ok(response)
     }
 
     /// Make a GET request. Returns the Response as text
     async fn get(&self, end_point: &str) -> Result<String, Error> {
-        Ok(self.get_response(end_point).await?.text().await?)
+        Ok(self.get_response(end_point).await?.into_text())
     }
 
     pub(crate) async fn get_json<T: DeserializeOwned>(&self, end_point: &str) -> Result<T, Error> {
         let response = self.get_response(end_point).await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     fn parse_value(body: String) -> Value {
@@ -878,7 +1156,7 @@ impl BoltzApiClientV2 {
         // client can send goes on in `request_response`, so that is the one place
         // that knows what a response might have carried away.
         let response = self.post_response(end_point, data, swap_auth).await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     /// The credential headers a request just went out with: the per-swap
@@ -900,15 +1178,13 @@ impl BoltzApiClientV2 {
     /// Fail a credential-bearing request that came back from a host other than
     /// the one it was addressed to.
     ///
-    /// [`Self::default_http_client`] follows no redirects, so this cannot fire
-    /// for a client built here. It can for a caller-supplied one
-    /// ([`Self::with_client`]) and in the browser, where `fetch` owns redirect
-    /// handling and reqwest sets no policy on it — a cross-origin hop needs a
-    /// CORS preflight for [`SWAP_AUTH_HEADER`], but the host the `Location`
-    /// names is free to answer that preflight itself. An *authenticated* client
-    /// is narrower still: both [`KaleidoMakerClient`] constructors set
-    /// `Policy::none()` themselves, so on native this is unreachable for one and
-    /// the browser is the only case left.
+    /// [`Self::default_http_client`] follows no redirects, and in the browser
+    /// [`Self::send`] issues every fetch with `redirect: "error"`, so this
+    /// cannot fire for a client built here on either target. It can for a
+    /// caller-supplied native client ([`Self::with_client`]) built on reqwest's
+    /// default policy, which follows. An *authenticated* client is narrower
+    /// still: both [`KaleidoMakerClient`] constructors set `Policy::none()`
+    /// themselves, so for one of those this is unreachable.
     ///
     /// The hop has already happened by the time this runs, so this prevents
     /// nothing. What it does is refuse to hand back a response the maker did not
@@ -922,8 +1198,8 @@ impl BoltzApiClientV2 {
     /// maker is therefore indistinguishable from no redirect at all, and
     /// [`SWAP_AUTH_HEADER`] would have ridden along to the detour. Only owning
     /// the redirect policy closes that, which is what
-    /// [`Self::default_http_client`] and both [`KaleidoMakerClient`]
-    /// constructors do.
+    /// [`Self::default_http_client`], [`Self::send`] in the browser and both
+    /// [`KaleidoMakerClient`] constructors do.
     ///
     /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
     ///
@@ -945,7 +1221,7 @@ impl BoltzApiClientV2 {
     /// pessimistic there rather than wrong.
     fn reject_credential_leaking_redirect(
         &self,
-        response: &reqwest::Response,
+        response: &MakerResponse,
         carried: Vec<&'static str>,
     ) -> Result<(), Error> {
         if carried.is_empty() {
@@ -980,12 +1256,9 @@ impl BoltzApiClientV2 {
         Err(Error::Protocol(message))
     }
 
-    async fn parse_json_response<T: DeserializeOwned>(
-        response: reqwest::Response,
-    ) -> Result<T, Error> {
+    fn parse_json_response<T: DeserializeOwned>(response: MakerResponse) -> Result<T, Error> {
         let status = response.status();
-        let body = response.text().await?;
-        Self::json_from_body(status, body)
+        Self::json_from_body(status, response.into_text())
     }
 
     /// Decide what a response body means, given the status it arrived with.
@@ -1178,7 +1451,7 @@ impl BoltzApiClientV2 {
         end_point: &str,
         data: impl Serialize,
         swap_auth: Option<&str>,
-    ) -> Result<reqwest::Response, Error> {
+    ) -> Result<MakerResponse, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
         self.request_response(Method::POST, url, data, swap_auth)
             .await
@@ -1200,7 +1473,7 @@ impl BoltzApiClientV2 {
         let response = self
             .request_response(method.clone(), url, data, None)
             .await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     async fn request_response(
@@ -1209,7 +1482,7 @@ impl BoltzApiClientV2 {
         url: String,
         data: impl Serialize,
         swap_auth: Option<&str>,
-    ) -> Result<reqwest::Response, Error> {
+    ) -> Result<MakerResponse, Error> {
         let method_str = method.to_string();
         let org_key = self.org_key_for(&method, &url);
         let req_builder = self.http_client.request(method, &url).json(&data);
@@ -1220,7 +1493,7 @@ impl BoltzApiClientV2 {
             Some(org_key) => req_builder.header(ORG_KEY_HEADER, org_key.header_value()),
             None => req_builder,
         };
-        match req_builder.send().await {
+        match self.send(req_builder).await {
             Ok(response) => {
                 self.reject_credential_leaking_redirect(
                     &response,
@@ -1233,7 +1506,7 @@ impl BoltzApiClientV2 {
             }
             Err(e) => {
                 log::error!("{method_str} error: {e:#?}");
-                Err(e.into())
+                Err(e)
             }
         }
     }
@@ -1412,7 +1685,7 @@ impl BoltzApiClientV2 {
             .get_response_at(format!("{}/v1/card", self.corridor_root()?))
             .await?;
         let status = response.status();
-        let body = response.text().await?;
+        let body = response.into_text();
         if status == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -1443,7 +1716,7 @@ impl BoltzApiClientV2 {
         let response = self
             .request_response(Method::POST, url, request, None)
             .await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     /// Quote `arkade:BTC->lightning:BTC`: the trader will fund an Arkade
@@ -1483,7 +1756,7 @@ impl BoltzApiClientV2 {
     pub async fn rfq_status(&self, rfq_id: &str) -> Result<Option<corridor::RfqStatus>, Error> {
         let url = format!("{}/v1/rfq/{rfq_id}", self.corridor_root()?);
         let response = self.get_response_at(url).await?;
-        match Self::parse_json_response::<corridor::RfqStatus>(response).await {
+        match Self::parse_json_response::<corridor::RfqStatus>(response) {
             Ok(status) => Ok(Some(status)),
             Err(Error::HTTPStatusNotSuccess(status, _))
                 if status == reqwest::StatusCode::NOT_FOUND =>
@@ -2041,11 +2314,21 @@ impl std::fmt::Debug for RedactedSecret<'_> {
     }
 }
 
+/// Attribution of a payment settled internally by the maker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+pub struct InternalHopRef {
+    pub payee_id: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct CreateSubmarineResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_hop: Option<InternalHopRef>,
     pub accept_zero_conf: bool,
     pub address: String,
     pub bip21: String,
@@ -2082,6 +2365,7 @@ pub struct CreateSubmarineResponse {
 impl std::fmt::Debug for CreateSubmarineResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Self {
+            internal_hop,
             accept_zero_conf,
             address,
             bip21,
@@ -2098,6 +2382,7 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             rgb,
         } = self;
         f.debug_struct("CreateSubmarineResponse")
+            .field("internal_hop", internal_hop)
             .field("accept_zero_conf", accept_zero_conf)
             .field("address", address)
             .field("bip21", bip21)
@@ -2142,6 +2427,187 @@ fn ensure_plain_btc_response(currency: Currency, rgb: Option<&RgbLock>) -> Resul
         (currency, _) => Err(Error::Protocol(format!(
             "Currency {currency} is not valid for chain BTC"
         ))),
+    }
+}
+
+/// The Lightning network a swap on `chain` settles on: the Bitcoin network of
+/// the chain itself, or the Bitcoin network a Liquid network is pegged to.
+fn expected_invoice_network(chain: Chain) -> bitcoin::Network {
+    match Network::from(chain) {
+        Network::Mainnet => bitcoin::Network::Bitcoin,
+        Network::Testnet => bitcoin::Network::Testnet,
+        Network::Signet => bitcoin::Network::Signet,
+        Network::Regtest => bitcoin::Network::Regtest,
+    }
+}
+
+/// A maker-issued invoice must be for the network the swap was created on.
+fn ensure_invoice_network(invoice: &Bolt11Invoice, chain: Chain) -> Result<(), Error> {
+    let expected = expected_invoice_network(chain);
+    let actual = invoice.network();
+    if actual != expected {
+        return Err(Error::Protocol(format!(
+            "Invoice is for network {actual}, swap is on {expected}"
+        )));
+    }
+    Ok(())
+}
+
+/// The least the maker can lock for `amount` under a rate card: the amount
+/// converted at `rate`, less every fee the card lists.
+///
+/// It over-deducts on purpose (the card's `total` includes fees the caller
+/// pays itself, such as its own claim), so it is a floor a legitimate
+/// response clears with room, and a response below it was priced off a
+/// different card than the caller accepted.
+fn minimum_payout(amount: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+    let converted = convert_at_rate(amount, rate)?;
+    Ok(converted.saturating_sub(total_fees))
+}
+
+/// The most a caller can be asked to lock for a `payout` under a rate card:
+/// the payout converted back at `rate`, plus every fee the card lists.
+fn maximum_funding(payout: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+    if !(rate.is_finite() && rate > 0.0) {
+        return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
+    }
+    let converted = ((payout as f64) / rate).ceil();
+    if !converted.is_finite() || converted > u64::MAX as f64 {
+        return Err(Error::Protocol(
+            "Pair rate conversion overflows".to_string(),
+        ));
+    }
+    Ok((converted as u64).saturating_add(total_fees))
+}
+
+fn convert_at_rate(amount: u64, rate: f64) -> Result<u64, Error> {
+    if !(rate.is_finite() && rate > 0.0) {
+        return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
+    }
+    let converted = ((amount as f64) * rate).floor();
+    if !converted.is_finite() || converted > u64::MAX as f64 {
+        return Err(Error::Protocol(
+            "Pair rate conversion overflows".to_string(),
+        ));
+    }
+    Ok(converted as u64)
+}
+
+/// Nominal block interval, for comparing timeouts that live on different
+/// chains. Rough is fine: the cross-leg rule below is a sanity check on the
+/// maker's choice of windows, not a consensus computation.
+fn nominal_block_interval_secs(chain: Chain) -> u64 {
+    match chain {
+        Chain::Bitcoin(_) => 600,
+        Chain::Liquid(_) => 60,
+    }
+}
+
+/// A create response whose timeout is already mature, or within
+/// `min_headroom_blocks` of a trusted `current_height`, is not one to pay or
+/// fund: on the legs the maker refunds, its refund would be valid before or
+/// soon after our claim, and a claim then reveals the preimage for nothing.
+/// `current_height` must come from the chain client, not from the maker.
+fn ensure_timeout_headroom(
+    what: &str,
+    timeout_block_height: u32,
+    current_height: u32,
+    min_headroom_blocks: u32,
+) -> Result<(), Error> {
+    if timeout_block_height == 0 {
+        return Err(Error::Protocol(format!(
+            "{what} timeout block height must be positive"
+        )));
+    }
+    let earliest_acceptable = current_height.saturating_add(min_headroom_blocks);
+    if timeout_block_height <= earliest_acceptable {
+        return Err(Error::Protocol(format!(
+            "{what} timeout {timeout_block_height} leaves no headroom: current height {current_height} plus the required {min_headroom_blocks} blocks reaches it"
+        )));
+    }
+    Ok(())
+}
+
+/// Chain-swap timing from the claimer's side: our claim leg (the server's
+/// lock, which the server refunds at its timeout) needs headroom, and our own
+/// lock must stay refundable only *after* the server's window has closed. If
+/// the server's lock outlives ours, the maker can wait for our refund path
+/// to open, see which way we go, and still claim or refund at leisure; it is
+/// also simply not the protocol's shape, so the response is refused.
+fn ensure_chain_swap_timing(
+    lockup_timeout: u32,
+    lockup_chain: Chain,
+    lockup_height: u32,
+    claim_timeout: u32,
+    claim_chain: Chain,
+    claim_height: u32,
+    min_claim_headroom_blocks: u32,
+) -> Result<(), Error> {
+    ensure_timeout_headroom(
+        "Chain swap claim leg",
+        claim_timeout,
+        claim_height,
+        min_claim_headroom_blocks,
+    )?;
+    // Our own refund path must not already be open; that is not a theft
+    // risk for us, but a response shaped like that is not a live swap.
+    ensure_timeout_headroom("Chain swap lockup leg", lockup_timeout, lockup_height, 0)?;
+    let remaining = |timeout: u32, height: u32, chain: Chain| {
+        u64::from(timeout - height) * nominal_block_interval_secs(chain)
+    };
+    let lockup_remaining = remaining(lockup_timeout, lockup_height, lockup_chain);
+    let claim_remaining = remaining(claim_timeout, claim_height, claim_chain);
+    if lockup_remaining <= claim_remaining {
+        return Err(Error::Protocol(format!(
+            "Chain swap lockup timeout (about {lockup_remaining}s away) does not outlast the claim leg timeout (about {claim_remaining}s away)"
+        )));
+    }
+    Ok(())
+}
+
+impl CreateReverseResponse {
+    /// Refuse to pay a reverse swap whose lockup timeout is already mature or
+    /// closer than `min_headroom_blocks` to `current_height`, the lockup
+    /// chain's tip from a trusted chain client (never the maker's `/chain/heights`).
+    /// The maker refunds this lockup at the timeout, so a claim against a
+    /// nearly mature one hands over the preimage for a payout the maker can
+    /// take back.
+    pub fn validate_timeout_headroom(
+        &self,
+        current_height: u32,
+        min_headroom_blocks: u32,
+    ) -> Result<(), Error> {
+        ensure_timeout_headroom(
+            "Reverse swap",
+            self.timeout_block_height,
+            current_height,
+            min_headroom_blocks,
+        )
+    }
+}
+
+impl CreateChainResponse {
+    /// Refuse a chain swap whose timing is unsafe to fund, given trusted
+    /// current heights for both chains: the claim leg (`to_chain`, the
+    /// server's lock) must be at least `min_claim_headroom_blocks` away from
+    /// its timeout, and our lock on `from_chain` must outlast it.
+    pub fn validate_timeout_headroom(
+        &self,
+        from_chain: Chain,
+        from_height: u32,
+        to_chain: Chain,
+        to_height: u32,
+        min_claim_headroom_blocks: u32,
+    ) -> Result<(), Error> {
+        ensure_chain_swap_timing(
+            self.lockup_details.timeout_block_height,
+            from_chain,
+            from_height,
+            self.claim_details.timeout_block_height,
+            to_chain,
+            to_height,
+            min_claim_headroom_blocks,
+        )
     }
 }
 
@@ -2714,7 +3180,7 @@ impl CreateReverseResponse {
         chain: BitcoinChain,
         expected_contract_id: &str,
     ) -> Result<(), Error> {
-        self.validate_invoice_hash(preimage)?;
+        self.validate_invoice(preimage, Chain::Bitcoin(chain))?;
         let script = BtcSwapScript::reverse_from_swap_resp(self, *our_pubkey)?;
         script.validate_response_tree(&self.swap_tree)?;
         ensure_hashlock(&script.hashlock, &preimage.hash160)?;
@@ -2732,7 +3198,13 @@ impl CreateReverseResponse {
             )
     }
 
-    fn validate_invoice_hash(&self, preimage: &Preimage) -> Result<(), Error> {
+    /// Check the maker-generated invoice, when there is one, against the
+    /// preimage and the swap's network.
+    ///
+    /// The network check keeps a response from steering the payer onto another
+    /// chain's Lightning network: an invoice for a chain other than the one the
+    /// swap was created on is rejected before anything is paid.
+    fn validate_invoice(&self, preimage: &Preimage, chain: Chain) -> Result<(), Error> {
         if let Some(invoice) = &self.invoice {
             // Boltz will only return a BOLT11 invoice if the invoice is not provided
             let invoice = Bolt11Invoice::from_str(invoice)?;
@@ -2741,6 +3213,79 @@ impl CreateReverseResponse {
                     "Preimage hash mismatch : {},{}",
                     &invoice.payment_hash().to_string(),
                     preimage.sha256
+                )));
+            }
+            ensure_invoice_network(&invoice, chain)?;
+        }
+        Ok(())
+    }
+
+    /// Bind the response's economic terms to the request that produced it.
+    ///
+    /// The tree, hashlock and address checks prove the maker built the HTLC
+    /// the caller asked for; they say nothing about *how much* the caller is
+    /// about to pay. When the request carried `invoiceAmount`, the maker
+    /// generates the invoice, so this requires that invoice to be present,
+    /// to carry an amount, and for that amount to be exactly
+    /// `invoiceAmount` sats (compared in millisatoshis with checked
+    /// arithmetic). Without it an automated payer takes the amount from the
+    /// invoice and pays whatever the maker put there.
+    ///
+    /// With `pair` — the rate card the caller accepted before creating the
+    /// swap, not one fetched again now — `onchainAmount` must also be at least
+    /// `floor(invoiceAmount × rate) − fees.total(invoiceAmount)`. That is a
+    /// floor, not an equality: a maker that charges less than its card
+    /// advertises passes, one that pays out less than the card promised does
+    /// not. Pass the card for sat-denominated routes; on an asset route the
+    /// rate expresses the asset's units and the same bound applies.
+    ///
+    /// Call this alongside [`Self::validate`] (or its variants) before paying
+    /// the invoice. A request that supplied its own invoice has nothing to
+    /// bind here: the caller already holds the amount it agreed to.
+    pub fn validate_amounts(
+        &self,
+        request: &CreateReverseRequest,
+        pair: Option<&ReversePair>,
+    ) -> Result<(), Error> {
+        let Some(invoice_amount) = request.invoice_amount else {
+            return Ok(());
+        };
+        if invoice_amount == 0 {
+            return Err(Error::Protocol(
+                "Reverse swap invoiceAmount must be positive".to_string(),
+            ));
+        }
+        let expected_msat = invoice_amount.checked_mul(1_000).ok_or_else(|| {
+            Error::Protocol("Reverse swap invoiceAmount does not fit in millisatoshis".to_string())
+        })?;
+        let invoice = self.invoice.as_deref().ok_or_else(|| {
+            Error::Protocol(
+                "Reverse swap response carries no invoice for the requested invoiceAmount"
+                    .to_string(),
+            )
+        })?;
+        let invoice = Bolt11Invoice::from_str(invoice)?;
+        match invoice.amount_milli_satoshis() {
+            Some(amount_msat) if amount_msat == expected_msat => {}
+            Some(amount_msat) => {
+                return Err(Error::Protocol(format!(
+                    "Reverse swap invoice amount mismatch: invoice carries {amount_msat} msat, requested {expected_msat} msat"
+                )));
+            }
+            None => {
+                return Err(Error::Protocol(
+                    "Reverse swap invoice carries no amount; requested a fixed invoiceAmount"
+                        .to_string(),
+                ));
+            }
+        }
+        if let Some(pair) = pair {
+            let minimum =
+                minimum_payout(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+            if self.onchain_amount < minimum {
+                return Err(Error::Protocol(format!(
+                    "Reverse swap onchainAmount {} is below the {minimum} the accepted pair card implies for invoiceAmount {invoice_amount}",
+                    self.onchain_amount
                 )));
             }
         }
@@ -2779,7 +3324,30 @@ impl CreateReverseResponse {
         currency: Option<Currency>,
         expected_asset_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
-        self.validate_invoice_hash(preimage)?;
+        self.validate_with_source_and_asset_context(
+            preimage,
+            our_pubkey,
+            chain,
+            chain,
+            currency,
+            expected_asset_context,
+        )
+    }
+
+    /// Validate the invoice against the source Lightning network and the HTLC
+    /// against the destination chain. Liquid testnet can receive from Signet
+    /// or Bitcoin testnet, so the destination alone cannot identify the source.
+    #[allow(clippy::too_many_arguments)]
+    pub fn validate_with_source_and_asset_context(
+        &self,
+        preimage: &Preimage,
+        our_pubkey: &PublicKey,
+        source: Chain,
+        chain: Chain,
+        currency: Option<Currency>,
+        expected_asset_context: Option<LiquidAssetContext>,
+    ) -> Result<(), Error> {
+        self.validate_invoice(preimage, source)?;
 
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
@@ -2991,6 +3559,85 @@ impl CreateChainResponse {
             None,
             None,
         )
+    }
+
+    /// Bind both legs' amounts to the request that produced the response.
+    ///
+    /// The tree, hashlock and address checks prove the maker built the HTLCs
+    /// the caller asked for, and the later lockup checks only enforce whatever
+    /// amounts this response carries. Nothing else ties those amounts to the
+    /// request: a response could ask the caller to lock ten times
+    /// `userLockAmount`, or promise a fraction of `serverLockAmount`, and
+    /// still validate. So whenever the request fixed a leg, that leg must
+    /// come back exactly as requested: `lockupDetails.amount ==
+    /// userLockAmount` and `claimDetails.amount == serverLockAmount`. Both
+    /// legs must be non-zero.
+    ///
+    /// The leg the maker computed is bounded with `pair` — the rate card the
+    /// caller accepted before creating the swap, not one fetched again now.
+    /// With `userLockAmount` fixed, `claimDetails.amount` must be at least
+    /// `floor(userLockAmount × rate) − fees.total(userLockAmount)`; with
+    /// `serverLockAmount` fixed, `lockupDetails.amount` must be at most
+    /// `ceil(serverLockAmount ÷ rate) + fees.total(serverLockAmount)`. Both
+    /// are bounds, not equalities: a maker charging less than its card
+    /// advertises passes, one pricing off a card the caller never accepted
+    /// does not.
+    ///
+    /// Call this alongside [`Self::validate`] (or its variants) before
+    /// funding the lockup.
+    pub fn validate_amounts(
+        &self,
+        request: &CreateChainRequest,
+        pair: Option<&ChainPair>,
+    ) -> Result<(), Error> {
+        if self.lockup_details.amount == 0 || self.claim_details.amount == 0 {
+            return Err(Error::Protocol(
+                "Chain swap response carries a zero lockup or claim amount".to_string(),
+            ));
+        }
+        if let Some(user_lock_amount) = request.user_lock_amount {
+            if self.lockup_details.amount != user_lock_amount {
+                return Err(Error::Protocol(format!(
+                    "Chain swap lockup amount mismatch: response asks for {}, requested userLockAmount {user_lock_amount}",
+                    self.lockup_details.amount
+                )));
+            }
+            if let Some(pair) = pair {
+                let minimum = minimum_payout(
+                    user_lock_amount,
+                    pair.rate,
+                    pair.fees.total(user_lock_amount),
+                )?;
+                if self.claim_details.amount < minimum {
+                    return Err(Error::Protocol(format!(
+                        "Chain swap claim amount {} is below the {minimum} the accepted pair card implies for userLockAmount {user_lock_amount}",
+                        self.claim_details.amount
+                    )));
+                }
+            }
+        }
+        if let Some(server_lock_amount) = request.server_lock_amount {
+            if self.claim_details.amount != server_lock_amount {
+                return Err(Error::Protocol(format!(
+                    "Chain swap claim amount mismatch: response promises {}, requested serverLockAmount {server_lock_amount}",
+                    self.claim_details.amount
+                )));
+            }
+            if let Some(pair) = pair {
+                let maximum = maximum_funding(
+                    server_lock_amount,
+                    pair.rate,
+                    pair.fees.total(server_lock_amount),
+                )?;
+                if self.lockup_details.amount > maximum {
+                    return Err(Error::Protocol(format!(
+                        "Chain swap lockup amount {} is above the {maximum} the accepted pair card implies for serverLockAmount {server_lock_amount}",
+                        self.lockup_details.amount
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Validate both create-response legs against their requested currencies
@@ -3664,9 +4311,50 @@ pub struct SwapPayoutStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::hashes::Hash as _;
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+    /// A mature or nearly mature timeout must be refused before anything is
+    /// paid: the maker refunds at that height, and a claim then only leaks
+    /// the preimage.
+    #[macros::test_all]
+    fn timeout_headroom_refuses_mature_and_tight_timeouts() {
+        assert!(ensure_timeout_headroom("x", 0, 10, 0).is_err());
+        // Already mature.
+        assert!(ensure_timeout_headroom("x", 100, 100, 0).is_err());
+        assert!(ensure_timeout_headroom("x", 100, 150, 0).is_err());
+        // Exactly at the margin is still too tight; one block past it is fine.
+        assert!(ensure_timeout_headroom("x", 112, 100, 12).is_err());
+        assert!(ensure_timeout_headroom("x", 113, 100, 12).is_ok());
+        assert!(ensure_timeout_headroom("x", 101, 100, 0).is_ok());
+        // Saturating: an absurd margin cannot wrap into acceptance.
+        assert!(ensure_timeout_headroom("x", u32::MAX, 10, u32::MAX).is_err());
+    }
+
+    /// Chain swaps: the claim leg needs headroom, our own lock must not be
+    /// refundable yet, and it must outlast the server's lock in wall-clock
+    /// terms even when the two legs sit on chains with different intervals.
+    #[macros::test_all]
+    fn chain_swap_timing_requires_our_lock_to_outlast_the_claim_leg() {
+        let btc = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let lbtc = Chain::Liquid(crate::network::LiquidChain::LiquidRegtest);
+        // BTC -> L-BTC: our lock 288 BTC blocks out (~48h), claim leg 1440
+        // Liquid blocks out (~24h).
+        assert!(ensure_chain_swap_timing(100 + 288, btc, 100, 5000 + 1440, lbtc, 5000, 60).is_ok());
+        // Claim leg too close.
+        assert!(ensure_chain_swap_timing(100 + 288, btc, 100, 5000 + 60, lbtc, 5000, 60).is_err());
+        // Claim leg mature.
+        assert!(ensure_chain_swap_timing(100 + 288, btc, 100, 4999, lbtc, 5000, 60).is_err());
+        // Our lock already refundable.
+        assert!(ensure_chain_swap_timing(100, btc, 100, 5000 + 1440, lbtc, 5000, 60).is_err());
+        // Our BTC lock (~5h) does not outlast the Liquid claim leg (~24h).
+        assert!(ensure_chain_swap_timing(100 + 30, btc, 100, 5000 + 1440, lbtc, 5000, 60).is_err());
+        // L-BTC -> BTC: our Liquid lock 2880 blocks (~48h), claim leg 144 BTC blocks (~24h).
+        assert!(ensure_chain_swap_timing(5000 + 2880, lbtc, 5000, 100 + 144, btc, 100, 6).is_ok());
+        assert!(ensure_chain_swap_timing(5000 + 1440, lbtc, 5000, 100 + 144, btc, 100, 6).is_err());
+    }
 
     /// A currency the SDK has no named accessor for must still survive
     /// deserialization and stay reachable.
@@ -3894,6 +4582,390 @@ mod tests {
             value["swapAuth"] = serde_json::json!(swap_auth);
         }
         value
+    }
+
+    /// A BOLT11 invoice on `network` for `amount_msat`, signed with a fixed
+    /// test key, committing to `payment_hash`.
+    fn signed_invoice(
+        network: lightning_invoice::Currency,
+        amount_msat: Option<u64>,
+        payment_hash: sha256::Hash,
+    ) -> String {
+        use lightning_invoice::{InvoiceBuilder, PaymentSecret};
+        let secp = secp256k1::Secp256k1::new();
+        let key = secp256k1::SecretKey::from_slice(&[41u8; 32]).unwrap();
+        let builder = InvoiceBuilder::new(network)
+            .description("reverse swap".to_string())
+            .payment_hash(payment_hash)
+            .payment_secret(PaymentSecret([7u8; 32]))
+            .duration_since_epoch(std::time::Duration::from_secs(1_726_000_000))
+            .min_final_cltv_expiry_delta(144);
+        let builder = match amount_msat {
+            Some(amount_msat) => builder.amount_milli_satoshis(amount_msat),
+            None => builder,
+        };
+        builder
+            .build_signed(|hash| secp.sign_ecdsa_recoverable(hash, &key))
+            .unwrap()
+            .to_string()
+    }
+
+    fn reverse_create_response(
+        invoice: Option<String>,
+        onchain_amount: u64,
+    ) -> CreateReverseResponse {
+        serde_json::from_value(serde_json::json!({
+            "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+            "invoice": invoice,
+            "swapTree": {
+                "claimLeaf": {"output": "00", "version": 196},
+                "refundLeaf": {"output": "01", "version": 196},
+            },
+            "lockupAddress": "bcrt1qlockup",
+            "refundPublicKey":
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            "timeoutBlockHeight": 200,
+            "onchainAmount": onchain_amount,
+        }))
+        .unwrap()
+    }
+
+    fn reverse_create_request(invoice_amount: Option<u64>) -> CreateReverseRequest {
+        CreateReverseRequest {
+            from: "BTC".to_string(),
+            to: "BTC".to_string(),
+            claim_public_key: PublicKey::from_str(
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            )
+            .unwrap(),
+            invoice: None,
+            invoice_amount,
+            preimage_hash: None,
+            description: None,
+            description_hash: None,
+            address: None,
+            address_signature: None,
+            referral_id: None,
+            webhook: None,
+            pair_hash: None,
+        }
+    }
+
+    fn chain_create_request(
+        user_lock_amount: Option<u64>,
+        server_lock_amount: Option<u64>,
+    ) -> CreateChainRequest {
+        CreateChainRequest {
+            from: "BTC".to_string(),
+            to: "L-BTC".to_string(),
+            preimage_hash: sha256::Hash::hash(&[1u8; 32]),
+            claim_public_key: None,
+            refund_public_key: None,
+            user_lock_amount,
+            server_lock_amount,
+            pair_hash: None,
+            referral_id: None,
+            webhook: None,
+        }
+    }
+
+    fn chain_create_response(lockup_amount: u64, claim_amount: u64) -> CreateChainResponse {
+        let mut value = chain_create_response_json(None);
+        value["lockupDetails"]["amount"] = serde_json::json!(lockup_amount);
+        value["claimDetails"]["amount"] = serde_json::json!(claim_amount);
+        serde_json::from_value(value).unwrap()
+    }
+
+    /// The maker generates the invoice, so its amount has to be the one the
+    /// caller asked for: an automated payer pays whatever the invoice says.
+    #[test]
+    fn reverse_invoice_amount_must_match_the_request() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice_for = |sat: Option<u64>| {
+            Some(signed_invoice(
+                LnCurrency::Regtest,
+                sat.map(|sat| sat * 1_000),
+                hash,
+            ))
+        };
+
+        reverse_create_response(invoice_for(Some(100_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap();
+
+        // A tenfold invoice with the right payment hash.
+        let err = reverse_create_response(invoice_for(Some(1_000_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("amount mismatch"), "{err}");
+
+        // An amountless invoice lets the payer pick, which is the maker's
+        // choice again once it is in a "pay this" instruction.
+        let err = reverse_create_response(invoice_for(None), 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("no amount"), "{err}");
+
+        // No invoice at all for a request the maker should have invoiced.
+        let err = reverse_create_response(None, 99_000)
+            .validate_amounts(&reverse_create_request(Some(100_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("no invoice"), "{err}");
+
+        // Checked arithmetic: a request amount that does not fit in msat.
+        assert!(reverse_create_response(invoice_for(Some(100_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(u64::MAX)), None)
+            .is_err());
+        assert!(reverse_create_response(invoice_for(Some(100_000)), 99_000)
+            .validate_amounts(&reverse_create_request(Some(0)), None)
+            .is_err());
+
+        // A request that brought its own invoice has nothing to bind here.
+        reverse_create_response(invoice_for(Some(1_000_000)), 99_000)
+            .validate_amounts(&reverse_create_request(None), None)
+            .unwrap();
+    }
+
+    /// With the accepted rate card, the payout must clear the floor the card
+    /// implies — a floor, so a cheaper maker passes.
+    #[test]
+    fn reverse_payout_is_bounded_by_the_accepted_pair_card() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice = Some(signed_invoice(LnCurrency::Regtest, Some(100_000_000), hash));
+        let pair: ReversePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.0,
+            "limits": { "maximal": 25_000_000, "minimal": 10_000 },
+            "fees": { "percentage": 0.5, "minerFees": { "lockup": 300, "claim": 200 } },
+        }))
+        .unwrap();
+        // 100_000 - 500 (0.5%) - 300 - 200 = 99_000.
+        let request = reverse_create_request(Some(100_000));
+        reverse_create_response(invoice.clone(), 99_000)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        reverse_create_response(invoice.clone(), 99_500)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = reverse_create_response(invoice, 98_999)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+    }
+
+    /// A maker-issued invoice for another network is refused before anything
+    /// is paid, on Bitcoin and on the Liquid network pegged to it alike.
+    #[test]
+    fn maker_invoice_must_be_for_the_swap_network() {
+        use lightning_invoice::Currency as LnCurrency;
+        let preimage = Preimage::from_vec(vec![5u8; 32]).unwrap();
+        let regtest = reverse_create_response(
+            Some(signed_invoice(
+                LnCurrency::Regtest,
+                Some(1_000),
+                preimage.sha256,
+            )),
+            1,
+        );
+        let mainnet = reverse_create_response(
+            Some(signed_invoice(
+                LnCurrency::Bitcoin,
+                Some(1_000),
+                preimage.sha256,
+            )),
+            1,
+        );
+        let bitcoin_regtest = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let liquid_regtest = Chain::Liquid(crate::network::LiquidChain::LiquidRegtest);
+
+        regtest
+            .validate_invoice(&preimage, bitcoin_regtest)
+            .unwrap();
+        regtest.validate_invoice(&preimage, liquid_regtest).unwrap();
+        let err = mainnet
+            .validate_invoice(&preimage, bitcoin_regtest)
+            .unwrap_err();
+        assert!(err.to_string().contains("network"), "{err}");
+        assert!(mainnet.validate_invoice(&preimage, liquid_regtest).is_err());
+        mainnet
+            .validate_invoice(&preimage, Chain::Bitcoin(BitcoinChain::Bitcoin))
+            .unwrap();
+        // The hash check still comes first.
+        let other = Preimage::from_vec(vec![6u8; 32]).unwrap();
+        assert!(regtest.validate_invoice(&other, bitcoin_regtest).is_err());
+    }
+
+    #[test]
+    fn submarine_internal_hop_is_optional_and_round_trips() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/lusdt-v1/wire-contract.json"
+        ))
+        .unwrap();
+        let mut wire = fixture["create"]["submarine"]["response"].clone();
+        let legacy: CreateSubmarineResponse = serde_json::from_value(wire.clone()).unwrap();
+        assert!(legacy.internal_hop.is_none());
+        assert!(serde_json::to_value(legacy)
+            .unwrap()
+            .get("internalHop")
+            .is_none());
+        wire["internalHop"] = serde_json::json!({"payeeId": "recipient-123"});
+        let current: CreateSubmarineResponse = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(
+            current.internal_hop.as_ref().unwrap().payee_id,
+            "recipient-123"
+        );
+        assert_eq!(
+            serde_json::to_value(current).unwrap()["internalHop"],
+            wire["internalHop"]
+        );
+    }
+
+    #[test]
+    fn reverse_invoice_uses_source_network_for_liquid_testnet() {
+        use crate::network::LiquidChain;
+        use lightning_invoice::Currency as LnCurrency;
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/lusdt-v1/wire-contract.json"
+        ))
+        .unwrap();
+        let request = &fixture["create"]["reverse"]["request"];
+        let preimage =
+            Preimage::from_sha256_str(request["preimageHash"].as_str().unwrap()).unwrap();
+        let key = PublicKey::from_str(request["claimPublicKey"].as_str().unwrap()).unwrap();
+        let mut response: CreateReverseResponse =
+            serde_json::from_value(fixture["create"]["reverse"]["response"].clone()).unwrap();
+        let liquid = LiquidChain::LiquidTestnet;
+        response.fee_asset_id = Some(liquid.bitcoin().to_string());
+        let script = LiquidSwapScript::reverse_from_swap_resp(&response, key).unwrap();
+        response.lockup_address = script.to_address(liquid).unwrap().to_string();
+        let assets = LiquidAssetContext::from_asset_ids(
+            response.asset_id.as_deref(),
+            response.fee_asset_id.as_deref(),
+        )
+        .unwrap();
+        let source = Chain::Bitcoin(BitcoinChain::BitcoinSignet);
+        let destination = Chain::Liquid(liquid);
+        response.invoice = Some(signed_invoice(
+            LnCurrency::Signet,
+            Some(1_000),
+            preimage.sha256,
+        ));
+        response
+            .validate_with_source_and_asset_context(
+                &preimage,
+                &key,
+                source,
+                destination,
+                Some(Currency::LUsdt),
+                assets,
+            )
+            .unwrap();
+        response.invoice = Some(signed_invoice(
+            LnCurrency::BitcoinTestnet,
+            Some(1_000),
+            preimage.sha256,
+        ));
+        let error = response
+            .validate_with_source_and_asset_context(
+                &preimage,
+                &key,
+                source,
+                destination,
+                Some(Currency::LUsdt),
+                assets,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("network"), "{error}");
+    }
+
+    /// Whichever leg the request fixed must come back exactly as requested;
+    /// the later lockup checks only enforce what the response says.
+    #[test]
+    fn chain_amounts_must_match_the_request() {
+        chain_create_response(60_000, 59_000)
+            .validate_amounts(&chain_create_request(Some(60_000), None), None)
+            .unwrap();
+        // The response asks the caller to lock ten times the request.
+        let err = chain_create_response(600_000, 59_000)
+            .validate_amounts(&chain_create_request(Some(60_000), None), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("lockup amount mismatch"), "{err}");
+
+        chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(None, Some(60_000)), None)
+            .unwrap();
+        // The response promises a fraction of the requested payout.
+        let err = chain_create_response(61_000, 6_000)
+            .validate_amounts(&chain_create_request(None, Some(60_000)), None)
+            .unwrap_err();
+        assert!(err.to_string().contains("claim amount mismatch"), "{err}");
+
+        // Both fixed, both must hold.
+        chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(Some(61_000), Some(60_000)), None)
+            .unwrap();
+        assert!(chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(Some(61_000), Some(60_001)), None)
+            .is_err());
+
+        // Neither fixed: no binding, but never a zero leg.
+        chain_create_response(61_000, 60_000)
+            .validate_amounts(&chain_create_request(None, None), None)
+            .unwrap();
+        assert!(chain_create_response(0, 60_000)
+            .validate_amounts(&chain_create_request(None, None), None)
+            .is_err());
+        assert!(chain_create_response(61_000, 0)
+            .validate_amounts(&chain_create_request(None, Some(0)), None)
+            .is_err());
+    }
+
+    /// The leg the maker computes is bounded by the accepted rate card.
+    #[test]
+    fn chain_computed_leg_is_bounded_by_the_accepted_pair_card() {
+        let pair: ChainPair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.0,
+            "limits": { "maximal": 25_000_000, "minimal": 10_000, "maximalZeroConf": 0 },
+            "fees": {
+                "percentage": 0.1,
+                "minerFees": { "server": 100, "user": { "lockup": 200, "claim": 300 } },
+            },
+        }))
+        .unwrap();
+        // total(100_000) = 100 (0.1%) + 300 + 200 + 100 = 700.
+        let user_fixed = chain_create_request(Some(100_000), None);
+        chain_create_response(100_000, 99_300)
+            .validate_amounts(&user_fixed, Some(&pair))
+            .unwrap();
+        chain_create_response(100_000, 99_800)
+            .validate_amounts(&user_fixed, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(100_000, 99_299)
+            .validate_amounts(&user_fixed, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+
+        let server_fixed = chain_create_request(None, Some(100_000));
+        chain_create_response(100_700, 100_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap();
+        chain_create_response(100_200, 100_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(100_701, 100_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
+
+        // An unusable rate is an error, not a pass.
+        let mut broken = pair.clone();
+        broken.rate = 0.0;
+        assert!(chain_create_response(100_000, 99_300)
+            .validate_amounts(&user_fixed, Some(&broken))
+            .is_err());
     }
 
     /// Every create response must keep the maker's per-swap taker credential.
@@ -4278,6 +5350,47 @@ mod tests {
              error is reporting, and what default_http_client exists to prevent. \
              Got:\n{forwarded}",
         );
+    }
+
+    /// The browser request for a maker call refuses redirects *at the
+    /// browser*, which is the only thing standing between [`SWAP_AUTH_HEADER`]
+    /// and whatever host a `302` names: `fetch` strips `Authorization` across
+    /// an origin hop, never a custom header. Everything reqwest assembled —
+    /// method, URL, the credential, the JSON content type and the body — must
+    /// still be on the request, or the policy would have been bought with a
+    /// broken client.
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    #[wasm_bindgen_test::wasm_bindgen_test]
+    fn browser_requests_refuse_redirects_and_keep_the_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+        let client = BoltzApiClientV2::new(
+            "https://maker.example/v2".to_string(),
+            Some(Duration::from_secs(5)),
+        );
+        let url = format!("{}/swap/reverse/quote", client.base_url);
+        let req_builder = client
+            .http_client
+            .post(&url)
+            .json(&serde_json::json!({ "quote": true }));
+        let req_builder = client.maybe_add_timeout(req_builder);
+        let req_builder = BoltzApiClientV2::maybe_add_swap_auth(req_builder, Some(auth)).unwrap();
+        let request = req_builder.build().unwrap();
+
+        let (js_request, _abort) = browser_fetch_request(&request).unwrap();
+
+        assert_eq!(js_request.redirect(), web_sys::RequestRedirect::Error);
+        assert_eq!(js_request.method(), "POST");
+        assert_eq!(js_request.url(), url);
+        let headers = js_request.headers();
+        assert_eq!(
+            headers.get(SWAP_AUTH_HEADER).unwrap().as_deref(),
+            Some(auth)
+        );
+        assert_eq!(
+            headers.get("content-type").unwrap().as_deref(),
+            Some("application/json")
+        );
+        assert!(!js_request.signal().aborted());
     }
 
     /// An org key on a client, as [`crate::kaleido::KaleidoOrgClient`] binds it.

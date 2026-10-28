@@ -32,6 +32,14 @@ export * from "./reconcile.js";
 
 export { resolveLightningAddress } from "../vendor/bindings_wasm.js";
 
+/** Create-time timeout checks against a trusted tip (`esploraTipHeight`), to
+ * run before paying a reverse swap's invoice or funding a chain swap. The
+ * maker's `height()` is not a trusted tip. */
+export {
+  validateReverseTimeoutHeadroom,
+  validateChainTimeoutHeadroom,
+} from "../vendor/bindings_wasm.js";
+
 export type {
   CorridorCard,
   CorridorCardAsset,
@@ -57,6 +65,7 @@ export type {
   Webhook,
   CreateSubmarineRequest,
   CreateSubmarineResponse,
+  InternalHopRef,
   CreateReverseRequest,
   CreateReverseResponse,
   CreateChainRequest,
@@ -133,12 +142,9 @@ export interface KaleidoMakerClientOptions {
  * browser, an extension or a mobile app, use {@link createKaleidoOrgClient}
  * with the organization's public key instead.
  *
- * One protection is also weaker under `fetch` than on a server: `fetch` owns
- * redirect handling and the SDK can set no policy on it, so a `3xx` away from
- * the maker is reported after the fact instead of declined. The key is not
- * disclosed by such a hop — `fetch` drops `Authorization` when a redirect
- * crosses origins — but the response is not the maker's, and the call fails
- * naming the host that answered.
+ * Redirects are declined under `fetch` as on a server: the SDK issues every
+ * maker request with `redirect: "error"`, so a `3xx` away from the maker fails
+ * the call without being followed and no header reaches the host it named.
  *
  * ## Error reporters that capture locals
  *
@@ -254,10 +260,41 @@ export interface TxParams {
   cooperative?: boolean;
   /** Per-swap credential from create or signed recovery. Required for maker cooperative refunds. */
   swapAuth?: string;
+  /**
+   * Confirmations the lockup must have, as seen by the Esplora the params
+   * name, before a claim reveals the preimage. Defaults to 1. The WASM core
+   * checks this itself (tip height and output status from Esplora), so it
+   * holds for every caller of `constructClaim`, not only the reconcile
+   * helpers. Refunds ignore it.
+   */
+  minConfirmations?: number;
+  /** Explicitly accept claiming an unconfirmed, replaceable lockup. Default false. */
+  allowZeroConf?: boolean;
+  /**
+   * Blocks of headroom to the swap timeout a claim requires, measured
+   * against the Esplora tip. Defaults to 6 on Bitcoin and 60 on Liquid; 0
+   * accepts the expiry race.
+   */
+  claimSafetyMarginBlocks?: number;
+  /**
+   * Build a claim although an unconfirmed spend of the lockup is already
+   * visible: only to fee-bump a stuck claim of your own, whose preimage is
+   * already public. A confirmed spend is always refused. Default false.
+   */
+  allowConflictingSpend?: boolean;
 }
 
+/** Claim policy fields, shared with `TxParams`; see there. */
+export type ClaimPolicyParams = Pick<
+  TxParams,
+  | "minConfirmations"
+  | "allowZeroConf"
+  | "claimSafetyMarginBlocks"
+  | "allowConflictingSpend"
+>;
+
 /** Parameters for the caller-funded L-USDT PSET prepare methods. */
-export interface LiquidPsetParams {
+export interface LiquidPsetParams extends ClaimPolicyParams {
   outputAddress: string;
   swapId: string;
   /** Application fee ceiling in policy-asset satoshis. */

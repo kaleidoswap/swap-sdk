@@ -117,13 +117,16 @@ lightning = "0.2.2"
 zeroize = "1.9.0"
 
 [target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+# `net` + `rt` for the LNURL egress resolver (`tokio::net::lookup_host`);
+# reqwest already needs both on native, so this adds no compile.
+tokio = { workspace = true, features = ["net", "rt"] }
 electrum-client = { version = "0.25.0", default-features = false, features = ["use-rustls-ring", "proxy"], optional = true }
 rustls = { version = "0.23.32", default-features = false, features = ["ring"], optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
 js-sys = "0.3.77"
-web-sys = { version = "0.3.77", features = ["Request", "RequestInit", "RequestRedirect", "RequestCredentials", "Response", "AbortController", "AbortSignal"] }
+web-sys = { version = "0.3.77", features = ["Request", "RequestInit", "RequestRedirect", "RequestCredentials", "Response", "Headers", "AbortController", "AbortSignal"] }
 wasm-bindgen = "0.2.100"
 wasm-bindgen-futures = "0.4.50"
 gloo-timers = { version = "0.3.0", features = ["futures"] }

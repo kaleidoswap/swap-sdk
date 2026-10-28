@@ -2274,7 +2274,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 [[package]]
 name = "ldk-server-client"
 version = "0.1.0"
-source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=49c6ce2e9554eea0d819fd3bbd267af6db45b1c0#49c6ce2e9554eea0d819fd3bbd267af6db45b1c0"
+source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d#823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d"
 dependencies = [
  "bitcoin_hashes",
  "bytes",
@@ -2284,6 +2284,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "ldk-server-grpc",
+ "ldk-server-macaroons",
  "prost 0.11.9",
  "reqwest 0.12.28",
  "rustls 0.23.45",
@@ -2292,7 +2293,7 @@ dependencies = [
 [[package]]
 name = "ldk-server-grpc"
 version = "0.1.0"
-source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=49c6ce2e9554eea0d819fd3bbd267af6db45b1c0#49c6ce2e9554eea0d819fd3bbd267af6db45b1c0"
+source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d#823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d"
 dependencies = [
  "bytes",
  "http",
@@ -2300,6 +2301,15 @@ dependencies = [
  "prost 0.11.9",
  "prost-build 0.11.9",
  "tokio",
+]
+
+[[package]]
+name = "ldk-server-macaroons"
+version = "0.1.0"
+source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d#823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d"
+dependencies = [
+ "bitcoin_hashes",
+ "hex-conservative 0.2.2",
 ]
 
 [[package]]
@@ -2488,8 +2498,8 @@ dependencies = [
 
 [[package]]
 name = "maker-connector-grpc"
-version = "0.7.22"
-source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=49c6ce2e9554eea0d819fd3bbd267af6db45b1c0#49c6ce2e9554eea0d819fd3bbd267af6db45b1c0"
+version = "0.11.0"
+source = "git+https://github.com/kaleidoswap/kaleidoswap-maker-rs?rev=823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d#823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d"
 dependencies = [
  "prost 0.14.4",
  "tonic",

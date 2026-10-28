@@ -58,9 +58,9 @@ async function waitStatus(id: string, target: string, mine = false) {
   }
   throw new Error(`swap ${id} did not reach ${target}; last ${last}`);
 }
-async function paymentStatus(paymentId: string, expected: number) {
+async function paymentStatus(paymentId: string, expected: number, inbound = false) {
   for (let i = 0; i < 60; i++) {
-    const p = await call('payment', { paymentId });
+    const p = await call('payment', inbound ? { paymentHash: paymentId } : { paymentId });
     if (p.status === expected) return p;
     await pause(500);
   }
@@ -97,7 +97,7 @@ try {
   const happy = await submarine(0n, invoice.invoice, 'submarine');
   await waitStatus(happy.response.id, 'transaction.claimed', true);
   await call('mine', { blocks: 1 });
-  await paymentStatus(invoice.paymentId, 1);
+  await paymentStatus(invoice.paymentHash, 1, true);
   const remaining = info.issued - info.inventory - Number(happy.response.expectedAmount);
   await call('balance', { expected: remaining });
   report.submarine = { id: happy.response.id, lockTxid: happy.lock.txid, amount: Number(happy.response.expectedAmount), status: 'transaction.claimed', lightningPaymentSucceeded: true };

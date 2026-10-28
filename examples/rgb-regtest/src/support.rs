@@ -196,11 +196,39 @@ pub async fn wait_balance(
 }
 pub async fn node(name: &str) -> Result<LdkServerClient> {
     let port = if name == "maker" { 23636 } else { 23646 };
-    let key = fs::read(root().join(format!("ldk-{name}/regtest/api_key")))?;
+    let key =
+        fs::read_to_string(root().join(format!("ldk-{name}/regtest/macaroons/admin.macaroon")))?;
     let cert = fs::read(root().join(format!("certs/{name}.crt")))?;
-    LdkServerClient::new(format!("localhost:{port}"), hex::encode(key), &cert)
+    LdkServerClient::new(format!("localhost:{port}"), key.trim().to_owned(), &cert)
         .map_err(|e| anyhow!("LDK {name}: {e}"))
 }
+pub async fn inbound_payment_id(client: &LdkServerClient, hash: &str) -> Result<String> {
+    use ldk_server_client::ldk_server_grpc::types::{payment_kind, PaymentDirection};
+    let mut token = None;
+    let mut found = None;
+    loop {
+        let page = client
+            .list_payments(ListPaymentsRequest { page_token: token })
+            .await?;
+        for payment in page.payments {
+            if payment.direction == PaymentDirection::Inbound as i32 {
+                if let Some(payment_kind::Kind::Bolt11(invoice)) = payment.kind.and_then(|k| k.kind)
+                {
+                    if invoice.hash == hash {
+                        ensure!(found.is_none(), "ambiguous inbound payment hash");
+                        found = Some(payment.payment_id);
+                    }
+                }
+            }
+        }
+        token = page.next_page_token;
+        if token.is_none() {
+            break;
+        }
+    }
+    found.context("inbound payment has not arrived")
+}
+
 pub async fn provision_lightning() -> Result<()> {
     let maker = node("maker").await?;
     let taker = node("taker").await?;
@@ -236,7 +264,7 @@ pub async fn provision_lightning() -> Result<()> {
         .open_channel(OpenChannelRequest {
             node_pubkey: peer.node_id,
             address: "ldk-maker:9735".into(),
-            channel_amount_sats: 4_000_000,
+            amount: Some(open_channel_request::Amount::ChannelAmountSats(4_000_000)),
             push_to_counterparty_msat: Some(2_000_000_000),
             channel_config: None,
             announce_channel: false,
@@ -275,7 +303,7 @@ impl MakerProcess {
             .append(true)
             .open(root().join("maker.log"))?;
         let refund = rpc("getnewaddress", json!([])).await?;
-        let key = hex::encode(fs::read(root().join("ldk-maker/regtest/api_key"))?);
+        let macaroon_path = root().join("ldk-maker/regtest/macaroons/admin.macaroon");
         let child = Command::new(executable)
             .current_dir(root())
             .env("SENTRY_DSN", "")
@@ -287,7 +315,7 @@ impl MakerProcess {
                 "postgres://postgres:postgres@127.0.0.1:25433/maker",
             )
             .env("MAKER_LDK_SERVER__ADDRESS", "localhost:23636")
-            .env("MAKER_LDK_SERVER__API_KEY_HEX", key)
+            .env("MAKER_LDK_SERVER__MACAROON_PATH", macaroon_path)
             .env(
                 "MAKER_LDK_SERVER__TLS_CERT_PATH",
                 root().join("certs/maker.crt"),

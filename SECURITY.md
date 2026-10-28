@@ -55,10 +55,9 @@ When auditing this SDK, the highest-impact surfaces are:
   logs the response discloses it, and nothing re-issues a lost one.
 - **Partner API keys.** `kld_test_…` / `kld_live_…` organization keys travel
   as bearer credentials bound to the maker URL they were configured with, are
-  refused over plain HTTP off loopback, decline redirects on the native
-  clients, and are refused outright in a document context. The browser is the
-  weak case: `fetch` owns redirects, so a hop off the maker is reported after
-  the fact rather than declined.
+  refused over plain HTTP off loopback, decline redirects on every client —
+  native by reqwest policy, in the browser by issuing each maker `fetch` with
+  `redirect: "error"` — and are refused outright in a document context.
 - **Chain identity.** Signet settles on Mutinynet, and signet and testnet3
   encode addresses identically — a mismatch raises no error, it simply creates
   swaps on one chain while funding or watching another. The same shape of bug

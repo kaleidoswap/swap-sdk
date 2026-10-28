@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "kaleidoswap/kaleidoswap-maker-rs",
-    "revision": "c106f395c2326b4d43a1e1529a2847234808c3ef",
+    "revision": "823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d",
     "file": "openapi.yaml"
   },
   "routes": {
@@ -504,6 +504,17 @@
         }
       }
     },
+    "InternalHopRef": {
+      "type": "object",
+      "required": [
+        "payeeId"
+      ],
+      "properties": {
+        "payeeId": {
+          "type": "string"
+        }
+      }
+    },
     "PayoutStatus": {
       "type": "object",
       "required": [
@@ -924,6 +935,16 @@
         },
         "id": {
           "type": "string"
+        },
+        "internalHop": {
+          "oneOf": [
+            {
+              "$ref": "#/components/schemas/InternalHopRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "invoiceAmount": {
           "type": [

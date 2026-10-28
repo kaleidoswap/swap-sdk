@@ -284,7 +284,11 @@ fn rgb_responses_require_canonical_leaf_versions_and_script_bytes() {
     }
 }
 
-struct ReviewCoins(Vec<(OutPoint, bitcoin::TxOut)>);
+struct ReviewCoins(
+    Vec<(OutPoint, bitcoin::TxOut)>,
+    Option<kaleidorg_swap_sdk::network::OutputStatus>,
+    u32,
+);
 #[macros::async_trait]
 impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
     async fn get_address_balance(&self, _: &Address) -> Result<(u64, i64), Error> {
@@ -301,6 +305,16 @@ impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
     }
     async fn broadcast_tx(&self, _: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error> {
         unreachable!()
+    }
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        Ok(self.2)
+    }
+    async fn get_output_status(
+        &self,
+        _: &OutPoint,
+        _: &bitcoin::Script,
+    ) -> Result<Option<kaleidorg_swap_sdk::network::OutputStatus>, Error> {
+        Ok(self.1)
     }
     fn network(&self) -> BitcoinChain {
         CHAIN
@@ -360,8 +374,16 @@ async fn rgb_spends_ignore_address_candidates_and_require_the_pinned_lock() {
             }),
             script_pubkey: c.script_pubkey.clone(),
         };
-        let chain = ChainClient::new()
-            .with_bitcoin(ReviewCoins(vec![(fake, fo), (rp, real.output[0].clone())]));
+        use kaleidorg_swap_sdk::network::{OutputSpend, OutputStatus};
+        let confirmed = OutputStatus {
+            block_height: Some(1),
+            spend: OutputSpend::Unspent,
+        };
+        let chain = ChainClient::new().with_bitcoin(ReviewCoins(
+            vec![(fake, fo), (rp, real.output[0].clone())],
+            Some(confirmed),
+            10,
+        ));
         let swap = SwapScript::from_bitcoin(script);
         for pin in [
             real.clone(),
@@ -392,6 +414,35 @@ async fn rgb_spends_ignore_address_candidates_and_require_the_pinned_lock() {
                     .unwrap_err()
                     .message()
                     .contains("supplied lock transaction"));
+            }
+        }
+        if direction != "submarine" {
+            for (status, tip, reason) in [
+                (None, 10, "unknown"),
+                (
+                    Some(OutputStatus {
+                        block_height: None,
+                        ..confirmed
+                    }),
+                    10,
+                    "confirmation",
+                ),
+                (Some(confirmed), 24, "timeout"),
+            ] {
+                let chain = ChainClient::new().with_bitcoin(ReviewCoins(vec![], status, tip));
+                let error = swap
+                    .prepare_rgb_claim(RgbPsbtParams {
+                        output_address: dest.clone(),
+                        funding: RgbSpendFunding::CallerInputs,
+                        max_fee: 10_000,
+                        swap_id: "review-probe".into(),
+                        chain_client: &chain,
+                        boltz_api: &api,
+                        lockup_tx: real.clone(),
+                    })
+                    .await
+                    .unwrap_err();
+                assert!(error.message().contains(reason), "{error}");
             }
         }
     }

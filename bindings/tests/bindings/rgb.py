@@ -6,6 +6,7 @@ No rgb-lib proofs are fabricated here: these test the SDK/wallet boundary.
 import asyncio
 import copy
 import json
+import hashlib
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +25,21 @@ REPLY = None
 
 
 class Maker(BaseHTTPRequestHandler):
+    def do_GET(self):
+        raw = bytes.fromhex(VECTORS["swaps"]["reverse"]["lockTxHex"])
+        txid = hashlib.sha256(hashlib.sha256(raw).digest()).digest()[::-1].hex()
+        evidence = {
+            "/v2/blocks/tip/height": 100,
+            f"/v2/tx/{txid}/status": {"confirmed": True, "block_height": 100},
+            f"/v2/tx/{txid}/outspend/0": {"spent": False},
+        }
+        body = json.dumps(evidence[self.path]).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         REQUEST_METADATA.append((self.path, self.headers.get("X-Swap-Auth")))
         REQUESTS.append(

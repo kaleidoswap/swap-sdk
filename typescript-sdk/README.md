@@ -187,6 +187,29 @@ to that transaction; it neither discovers a different mempool HTLC nor
 rebroadcasts the lockup. `allowZeroConf: true` explicitly accepts an unconfirmed
 lockup, but still requires its raw bytes and txid.
 
+The same policy is enforced inside the WASM core, for every caller of
+`constructClaim`, `constructCooperativeClaim` and `prepareLiquidClaim` and not
+only for the helpers: before the preimage is sent to the maker or placed in a
+witness, the core asks the Esplora the params name for the tip height and the
+lockup output's status, and refuses a lockup the source has not seen, one with
+fewer than `minConfirmations` confirmations (unless `allowZeroConf`), one with a
+spend already visible in the mempool or in a block, and a tip within
+`claimSafetyMarginBlocks` of the swap timeout. The `TxParams` fields
+`minConfirmations`, `allowZeroConf`, `claimSafetyMarginBlocks` and
+`allowConflictingSpend` configure it; the helpers forward their own options.
+`allowConflictingSpend` exists for one case only, fee-bumping a stuck claim of
+your own, and never admits a spend that is already in a block.
+
+Before paying a reverse swap's invoice or funding a chain swap, check the
+response's timeouts against a trusted tip: `validateReverseTimeoutHeadroom(
+response, tipHeight, minHeadroomBlocks)` and `validateChainTimeoutHeadroom(
+response, network, fromChain, fromHeight, toChain, toHeight,
+minClaimHeadroomBlocks)`. The maker refunds the legs you claim at their
+timeouts, so a response whose timeout is mature or nearly so is one where your
+claim would reveal the preimage for a payout the maker can take back. Use
+`esploraTipHeight` for the heights; the maker's `height()` is the maker's claim,
+not the chain's.
+
 Claims stop before the deadline by `claimSafetyMarginBlocks`: default 6 blocks
 for Bitcoin and 60 for Liquid. Override this policy explicitly; 0 accepts an
 expiry race. These margins cannot guarantee confirmation in time. Chain swaps
@@ -513,6 +536,19 @@ Values rejected earlier by wasm-bindgen's generated ABI glue remain native
 JavaScript errors. In particular, passing a `number` where a declared `bigint` is
 required throws `TypeError` before Rust can attach a code.
 
+## L-USDT swaps
+
+`createSubmarineSwap(network, request, rgbContractId, rgbMaxHtlcSat, lusdtAssetId)`,
+`createReverseSwap(network, request, rgbContractId, lusdtAssetId)` and
+`createChainSwap(network, request, lusdtAssetId)` take the L-USDT asset id as a
+local pin, in the same way `rgbContractId` pins an RGB contract. It is never
+sent to the maker. On `mainnet` it may be omitted: the canonical Liquid USDt is
+used, and any other value is refused. On `testnet` and `regtest` USDT is issued
+per deployment, so the pin is required and a missing one is refused before any
+request reaches the maker. The maker's pair card is fetched and cross-checked
+against the pin, but is never the source of the asset: a maker advertising
+another asset as L-USDT is refused.
+
 ## USDT-RGB swaps
 
 `createSubmarineSwap(network, request, rgbContractId)` supports `USDT-RGB → BTC`;
@@ -667,15 +703,12 @@ read as a suspended organization. There is no accessor for the secret half:
 > `includeLocalVariables`, and its equivalents — reads it off the frame
 > regardless. Drop `apiKey` in your before-send hook.
 
-One protection is also weaker under `fetch` than on a server. `fetch` owns
-redirect handling and the SDK can set no policy on it, so a `3xx` away from the
-maker is reported after the fact instead of declined: the call fails naming the
-origin that answered. The key itself is not disclosed by such a hop — `fetch`
-treats any change of scheme, host or port as cross-origin and drops
-`Authorization` — but nothing that response says came from the maker. The advice
-in that error is written for native clients, whose stripping rule ignores the
-scheme, so on a scheme-only hop it will tell you to revoke a key `fetch` had in
-fact already dropped. Erring that way round is deliberate.
+Redirects are declined under `fetch` as on a server. The SDK issues every maker
+request with `redirect: "error"`, so a `3xx` away from the maker fails the call
+without being followed: neither the key nor a per-swap `swapAuth` reaches the
+origin a `Location` named. The browser reports a refused redirect, a CORS
+failure and a network error as one and the same `TypeError`, so the error names
+all three.
 
 ## `swapAuth` — persist it with the swap
 

@@ -1,5 +1,7 @@
 use crate::error::Error;
-use crate::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
+use crate::network::{
+    BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputSpend, OutputStatus,
+};
 use bitcoin::ScriptBuf;
 use elements::hex::ToHex;
 use elements::pset::serialize::Serialize;
@@ -184,6 +186,26 @@ impl BitcoinClient for EsploraBitcoinClient {
         let raw_text = response.text().await?;
         parse_broadcast_response::<bitcoin::Txid>(status, &raw_text)
     }
+
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        fetch_tip_height(&self.client, &self.base_url, self.timeout).await
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        _script_pubkey: &bitcoin::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        fetch_output_status(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &outpoint.txid.to_string(),
+            outpoint.vout,
+        )
+        .await
+    }
+
     fn network(&self) -> BitcoinChain {
         self.network
     }
@@ -296,8 +318,106 @@ impl LiquidClient for EsploraLiquidClient {
         let txid = parse_broadcast_response::<elements::Txid>(status, &raw_text)?;
         Ok(txid.to_string())
     }
+
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        fetch_tip_height(&self.client, &self.base_url, self.timeout).await
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &elements::OutPoint,
+        _script_pubkey: &elements::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        fetch_output_status(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &outpoint.txid.to_string(),
+            outpoint.vout,
+        )
+        .await
+    }
+
     fn network(&self) -> LiquidChain {
         self.network
+    }
+}
+
+/// `GET /blocks/tip/height`: a bare decimal height.
+async fn fetch_tip_height(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+) -> Result<u32, Error> {
+    let url = format!("{base_url}/blocks/tip/height");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Tip height request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    parse_tip_height(&body)
+}
+
+fn parse_tip_height(body: &str) -> Result<u32, Error> {
+    body.trim()
+        .parse::<u32>()
+        .map_err(|e| Error::Esplora(format!("Failed to parse tip height {body:?}: {e}")))
+}
+
+/// `GET /tx/:txid/status` and `GET /tx/:txid/outspend/:vout`, combined into
+/// one [`OutputStatus`]. A 404 on the status call means the source has never
+/// seen the transaction; a 404 on the outspend call (the output index does
+/// not exist) is an error, since the caller named a specific output.
+async fn fetch_output_status(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+    txid: &str,
+    vout: u32,
+) -> Result<Option<OutputStatus>, Error> {
+    let status_url = format!("{base_url}/tx/{txid}/status");
+    let response = get_with_retry(client, &status_url, timeout).await?;
+    let http_status = response.status();
+    let body = response.text().await?;
+    if http_status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !http_status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Transaction status request failed ({http_status}): {}",
+            body.trim()
+        )));
+    }
+    let tx_status: TxStatus = serde_json::from_str(&body)?;
+
+    let outspend_url = format!("{base_url}/tx/{txid}/outspend/{vout}");
+    let response = get_with_retry(client, &outspend_url, timeout).await?;
+    let http_status = response.status();
+    let body = response.text().await?;
+    if !http_status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Output spend request failed ({http_status}): {}",
+            body.trim()
+        )));
+    }
+    let outspend: OutSpend = serde_json::from_str(&body)?;
+    Ok(Some(output_status_from(&tx_status, &outspend)))
+}
+
+fn output_status_from(tx_status: &TxStatus, outspend: &OutSpend) -> OutputStatus {
+    OutputStatus {
+        // A source that reports `confirmed` without a height is not giving
+        // evidence of inclusion; treat it as unconfirmed.
+        block_height: tx_status.block_height.filter(|_| tx_status.confirmed),
+        spend: match (outspend.spent, &outspend.status) {
+            (false, _) => OutputSpend::Unspent,
+            (true, Some(status)) if status.confirmed => OutputSpend::SpentConfirmed,
+            (true, _) => OutputSpend::SpentUnconfirmed,
+        },
     }
 }
 
@@ -425,6 +545,22 @@ pub struct Utxo {
     pub vout: u32,
 }
 
+/// `GET /tx/:txid/status`.
+#[derive(Debug, Deserialize, Clone)]
+struct TxStatus {
+    confirmed: bool,
+    #[serde(default)]
+    block_height: Option<u32>,
+}
+
+/// `GET /tx/:txid/outspend/:vout`.
+#[derive(Debug, Deserialize, Clone)]
+struct OutSpend {
+    spent: bool,
+    #[serde(default)]
+    status: Option<Status>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,6 +599,56 @@ mod tests {
             esplora_client.get_genesis_hash().await.unwrap().to_hex(),
             "1466275836220db2944ca059a3a10ef6fd2ea684b0688d2c379296888a206003"
         );
+    }
+
+    #[macros::test_all]
+    fn tip_height_parses_bare_decimal_only() {
+        assert_eq!(parse_tip_height("812345\n").unwrap(), 812345);
+        assert_eq!(parse_tip_height("0").unwrap(), 0);
+        assert!(parse_tip_height("").is_err());
+        assert!(parse_tip_height("<html>").is_err());
+        assert!(parse_tip_height("-1").is_err());
+    }
+
+    /// Inclusion needs a height: a `confirmed` flag with no `block_height` is
+    /// not evidence, and any spend, confirmed or in the mempool, is a conflict.
+    #[macros::test_all]
+    fn output_status_requires_a_height_and_flags_any_spend() {
+        let confirmed: TxStatus = serde_json::from_str(
+            r#"{"confirmed":true,"block_height":100,"block_hash":"x","block_time":1}"#,
+        )
+        .unwrap();
+        let mempool: TxStatus = serde_json::from_str(r#"{"confirmed":false}"#).unwrap();
+        let odd: TxStatus = serde_json::from_str(r#"{"confirmed":true}"#).unwrap();
+        let unspent: OutSpend = serde_json::from_str(r#"{"spent":false}"#).unwrap();
+        let spent_in_mempool: OutSpend = serde_json::from_str(
+            r#"{"spent":true,"txid":"abcd","vin":0,"status":{"confirmed":false}}"#,
+        )
+        .unwrap();
+
+        let spent_in_block: OutSpend = serde_json::from_str(
+            r#"{"spent":true,"txid":"abcd","vin":0,"status":{"confirmed":true,"block_height":101}}"#,
+        )
+        .unwrap();
+
+        let status = output_status_from(&confirmed, &unspent);
+        assert_eq!(status.block_height, Some(100));
+        assert_eq!(status.spend, OutputSpend::Unspent);
+        assert_eq!(status.confirmations(100), 1);
+        assert_eq!(status.confirmations(105), 6);
+        assert_eq!(status.confirmations(99), 1);
+
+        let status = output_status_from(&mempool, &spent_in_mempool);
+        assert_eq!(status.block_height, None);
+        assert_eq!(status.spend, OutputSpend::SpentUnconfirmed);
+        assert_eq!(status.confirmations(1_000), 0);
+
+        assert_eq!(
+            output_status_from(&confirmed, &spent_in_block).spend,
+            OutputSpend::SpentConfirmed
+        );
+
+        assert_eq!(output_status_from(&odd, &unspent).block_height, None);
     }
 
     #[macros::test_all]

@@ -1,6 +1,6 @@
 // use electrum_client::raw_client::RawClient;
 
-use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
+use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputSpend, OutputStatus};
 use crate::error::Error;
 use bitcoin::{Address, ScriptBuf, Transaction, Txid};
 use electrum_client::{ElectrumApi, GetHistoryRes};
@@ -166,9 +166,77 @@ impl BitcoinClient for ElectrumBitcoinClient {
         Ok(self.inner.transaction_broadcast(signed_tx)?)
     }
 
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        tip_height(&self.inner)
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        script_pubkey: &bitcoin::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        let history = self.inner.script_get_history(script_pubkey)?;
+        let Some(block_height) = history_height(&history, &outpoint.txid) else {
+            return Ok(None);
+        };
+        let txs = self
+            .inner
+            .batch_transaction_get(&history.iter().map(|h| h.tx_hash).collect::<Vec<_>>())?;
+        let spend = txs
+            .iter()
+            .find(|tx| {
+                tx.input
+                    .iter()
+                    .any(|input| input.previous_output == *outpoint)
+            })
+            .map(|tx| spend_state(&history, &tx.compute_txid()))
+            .unwrap_or(OutputSpend::Unspent);
+        Ok(Some(OutputStatus {
+            block_height,
+            spend,
+        }))
+    }
+
     fn network(&self) -> BitcoinChain {
         self.network
     }
+}
+
+/// The raw subscription, not `block_headers_subscribe`: that one parses the
+/// header as a Bitcoin header, and an Elements header (dynamic federation
+/// fields, no nonce) fails that parse with "data not consumed entirely".
+/// Only the height is needed here, on either chain.
+fn tip_height(client: &electrum_client::Client) -> Result<u32, Error> {
+    let header = client.block_headers_subscribe_raw()?;
+    u32::try_from(header.height).map_err(|_| {
+        Error::Generic(format!(
+            "Electrum tip height {} overflows u32",
+            header.height
+        ))
+    })
+}
+
+/// How a spend found in the history stands: confirmed if the history gives
+/// its transaction a block height.
+fn spend_state(history: &[GetHistoryRes], spending_txid: &Txid) -> OutputSpend {
+    match history_height(history, spending_txid) {
+        Some(Some(_)) => OutputSpend::SpentConfirmed,
+        _ => OutputSpend::SpentUnconfirmed,
+    }
+}
+
+/// Electrum reports a transaction's inclusion through the history of a script
+/// it touches: `height > 0` is the block, `0` is the mempool and `-1` is the
+/// mempool with unconfirmed parents. `None` when the history does not list it.
+fn history_height(history: &[GetHistoryRes], txid: &Txid) -> Option<Option<u32>> {
+    history
+        .iter()
+        .find(|entry| entry.tx_hash == *txid)
+        .map(|entry| {
+            u32::try_from(entry.height)
+                .ok()
+                .filter(|height| *height > 0)
+        })
 }
 
 pub struct ElectrumLiquidClient {
@@ -281,6 +349,41 @@ impl LiquidClient for ElectrumLiquidClient {
             .to_string())
     }
 
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        tip_height(&self.inner)
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &elements::OutPoint,
+        script_pubkey: &elements::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        let history = self
+            .inner
+            .script_get_history(bitcoin::Script::from_bytes(script_pubkey.as_bytes()))?;
+        let txid = Txid::from_raw_hash(outpoint.txid.to_raw_hash());
+        let Some(block_height) = history_height(&history, &txid) else {
+            return Ok(None);
+        };
+        let mut spend = OutputSpend::Unspent;
+        for entry in &history {
+            let raw_tx = self.inner.transaction_get_raw(&entry.tx_hash)?;
+            let tx = elements::encode::deserialize::<elements::Transaction>(&raw_tx)?;
+            if tx
+                .input
+                .iter()
+                .any(|input| input.previous_output == *outpoint)
+            {
+                spend = spend_state(&history, &entry.tx_hash);
+                break;
+            }
+        }
+        Ok(Some(OutputStatus {
+            block_height,
+            spend,
+        }))
+    }
+
     fn network(&self) -> LiquidChain {
         self.network
     }
@@ -376,6 +479,40 @@ mod tests {
         let numblocks = "blockchain.numblocks.subscribe";
         let blockheight = electrum_client.inner.raw_call(numblocks, []).unwrap();
         println!("blockheight: {blockheight}");
+    }
+
+    /// Electrum's history heights: positive is a block, zero and negative are
+    /// the mempool, and an absent entry means the server never saw the tx.
+    #[test]
+    fn history_height_maps_electrum_conventions() {
+        let txid = |byte: u8| {
+            Txid::from_raw_hash(
+                <bitcoin::hashes::sha256d::Hash as bitcoin::hashes::Hash>::from_byte_array(
+                    [byte; 32],
+                ),
+            )
+        };
+        let history = vec![
+            GetHistoryRes {
+                height: 120,
+                tx_hash: txid(1),
+                fee: None,
+            },
+            GetHistoryRes {
+                height: 0,
+                tx_hash: txid(2),
+                fee: None,
+            },
+            GetHistoryRes {
+                height: -1,
+                tx_hash: txid(3),
+                fee: None,
+            },
+        ];
+        assert_eq!(history_height(&history, &txid(1)), Some(Some(120)));
+        assert_eq!(history_height(&history, &txid(2)), Some(None));
+        assert_eq!(history_height(&history, &txid(3)), Some(None));
+        assert_eq!(history_height(&history, &txid(4)), None);
     }
 
     #[test]

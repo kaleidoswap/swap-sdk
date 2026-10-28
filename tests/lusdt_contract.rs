@@ -22,7 +22,7 @@ use kaleidorg_swap_sdk::swaps::boltz::{
     GetReversePairsResponse, GetSubmarinePairsResponse, Side,
 };
 use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::{BtcSwapScript, LiquidSwapScript};
+use kaleidorg_swap_sdk::{BtcSwapScript, LiquidAssetContext, LiquidSwapScript};
 
 const GOLDEN: &str = include_str!("fixtures/lusdt-v1/liquid-golden-vectors.json");
 const WIRE: &str = include_str!("fixtures/lusdt-v1/wire-contract.json");
@@ -298,6 +298,63 @@ fn sdk_parses_lusdt_pair_cards_and_asset_extensions() {
         assert_eq!(context.swap_asset, expected_swap_asset);
         assert_eq!(context.policy_asset, expected_policy_asset);
     }
+}
+
+#[test]
+fn lusdt_pin_is_the_trust_anchor_and_the_pair_card_only_a_cross_check() {
+    let fixture: Value = serde_json::from_str(WIRE).unwrap();
+    let reverse: GetReversePairsResponse =
+        serde_json::from_value(value_at(&fixture, "/pairResponses/reverse").clone()).unwrap();
+    let card = reverse
+        .expected_liquid_asset_context(Currency::Btc, Currency::LUsdt)
+        .unwrap();
+    let pin = string_at(&fixture, "/assets/lusdt");
+
+    // Regtest issues L-USDT per deployment, so the card alone is not enough.
+    assert!(LiquidAssetContext::trusted_lusdt(LiquidChain::LiquidRegtest, None).is_err());
+    let trusted = LiquidAssetContext::trusted_lusdt(LiquidChain::LiquidRegtest, Some(pin))
+        .unwrap()
+        .cross_check_pair_card(card)
+        .unwrap();
+    assert_eq!(Some(trusted), card);
+
+    // A maker that advertises another asset as L-USDT is refused before any
+    // swap is created, however self-consistent its card and response are.
+    let mut substituted = reverse.clone();
+    substituted
+        .pairs
+        .get_mut("BTC")
+        .unwrap()
+        .get_mut("L-USDT")
+        .unwrap()
+        .to_asset_id =
+        Some("2222222222222222222222222222222222222222222222222222222222222222".to_string());
+    let substituted_card = substituted
+        .expected_liquid_asset_context(Currency::Btc, Currency::LUsdt)
+        .unwrap();
+    let err = trusted.cross_check_pair_card(substituted_card).unwrap_err();
+    assert!(err.to_string().contains("pair card"), "{err}");
+
+    // The frozen response validates against the trusted context.
+    let response: CreateReverseResponse =
+        serde_json::from_value(value_at(&fixture, "/create/reverse/response").clone()).unwrap();
+    let claim_key = bitcoin::PublicKey::from_str(string_at(
+        &fixture,
+        "/create/reverse/request/claimPublicKey",
+    ))
+    .unwrap();
+    let preimage =
+        Preimage::from_sha256_str(string_at(&fixture, "/create/reverse/request/preimageHash"))
+            .unwrap();
+    response
+        .validate_with_currency_and_asset_context(
+            &preimage,
+            &claim_key,
+            Chain::Liquid(LiquidChain::LiquidRegtest),
+            Some(Currency::LUsdt),
+            Some(trusted),
+        )
+        .unwrap();
 }
 
 #[test]

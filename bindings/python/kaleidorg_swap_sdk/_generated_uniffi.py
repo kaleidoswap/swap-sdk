@@ -526,6 +526,20 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom()
+        != 14140
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom()
+        != 49957
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex() != 9628:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -535,8 +549,22 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height()
+        != 60872
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx()
         != 21307
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height()
+        != 37297
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1326,11 +1354,21 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new.argtypes = (
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new.restype = (
     ctypes.c_void_p
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx.argtypes = (
     ctypes.c_void_p,
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.restype = (
     ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_keypair.argtypes = (
@@ -2065,6 +2103,25 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.argtypes 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.c_uint32,
+    _UniffiRustBuffer,
+    ctypes.c_uint32,
+    ctypes.c_uint32,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.restype = (
+    None
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.c_uint32,
+    ctypes.c_uint32,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom.restype = None
 _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2303,6 +2360,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.restype = (
     ctypes.c_uint16
@@ -2311,8 +2372,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.restype = (
     ctypes.c_uint16
@@ -4648,6 +4713,14 @@ class CreateChainRequest:
     server_lock_amount: "typing.Optional[int]"
     pair_hash: "typing.Optional[str]"
     referral_id: "typing.Optional[str]"
+    lusdt_asset_id: "typing.Optional[str]"
+    """
+    The L-USDT asset the swap must carry, pinned locally and never sent
+    to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    any other value; testnet and regtest issue USDT per deployment, so
+    there it is required. The maker's pair card is only cross-checked
+    against it. Ignored unless a side is `L-USDT`.
+    """
 
     def __init__(
         self,
@@ -4663,6 +4736,7 @@ class CreateChainRequest:
         server_lock_amount: "typing.Optional[int]" = _DEFAULT,
         pair_hash: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
+        lusdt_asset_id: "typing.Optional[str]" = _DEFAULT,
     ):
         self._from = _from
         self.to = to
@@ -4693,9 +4767,13 @@ class CreateChainRequest:
             self.referral_id = None
         else:
             self.referral_id = referral_id
+        if lusdt_asset_id is _DEFAULT:
+            self.lusdt_asset_id = None
+        else:
+            self.lusdt_asset_id = lusdt_asset_id
 
     def __str__(self):
-        return "CreateChainRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, refund_public_key={}, user_lock_amount={}, server_lock_amount={}, pair_hash={}, referral_id={})".format(
+        return "CreateChainRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, refund_public_key={}, user_lock_amount={}, server_lock_amount={}, pair_hash={}, referral_id={}, lusdt_asset_id={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -4707,6 +4785,7 @@ class CreateChainRequest:
             self.server_lock_amount,
             self.pair_hash,
             self.referral_id,
+            self.lusdt_asset_id,
         )
 
     def __eq__(self, other):
@@ -4732,6 +4811,8 @@ class CreateChainRequest:
             return False
         if self.referral_id != other.referral_id:
             return False
+        if self.lusdt_asset_id != other.lusdt_asset_id:
+            return False
         return True
 
 
@@ -4750,6 +4831,7 @@ class _UniffiConverterTypeCreateChainRequest(_UniffiConverterRustBuffer):
             server_lock_amount=_UniffiConverterOptionalUInt64.read(buf),
             pair_hash=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
+            lusdt_asset_id=_UniffiConverterOptionalString.read(buf),
         )
 
     @staticmethod
@@ -4765,6 +4847,7 @@ class _UniffiConverterTypeCreateChainRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.check_lower(value.server_lock_amount)
         _UniffiConverterOptionalString.check_lower(value.pair_hash)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
+        _UniffiConverterOptionalString.check_lower(value.lusdt_asset_id)
 
     @staticmethod
     def write(value, buf):
@@ -4779,6 +4862,7 @@ class _UniffiConverterTypeCreateChainRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.write(value.server_lock_amount, buf)
         _UniffiConverterOptionalString.write(value.pair_hash, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
+        _UniffiConverterOptionalString.write(value.lusdt_asset_id, buf)
 
 
 class CreateChainResponse:
@@ -4866,6 +4950,15 @@ class CreateReverseRequest:
     address: "typing.Optional[str]"
     address_signature: "typing.Optional[str]"
     referral_id: "typing.Optional[str]"
+    lusdt_asset_id: "typing.Optional[str]"
+    """
+    The L-USDT asset the swap must carry, pinned locally and never sent
+    to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    any other value; testnet and regtest issue USDT per deployment, so
+    there it is required. The maker's pair card is only cross-checked
+    against it. Ignored unless a side is `L-USDT`.
+    """
+
     rgb_contract_id: "typing.Optional[str]"
     """
     Expected RGB contract, pinned locally and never sent to the maker.
@@ -4887,6 +4980,7 @@ class CreateReverseRequest:
         address: "typing.Optional[str]" = _DEFAULT,
         address_signature: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
+        lusdt_asset_id: "typing.Optional[str]" = _DEFAULT,
         rgb_contract_id: "typing.Optional[str]" = _DEFAULT,
     ):
         self._from = _from
@@ -4926,13 +5020,17 @@ class CreateReverseRequest:
             self.referral_id = None
         else:
             self.referral_id = referral_id
+        if lusdt_asset_id is _DEFAULT:
+            self.lusdt_asset_id = None
+        else:
+            self.lusdt_asset_id = lusdt_asset_id
         if rgb_contract_id is _DEFAULT:
             self.rgb_contract_id = None
         else:
             self.rgb_contract_id = rgb_contract_id
 
     def __str__(self):
-        return "CreateReverseRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, invoice_amount={}, pair_hash={}, description={}, description_hash={}, address={}, address_signature={}, referral_id={}, rgb_contract_id={})".format(
+        return "CreateReverseRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, invoice_amount={}, pair_hash={}, description={}, description_hash={}, address={}, address_signature={}, referral_id={}, lusdt_asset_id={}, rgb_contract_id={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -4946,6 +5044,7 @@ class CreateReverseRequest:
             self.address,
             self.address_signature,
             self.referral_id,
+            self.lusdt_asset_id,
             self.rgb_contract_id,
         )
 
@@ -4976,6 +5075,8 @@ class CreateReverseRequest:
             return False
         if self.referral_id != other.referral_id:
             return False
+        if self.lusdt_asset_id != other.lusdt_asset_id:
+            return False
         if self.rgb_contract_id != other.rgb_contract_id:
             return False
         return True
@@ -4998,6 +5099,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
             address=_UniffiConverterOptionalString.read(buf),
             address_signature=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
+            lusdt_asset_id=_UniffiConverterOptionalString.read(buf),
             rgb_contract_id=_UniffiConverterOptionalString.read(buf),
         )
 
@@ -5016,6 +5118,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.address)
         _UniffiConverterOptionalString.check_lower(value.address_signature)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
+        _UniffiConverterOptionalString.check_lower(value.lusdt_asset_id)
         _UniffiConverterOptionalString.check_lower(value.rgb_contract_id)
 
     @staticmethod
@@ -5033,6 +5136,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.address, buf)
         _UniffiConverterOptionalString.write(value.address_signature, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
+        _UniffiConverterOptionalString.write(value.lusdt_asset_id, buf)
         _UniffiConverterOptionalString.write(value.rgb_contract_id, buf)
 
 
@@ -5189,6 +5293,15 @@ class CreateSubmarineRequest:
     refund_public_key: "PublicKey"
     pair_hash: "typing.Optional[str]"
     referral_id: "typing.Optional[str]"
+    lusdt_asset_id: "typing.Optional[str]"
+    """
+    The L-USDT asset the swap must carry, pinned locally and never sent
+    to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    any other value; testnet and regtest issue USDT per deployment, so
+    there it is required. The maker's pair card is only cross-checked
+    against it. Ignored unless a side is `L-USDT`.
+    """
+
     rgb_contract_id: "typing.Optional[str]"
     """
     Expected RGB contract, pinned locally and never sent to the maker.
@@ -5210,6 +5323,7 @@ class CreateSubmarineRequest:
         refund_public_key: "PublicKey",
         pair_hash: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
+        lusdt_asset_id: "typing.Optional[str]" = _DEFAULT,
         rgb_contract_id: "typing.Optional[str]" = _DEFAULT,
         rgb_max_htlc_sat: "typing.Optional[int]" = _DEFAULT,
     ):
@@ -5233,6 +5347,10 @@ class CreateSubmarineRequest:
             self.referral_id = None
         else:
             self.referral_id = referral_id
+        if lusdt_asset_id is _DEFAULT:
+            self.lusdt_asset_id = None
+        else:
+            self.lusdt_asset_id = lusdt_asset_id
         if rgb_contract_id is _DEFAULT:
             self.rgb_contract_id = None
         else:
@@ -5243,7 +5361,7 @@ class CreateSubmarineRequest:
             self.rgb_max_htlc_sat = rgb_max_htlc_sat
 
     def __str__(self):
-        return "CreateSubmarineRequest(_from={}, to={}, from_currency={}, to_currency={}, invoice={}, refund_public_key={}, pair_hash={}, referral_id={}, rgb_contract_id={}, rgb_max_htlc_sat={})".format(
+        return "CreateSubmarineRequest(_from={}, to={}, from_currency={}, to_currency={}, invoice={}, refund_public_key={}, pair_hash={}, referral_id={}, lusdt_asset_id={}, rgb_contract_id={}, rgb_max_htlc_sat={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -5252,6 +5370,7 @@ class CreateSubmarineRequest:
             self.refund_public_key,
             self.pair_hash,
             self.referral_id,
+            self.lusdt_asset_id,
             self.rgb_contract_id,
             self.rgb_max_htlc_sat,
         )
@@ -5273,6 +5392,8 @@ class CreateSubmarineRequest:
             return False
         if self.referral_id != other.referral_id:
             return False
+        if self.lusdt_asset_id != other.lusdt_asset_id:
+            return False
         if self.rgb_contract_id != other.rgb_contract_id:
             return False
         if self.rgb_max_htlc_sat != other.rgb_max_htlc_sat:
@@ -5292,6 +5413,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
             refund_public_key=_UniffiConverterTypePublicKey.read(buf),
             pair_hash=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
+            lusdt_asset_id=_UniffiConverterOptionalString.read(buf),
             rgb_contract_id=_UniffiConverterOptionalString.read(buf),
             rgb_max_htlc_sat=_UniffiConverterOptionalUInt64.read(buf),
         )
@@ -5306,6 +5428,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
         _UniffiConverterTypePublicKey.check_lower(value.refund_public_key)
         _UniffiConverterOptionalString.check_lower(value.pair_hash)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
+        _UniffiConverterOptionalString.check_lower(value.lusdt_asset_id)
         _UniffiConverterOptionalString.check_lower(value.rgb_contract_id)
         _UniffiConverterOptionalUInt64.check_lower(value.rgb_max_htlc_sat)
 
@@ -5319,11 +5442,13 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
         _UniffiConverterTypePublicKey.write(value.refund_public_key, buf)
         _UniffiConverterOptionalString.write(value.pair_hash, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
+        _UniffiConverterOptionalString.write(value.lusdt_asset_id, buf)
         _UniffiConverterOptionalString.write(value.rgb_contract_id, buf)
         _UniffiConverterOptionalUInt64.write(value.rgb_max_htlc_sat, buf)
 
 
 class CreateSubmarineResponse:
+    internal_hop: "typing.Optional[InternalHopRef]"
     accept_zero_conf: "bool"
     address: "str"
     bip21: "str"
@@ -5350,6 +5475,7 @@ class CreateSubmarineResponse:
     def __init__(
         self,
         *,
+        internal_hop: "typing.Optional[InternalHopRef]",
         accept_zero_conf: "bool",
         address: "str",
         bip21: "str",
@@ -5365,6 +5491,7 @@ class CreateSubmarineResponse:
         swap_auth: "typing.Optional[str]",
         rgb: "typing.Optional[RgbLock]",
     ):
+        self.internal_hop = internal_hop
         self.accept_zero_conf = accept_zero_conf
         self.address = address
         self.bip21 = bip21
@@ -5381,7 +5508,8 @@ class CreateSubmarineResponse:
         self.rgb = rgb
 
     def __str__(self):
-        return "CreateSubmarineResponse(accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={}, rgb={})".format(
+        return "CreateSubmarineResponse(internal_hop={}, accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={}, rgb={})".format(
+            self.internal_hop,
             self.accept_zero_conf,
             self.address,
             self.bip21,
@@ -5399,6 +5527,8 @@ class CreateSubmarineResponse:
         )
 
     def __eq__(self, other):
+        if self.internal_hop != other.internal_hop:
+            return False
         if self.accept_zero_conf != other.accept_zero_conf:
             return False
         if self.address != other.address:
@@ -5434,6 +5564,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return CreateSubmarineResponse(
+            internal_hop=_UniffiConverterOptionalTypeInternalHopRef.read(buf),
             accept_zero_conf=_UniffiConverterBool.read(buf),
             address=_UniffiConverterString.read(buf),
             bip21=_UniffiConverterString.read(buf),
@@ -5452,6 +5583,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
 
     @staticmethod
     def check_lower(value):
+        _UniffiConverterOptionalTypeInternalHopRef.check_lower(value.internal_hop)
         _UniffiConverterBool.check_lower(value.accept_zero_conf)
         _UniffiConverterString.check_lower(value.address)
         _UniffiConverterString.check_lower(value.bip21)
@@ -5469,6 +5601,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
 
     @staticmethod
     def write(value, buf):
+        _UniffiConverterOptionalTypeInternalHopRef.write(value.internal_hop, buf)
         _UniffiConverterBool.write(value.accept_zero_conf, buf)
         _UniffiConverterString.write(value.address, buf)
         _UniffiConverterString.write(value.bip21, buf)
@@ -6087,6 +6220,37 @@ class _UniffiConverterTypeHeightResponse(_UniffiConverterRustBuffer):
         _UniffiConverterUInt32.write(value.lbtc, buf)
 
 
+class InternalHopRef:
+    payee_id: "str"
+
+    def __init__(self, *, payee_id: "str"):
+        self.payee_id = payee_id
+
+    def __str__(self):
+        return "InternalHopRef(payee_id={})".format(self.payee_id)
+
+    def __eq__(self, other):
+        if self.payee_id != other.payee_id:
+            return False
+        return True
+
+
+class _UniffiConverterTypeInternalHopRef(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return InternalHopRef(
+            payee_id=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.payee_id)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.payee_id, buf)
+
+
 class Leaf:
     output: "str"
     version: "int"
@@ -6354,6 +6518,12 @@ class LiquidPsetParams:
     avoids depending on API/indexer transaction discovery.
     """
 
+    options: "typing.Optional[TransactionOptions]"
+    """
+    Claim policy (confirmations, zero-conf opt-in, timeout margin); the
+    `cooperative`, `chain_claim` and `swap_auth` fields are ignored here.
+    """
+
     def __init__(
         self,
         *,
@@ -6364,6 +6534,7 @@ class LiquidPsetParams:
         chain_client: "ChainClient",
         boltz_api: "SwapClient",
         lockup_tx: "typing.Optional[BtcLikeTransaction]" = _DEFAULT,
+        options: "typing.Optional[TransactionOptions]" = _DEFAULT,
     ):
         self.output_address = output_address
         self.max_fee = max_fee
@@ -6375,9 +6546,13 @@ class LiquidPsetParams:
             self.lockup_tx = None
         else:
             self.lockup_tx = lockup_tx
+        if options is _DEFAULT:
+            self.options = None
+        else:
+            self.options = options
 
     def __str__(self):
-        return "LiquidPsetParams(output_address={}, max_fee={}, quoted_fee_cap={}, swap_id={}, chain_client={}, boltz_api={}, lockup_tx={})".format(
+        return "LiquidPsetParams(output_address={}, max_fee={}, quoted_fee_cap={}, swap_id={}, chain_client={}, boltz_api={}, lockup_tx={}, options={})".format(
             self.output_address,
             self.max_fee,
             self.quoted_fee_cap,
@@ -6385,6 +6560,7 @@ class LiquidPsetParams:
             self.chain_client,
             self.boltz_api,
             self.lockup_tx,
+            self.options,
         )
 
     def __eq__(self, other):
@@ -6402,6 +6578,8 @@ class LiquidPsetParams:
             return False
         if self.lockup_tx != other.lockup_tx:
             return False
+        if self.options != other.options:
+            return False
         return True
 
 
@@ -6416,6 +6594,7 @@ class _UniffiConverterTypeLiquidPsetParams(_UniffiConverterRustBuffer):
             chain_client=_UniffiConverterTypeChainClient.read(buf),
             boltz_api=_UniffiConverterTypeSwapClient.read(buf),
             lockup_tx=_UniffiConverterOptionalTypeBtcLikeTransaction.read(buf),
+            options=_UniffiConverterOptionalTypeTransactionOptions.read(buf),
         )
 
     @staticmethod
@@ -6427,6 +6606,7 @@ class _UniffiConverterTypeLiquidPsetParams(_UniffiConverterRustBuffer):
         _UniffiConverterTypeChainClient.check_lower(value.chain_client)
         _UniffiConverterTypeSwapClient.check_lower(value.boltz_api)
         _UniffiConverterOptionalTypeBtcLikeTransaction.check_lower(value.lockup_tx)
+        _UniffiConverterOptionalTypeTransactionOptions.check_lower(value.options)
 
     @staticmethod
     def write(value, buf):
@@ -6437,6 +6617,7 @@ class _UniffiConverterTypeLiquidPsetParams(_UniffiConverterRustBuffer):
         _UniffiConverterTypeChainClient.write(value.chain_client, buf)
         _UniffiConverterTypeSwapClient.write(value.boltz_api, buf)
         _UniffiConverterOptionalTypeBtcLikeTransaction.write(value.lockup_tx, buf)
+        _UniffiConverterOptionalTypeTransactionOptions.write(value.options, buf)
 
 
 class LiquidPsetTemplate:
@@ -8890,12 +9071,39 @@ class TransactionOptions:
     Per-swap credential returned on creation or signed recovery.
     """
 
+    min_confirmations: "int"
+    """
+    Confirmations the lockup must have, per the chain client, before a
+    claim reveals the preimage. Refunds ignore it.
+    """
+
+    allow_zero_conf: "bool"
+    """
+    Explicitly accept claiming an unconfirmed, replaceable lockup.
+    """
+
+    claim_safety_margin_blocks: "typing.Optional[int]"
+    """
+    Blocks of headroom to the swap timeout a claim requires; `None` is the
+    chain default (6 on Bitcoin, 60 on Liquid). Zero accepts the expiry race.
+    """
+
+    allow_conflicting_spend: "bool"
+    """
+    Build a claim over an unconfirmed spend of the lockup, to fee-bump a
+    stuck claim of your own. A confirmed spend is always refused.
+    """
+
     def __init__(
         self,
         *,
         cooperative: "bool" = _DEFAULT,
         chain_claim: "typing.Optional[ChainClaim]" = _DEFAULT,
         swap_auth: "typing.Optional[str]" = _DEFAULT,
+        min_confirmations: "int" = _DEFAULT,
+        allow_zero_conf: "bool" = _DEFAULT,
+        claim_safety_margin_blocks: "typing.Optional[int]" = _DEFAULT,
+        allow_conflicting_spend: "bool" = _DEFAULT,
     ):
         if cooperative is _DEFAULT:
             self.cooperative = True
@@ -8909,12 +9117,32 @@ class TransactionOptions:
             self.swap_auth = None
         else:
             self.swap_auth = swap_auth
+        if min_confirmations is _DEFAULT:
+            self.min_confirmations = 1
+        else:
+            self.min_confirmations = min_confirmations
+        if allow_zero_conf is _DEFAULT:
+            self.allow_zero_conf = False
+        else:
+            self.allow_zero_conf = allow_zero_conf
+        if claim_safety_margin_blocks is _DEFAULT:
+            self.claim_safety_margin_blocks = None
+        else:
+            self.claim_safety_margin_blocks = claim_safety_margin_blocks
+        if allow_conflicting_spend is _DEFAULT:
+            self.allow_conflicting_spend = False
+        else:
+            self.allow_conflicting_spend = allow_conflicting_spend
 
     def __str__(self):
-        return (
-            "TransactionOptions(cooperative={}, chain_claim={}, swap_auth={})".format(
-                self.cooperative, self.chain_claim, self.swap_auth
-            )
+        return "TransactionOptions(cooperative={}, chain_claim={}, swap_auth={}, min_confirmations={}, allow_zero_conf={}, claim_safety_margin_blocks={}, allow_conflicting_spend={})".format(
+            self.cooperative,
+            self.chain_claim,
+            self.swap_auth,
+            self.min_confirmations,
+            self.allow_zero_conf,
+            self.claim_safety_margin_blocks,
+            self.allow_conflicting_spend,
         )
 
     def __eq__(self, other):
@@ -8923,6 +9151,14 @@ class TransactionOptions:
         if self.chain_claim != other.chain_claim:
             return False
         if self.swap_auth != other.swap_auth:
+            return False
+        if self.min_confirmations != other.min_confirmations:
+            return False
+        if self.allow_zero_conf != other.allow_zero_conf:
+            return False
+        if self.claim_safety_margin_blocks != other.claim_safety_margin_blocks:
+            return False
+        if self.allow_conflicting_spend != other.allow_conflicting_spend:
             return False
         return True
 
@@ -8934,6 +9170,10 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
             cooperative=_UniffiConverterBool.read(buf),
             chain_claim=_UniffiConverterOptionalTypeChainClaim.read(buf),
             swap_auth=_UniffiConverterOptionalString.read(buf),
+            min_confirmations=_UniffiConverterUInt32.read(buf),
+            allow_zero_conf=_UniffiConverterBool.read(buf),
+            claim_safety_margin_blocks=_UniffiConverterOptionalUInt32.read(buf),
+            allow_conflicting_spend=_UniffiConverterBool.read(buf),
         )
 
     @staticmethod
@@ -8941,12 +9181,20 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
         _UniffiConverterBool.check_lower(value.cooperative)
         _UniffiConverterOptionalTypeChainClaim.check_lower(value.chain_claim)
         _UniffiConverterOptionalString.check_lower(value.swap_auth)
+        _UniffiConverterUInt32.check_lower(value.min_confirmations)
+        _UniffiConverterBool.check_lower(value.allow_zero_conf)
+        _UniffiConverterOptionalUInt32.check_lower(value.claim_safety_margin_blocks)
+        _UniffiConverterBool.check_lower(value.allow_conflicting_spend)
 
     @staticmethod
     def write(value, buf):
         _UniffiConverterBool.write(value.cooperative, buf)
         _UniffiConverterOptionalTypeChainClaim.write(value.chain_claim, buf)
         _UniffiConverterOptionalString.write(value.swap_auth, buf)
+        _UniffiConverterUInt32.write(value.min_confirmations, buf)
+        _UniffiConverterBool.write(value.allow_zero_conf, buf)
+        _UniffiConverterOptionalUInt32.write(value.claim_safety_margin_blocks, buf)
+        _UniffiConverterBool.write(value.allow_conflicting_spend, buf)
 
 
 class TransactionOut:
@@ -10606,6 +10854,32 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeInternalHopRef(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeInternalHopRef.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeInternalHopRef.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeInternalHopRef.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeMrhDestination(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -11692,7 +11966,27 @@ class _UniffiConverterTypeBtcLikeTransaction:
 
 
 class ChainClientProtocol(typing.Protocol):
+    def bitcoin_tip_height(
+        self,
+    ):
+        """
+        Tip height of the configured Bitcoin source. This is the trusted
+        height the create-time timeout validators and claim policies want —
+        the maker's `get_height` is the maker's claim, not the chain's.
+        """
+
+        raise NotImplementedError
+
     def broadcast_tx(self, tx: "BtcLikeTransaction"):
+        raise NotImplementedError
+
+    def liquid_tip_height(
+        self,
+    ):
+        """
+        Tip height of the configured Liquid source.
+        """
+
         raise NotImplementedError
 
 
@@ -11731,6 +12025,28 @@ class ChainClient:
         inst._pointer = pointer
         return inst
 
+    async def bitcoin_tip_height(
+        self,
+    ) -> "int":
+        """
+        Tip height of the configured Bitcoin source. This is the trusted
+        height the create-time timeout validators and claim policies want —
+        the maker's `get_height` is the maker's claim, not the chain's.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32,
+            # lift function
+            _UniffiConverterUInt32.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def broadcast_tx(self, tx: "BtcLikeTransaction") -> "str":
         _UniffiConverterTypeBtcLikeTransaction.check_lower(tx)
 
@@ -11744,6 +12060,26 @@ class ChainClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterString.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def liquid_tip_height(
+        self,
+    ) -> "int":
+        """
+        Tip height of the configured Liquid source.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32,
+            # lift function
+            _UniffiConverterUInt32.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -14721,6 +15057,70 @@ async def resolve_lightning_address(address: "str", amount_sat: "int") -> "str":
     )
 
 
+def validate_chain_timeout_headroom(
+    response: "CreateChainResponse",
+    from_chain: "Chain",
+    from_height: "int",
+    to_chain: "Chain",
+    to_height: "int",
+    min_claim_headroom_blocks: "int",
+) -> None:
+    """
+    Refuse to fund a chain swap whose claim leg (`to_chain`, the server's
+    lock) is within `min_claim_headroom_blocks` of its timeout at `to_height`,
+    or whose lockup leg on `from_chain` does not outlast it. Both heights come
+    from trusted chain clients.
+    """
+
+    _UniffiConverterTypeCreateChainResponse.check_lower(response)
+
+    _UniffiConverterTypeChain.check_lower(from_chain)
+
+    _UniffiConverterUInt32.check_lower(from_height)
+
+    _UniffiConverterTypeChain.check_lower(to_chain)
+
+    _UniffiConverterUInt32.check_lower(to_height)
+
+    _UniffiConverterUInt32.check_lower(min_claim_headroom_blocks)
+
+    _uniffi_rust_call_with_error(
+        _UniffiConverterTypeError,
+        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom,
+        _UniffiConverterTypeCreateChainResponse.lower(response),
+        _UniffiConverterTypeChain.lower(from_chain),
+        _UniffiConverterUInt32.lower(from_height),
+        _UniffiConverterTypeChain.lower(to_chain),
+        _UniffiConverterUInt32.lower(to_height),
+        _UniffiConverterUInt32.lower(min_claim_headroom_blocks),
+    )
+
+
+def validate_reverse_timeout_headroom(
+    response: "CreateReverseResponse", current_height: "int", min_headroom_blocks: "int"
+) -> None:
+    """
+    Refuse to pay a reverse swap whose lockup timeout is mature or within
+    `min_headroom_blocks` of `current_height`, which must be the lockup chain's
+    tip from a `ChainClient` (`bitcoin_tip_height` / `liquid_tip_height`), not
+    the maker's `get_height`. Security review 2026-10-28, finding 2.
+    """
+
+    _UniffiConverterTypeCreateReverseResponse.check_lower(response)
+
+    _UniffiConverterUInt32.check_lower(current_height)
+
+    _UniffiConverterUInt32.check_lower(min_headroom_blocks)
+
+    _uniffi_rust_call_with_error(
+        _UniffiConverterTypeError,
+        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom,
+        _UniffiConverterTypeCreateReverseResponse.lower(response),
+        _UniffiConverterUInt32.lower(current_height),
+        _UniffiConverterUInt32.lower(min_headroom_blocks),
+    )
+
+
 __all__ = [
     "InternalError",
     "AmountSide",
@@ -14789,6 +15189,7 @@ __all__ = [
     "GetSubmarinePairsResponse",
     "GetSwapResponse",
     "HeightResponse",
+    "InternalHopRef",
     "Leaf",
     "LightningReceiveRequest",
     "LightningSendRequest",
@@ -14836,6 +15237,8 @@ __all__ = [
     "lbtc_chain_from_network",
     "new_rfq_id",
     "resolve_lightning_address",
+    "validate_chain_timeout_headroom",
+    "validate_reverse_timeout_headroom",
     "BtcLikeTransaction",
     "ChainClient",
     "KeyPair",

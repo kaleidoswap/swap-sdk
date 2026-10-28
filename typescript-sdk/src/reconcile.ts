@@ -384,6 +384,10 @@ async function claim(
     return { kind: "not-yet", reason: "missing-cooperative-context" };
   const cooperative = options.mode !== "script" && (!chain || context);
   fee(options.params, options.feeLimits);
+  // The same policy goes to the WASM core, which re-checks it against the
+  // Esplora tip and the lockup's chain status before revealing the preimage.
+  // The snapshot check above decides eligibility; the core check is the
+  // boundary, and it does not trust the caller's `confirmations` count.
   const params = {
     ...options.params,
     cooperative,
@@ -392,6 +396,9 @@ async function claim(
       hex: options.lockup.hex,
       txid: options.lockup.txid,
     },
+    minConfirmations: options.minConfirmations,
+    allowZeroConf: options.allowZeroConf,
+    claimSafetyMarginBlocks: options.claimSafetyMarginBlocks,
   };
   let path: SpendPath = cooperative ? "cooperative" : "script";
   let transaction: BtcLikeTransaction;

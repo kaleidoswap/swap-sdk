@@ -64,6 +64,35 @@ Metro must resolve package `exports` for the subpath to work. That is the
 default from React Native 0.79; before that, set
 `unstable_enablePackageExports: true` in `metro.config.js`.
 
+## Partner attribution: keep the key off the device
+
+`SwapClient.kaleidoMaker(makerUrl, apiKey, timeout)` builds a client that
+attributes its swaps to a partner organization with a `kld_test_…` /
+`kld_live_…` key. That key is a permanent organization credential with no
+origin binding and no per-key rate limit. Anything inside an app bundle is
+readable by everyone who installs the app, who can then attribute their own
+swaps to your organization or exhaust its limits.
+
+So in this package `kaleidoMaker` **throws** `Exception.Generic` before the key
+reaches native code, unless you pass an explicit opt-in as the fourth argument:
+
+```ts
+import { SwapClient } from "@kaleidorg/swap-sdk-react-native";
+
+// Throws: refusing to build an attributed client in a mobile app.
+SwapClient.kaleidoMaker(makerUrl, apiKey, undefined);
+
+// Builds. Only do this if you have accepted that every user holds the key.
+SwapClient.kaleidoMaker(makerUrl, apiKey, undefined, { allowMobile: true });
+```
+
+Only the boolean `true` counts. For attribution in a mobile app, use
+`SwapClient.kaleidoOrg` with the organization's registered public key. Public
+organization keys are safe to ship in the app; secret maker API keys belong in
+server-side configuration. The browser SDK offers `createKaleidoOrgClient` for
+the same purpose. Its secret-key factory, `forKaleidoMaker`, requires an explicit
+`allowBrowser: true` override in a page, worker or extension.
+
 ## Mobile-specific notes
 
 A swap has a deadline and a phone does not stay awake. Two consequences worth
