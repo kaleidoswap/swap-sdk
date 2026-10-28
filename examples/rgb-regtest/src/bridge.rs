@@ -62,7 +62,7 @@ impl Bridge {
                             min_final_cltv_expiry_delta: None,
                         })
                         .await?;
-                    Ok(json!({"invoice":i.invoice,"paymentId":hash}))
+                    Ok(json!({"invoice":i.invoice,"paymentHash":hash}))
                 } else {
                     let i = ln
                         .bolt11_receive(Bolt11ReceiveRequest {
@@ -71,27 +71,29 @@ impl Bridge {
                             expiry_secs: 3600,
                         })
                         .await?;
-                    Ok(json!({"invoice":i.invoice,"paymentId":i.payment_hash}))
+                    Ok(json!({"invoice":i.invoice,"paymentHash":i.payment_hash}))
                 }
             }
             "pay" => Ok(
                 json!({"paymentId":node("taker").await?.bolt11_send(Bolt11SendRequest {invoice:field(v,"invoice")?.into(),amount_msat:None,route_parameters:None}).await?.payment_id}),
             ),
             "failHold" => {
-                node("taker")
-                    .await?
-                    .bolt11_fail_for_hash(Bolt11FailForHashRequest {
-                        payment_hash: field(v, "hash")?.into(),
-                    })
-                    .await?;
+                let ln = node("taker").await?;
+                ln.bolt11_fail_for_id(Bolt11FailForIdRequest {
+                    payment_id: inbound_payment_id(&ln, field(v, "hash")?).await?,
+                })
+                .await?;
                 Ok(json!(true))
             }
             "payment" => {
-                let p = node("taker")
-                    .await?
-                    .get_payment_details(GetPaymentDetailsRequest {
-                        payment_id: field(v, "paymentId")?.into(),
-                    })
+                let ln = node("taker").await?;
+                let payment_id = if let Some(hash) = v["paymentHash"].as_str() {
+                    inbound_payment_id(&ln, hash).await?
+                } else {
+                    field(v, "paymentId")?.into()
+                };
+                let p = ln
+                    .get_payment_details(GetPaymentDetailsRequest { payment_id })
                     .await?
                     .payment
                     .context("payment")?;

@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
   and refresh the authenticated schema to maker `823d5677` (v0.11.0 plus the
   legacy seed compatibility fix).
 - React Native guidance now recommends the available public organization keys.
+- The RGB regtest bridge uses the current LDK macaroon credentials, channel
+  amount API and actual inbound payment IDs instead of treating hashes as IDs.
 
 
 ### BREAKING — React Native: `SwapClient.kaleidoMaker` refuses to run in an app

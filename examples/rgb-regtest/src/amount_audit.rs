@@ -119,7 +119,7 @@ pub async fn run() -> Result<()> {
                 .await?;
             for p in page.payments {
                 if let Some(payment_kind::Kind::Bolt11(b)) = p.kind.and_then(|k| k.kind) {
-                    payments.push(json!({"paymentId":p.id,"hash":b.hash,"amountMsat":p.amount_msat,"feePaidMsat":p.fee_paid_msat,"direction":p.direction,"status":p.status}));
+                    payments.push(json!({"paymentId":p.payment_id,"hash":b.hash,"amountMsat":p.amount_msat,"feePaidMsat":p.fee_paid_msat,"direction":p.direction,"status":p.status}));
                 }
             }
             token = page.next_page_token;

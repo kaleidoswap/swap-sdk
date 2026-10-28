@@ -194,7 +194,7 @@ async fn run() -> Result<()> {
     wait_balance(&mut taker, to, asset, remaining).await?;
     let received = ln
         .get_payment_details(GetPaymentDetailsRequest {
-            payment_id: invoice.payment_hash,
+            payment_id: inbound_payment_id(&ln, &invoice.payment_hash).await?,
         })
         .await?
         .payment
@@ -217,8 +217,8 @@ async fn run() -> Result<()> {
         submarine(&api, &mut taker, to, asset, &hold.invoice, "refund").await?;
     wait_status(&refund.id, "invoice.pending", false).await?;
     tokio::time::sleep(Duration::from_secs(2)).await;
-    ln.bolt11_fail_for_hash(Bolt11FailForHashRequest {
-        payment_hash: hold_hash,
+    ln.bolt11_fail_for_id(Bolt11FailForIdRequest {
+        payment_id: inbound_payment_id(&ln, &hold_hash).await?,
     })
     .await?;
     wait_status(&refund.id, "invoice.failedToPay", false).await?;
