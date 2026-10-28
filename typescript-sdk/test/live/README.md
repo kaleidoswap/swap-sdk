@@ -44,6 +44,7 @@ L-BTC reverse lockups before it has broadcast them.
 | `KALEIDO_LIVE_WS_URL`         | optional; defaults to the maker URL's `/ws`           |
 | `KALEIDO_LIVE_BTC_ESPLORA`    | `http://127.0.0.1:3002`                               |
 | `KALEIDO_LIVE_LIQUID_ESPLORA` | `http://127.0.0.1:3003`                               |
+| `KALEIDO_LIVE_LUSDT_ASSET_ID` | the regtest L-USDT asset id, pinned by the L-USDT tests |
 | `KALEIDO_LIVE_BITCOIND_RPC`   | `http://<user>:<pass>@127.0.0.1:18443/wallet/miner`   |
 | `KALEIDO_LIVE_ELEMENTSD_RPC`  | `http://<user>:<pass>@127.0.0.1:18884/wallet/liquidw` |
 | `KALEIDO_LIVE_LDK_GRPC`       | `127.0.0.1:13646`                                     |
