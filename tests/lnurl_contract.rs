@@ -3,19 +3,33 @@ use kaleidorg_swap_sdk::{lnurl::lnurl::LnUrl, util::lnurl::resolve_lightning_add
 
 #[tokio::test]
 async fn public_resolver_rejects_insecure_clearnet_before_network_io() {
-    for url in [
-        "http://127.0.0.1:1/pay",
-        "http://169.254.169.254/latest/meta-data",
-        "http://example.com/pay",
-        "https://user:secret@example.com/pay",
-        "https://example.com/pay#fragment",
+    // Each refusal names its rule: a non-public destination is refused as
+    // such (whatever its scheme), plain clearnet HTTP for the scheme, and a
+    // URL with credentials or a fragment for carrying them. Port 1 and the
+    // metadata address make sure a request that did go out would fail loudly.
+    for (url, expected) in [
+        ("http://127.0.0.1:1/pay", "not a public destination"),
+        ("https://127.0.0.1:1/pay", "not a public destination"),
+        (
+            "http://169.254.169.254/latest/meta-data",
+            "not a public destination",
+        ),
+        ("http://example.com/pay", "HTTPS"),
+        (
+            "https://user:secret@example.com/pay",
+            "credentials or fragments",
+        ),
+        (
+            "https://example.com/pay#fragment",
+            "credentials or fragments",
+        ),
     ] {
         let lnurl = LnUrl::from_url(url.to_owned()).encode();
-        assert!(resolve_lightning_address(&lnurl, 1)
+        let message = resolve_lightning_address(&lnurl, 1)
             .await
             .unwrap_err()
-            .message()
-            .contains("HTTPS"));
+            .message();
+        assert!(message.contains(expected), "{url}: {message}");
     }
 }
 
