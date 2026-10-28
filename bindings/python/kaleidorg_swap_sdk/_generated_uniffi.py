@@ -665,6 +665,10 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_check_mrh() != 38332:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card()
         != 59966
@@ -742,7 +746,7 @@ def _uniffi_check_api_checksums(lib):
         )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_mrh_bip21()
-        != 13126
+        != 42131
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1617,6 +1621,14 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.argtype
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_check_mrh.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_check_mrh.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.argtypes = (
     ctypes.c_void_p,
 )
@@ -2365,6 +2377,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.res
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_check_mrh.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_check_mrh.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.argtypes = ()
@@ -6528,6 +6544,46 @@ class _UniffiConverterTypeLiquidPsetTemplate(_UniffiConverterRustBuffer):
         _UniffiConverterBool.write(value.payment_requires_blinding, buf)
 
 
+class MrhDestination:
+    address: "str"
+    amount_sat: "int"
+
+    def __init__(self, *, address: "str", amount_sat: "int"):
+        self.address = address
+        self.amount_sat = amount_sat
+
+    def __str__(self):
+        return "MrhDestination(address={}, amount_sat={})".format(
+            self.address, self.amount_sat
+        )
+
+    def __eq__(self, other):
+        if self.address != other.address:
+            return False
+        if self.amount_sat != other.amount_sat:
+            return False
+        return True
+
+
+class _UniffiConverterTypeMrhDestination(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return MrhDestination(
+            address=_UniffiConverterString.read(buf),
+            amount_sat=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.address)
+        _UniffiConverterUInt64.check_lower(value.amount_sat)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.address, buf)
+        _UniffiConverterUInt64.write(value.amount_sat, buf)
+
+
 class MrhResponse:
     bip21: "str"
     signature: "str"
@@ -10550,6 +10606,32 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeMrhDestination(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeMrhDestination.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeMrhDestination.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeMrhDestination.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeRefundDetails(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -12445,6 +12527,20 @@ class SwapClientProtocol(typing.Protocol):
 
         raise NotImplementedError
 
+    def check_mrh(self, invoice: "str", chain: "Chain"):
+        """
+        The validated magic-routing destination for `invoice` on `chain`, or
+        `None` when the invoice carries no hint. Paying `amount_sat` to
+        `address` on-chain settles the invoice and skips the swap entirely.
+
+        Checks the maker's signature over the address, that the BIP21 scheme,
+        address and asset belong to `chain`, and that the amount is positive
+        and at most the invoice amount (it may be smaller: the maker deducts
+        its fees). The invoice must carry an amount.
+        """
+
+        raise NotImplementedError
+
     def corridor_card(
         self,
     ):
@@ -12520,8 +12616,9 @@ class SwapClientProtocol(typing.Protocol):
 
     def get_mrh_bip21(self, invoice: "str"):
         """
-        The BIP21 magic-routing hint an invoice carries, if any. Paying it
-        settles on-chain and skips the swap entirely.
+        The maker's raw, **unvalidated** BIP21 for an invoice's magic-routing
+        hint. Only the address is signed; the amount, scheme and asset are
+        whatever the maker sent. Pay what [`Self::check_mrh`] returns instead.
         """
 
         raise NotImplementedError
@@ -12965,6 +13062,39 @@ class SwapClient:
             _UniffiConverterTypeError,
         )
 
+    async def check_mrh(
+        self, invoice: "str", chain: "Chain"
+    ) -> "typing.Optional[MrhDestination]":
+        """
+        The validated magic-routing destination for `invoice` on `chain`, or
+        `None` when the invoice carries no hint. Paying `amount_sat` to
+        `address` on-chain settles the invoice and skips the swap entirely.
+
+        Checks the maker's signature over the address, that the BIP21 scheme,
+        address and asset belong to `chain`, and that the amount is positive
+        and at most the invoice amount (it may be smaller: the maker deducts
+        its fees). The invoice must carry an amount.
+        """
+
+        _UniffiConverterString.check_lower(invoice)
+
+        _UniffiConverterTypeChain.check_lower(chain)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_check_mrh(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(invoice),
+                _UniffiConverterTypeChain.lower(chain),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterOptionalTypeMrhDestination.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def corridor_card(
         self,
     ) -> "typing.Optional[CorridorCard]":
@@ -13186,8 +13316,9 @@ class SwapClient:
 
     async def get_mrh_bip21(self, invoice: "str") -> "MrhResponse":
         """
-        The BIP21 magic-routing hint an invoice carries, if any. Paying it
-        settles on-chain and skips the swap entirely.
+        The maker's raw, **unvalidated** BIP21 for an invoice's magic-routing
+        hint. Only the address is signed; the amount, scheme and asset are
+        whatever the maker sent. Pay what [`Self::check_mrh`] returns instead.
         """
 
         _UniffiConverterString.check_lower(invoice)
@@ -14664,6 +14795,7 @@ __all__ = [
     "LiquidOutputSecrets",
     "LiquidPsetParams",
     "LiquidPsetTemplate",
+    "MrhDestination",
     "MrhResponse",
     "Node",
     "PairLimits",

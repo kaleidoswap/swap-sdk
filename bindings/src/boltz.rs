@@ -14,6 +14,7 @@ use kaleidorg_swap_sdk::kaleido::{
 };
 use kaleidorg_swap_sdk::network::{Chain, Currency, Network};
 use kaleidorg_swap_sdk::swaps::boltz::*;
+use kaleidorg_swap_sdk::swaps::magic_routing::{self, MrhDestination};
 use kaleidorg_swap_sdk::swaps::RgbLock;
 use kaleidorg_swap_sdk::util::secrets::Preimage;
 use kaleidorg_swap_sdk::LiquidAssetContext;
@@ -421,11 +422,29 @@ impl SwapClient {
         Ok(self.inner.get_fee_estimation().await?)
     }
 
-    /// The BIP21 magic-routing hint an invoice carries, if any. Paying it
-    /// settles on-chain and skips the swap entirely.
+    /// The maker's raw, **unvalidated** BIP21 for an invoice's magic-routing
+    /// hint. Only the address is signed; the amount, scheme and asset are
+    /// whatever the maker sent. Pay what [`Self::check_mrh`] returns instead.
     #[uniffi::method]
     pub async fn get_mrh_bip21(&self, invoice: &str) -> Result<MrhResponse, Error> {
         Ok(self.inner.get_mrh_bip21(invoice).await?)
+    }
+
+    /// The validated magic-routing destination for `invoice` on `chain`, or
+    /// `None` when the invoice carries no hint. Paying `amount_sat` to
+    /// `address` on-chain settles the invoice and skips the swap entirely.
+    ///
+    /// Checks the maker's signature over the address, that the BIP21 scheme,
+    /// address and asset belong to `chain`, and that the amount is positive
+    /// and at most the invoice amount (it may be smaller: the maker deducts
+    /// its fees). The invoice must carry an amount.
+    #[uniffi::method]
+    pub async fn check_mrh(
+        &self,
+        invoice: &str,
+        chain: Chain,
+    ) -> Result<Option<MrhDestination>, Error> {
+        Ok(magic_routing::check_mrh(&self.inner, invoice, chain).await?)
     }
 
     #[uniffi::method]
@@ -1017,6 +1036,12 @@ pub struct GetFeeEstimationResponse {
 pub struct MrhResponse {
     pub bip21: String,
     pub signature: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct MrhDestination {
+    pub address: String,
+    pub amount_sat: u64,
 }
 
 #[uniffi::remote(Record)]

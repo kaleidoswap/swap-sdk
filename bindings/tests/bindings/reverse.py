@@ -28,6 +28,11 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     response = await boltz_api.create_reverse_swap(request)
     swap_id = response.id
 
+    # The validated magic-routing destination, when the maker offers one: the
+    # on-chain amount is bounded by the invoice, never above it.
+    destination = await boltz_api.check_mrh(response.invoice, to_chain)
+    assert destination is None or 0 < destination.amount_sat <= amount, destination
+
     asyncio.create_task(ws_client.run_ws_loop())
 
     # Monitor the swap status via WebSocket
