@@ -143,8 +143,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         .await
         .expect_err("Underpaid script should throw");
 
-    let tx = swap_script
-        .construct_claim(&preimage, params)
+    let tx = construct_claim_when_indexed(&swap_script, &preimage, params)
         .await
         .unwrap();
 

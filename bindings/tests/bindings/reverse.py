@@ -63,7 +63,8 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     )
 
     claim_address = await getnewaddress(to_chain)
-    tx = await swap_script.construct_claim(
+    tx = await construct_claim_when_indexed(
+        swap_script,
         preimage,
         kaleidorg_swap_sdk.SwapTransactionParams(
             swap_id=swap_id,

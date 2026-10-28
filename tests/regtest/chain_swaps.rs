@@ -214,8 +214,7 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
             .await
             .expect_err("Underpaid claim script should throw");
 
-        let tx = claim_script
-            .construct_claim(&preimage, swap_params.clone())
+        let tx = construct_claim_when_indexed(&claim_script, &preimage, swap_params.clone())
             .await
             .unwrap();
 

@@ -1,7 +1,11 @@
-use kaleidorg_swap_sdk::swaps::{BtcLikeTransaction, ChainClient};
+use kaleidorg_swap_sdk::swaps::{
+    BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams,
+};
+use kaleidorg_swap_sdk::util::secrets::Preimage;
 use kaleidorg_swap_sdk::util::sleep;
 use kaleidorg_swap_sdk::{
     boltz::{BoltzApiClientV2, SwapStatus, BOLTZ_REGTEST},
+    error::Error,
     network::{BitcoinChain, Chain, LiquidChain},
 };
 use std::str::FromStr;
@@ -138,4 +142,35 @@ pub async fn next_status(
             Err(anyhow::anyhow!("Timeout waiting for status: {expected_status}"))
         }
     }
+}
+
+/// Build a claim once the chain source has caught up with the maker.
+///
+/// The regtest Boltz is wired straight to the nodes and reports
+/// `transaction.confirmed` within milliseconds of a block, while Esplora and
+/// electrs index that block (and even the mempool transaction before it) on
+/// their own polling schedule. The claim guard asks the chain source, not the
+/// maker, so right after a status it can still see the lockup unconfirmed or
+/// not at all; retry those two refusals until the indexer is current. Any
+/// other error is the test's to see.
+pub async fn construct_claim_when_indexed(
+    script: &SwapScript,
+    preimage: &Preimage,
+    params: SwapTransactionParams<'_>,
+) -> Result<BtcLikeTransaction, Error> {
+    let deadline = 60;
+    for attempt in 0.. {
+        match script.construct_claim(preimage, params.clone()).await {
+            Err(Error::Protocol(message))
+                if attempt < deadline
+                    && (message.contains("confirmations")
+                        || message.contains("unknown to the chain source")) =>
+            {
+                log::info!("Chain source not caught up yet ({message}); retrying");
+                sleep(Duration::from_secs(1)).await;
+            }
+            result => return result,
+        }
+    }
+    unreachable!()
 }
