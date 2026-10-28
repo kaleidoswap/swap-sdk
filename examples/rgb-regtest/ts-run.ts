@@ -67,12 +67,24 @@ async function paymentStatus(paymentId: string, expected: number, inbound = fals
   throw new Error('Lightning payment did not reach expected terminal state');
 }
 async function persist(tag: string, state: unknown) { await call('persist', { tag, state }); }
+// Live health/fee guards can temporarily withdraw a route after mining or a
+// balance change. Wait for discovery to offer it again; never bypass a guard.
+async function publishedPair(kind: 'submarine' | 'reverse', from: string, to: string) {
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    const pairs = kind === 'submarine' ? await client.submarinePairs() : await client.reversePairs();
+    const pair = pairs[from]?.[to];
+    if (pair) return pair;
+    await pause(1000);
+  }
+  throw new Error(`${kind} route ${from}/${to} remained unavailable for 90 seconds`);
+}
 await init();
 const client = new SwapClient(maker, 30n);
 const report: Record<string, any> = {
   makerRevision: process.env.RGB_MAKER_REVISION,
   sdkRevision: process.env.RGB_SDK_REVISION,
-  rgbLibRevision: '96f039d975cf2a83712c3c0a90e703621d445425',
+  rgbLibRevision: 'dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f',
   network: 'regtest', bindings: 'TypeScript facade + WebAssembly',
 };
 try {
@@ -82,10 +94,10 @@ try {
   report.assetId = info.assetId; report.issued = info.issued;
   async function submarine(index: bigint, invoice: string, tag: string) {
     const key = keys.deriveSwapKey(index);
-    const pairs = await client.submarinePairs();
+    const pair = await publishedPair('submarine', 'USDT-RGB', 'BTC');
     const response = await client.createSubmarineSwap('regtest', {
       from: 'USDT-RGB', to: 'BTC', invoice, refundPublicKey: key.publicKey,
-      pairHash: pairs['USDT-RGB'].BTC.hash,
+      pairHash: pair.hash,
     }, info.assetId);
     assert(response.rgb.htlcSat <= 1000n);
     await persist(tag, { key, response });
@@ -143,10 +155,10 @@ try {
   assert.equal((await call('balance', { wallet: 'reverse' })).btc, 0);
   async function reverse(index: bigint, tag: string) {
     const key = keys.deriveSwapKey(index); const preimage = keys.derivePreimage(index);
-    const pairs = await client.reversePairs();
+    const pair = await publishedPair('reverse', 'BTC', 'USDT-RGB');
     const response = await client.createReverseSwap('regtest', {
       from: 'BTC', to: 'USDT-RGB', invoiceAmount: 100000n, claimPublicKey: key.publicKey,
-      preimageHash: preimage.sha256, pairHash: pairs.BTC['USDT-RGB'].hash,
+      preimageHash: preimage.sha256, pairHash: pair.hash,
     }, info.assetId);
     assert(response.rgb.claimFeeRate >= 5n, 'quoted fee below local pre-payment policy');
     await persist(tag, { key, preimage, response });
@@ -214,7 +226,11 @@ try {
   await rename(`${directory}run/ts-report.tmp`, `${directory}run/ts-report.json`);
   console.log('PASS: all four TS flows; settled RGB balances conserve the full issuance');
 } catch (error) {
-  await writeFile(`${directory}run/ts-failure.json`, json({ error: String(error), diagnostics }), { mode: 0o600 });
+  const makerDiagnostics = await readFile(`${directory}run/maker.log`, 'utf8').catch(() => 'maker log unavailable');
+  await writeFile(`${directory}run/ts-failure.json`, json({
+    error: String(error), stack: error instanceof Error ? error.stack : undefined,
+    diagnostics, makerDiagnostics,
+  }), { mode: 0o600 });
   console.error('Live TS validation stopped; detailed diagnostics are in private run/ts-failure.json');
   process.exitCode = 1;
 } finally {
