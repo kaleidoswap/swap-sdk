@@ -136,6 +136,29 @@ pub async fn mine(blocks: u32) -> Result<()> {
         );
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
+    // Reverse deadlines use LDK's best block, while the RGB worker checks
+    // Esplora. After fast-forwarding a refund timelock, Esplora can be ready
+    // before either Lightning node. Do not create the next swap on an old tip.
+    let deadline = Instant::now() + Duration::from_secs(120);
+    for name in ["maker", "taker"] {
+        let client = node(name).await?;
+        loop {
+            let height = client
+                .get_node_info(GetNodeInfoRequest {})
+                .await?
+                .current_best_block
+                .context("LDK best block missing")?
+                .height;
+            if u64::from(height) >= target {
+                break;
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "LDK {name} stayed at block {height}, waiting for {target}"
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+    }
     Ok(())
 }
 pub async fn transaction(txid: &str) -> Result<Transaction> {
