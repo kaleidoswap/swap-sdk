@@ -202,8 +202,12 @@ impl BitcoinClient for ElectrumBitcoinClient {
     }
 }
 
+/// The raw subscription, not `block_headers_subscribe`: that one parses the
+/// header as a Bitcoin header, and an Elements header (dynamic federation
+/// fields, no nonce) fails that parse with "data not consumed entirely".
+/// Only the height is needed here, on either chain.
 fn tip_height(client: &electrum_client::Client) -> Result<u32, Error> {
-    let header = client.block_headers_subscribe()?;
+    let header = client.block_headers_subscribe_raw()?;
     u32::try_from(header.height).map_err(|_| {
         Error::Generic(format!(
             "Electrum tip height {} overflows u32",
