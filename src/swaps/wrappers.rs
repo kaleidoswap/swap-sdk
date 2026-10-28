@@ -15,7 +15,9 @@ use super::boltz::{
 };
 use crate::boltz::TransactionInfo;
 use crate::error::Error;
-use crate::network::{BitcoinClient, Chain, LiquidChain, LiquidClient, Network};
+use crate::network::{
+    BitcoinClient, Chain, LiquidChain, LiquidClient, Network, OutputSpend, OutputStatus,
+};
 use crate::swaps::bitcoin::{BtcSwapScript, BtcSwapTx};
 use crate::swaps::fees::estimate_claim_fee;
 use crate::swaps::liquid::{
@@ -56,6 +58,171 @@ impl DirectTxOptions {
     }
 }
 
+/// What a claim must see on chain before the preimage leaves this process.
+///
+/// A claim reveals the preimage — cooperatively to the maker, or on chain
+/// once broadcast — and the preimage is the only thing keeping the maker
+/// from settling the other leg of the swap. So a claim is only safe against
+/// a lockup that is actually in the chain, is not spent or being replaced,
+/// and whose refund timeout is still comfortably ahead of the tip. The
+/// maker's status strings are not evidence of any of this; the chain client
+/// is. See `SwapScript::construct_claim`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClaimPolicy {
+    /// Blocks the lockup must be buried under before it counts, tip block
+    /// included. Must be at least 1 unless `allow_zero_conf` is set.
+    pub min_confirmations: u32,
+    /// Accept a lockup the chain source has only in its mempool, or has not
+    /// seen at all. This is an explicit acceptance of the replaceable-lockup
+    /// risk and is never the default.
+    pub allow_zero_conf: bool,
+    /// Refuse to claim once the tip is within this many blocks of the swap's
+    /// refund timeout. `None` picks the chain default: 6 on Bitcoin, 60 on
+    /// Liquid, both roughly an hour.
+    pub claim_safety_margin_blocks: Option<u32>,
+    /// Build the claim although an *unconfirmed* spend of the lockup is
+    /// already visible. That spend is normally a conflict and refused; the
+    /// one legitimate case is fee-bumping a stuck claim of your own, where
+    /// the preimage is already public. A confirmed spend is always refused.
+    pub allow_conflicting_spend: bool,
+}
+
+impl Default for ClaimPolicy {
+    fn default() -> Self {
+        Self {
+            min_confirmations: 1,
+            allow_zero_conf: false,
+            claim_safety_margin_blocks: None,
+            allow_conflicting_spend: false,
+        }
+    }
+}
+
+impl ClaimPolicy {
+    pub const BITCOIN_SAFETY_MARGIN_BLOCKS: u32 = 6;
+    pub const LIQUID_SAFETY_MARGIN_BLOCKS: u32 = 60;
+
+    fn safety_margin_blocks(&self, chain: Chain) -> u32 {
+        self.claim_safety_margin_blocks.unwrap_or(match chain {
+            Chain::Bitcoin(_) => Self::BITCOIN_SAFETY_MARGIN_BLOCKS,
+            Chain::Liquid(_) => Self::LIQUID_SAFETY_MARGIN_BLOCKS,
+        })
+    }
+
+    /// Decide whether a claim of `outpoint` may go ahead, from what a trusted
+    /// chain source reports (`tip_height`, `status`) and the script's refund
+    /// timeout. Pure, so every refusal here is unit-tested without a chain.
+    pub(crate) fn check(
+        &self,
+        chain: Chain,
+        tip_height: u32,
+        status: Option<OutputStatus>,
+        timeout_block_height: Option<u32>,
+        outpoint: &str,
+    ) -> Result<(), Error> {
+        if self.min_confirmations == 0 && !self.allow_zero_conf {
+            return Err(Error::Protocol(
+                "min_confirmations must be at least 1 unless allow_zero_conf is set".to_string(),
+            ));
+        }
+        let Some(timeout_block_height) = timeout_block_height else {
+            return Err(Error::Protocol(
+                "Swap timeout is not a block height; refusing to claim without a deadline check"
+                    .to_string(),
+            ));
+        };
+        let margin = self.safety_margin_blocks(chain);
+        if tip_height.saturating_add(margin) >= timeout_block_height {
+            return Err(Error::Protocol(format!(
+                "Too close to the swap timeout to claim safely: tip {tip_height} + margin {margin} blocks reaches timeout {timeout_block_height}; the counterparty's refund is or is about to become valid"
+            )));
+        }
+        match status {
+            None if self.allow_zero_conf => {
+                log::warn!("Claiming {outpoint} before the chain source has seen its lockup (allow_zero_conf)");
+            }
+            None => {
+                return Err(Error::Protocol(format!(
+                    "Lockup {outpoint} is unknown to the chain source; refusing to reveal the preimage against it"
+                )));
+            }
+            Some(status) => {
+                match status.spend {
+                    OutputSpend::Unspent => {}
+                    OutputSpend::SpentConfirmed => {
+                        return Err(Error::Protocol(format!(
+                            "Lockup {outpoint} is already spent"
+                        )));
+                    }
+                    OutputSpend::SpentUnconfirmed if self.allow_conflicting_spend => {
+                        log::warn!("Claiming {outpoint} over an unconfirmed spend (allow_conflicting_spend)");
+                    }
+                    OutputSpend::SpentUnconfirmed => {
+                        return Err(Error::Protocol(format!(
+                            "Lockup {outpoint} has a conflicting spend in the mempool; refusing to reveal the preimage against it"
+                        )));
+                    }
+                }
+                let confirmations = status.confirmations(tip_height);
+                if !self.allow_zero_conf && confirmations < self.min_confirmations {
+                    return Err(Error::Protocol(format!(
+                        "Lockup {outpoint} has {confirmations} confirmations, {} required before the preimage is revealed",
+                        self.min_confirmations
+                    )));
+                }
+                if confirmations == 0 {
+                    log::warn!("Claiming unconfirmed lockup {outpoint} (allow_zero_conf)");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn ensure_bitcoin_claimable(
+        &self,
+        client: &dyn BitcoinClient,
+        outpoint: &bitcoin::OutPoint,
+        script_pubkey: &bitcoin::Script,
+        locktime: bitcoin::absolute::LockTime,
+    ) -> Result<(), Error> {
+        let tip = client.get_tip_height().await?;
+        let status = client.get_output_status(outpoint, script_pubkey).await?;
+        let timeout = match locktime {
+            bitcoin::absolute::LockTime::Blocks(height) => Some(height.to_consensus_u32()),
+            bitcoin::absolute::LockTime::Seconds(_) => None,
+        };
+        self.check(
+            Chain::Bitcoin(client.network()),
+            tip,
+            status,
+            timeout,
+            &outpoint.to_string(),
+        )
+    }
+
+    async fn ensure_liquid_claimable(
+        &self,
+        client: &dyn LiquidClient,
+        outpoint: &elements::OutPoint,
+        script_pubkey: &elements::Script,
+        locktime: elements::LockTime,
+    ) -> Result<(), Error> {
+        let tip = client.get_tip_height().await?;
+        let status = client.get_output_status(outpoint, script_pubkey).await?;
+        let timeout = match locktime {
+            elements::LockTime::Blocks(height) => Some(height.to_consensus_u32()),
+            elements::LockTime::Seconds(_) => None,
+        };
+        self.check(
+            Chain::Liquid(client.network()),
+            tip,
+            status,
+            timeout,
+            &outpoint.to_string(),
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct TransactionOptions {
     cooperative: bool,
@@ -64,6 +231,7 @@ pub struct TransactionOptions {
     lockup_tx: Option<BtcLikeTransaction>,
     broadcast_lockup_tx: bool,
     additional_outputs: Vec<(String, u64)>,
+    claim_policy: ClaimPolicy,
 }
 
 impl fmt::Debug for TransactionOptions {
@@ -72,6 +240,7 @@ impl fmt::Debug for TransactionOptions {
             .field("cooperative", &self.cooperative)
             .field("has_chain_claim", &self.chain_claim.is_some())
             .field("lockup_tx", &self.lockup_tx)
+            .field("claim_policy", &self.claim_policy)
             .finish()
     }
 }
@@ -85,6 +254,7 @@ impl Default for TransactionOptions {
             lockup_tx: None,
             broadcast_lockup_tx: true,
             additional_outputs: Vec::new(),
+            claim_policy: ClaimPolicy::default(),
         }
     }
 }
@@ -94,6 +264,44 @@ impl TransactionOptions {
     pub fn with_cooperative(mut self, cooperative: bool) -> Self {
         self.cooperative = cooperative;
         self
+    }
+
+    /// The chain evidence a claim needs before revealing the preimage; see
+    /// [`ClaimPolicy`]. Refunds ignore it.
+    pub fn with_claim_policy(mut self, policy: ClaimPolicy) -> Self {
+        self.claim_policy = policy;
+        self
+    }
+
+    /// Confirmations the lockup needs before a claim reveals the preimage
+    /// (default 1).
+    pub fn with_min_confirmations(mut self, min_confirmations: u32) -> Self {
+        self.claim_policy.min_confirmations = min_confirmations;
+        self
+    }
+
+    /// Explicitly accept claiming an unconfirmed, replaceable lockup.
+    pub fn with_allow_zero_conf(mut self, allow_zero_conf: bool) -> Self {
+        self.claim_policy.allow_zero_conf = allow_zero_conf;
+        self
+    }
+
+    /// Blocks of headroom to the swap timeout a claim requires (default 6 on
+    /// Bitcoin, 60 on Liquid). Zero accepts the expiry race.
+    pub fn with_claim_safety_margin_blocks(mut self, blocks: u32) -> Self {
+        self.claim_policy.claim_safety_margin_blocks = Some(blocks);
+        self
+    }
+
+    /// Build a claim over an unconfirmed spend of the lockup, to fee-bump a
+    /// stuck claim of your own. See [`ClaimPolicy::allow_conflicting_spend`].
+    pub fn with_allow_conflicting_spend(mut self, allow: bool) -> Self {
+        self.claim_policy.allow_conflicting_spend = allow;
+        self
+    }
+
+    pub fn claim_policy(&self) -> &ClaimPolicy {
+        &self.claim_policy
     }
 
     /// Credential returned on create or recovered with proof of swap-key ownership.
@@ -120,8 +328,9 @@ impl TransactionOptions {
     }
 
     /// Pin claim input discovery to an already observed lockup, without
-    /// rebroadcasting it. The caller verifies its chain confirmation separately;
-    /// ordinary script/address/amount validation still runs before signing.
+    /// rebroadcasting it. Its chain inclusion is still checked against the
+    /// chain client per the [`ClaimPolicy`] before a claim signs; ordinary
+    /// script/address/amount validation runs as well.
     pub fn with_existing_lockup_tx(mut self, lockup_tx: BtcLikeTransaction) -> Self {
         self.lockup_tx = Some(lockup_tx);
         self.broadcast_lockup_tx = false;
@@ -762,6 +971,17 @@ impl SwapScript {
             .collect()
     }
 
+    /// Build and sign the claim of a reverse or chain swap.
+    ///
+    /// Before anything that reveals the preimage — the cooperative request
+    /// to the maker, or a script-path witness — the lockup output is checked
+    /// against the chain client per the options' [`ClaimPolicy`]: it must be
+    /// known to the chain source, unspent with no conflicting spend in the
+    /// mempool, confirmed to the required depth unless zero-conf was
+    /// explicitly allowed, and the tip must still be clear of the swap's
+    /// refund timeout by the safety margin. Maker status is never used for
+    /// this. A lockup supplied through `with_lockup_tx` and broadcast here is
+    /// by definition unconfirmed, so that flow needs `with_allow_zero_conf`.
     pub async fn construct_claim(
         &self,
         preimage: &Preimage,
@@ -769,6 +989,11 @@ impl SwapScript {
     ) -> Result<BtcLikeTransaction, Error> {
         self.ensure_uncolored_spend()?;
 
+        let claim_policy = params
+            .options
+            .as_ref()
+            .map(|o| o.claim_policy.clone())
+            .unwrap_or_default();
         let additional_outputs =
             self.parse_additional_outputs(params.chain_client, params.options.as_ref())?;
         let cooperative = self
@@ -811,6 +1036,14 @@ impl SwapScript {
                     .await?;
 
                 self.validate_lockup_amount(utxo.1.value)?;
+                claim_policy
+                    .ensure_bitcoin_claimable(
+                        chain_client,
+                        &utxo.0,
+                        &utxo.1.script_pubkey,
+                        script.locktime,
+                    )
+                    .await?;
 
                 let tx = BtcSwapTx::new_claim_with_utxo(
                     script.as_ref().clone(),
@@ -850,6 +1083,14 @@ impl SwapScript {
                         decode_swap_output(&utxo.1, script.blinding_secret(), context.swap_asset)?;
                     self.validate_lockup_amount(Amount::from_sat(secrets.value))?;
                 }
+                claim_policy
+                    .ensure_liquid_claimable(
+                        chain_client,
+                        &utxo.0,
+                        &utxo.1.script_pubkey,
+                        script.locktime,
+                    )
+                    .await?;
 
                 let tx = LiquidSwapTx::new_claim_with_utxo(
                     script.as_ref().clone(),
@@ -1019,6 +1260,11 @@ impl SwapScript {
             .options
             .as_ref()
             .is_none_or(|o| o.broadcast_lockup_tx);
+        let claim_policy = params
+            .options
+            .as_ref()
+            .map(|o| o.claim_policy.clone())
+            .unwrap_or_default();
         let lockup_tx = params.options.and_then(|options| options.lockup_tx);
         if broadcast_lockup_tx {
             if let Some(lockup_tx) = &lockup_tx {
@@ -1043,6 +1289,18 @@ impl SwapScript {
                 kind.clone(),
             )
             .await?;
+        if kind == SwapTxKind::Claim {
+            // The finalized claim carries the preimage in its witness, so the
+            // same chain evidence is required as for `construct_claim`.
+            claim_policy
+                .ensure_liquid_claimable(
+                    liquid_client,
+                    &utxo.0,
+                    &utxo.1.script_pubkey,
+                    script.locktime,
+                )
+                .await?;
+        }
         let context = script.resolved_asset_context(liquid_client.network());
         let secrets = decode_swap_output(&utxo.1, script.blinding_secret(), context.swap_asset)?;
         if let Some(expected) = self.boltz_lockup {
@@ -1590,64 +1848,85 @@ mod tests {
         assert!(verify_submarine_preimage(&invoice, "not-hex").is_err());
     }
 
-    /// Serve a minimal Esplora that fails every request, recording each
-    /// request line.
+    /// A Bitcoin chain source that answers tip and output-status queries from
+    /// fixed values, fails everything else, and records every call. Lets the
+    /// claim guard be driven through `construct_claim` without a network.
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-    fn recording_esplora() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
-        use std::io::{Read, Write};
-
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
-        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let seen = requests.clone();
-        std::thread::spawn(move || {
-            for stream in listener.incoming() {
-                let Ok(mut stream) = stream else { return };
-                let mut raw = Vec::new();
-                let mut buf = [0u8; 4096];
-                loop {
-                    let read = stream.read(&mut buf).unwrap_or(0);
-                    if read == 0 {
-                        break;
-                    }
-                    raw.extend_from_slice(&buf[..read]);
-                    let Some(head_end) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
-                        continue;
-                    };
-                    let body_len: usize = String::from_utf8_lossy(&raw[..head_end])
-                        .lines()
-                        .find_map(|line| {
-                            let (name, value) = line.split_once(':')?;
-                            name.eq_ignore_ascii_case("content-length")
-                                .then(|| value.trim().parse().ok())?
-                        })
-                        .unwrap_or(0);
-                    if raw.len() >= head_end + 4 + body_len {
-                        break;
-                    }
-                }
-                let request = String::from_utf8_lossy(&raw);
-                seen.lock()
-                    .unwrap()
-                    .push(request.lines().next().unwrap_or_default().to_string());
-                let body = "unexpected request";
-                let _ = write!(
-                    stream,
-                    "HTTP/1.1 500 Internal Server Error\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-            }
-        });
-        (url, requests)
+    struct FakeBitcoin {
+        tip: u32,
+        status: Option<OutputStatus>,
+        calls: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     }
 
-    /// A claim pinned to an existing lockup spends that transaction's swap
-    /// output, picked by script rather than position. It neither rebroadcasts
-    /// the lockup nor asks Esplora or the maker where the lockup is.
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-    #[tokio::test]
-    async fn btc_claim_spends_the_existing_lockup_tx() {
-        use crate::network::esplora::EsploraBitcoinClient;
+    impl FakeBitcoin {
+        fn new(tip: u32, status: Option<OutputStatus>) -> Self {
+            Self {
+                tip,
+                status,
+                calls: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            }
+        }
+        fn record(&self, call: &str) {
+            self.calls.lock().unwrap().push(call.to_string());
+        }
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[macros::async_trait]
+    impl BitcoinClient for FakeBitcoin {
+        async fn get_address_balance(
+            &self,
+            _address: &bitcoin::Address,
+        ) -> Result<(u64, i64), Error> {
+            self.record("get_address_balance");
+            Err(Error::Generic("unexpected".into()))
+        }
+        async fn get_address_utxos(
+            &self,
+            _address: &bitcoin::Address,
+        ) -> Result<Vec<(bitcoin::OutPoint, bitcoin::TxOut)>, Error> {
+            self.record("get_address_utxos");
+            Err(Error::Generic("unexpected".into()))
+        }
+        async fn get_tx(&self, _txid: bitcoin::Txid) -> Result<bitcoin::Transaction, Error> {
+            self.record("get_tx");
+            Err(Error::Generic("unexpected".into()))
+        }
+        async fn broadcast_tx(
+            &self,
+            _signed_tx: &bitcoin::Transaction,
+        ) -> Result<bitcoin::Txid, Error> {
+            self.record("broadcast_tx");
+            Err(Error::Generic("unexpected".into()))
+        }
+        async fn get_tip_height(&self) -> Result<u32, Error> {
+            self.record("get_tip_height");
+            Ok(self.tip)
+        }
+        async fn get_output_status(
+            &self,
+            _outpoint: &bitcoin::OutPoint,
+            _script_pubkey: &bitcoin::Script,
+        ) -> Result<Option<OutputStatus>, Error> {
+            self.record("get_output_status");
+            Ok(self.status)
+        }
+        fn network(&self) -> crate::network::BitcoinChain {
+            crate::network::BitcoinChain::BitcoinRegtest
+        }
+    }
+
+    /// A reverse swap script with timeout 200 and its lockup transaction,
+    /// whose swap output sits behind an unrelated one.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn reverse_fixture() -> (
+        SwapScript,
+        Keypair,
+        crate::util::secrets::Preimage,
+        bitcoin::Transaction,
+        u64,
+    ) {
         use crate::util::secrets::Preimage;
 
         let secp = Secp256k1::new();
@@ -1698,13 +1977,66 @@ mod tests {
                 },
             ],
         };
+        (script, our_keys, preimage, lockup, amount)
+    }
+
+    /// Script-path claim of the fixture against `chain`, pinned to the
+    /// existing lockup. Nothing listens at the maker URL: any maker request
+    /// fails the claim.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    async fn claim_fixture(
+        tip: u32,
+        status: Option<OutputStatus>,
+        options: TransactionOptions,
+    ) -> Result<bitcoin::Transaction, Error> {
+        let (script, our_keys, preimage, lockup, _) = reverse_fixture();
+        let lockup_hex = bitcoin::consensus::encode::serialize_hex(&lockup);
+        let chain_client = ChainClient::new().with_bitcoin(FakeBitcoin::new(tip, status));
+        let boltz_api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".to_string(), None);
+        let payout = bitcoin::Address::p2wpkh(
+            &bitcoin::CompressedPublicKey(our_keys.public_key()),
+            bitcoin::Network::Regtest,
+        );
+        let claim = script
+            .construct_claim(
+                &preimage,
+                SwapTransactionParams {
+                    keys: our_keys,
+                    output_address: payout.to_string(),
+                    fee: Fee::Absolute(500),
+                    swap_id: "reverse".to_string(),
+                    chain_client: &chain_client,
+                    boltz_api: &boltz_api,
+                    options: Some(options.with_cooperative(false).with_existing_lockup_tx(
+                        BtcLikeTransaction::from_hex_bitcoin(&lockup_hex).unwrap(),
+                    )),
+                },
+            )
+            .await?;
+        Ok(claim.as_bitcoin().unwrap().clone())
+    }
+
+    fn confirmed(height: u32) -> Option<OutputStatus> {
+        Some(OutputStatus {
+            block_height: Some(height),
+            spend: OutputSpend::Unspent,
+        })
+    }
+
+    /// A claim pinned to an existing lockup spends that transaction's swap
+    /// output, picked by script rather than position. It neither rebroadcasts
+    /// the lockup nor asks the chain source or the maker where the lockup is;
+    /// it asks the chain source only what it must know before revealing the
+    /// preimage: the tip and the output's status.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn btc_claim_spends_the_existing_lockup_tx() {
+        let (script, our_keys, preimage, lockup, amount) = reverse_fixture();
         let lockup_txid = lockup.compute_txid();
         let lockup_hex = bitcoin::consensus::encode::serialize_hex(&lockup);
-
-        let (esplora_url, requests) = recording_esplora();
-        let chain_client =
-            ChainClient::new().with_bitcoin(EsploraBitcoinClient::new(chain, &esplora_url, 5));
-        // Nothing listens here: any maker request fails the claim.
+        let fake = FakeBitcoin::new(150, confirmed(150));
+        let calls = fake.calls.clone();
+        let chain_client = ChainClient::new().with_bitcoin(fake);
         let boltz_api = BoltzApiClientV2::new("http://127.0.0.1:1/v2".to_string(), None);
         let payout = bitcoin::Address::p2wpkh(
             &bitcoin::CompressedPublicKey(our_keys.public_key()),
@@ -1741,6 +2073,224 @@ mod tests {
         );
         assert_eq!(claim.output[0].value, Amount::from_sat(amount - 500));
         assert_eq!(claim.output[0].script_pubkey, payout.script_pubkey());
-        assert!(requests.lock().unwrap().is_empty());
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                "get_tip_height".to_string(),
+                "get_output_status".to_string()
+            ]
+        );
+    }
+
+    /// The default policy refuses to reveal the preimage against a lockup the
+    /// chain source has not confirmed, has never seen, or sees a spend of.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn btc_claim_refuses_unconfirmed_unknown_and_spent_lockups() {
+        let error = claim_fixture(
+            150,
+            Some(OutputStatus {
+                block_height: None,
+                spend: OutputSpend::Unspent,
+            }),
+            TransactionOptions::default(),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("0 confirmations"), "{error}");
+
+        let error = claim_fixture(150, None, TransactionOptions::default())
+            .await
+            .unwrap_err();
+        assert!(
+            error.message().contains("unknown to the chain source"),
+            "{error}"
+        );
+
+        let mempool_spend = Some(OutputStatus {
+            block_height: Some(150),
+            spend: OutputSpend::SpentUnconfirmed,
+        });
+        let error = claim_fixture(150, mempool_spend, TransactionOptions::default())
+            .await
+            .unwrap_err();
+        assert!(error.message().contains("conflicting spend"), "{error}");
+        // Even an explicit zero-conf opt-in does not claim over a spend.
+        let error = claim_fixture(
+            150,
+            mempool_spend,
+            TransactionOptions::default().with_allow_zero_conf(true),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("conflicting spend"), "{error}");
+        // Fee-bumping one's own stuck claim is the explicit exception...
+        claim_fixture(
+            150,
+            mempool_spend,
+            TransactionOptions::default().with_allow_conflicting_spend(true),
+        )
+        .await
+        .unwrap();
+        // ...and it never extends to a spend that is already in a block.
+        let confirmed_spend = Some(OutputStatus {
+            block_height: Some(150),
+            spend: OutputSpend::SpentConfirmed,
+        });
+        let error = claim_fixture(
+            150,
+            confirmed_spend,
+            TransactionOptions::default().with_allow_conflicting_spend(true),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("already spent"), "{error}");
+    }
+
+    /// Zero-conf is an explicit opt-in: with it, an unconfirmed or not yet
+    /// indexed lockup is claimed; without it `min_confirmations` is enforced
+    /// against the tip.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn btc_claim_zero_conf_is_opt_in_and_depth_is_enforced() {
+        claim_fixture(
+            150,
+            Some(OutputStatus {
+                block_height: None,
+                spend: OutputSpend::Unspent,
+            }),
+            TransactionOptions::default().with_allow_zero_conf(true),
+        )
+        .await
+        .unwrap();
+        claim_fixture(
+            150,
+            None,
+            TransactionOptions::default().with_allow_zero_conf(true),
+        )
+        .await
+        .unwrap();
+
+        // Confirmed in the tip block: one confirmation.
+        claim_fixture(
+            150,
+            confirmed(150),
+            TransactionOptions::default().with_min_confirmations(1),
+        )
+        .await
+        .unwrap();
+        let error = claim_fixture(
+            150,
+            confirmed(150),
+            TransactionOptions::default().with_min_confirmations(2),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("1 confirmations, 2 required"),
+            "{error}"
+        );
+        claim_fixture(
+            151,
+            confirmed(150),
+            TransactionOptions::default().with_min_confirmations(2),
+        )
+        .await
+        .unwrap();
+        // min_confirmations = 0 is only meaningful with the explicit opt-in.
+        let error = claim_fixture(
+            151,
+            confirmed(150),
+            TransactionOptions::default().with_min_confirmations(0),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.message().contains("min_confirmations"), "{error}");
+    }
+
+    /// The fixture's timeout is block 200. With the Bitcoin default margin of
+    /// 6, tip 194 reaches the timeout and is refused; tip 193 is not. The
+    /// margin is adjustable, and zero accepts the race up to the timeout.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn btc_claim_refuses_to_run_into_the_timeout() {
+        let error = claim_fixture(194, confirmed(100), TransactionOptions::default())
+            .await
+            .unwrap_err();
+        assert!(
+            error.message().contains("Too close to the swap timeout"),
+            "{error}"
+        );
+        let error = claim_fixture(
+            194,
+            confirmed(100),
+            TransactionOptions::default().with_allow_zero_conf(true),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("Too close to the swap timeout"),
+            "{error}"
+        );
+
+        claim_fixture(193, confirmed(100), TransactionOptions::default())
+            .await
+            .unwrap();
+
+        claim_fixture(
+            194,
+            confirmed(100),
+            TransactionOptions::default().with_claim_safety_margin_blocks(0),
+        )
+        .await
+        .unwrap();
+        let error = claim_fixture(
+            200,
+            confirmed(100),
+            TransactionOptions::default().with_claim_safety_margin_blocks(0),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            error.message().contains("Too close to the swap timeout"),
+            "{error}"
+        );
+    }
+
+    /// The chain-level decision, without a chain: Liquid's default margin is
+    /// 60 blocks, a time-based timeout cannot be checked and is refused, and
+    /// the checks fail closed in the order a caller would want to hear them.
+    #[macros::test_all]
+    fn claim_policy_check_covers_both_chains() {
+        let btc = Chain::Bitcoin(crate::network::BitcoinChain::BitcoinRegtest);
+        let lbtc = Chain::Liquid(LiquidChain::LiquidRegtest);
+        let policy = ClaimPolicy::default();
+        assert!(policy
+            .check(btc, 193, confirmed(100), Some(200), "o")
+            .is_ok());
+        assert!(policy
+            .check(btc, 194, confirmed(100), Some(200), "o")
+            .is_err());
+        // Liquid: 60 blocks of margin by default.
+        assert!(policy
+            .check(lbtc, 139, confirmed(100), Some(200), "o")
+            .is_ok());
+        assert!(policy
+            .check(lbtc, 140, confirmed(100), Some(200), "o")
+            .is_err());
+        let margin = ClaimPolicy {
+            claim_safety_margin_blocks: Some(6),
+            ..ClaimPolicy::default()
+        };
+        assert!(margin
+            .check(lbtc, 193, confirmed(100), Some(200), "o")
+            .is_ok());
+        // No block-height deadline: refused regardless of policy.
+        let zero_conf = ClaimPolicy {
+            allow_zero_conf: true,
+            ..ClaimPolicy::default()
+        };
+        assert!(zero_conf.check(btc, 10, confirmed(5), None, "o").is_err());
+        assert!(zero_conf.check(btc, 10, None, Some(200), "o").is_ok());
     }
 }

@@ -302,6 +302,16 @@ impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
     async fn broadcast_tx(&self, _: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error> {
         unreachable!()
     }
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        unreachable!()
+    }
+    async fn get_output_status(
+        &self,
+        _: &OutPoint,
+        _: &bitcoin::Script,
+    ) -> Result<Option<kaleidorg_swap_sdk::network::OutputStatus>, Error> {
+        unreachable!()
+    }
     fn network(&self) -> BitcoinChain {
         CHAIN
     }

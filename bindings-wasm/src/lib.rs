@@ -1557,7 +1557,7 @@ use kaleidorg_swap_sdk::bitcoin::hex::DisplayHex as _;
 use kaleidorg_swap_sdk::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
 use kaleidorg_swap_sdk::bitcoin::PublicKey;
 use kaleidorg_swap_sdk::boltz::{
-    ChainSwapDetails, CreateReverseResponse, CreateSubmarineResponse, Side,
+    ChainSwapDetails, CreateChainResponse, CreateReverseResponse, CreateSubmarineResponse, Side,
 };
 use kaleidorg_swap_sdk::fees::Fee;
 use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
@@ -1669,6 +1669,37 @@ struct TxParams {
     swap_auth: Option<String>,
     #[serde(default)]
     claim_lockup: Option<ClaimLockup>,
+    #[serde(default, flatten)]
+    claim_policy: ClaimPolicyParams,
+}
+
+/// Claim policy fields shared by `TxParams` and `LiquidPsetParams`: what the
+/// chain source must show before a claim reveals the preimage.
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ClaimPolicyParams {
+    #[serde(default)]
+    min_confirmations: Option<u32>,
+    #[serde(default)]
+    allow_zero_conf: Option<bool>,
+    #[serde(default)]
+    claim_safety_margin_blocks: Option<u32>,
+    #[serde(default)]
+    allow_conflicting_spend: Option<bool>,
+}
+
+impl ClaimPolicyParams {
+    fn apply(&self, options: TransactionOptions) -> TransactionOptions {
+        let defaults = kaleidorg_swap_sdk::swaps::ClaimPolicy::default();
+        options.with_claim_policy(kaleidorg_swap_sdk::swaps::ClaimPolicy {
+            min_confirmations: self.min_confirmations.unwrap_or(defaults.min_confirmations),
+            allow_zero_conf: self.allow_zero_conf.unwrap_or(defaults.allow_zero_conf),
+            claim_safety_margin_blocks: self.claim_safety_margin_blocks,
+            allow_conflicting_spend: self
+                .allow_conflicting_spend
+                .unwrap_or(defaults.allow_conflicting_spend),
+        })
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -1699,6 +1730,7 @@ impl ClaimLockup {
 
 impl TxParams {
     fn claim_options(&self, options: TransactionOptions) -> Result<TransactionOptions, JsValue> {
+        let options = self.claim_policy.apply(options);
         match &self.claim_lockup {
             Some(lockup) => Ok(options.with_existing_lockup_tx(lockup.transaction()?)),
             None => Ok(options),
@@ -1745,9 +1777,20 @@ struct LiquidPsetParams {
     /// Optional serialized Liquid lockup transaction.
     #[serde(default)]
     lockup_tx_hex: Option<String>,
+    #[serde(default, flatten)]
+    claim_policy: ClaimPolicyParams,
 }
 
 impl LiquidPsetParams {
+    fn options(&self) -> Result<Option<TransactionOptions>, JsValue> {
+        let options = self.claim_policy.apply(TransactionOptions::default());
+        Ok(Some(match &self.lockup_tx_hex {
+            Some(hex) => options
+                .with_lockup_tx(CoreBtcLikeTransaction::from_hex_liquid(hex).map_err(core_err)?),
+            None => options,
+        }))
+    }
+
     fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
         build_chain_client(
             &self.network,
@@ -2067,13 +2110,7 @@ impl SwapScript {
         let p: LiquidPsetParams = from_js(params)?;
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
-        let options = p
-            .lockup_tx_hex
-            .as_deref()
-            .map(CoreBtcLikeTransaction::from_hex_liquid)
-            .transpose()
-            .map_err(core_err)?
-            .map(|tx| TransactionOptions::default().with_lockup_tx(tx));
+        let options = p.options()?;
         let prepared = self
             .inner
             .prepare_liquid_claim(CoreLiquidPsetParams {
@@ -2099,13 +2136,7 @@ impl SwapScript {
         let p: LiquidPsetParams = from_js(params)?;
         let chain_client = p.chain_client()?;
         let boltz = p.boltz();
-        let options = p
-            .lockup_tx_hex
-            .as_deref()
-            .map(CoreBtcLikeTransaction::from_hex_liquid)
-            .transpose()
-            .map_err(core_err)?
-            .map(|tx| TransactionOptions::default().with_lockup_tx(tx));
+        let options = p.options()?;
         let prepared = self
             .inner
             .prepare_liquid_refund(CoreLiquidPsetParams {
@@ -2537,4 +2568,49 @@ impl BoltzWsUpdates {
         let status = rx.recv().await.map_err(internal_err)?;
         to_js(&status)
     }
+}
+
+/// Refuse to pay a reverse swap whose lockup timeout is mature or within
+/// `minHeadroomBlocks` of `currentHeight`. `currentHeight` is the lockup
+/// chain's tip from a trusted source (`esploraTipHeight`), never the maker's
+/// `height()`. Security review 2026-10-28, finding 2.
+#[wasm_bindgen(js_name = validateReverseTimeoutHeadroom)]
+pub fn validate_reverse_timeout_headroom(
+    response: CreateReverseResponseJs,
+    current_height: u32,
+    min_headroom_blocks: u32,
+) -> Result<(), JsValue> {
+    let response: CreateReverseResponse = from_js(response.into())?;
+    response
+        .validate_timeout_headroom(current_height, min_headroom_blocks)
+        .map_err(core_err)
+}
+
+/// Refuse to fund a chain swap whose claim leg (`toChain`, the server's lock)
+/// is within `minClaimHeadroomBlocks` of its timeout at `toHeight`, or whose
+/// lockup leg on `fromChain` does not outlast it. `fromChain`/`toChain` are
+/// `"bitcoin"` or `"liquid"`; both heights come from trusted chain sources.
+#[wasm_bindgen(js_name = validateChainTimeoutHeadroom)]
+pub fn validate_chain_timeout_headroom(
+    response: CreateChainResponseJs,
+    network: StringArg,
+    from_chain: StringArg,
+    from_height: u32,
+    to_chain: StringArg,
+    to_height: u32,
+    min_claim_headroom_blocks: u32,
+) -> Result<(), JsValue> {
+    let response: CreateChainResponse = from_js(response.into())?;
+    let network = str_arg(network, "network")?;
+    let from_chain = build_chain(&str_arg(from_chain, "fromChain")?, &network)?;
+    let to_chain = build_chain(&str_arg(to_chain, "toChain")?, &network)?;
+    response
+        .validate_timeout_headroom(
+            from_chain,
+            from_height,
+            to_chain,
+            to_height,
+            min_claim_headroom_blocks,
+        )
+        .map_err(core_err)
 }

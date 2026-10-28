@@ -149,4 +149,26 @@ impl ChainClient {
     pub async fn broadcast_tx(&self, tx: &BtcLikeTransaction) -> Result<String, Error> {
         self.0.broadcast_tx(&tx.0).await.map_err(|e| e.into())
     }
+
+    /// Tip height of the configured Bitcoin source. This is the trusted
+    /// height the create-time timeout validators and claim policies want —
+    /// the maker's `get_height` is the maker's claim, not the chain's.
+    #[uniffi::method]
+    pub async fn bitcoin_tip_height(&self) -> Result<u32, Error> {
+        let client = self
+            .0
+            .bitcoin_client()
+            .ok_or_else(|| Error::Generic("No Bitcoin client configured".into()))?;
+        client.get_tip_height().await.map_err(|e| e.into())
+    }
+
+    /// Tip height of the configured Liquid source.
+    #[uniffi::method]
+    pub async fn liquid_tip_height(&self) -> Result<u32, Error> {
+        let client = self
+            .0
+            .liquid_client()
+            .ok_or_else(|| Error::Generic("No Liquid client configured".into()))?;
+        client.get_tip_height().await.map_err(|e| e.into())
+    }
 }

@@ -95,6 +95,13 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         .await
         .unwrap();
 
+    // A claim reveals the preimage, so the SDK refuses it until the chain
+    // client sees the lockup confirmed (zero-conf is an explicit opt-in).
+    utils::mine_blocks(1).await.unwrap();
+    next_status(&mut updates, "transaction.confirmed")
+        .await
+        .unwrap();
+
     let claim_address = utils::generate_address(chain).await.unwrap();
 
     // A multi-output claim pays two extra fixed-amount outputs and spends
@@ -136,8 +143,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         .await
         .expect_err("Underpaid script should throw");
 
-    let tx = swap_script
-        .construct_claim(&preimage, params)
+    let tx = construct_claim_when_indexed(&swap_script, &preimage, params)
         .await
         .unwrap();
 

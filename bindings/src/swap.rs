@@ -226,6 +226,23 @@ pub struct LiquidPsetParams {
     /// avoids depending on API/indexer transaction discovery.
     #[uniffi(default = None)]
     pub lockup_tx: Option<Arc<BtcLikeTransaction>>,
+    /// Claim policy (confirmations, zero-conf opt-in, timeout margin); the
+    /// `cooperative`, `chain_claim` and `swap_auth` fields are ignored here.
+    #[uniffi(default = None)]
+    pub options: Option<TransactionOptions>,
+}
+
+impl LiquidPsetParams {
+    fn core_options(&self) -> Option<swaps_bitcoin::TransactionOptions> {
+        let mut options = swaps_bitcoin::TransactionOptions::default();
+        if let Some(policy) = &self.options {
+            options = options.with_claim_policy(policy.claim_policy());
+        }
+        if let Some(tx) = &self.lockup_tx {
+            options = options.with_lockup_tx(tx.0.clone());
+        }
+        Some(options)
+    }
 }
 
 #[derive(Clone, uniffi::Record)]
@@ -338,8 +355,9 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
             fee: params.fee,
             swap_id: params.swap_id.clone(),
             options: params.options.clone().map(|o| {
-                let mut options =
-                    swaps_bitcoin::TransactionOptions::default().with_cooperative(o.cooperative);
+                let mut options = swaps_bitcoin::TransactionOptions::default()
+                    .with_cooperative(o.cooperative)
+                    .with_claim_policy(o.claim_policy());
                 if let Some(auth) = o.swap_auth {
                     options = options.with_swap_auth(auth);
                 }
@@ -477,9 +495,7 @@ impl SwapScript {
                 swap_id: params.swap_id.clone(),
                 chain_client: &params.chain_client.0,
                 boltz_api: &params.boltz_api.inner,
-                options: params.lockup_tx.as_ref().map(|tx| {
-                    swaps_bitcoin::TransactionOptions::default().with_lockup_tx(tx.0.clone())
-                }),
+                options: params.core_options(),
             })
             .await?;
         Ok(PreparedLiquidSpend(prepared))
@@ -499,9 +515,7 @@ impl SwapScript {
                 swap_id: params.swap_id.clone(),
                 chain_client: &params.chain_client.0,
                 boltz_api: &params.boltz_api.inner,
-                options: params.lockup_tx.as_ref().map(|tx| {
-                    swaps_bitcoin::TransactionOptions::default().with_lockup_tx(tx.0.clone())
-                }),
+                options: params.core_options(),
             })
             .await?;
         Ok(PreparedLiquidSpend(prepared))
@@ -536,6 +550,32 @@ pub struct TransactionOptions {
     /// Per-swap credential returned on creation or signed recovery.
     #[uniffi(default = None)]
     pub swap_auth: Option<String>,
+    /// Confirmations the lockup must have, per the chain client, before a
+    /// claim reveals the preimage. Refunds ignore it.
+    #[uniffi(default = 1)]
+    pub min_confirmations: u32,
+    /// Explicitly accept claiming an unconfirmed, replaceable lockup.
+    #[uniffi(default = false)]
+    pub allow_zero_conf: bool,
+    /// Blocks of headroom to the swap timeout a claim requires; `None` is the
+    /// chain default (6 on Bitcoin, 60 on Liquid). Zero accepts the expiry race.
+    #[uniffi(default = None)]
+    pub claim_safety_margin_blocks: Option<u32>,
+    /// Build a claim over an unconfirmed spend of the lockup, to fee-bump a
+    /// stuck claim of your own. A confirmed spend is always refused.
+    #[uniffi(default = false)]
+    pub allow_conflicting_spend: bool,
+}
+
+impl TransactionOptions {
+    fn claim_policy(&self) -> swaps_bitcoin::ClaimPolicy {
+        swaps_bitcoin::ClaimPolicy {
+            min_confirmations: self.min_confirmations,
+            allow_zero_conf: self.allow_zero_conf,
+            claim_safety_margin_blocks: self.claim_safety_margin_blocks,
+            allow_conflicting_spend: self.allow_conflicting_spend,
+        }
+    }
 }
 
 #[uniffi::remote(Enum)]

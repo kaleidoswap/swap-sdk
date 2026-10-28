@@ -526,6 +526,20 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom()
+        != 14140
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom()
+        != 49957
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex() != 9628:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -535,8 +549,22 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height()
+        != 60872
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx()
         != 21307
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height()
+        != 37297
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1326,11 +1354,21 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new.argtypes = (
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new.restype = (
     ctypes.c_void_p
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx.argtypes = (
     ctypes.c_void_p,
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.restype = (
     ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_keypair.argtypes = (
@@ -2065,6 +2103,25 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.argtypes 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.c_uint32,
+    _UniffiRustBuffer,
+    ctypes.c_uint32,
+    ctypes.c_uint32,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.restype = (
+    None
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.c_uint32,
+    ctypes.c_uint32,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom.restype = None
 _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2303,6 +2360,10 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.restype = (
     ctypes.c_uint16
@@ -2311,8 +2372,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.restype = (
     ctypes.c_uint16
@@ -6413,6 +6478,12 @@ class LiquidPsetParams:
     avoids depending on API/indexer transaction discovery.
     """
 
+    options: "typing.Optional[TransactionOptions]"
+    """
+    Claim policy (confirmations, zero-conf opt-in, timeout margin); the
+    `cooperative`, `chain_claim` and `swap_auth` fields are ignored here.
+    """
+
     def __init__(
         self,
         *,
@@ -6423,6 +6494,7 @@ class LiquidPsetParams:
         chain_client: "ChainClient",
         boltz_api: "SwapClient",
         lockup_tx: "typing.Optional[BtcLikeTransaction]" = _DEFAULT,
+        options: "typing.Optional[TransactionOptions]" = _DEFAULT,
     ):
         self.output_address = output_address
         self.max_fee = max_fee
@@ -6434,9 +6506,13 @@ class LiquidPsetParams:
             self.lockup_tx = None
         else:
             self.lockup_tx = lockup_tx
+        if options is _DEFAULT:
+            self.options = None
+        else:
+            self.options = options
 
     def __str__(self):
-        return "LiquidPsetParams(output_address={}, max_fee={}, quoted_fee_cap={}, swap_id={}, chain_client={}, boltz_api={}, lockup_tx={})".format(
+        return "LiquidPsetParams(output_address={}, max_fee={}, quoted_fee_cap={}, swap_id={}, chain_client={}, boltz_api={}, lockup_tx={}, options={})".format(
             self.output_address,
             self.max_fee,
             self.quoted_fee_cap,
@@ -6444,6 +6520,7 @@ class LiquidPsetParams:
             self.chain_client,
             self.boltz_api,
             self.lockup_tx,
+            self.options,
         )
 
     def __eq__(self, other):
@@ -6461,6 +6538,8 @@ class LiquidPsetParams:
             return False
         if self.lockup_tx != other.lockup_tx:
             return False
+        if self.options != other.options:
+            return False
         return True
 
 
@@ -6475,6 +6554,7 @@ class _UniffiConverterTypeLiquidPsetParams(_UniffiConverterRustBuffer):
             chain_client=_UniffiConverterTypeChainClient.read(buf),
             boltz_api=_UniffiConverterTypeSwapClient.read(buf),
             lockup_tx=_UniffiConverterOptionalTypeBtcLikeTransaction.read(buf),
+            options=_UniffiConverterOptionalTypeTransactionOptions.read(buf),
         )
 
     @staticmethod
@@ -6486,6 +6566,7 @@ class _UniffiConverterTypeLiquidPsetParams(_UniffiConverterRustBuffer):
         _UniffiConverterTypeChainClient.check_lower(value.chain_client)
         _UniffiConverterTypeSwapClient.check_lower(value.boltz_api)
         _UniffiConverterOptionalTypeBtcLikeTransaction.check_lower(value.lockup_tx)
+        _UniffiConverterOptionalTypeTransactionOptions.check_lower(value.options)
 
     @staticmethod
     def write(value, buf):
@@ -6496,6 +6577,7 @@ class _UniffiConverterTypeLiquidPsetParams(_UniffiConverterRustBuffer):
         _UniffiConverterTypeChainClient.write(value.chain_client, buf)
         _UniffiConverterTypeSwapClient.write(value.boltz_api, buf)
         _UniffiConverterOptionalTypeBtcLikeTransaction.write(value.lockup_tx, buf)
+        _UniffiConverterOptionalTypeTransactionOptions.write(value.options, buf)
 
 
 class LiquidPsetTemplate:
@@ -8949,12 +9031,39 @@ class TransactionOptions:
     Per-swap credential returned on creation or signed recovery.
     """
 
+    min_confirmations: "int"
+    """
+    Confirmations the lockup must have, per the chain client, before a
+    claim reveals the preimage. Refunds ignore it.
+    """
+
+    allow_zero_conf: "bool"
+    """
+    Explicitly accept claiming an unconfirmed, replaceable lockup.
+    """
+
+    claim_safety_margin_blocks: "typing.Optional[int]"
+    """
+    Blocks of headroom to the swap timeout a claim requires; `None` is the
+    chain default (6 on Bitcoin, 60 on Liquid). Zero accepts the expiry race.
+    """
+
+    allow_conflicting_spend: "bool"
+    """
+    Build a claim over an unconfirmed spend of the lockup, to fee-bump a
+    stuck claim of your own. A confirmed spend is always refused.
+    """
+
     def __init__(
         self,
         *,
         cooperative: "bool" = _DEFAULT,
         chain_claim: "typing.Optional[ChainClaim]" = _DEFAULT,
         swap_auth: "typing.Optional[str]" = _DEFAULT,
+        min_confirmations: "int" = _DEFAULT,
+        allow_zero_conf: "bool" = _DEFAULT,
+        claim_safety_margin_blocks: "typing.Optional[int]" = _DEFAULT,
+        allow_conflicting_spend: "bool" = _DEFAULT,
     ):
         if cooperative is _DEFAULT:
             self.cooperative = True
@@ -8968,12 +9077,32 @@ class TransactionOptions:
             self.swap_auth = None
         else:
             self.swap_auth = swap_auth
+        if min_confirmations is _DEFAULT:
+            self.min_confirmations = 1
+        else:
+            self.min_confirmations = min_confirmations
+        if allow_zero_conf is _DEFAULT:
+            self.allow_zero_conf = False
+        else:
+            self.allow_zero_conf = allow_zero_conf
+        if claim_safety_margin_blocks is _DEFAULT:
+            self.claim_safety_margin_blocks = None
+        else:
+            self.claim_safety_margin_blocks = claim_safety_margin_blocks
+        if allow_conflicting_spend is _DEFAULT:
+            self.allow_conflicting_spend = False
+        else:
+            self.allow_conflicting_spend = allow_conflicting_spend
 
     def __str__(self):
-        return (
-            "TransactionOptions(cooperative={}, chain_claim={}, swap_auth={})".format(
-                self.cooperative, self.chain_claim, self.swap_auth
-            )
+        return "TransactionOptions(cooperative={}, chain_claim={}, swap_auth={}, min_confirmations={}, allow_zero_conf={}, claim_safety_margin_blocks={}, allow_conflicting_spend={})".format(
+            self.cooperative,
+            self.chain_claim,
+            self.swap_auth,
+            self.min_confirmations,
+            self.allow_zero_conf,
+            self.claim_safety_margin_blocks,
+            self.allow_conflicting_spend,
         )
 
     def __eq__(self, other):
@@ -8982,6 +9111,14 @@ class TransactionOptions:
         if self.chain_claim != other.chain_claim:
             return False
         if self.swap_auth != other.swap_auth:
+            return False
+        if self.min_confirmations != other.min_confirmations:
+            return False
+        if self.allow_zero_conf != other.allow_zero_conf:
+            return False
+        if self.claim_safety_margin_blocks != other.claim_safety_margin_blocks:
+            return False
+        if self.allow_conflicting_spend != other.allow_conflicting_spend:
             return False
         return True
 
@@ -8993,6 +9130,10 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
             cooperative=_UniffiConverterBool.read(buf),
             chain_claim=_UniffiConverterOptionalTypeChainClaim.read(buf),
             swap_auth=_UniffiConverterOptionalString.read(buf),
+            min_confirmations=_UniffiConverterUInt32.read(buf),
+            allow_zero_conf=_UniffiConverterBool.read(buf),
+            claim_safety_margin_blocks=_UniffiConverterOptionalUInt32.read(buf),
+            allow_conflicting_spend=_UniffiConverterBool.read(buf),
         )
 
     @staticmethod
@@ -9000,12 +9141,20 @@ class _UniffiConverterTypeTransactionOptions(_UniffiConverterRustBuffer):
         _UniffiConverterBool.check_lower(value.cooperative)
         _UniffiConverterOptionalTypeChainClaim.check_lower(value.chain_claim)
         _UniffiConverterOptionalString.check_lower(value.swap_auth)
+        _UniffiConverterUInt32.check_lower(value.min_confirmations)
+        _UniffiConverterBool.check_lower(value.allow_zero_conf)
+        _UniffiConverterOptionalUInt32.check_lower(value.claim_safety_margin_blocks)
+        _UniffiConverterBool.check_lower(value.allow_conflicting_spend)
 
     @staticmethod
     def write(value, buf):
         _UniffiConverterBool.write(value.cooperative, buf)
         _UniffiConverterOptionalTypeChainClaim.write(value.chain_claim, buf)
         _UniffiConverterOptionalString.write(value.swap_auth, buf)
+        _UniffiConverterUInt32.write(value.min_confirmations, buf)
+        _UniffiConverterBool.write(value.allow_zero_conf, buf)
+        _UniffiConverterOptionalUInt32.write(value.claim_safety_margin_blocks, buf)
+        _UniffiConverterBool.write(value.allow_conflicting_spend, buf)
 
 
 class TransactionOut:
@@ -11751,7 +11900,27 @@ class _UniffiConverterTypeBtcLikeTransaction:
 
 
 class ChainClientProtocol(typing.Protocol):
+    def bitcoin_tip_height(
+        self,
+    ):
+        """
+        Tip height of the configured Bitcoin source. This is the trusted
+        height the create-time timeout validators and claim policies want —
+        the maker's `get_height` is the maker's claim, not the chain's.
+        """
+
+        raise NotImplementedError
+
     def broadcast_tx(self, tx: "BtcLikeTransaction"):
+        raise NotImplementedError
+
+    def liquid_tip_height(
+        self,
+    ):
+        """
+        Tip height of the configured Liquid source.
+        """
+
         raise NotImplementedError
 
 
@@ -11790,6 +11959,28 @@ class ChainClient:
         inst._pointer = pointer
         return inst
 
+    async def bitcoin_tip_height(
+        self,
+    ) -> "int":
+        """
+        Tip height of the configured Bitcoin source. This is the trusted
+        height the create-time timeout validators and claim policies want —
+        the maker's `get_height` is the maker's claim, not the chain's.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32,
+            # lift function
+            _UniffiConverterUInt32.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def broadcast_tx(self, tx: "BtcLikeTransaction") -> "str":
         _UniffiConverterTypeBtcLikeTransaction.check_lower(tx)
 
@@ -11803,6 +11994,26 @@ class ChainClient:
             _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterString.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def liquid_tip_height(
+        self,
+    ) -> "int":
+        """
+        Tip height of the configured Liquid source.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32,
+            # lift function
+            _UniffiConverterUInt32.lift,
             # Error FFI converter
             _UniffiConverterTypeError,
         )
@@ -14780,6 +14991,70 @@ async def resolve_lightning_address(address: "str", amount_sat: "int") -> "str":
     )
 
 
+def validate_chain_timeout_headroom(
+    response: "CreateChainResponse",
+    from_chain: "Chain",
+    from_height: "int",
+    to_chain: "Chain",
+    to_height: "int",
+    min_claim_headroom_blocks: "int",
+) -> None:
+    """
+    Refuse to fund a chain swap whose claim leg (`to_chain`, the server's
+    lock) is within `min_claim_headroom_blocks` of its timeout at `to_height`,
+    or whose lockup leg on `from_chain` does not outlast it. Both heights come
+    from trusted chain clients.
+    """
+
+    _UniffiConverterTypeCreateChainResponse.check_lower(response)
+
+    _UniffiConverterTypeChain.check_lower(from_chain)
+
+    _UniffiConverterUInt32.check_lower(from_height)
+
+    _UniffiConverterTypeChain.check_lower(to_chain)
+
+    _UniffiConverterUInt32.check_lower(to_height)
+
+    _UniffiConverterUInt32.check_lower(min_claim_headroom_blocks)
+
+    _uniffi_rust_call_with_error(
+        _UniffiConverterTypeError,
+        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom,
+        _UniffiConverterTypeCreateChainResponse.lower(response),
+        _UniffiConverterTypeChain.lower(from_chain),
+        _UniffiConverterUInt32.lower(from_height),
+        _UniffiConverterTypeChain.lower(to_chain),
+        _UniffiConverterUInt32.lower(to_height),
+        _UniffiConverterUInt32.lower(min_claim_headroom_blocks),
+    )
+
+
+def validate_reverse_timeout_headroom(
+    response: "CreateReverseResponse", current_height: "int", min_headroom_blocks: "int"
+) -> None:
+    """
+    Refuse to pay a reverse swap whose lockup timeout is mature or within
+    `min_headroom_blocks` of `current_height`, which must be the lockup chain's
+    tip from a `ChainClient` (`bitcoin_tip_height` / `liquid_tip_height`), not
+    the maker's `get_height`. Security review 2026-10-28, finding 2.
+    """
+
+    _UniffiConverterTypeCreateReverseResponse.check_lower(response)
+
+    _UniffiConverterUInt32.check_lower(current_height)
+
+    _UniffiConverterUInt32.check_lower(min_headroom_blocks)
+
+    _uniffi_rust_call_with_error(
+        _UniffiConverterTypeError,
+        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom,
+        _UniffiConverterTypeCreateReverseResponse.lower(response),
+        _UniffiConverterUInt32.lower(current_height),
+        _UniffiConverterUInt32.lower(min_headroom_blocks),
+    )
+
+
 __all__ = [
     "InternalError",
     "AmountSide",
@@ -14895,6 +15170,8 @@ __all__ = [
     "lbtc_chain_from_network",
     "new_rfq_id",
     "resolve_lightning_address",
+    "validate_chain_timeout_headroom",
+    "validate_reverse_timeout_headroom",
     "BtcLikeTransaction",
     "ChainClient",
     "KeyPair",

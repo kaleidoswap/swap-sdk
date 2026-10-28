@@ -778,36 +778,207 @@ function lockupReverseScript() {
   );
 }
 
-test("constructClaim spends the claimLockup and asks nobody where it is", async () => {
+/** A minimal Esplora serving one chain state: the tip, and the lockup's
+ * status and outspend. Everything else fails, and every request is recorded. */
+async function lockupEsplora({ tip, status, outspend }) {
   const { createServer } = await import("node:http");
   const requests = [];
+  const routes = {
+    "/blocks/tip/height": String(tip),
+    [`/tx/${LOCKUP_TXID}/status`]: JSON.stringify(status),
+    [`/tx/${LOCKUP_TXID}/outspend/1`]: JSON.stringify(outspend),
+  };
   const server = createServer((req, res) => {
     requests.push(`${req.method} ${req.url}`);
     req.resume();
     req.on("end", () => {
-      res.statusCode = 500;
-      res.end("unexpected request");
+      const body = routes[req.url];
+      res.statusCode = body === undefined ? 500 : 200;
+      res.end(body ?? "unexpected request");
     });
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    url: `http://127.0.0.1:${server.address().port}`,
+    requests,
+    close: () => server.close(),
+  };
+}
+
+function lockupClaimParams(esploraUrl, extra = {}) {
+  return {
+    ...CLAIM_PARAMS,
+    swapId: "reverse",
+    // Nothing listens here: a maker request fails the claim.
+    makerBaseUrl: "http://127.0.0.1:1/v2",
+    bitcoinEsploraUrl: esploraUrl,
+    cooperative: false,
+    feeAbsoluteSat: 500n,
+    claimLockup: { chain: "bitcoin", hex: LOCKUP_TX_HEX, txid: LOCKUP_TXID },
+    ...extra,
+  };
+}
+
+test("constructClaim spends the claimLockup and asks nobody where it is", async () => {
+  const esplora = await lockupEsplora({
+    tip: 150,
+    status: { confirmed: true, block_height: 150 },
+    outspend: { spent: false },
+  });
   try {
-    const claim = await lockupReverseScript().constructClaim("33".repeat(32), {
-      ...CLAIM_PARAMS,
-      swapId: "reverse",
-      // Nothing listens here: a maker request fails the claim.
-      makerBaseUrl: "http://127.0.0.1:1/v2",
-      bitcoinEsploraUrl: `http://127.0.0.1:${server.address().port}`,
-      cooperative: false,
-      feeAbsoluteSat: 500n,
-      claimLockup: { chain: "bitcoin", hex: LOCKUP_TX_HEX, txid: LOCKUP_TXID },
-    });
+    const claim = await lockupReverseScript().constructClaim(
+      "33".repeat(32),
+      lockupClaimParams(esplora.url),
+    );
 
     assert.equal(firstPrevout(claim.hex()), `${LOCKUP_TXID}:1`);
-    // Pinned and never rebroadcast: no Esplora request at all.
-    assert.deepEqual(requests, []);
+    // Pinned and never rebroadcast: Esplora is asked only what the claim
+    // guard must know before revealing the preimage, never where the lockup is.
+    assert.deepEqual(esplora.requests, [
+      "GET /blocks/tip/height",
+      `GET /tx/${LOCKUP_TXID}/status`,
+      `GET /tx/${LOCKUP_TXID}/outspend/1`,
+    ]);
   } finally {
-    server.close();
+    esplora.close();
   }
+});
+
+test("constructClaim refuses an unconfirmed lockup unless allowZeroConf is set", async () => {
+  const esplora = await lockupEsplora({
+    tip: 150,
+    status: { confirmed: false },
+    outspend: { spent: false },
+  });
+  try {
+    await assert.rejects(
+      () =>
+        lockupReverseScript().constructClaim(
+          "33".repeat(32),
+          lockupClaimParams(esplora.url),
+        ),
+      /0 confirmations, 1 required/,
+    );
+    await assert.rejects(
+      () =>
+        lockupReverseScript().constructClaim(
+          "33".repeat(32),
+          lockupClaimParams(esplora.url, { minConfirmations: 3 }),
+        ),
+      /0 confirmations, 3 required/,
+    );
+    const claim = await lockupReverseScript().constructClaim(
+      "33".repeat(32),
+      lockupClaimParams(esplora.url, { allowZeroConf: true }),
+    );
+    assert.equal(firstPrevout(claim.hex()), `${LOCKUP_TXID}:1`);
+  } finally {
+    esplora.close();
+  }
+});
+
+test("constructClaim refuses a lockup with a conflicting spend or near its timeout", async () => {
+  const spent = await lockupEsplora({
+    tip: 150,
+    status: { confirmed: true, block_height: 150 },
+    outspend: { spent: true, txid: "ab", vin: 0, status: { confirmed: false } },
+  });
+  // The fixture's timeout is block 200; the Bitcoin default margin is 6.
+  const late = await lockupEsplora({
+    tip: 194,
+    status: { confirmed: true, block_height: 100 },
+    outspend: { spent: false },
+  });
+  try {
+    await assert.rejects(
+      () =>
+        lockupReverseScript().constructClaim(
+          "33".repeat(32),
+          lockupClaimParams(spent.url, { allowZeroConf: true }),
+        ),
+      /conflicting spend/,
+    );
+    await assert.rejects(
+      () =>
+        lockupReverseScript().constructClaim(
+          "33".repeat(32),
+          lockupClaimParams(late.url),
+        ),
+      /Too close to the swap timeout/,
+    );
+    const claim = await lockupReverseScript().constructClaim(
+      "33".repeat(32),
+      lockupClaimParams(late.url, { claimSafetyMarginBlocks: 0 }),
+    );
+    assert.equal(firstPrevout(claim.hex()), `${LOCKUP_TXID}:1`);
+  } finally {
+    spent.close();
+    late.close();
+  }
+});
+
+test("validateReverseTimeoutHeadroom refuses a mature or tight timeout", async () => {
+  const { validateReverseTimeoutHeadroom, validateChainTimeoutHeadroom } =
+    await import("../dist/index.js");
+  // Timeout 200: 187 + 12 leaves headroom, 188 + 12 reaches it.
+  validateReverseTimeoutHeadroom(LOCKUP_REVERSE, 187, 12);
+  assert.throws(
+    () => validateReverseTimeoutHeadroom(LOCKUP_REVERSE, 188, 12),
+    /leaves no headroom/,
+  );
+  assert.throws(
+    () => validateReverseTimeoutHeadroom(LOCKUP_REVERSE, 200, 0),
+    /leaves no headroom/,
+  );
+  const details = (timeoutBlockHeight) => ({
+    swapTree: LOCKUP_REVERSE.swapTree,
+    lockupAddress: LOCKUP_REVERSE.lockupAddress,
+    serverPublicKey: LOCKUP_REVERSE.refundPublicKey,
+    timeoutBlockHeight,
+    amount: 50000n,
+  });
+  // BTC -> L-BTC: our lock 288 BTC blocks out (~48h), the claim leg 1440
+  // Liquid blocks out (~24h).
+  const chain = {
+    id: "chain",
+    lockupDetails: details(100 + 288),
+    claimDetails: details(5000 + 1440),
+  };
+  validateChainTimeoutHeadroom(
+    chain,
+    "regtest",
+    "bitcoin",
+    100,
+    "liquid",
+    5000,
+    60,
+  );
+  assert.throws(
+    () =>
+      validateChainTimeoutHeadroom(
+        chain,
+        "regtest",
+        "bitcoin",
+        100,
+        "liquid",
+        6400,
+        60,
+      ),
+    /leaves no headroom/,
+  );
+  assert.throws(
+    () =>
+      validateChainTimeoutHeadroom(
+        chain,
+        "regtest",
+        "bitcoin",
+        380,
+        "liquid",
+        5000,
+        60,
+      ),
+    /does not outlast/,
+  );
 });
 
 test("a claimLockup whose hex does not match its txid is rejected", async () => {

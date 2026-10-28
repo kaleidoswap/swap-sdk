@@ -32,6 +32,14 @@ export * from "./reconcile.js";
 
 export { resolveLightningAddress } from "../vendor/bindings_wasm.js";
 
+/** Create-time timeout checks against a trusted tip (`esploraTipHeight`), to
+ * run before paying a reverse swap's invoice or funding a chain swap. The
+ * maker's `height()` is not a trusted tip. */
+export {
+  validateReverseTimeoutHeadroom,
+  validateChainTimeoutHeadroom,
+} from "../vendor/bindings_wasm.js";
+
 export type {
   CorridorCard,
   CorridorCardAsset,
@@ -251,10 +259,41 @@ export interface TxParams {
   cooperative?: boolean;
   /** Per-swap credential from create or signed recovery. Required for maker cooperative refunds. */
   swapAuth?: string;
+  /**
+   * Confirmations the lockup must have, as seen by the Esplora the params
+   * name, before a claim reveals the preimage. Defaults to 1. The WASM core
+   * checks this itself (tip height and output status from Esplora), so it
+   * holds for every caller of `constructClaim`, not only the reconcile
+   * helpers. Refunds ignore it.
+   */
+  minConfirmations?: number;
+  /** Explicitly accept claiming an unconfirmed, replaceable lockup. Default false. */
+  allowZeroConf?: boolean;
+  /**
+   * Blocks of headroom to the swap timeout a claim requires, measured
+   * against the Esplora tip. Defaults to 6 on Bitcoin and 60 on Liquid; 0
+   * accepts the expiry race.
+   */
+  claimSafetyMarginBlocks?: number;
+  /**
+   * Build a claim although an unconfirmed spend of the lockup is already
+   * visible: only to fee-bump a stuck claim of your own, whose preimage is
+   * already public. A confirmed spend is always refused. Default false.
+   */
+  allowConflictingSpend?: boolean;
 }
 
+/** Claim policy fields, shared with `TxParams`; see there. */
+export type ClaimPolicyParams = Pick<
+  TxParams,
+  | "minConfirmations"
+  | "allowZeroConf"
+  | "claimSafetyMarginBlocks"
+  | "allowConflictingSpend"
+>;
+
 /** Parameters for the caller-funded L-USDT PSET prepare methods. */
-export interface LiquidPsetParams {
+export interface LiquidPsetParams extends ClaimPolicyParams {
   outputAddress: string;
   swapId: string;
   /** Application fee ceiling in policy-asset satoshis. */

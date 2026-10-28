@@ -102,7 +102,9 @@ async def swap(
             ),
         )
 
-        claim_tx = await claim_script.construct_claim(preimage, claim_params)
+        claim_tx = await construct_claim_when_indexed(
+            claim_script, preimage, claim_params
+        )
         txid = await chain_client.broadcast_tx(claim_tx)
         print(f"Claim Transaction ID: {txid}")
 

@@ -51,6 +51,11 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     # Wait for transaction to appear in mempool
     await next_status(updates, "transaction.mempool")
 
+    # A claim reveals the preimage, so the SDK refuses it until the chain
+    # client sees the lockup confirmed (zero-conf is an explicit opt-in).
+    await mine_block()
+    await next_status(updates, "transaction.confirmed")
+
     await delay()
 
     swap_script = kaleidorg_swap_sdk.SwapScript.from_reverse(
@@ -58,7 +63,8 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     )
 
     claim_address = await getnewaddress(to_chain)
-    tx = await swap_script.construct_claim(
+    tx = await construct_claim_when_indexed(
+        swap_script,
         preimage,
         kaleidorg_swap_sdk.SwapTransactionParams(
             swap_id=swap_id,
