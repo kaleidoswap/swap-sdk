@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed — security integration and maker compatibility
+
+- LNURL ignores environment proxies so DNS egress checks cannot be bypassed.
+- Reverse swaps validate the invoice on the source Lightning network, including
+  Signet-to-Liquid-testnet routes, independently of the destination HTLC.
+- RGB claim preparation now requires a confirmed, unspent lockup with enough
+  time before refund, using the same conservative default policy as other claims.
+- Add the maker's optional `internalHop.payeeId` response field across bindings
+  and refresh the authenticated schema to maker `823d5677` (v0.11.0 plus the
+  legacy seed compatibility fix).
+- React Native guidance now recommends the available public organization keys.
+
+
 ### BREAKING — React Native: `SwapClient.kaleidoMaker` refuses to run in an app
 
 `SwapClient.kaleidoMaker(makerUrl, apiKey, timeout)` in

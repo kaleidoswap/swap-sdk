@@ -1,9 +1,9 @@
 {
   "source": {
     "repository": "kaleidoswap/kaleidoswap-maker-rs",
-    "revision": "4ce72f57e2a5f2148b5c9f5ee30be289fb02bcbf",
+    "revision": "823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d",
     "file": "crates/maker-api/src/lib.rs",
-    "sha256": "562f0fc438dd90d1f882f509ef2300c059f24b65664eee2547714ce6f26c63cf"
+    "sha256": "72ab4cee956602afb9b360477b61e7cc204d5e826fd5d8e9a55421facb9a8620"
   },
   "adminAuth": true,
   "routes": [
@@ -38,6 +38,10 @@
     [
       "GET",
       "/v2/admin/auth/keys"
+    ],
+    [
+      "GET",
+      "/v2/admin/custody/hot-float"
     ],
     [
       "GET",

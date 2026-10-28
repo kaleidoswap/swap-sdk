@@ -86,14 +86,12 @@ SwapClient.kaleidoMaker(makerUrl, apiKey, undefined);
 SwapClient.kaleidoMaker(makerUrl, apiKey, undefined, { allowMobile: true });
 ```
 
-Only the boolean `true` counts. The recommended setup is to create attributed
-swaps on your own server, with the key in server-side configuration, and keep
-the app on the plain `SwapClient` constructor. This matches the browser SDK,
-where `forKaleidoMaker` refuses a page, a worker or an extension unless you pass
-`allowBrowser: true`. The Python wheel is built from the same Rust crate and
-runs on servers, so it has no such check. A key that is safe to put in an app is
-planned (public-key attribution,
-[kaleidoswap-maker-rs#578](https://github.com/kaleidoswap/kaleidoswap-maker-rs/issues/578)).
+Only the boolean `true` counts. For attribution in a mobile app, use
+`SwapClient.kaleidoOrg` with the organization's registered public key. Public
+organization keys are safe to ship in the app; secret maker API keys belong in
+server-side configuration. The browser SDK offers `createKaleidoOrgClient` for
+the same purpose. Its secret-key factory, `forKaleidoMaker`, requires an explicit
+`allowBrowser: true` override in a page, worker or extension.
 
 ## Mobile-specific notes
 

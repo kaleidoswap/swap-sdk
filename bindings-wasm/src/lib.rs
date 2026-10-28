@@ -1178,9 +1178,10 @@ impl BoltzClient {
             resp.validate_rgb(&preimage, &claim_pk, chain, contract_id)
                 .map_err(core_err)?;
         } else {
-            resp.validate_with_currency_and_asset_context(
+            resp.validate_with_source_and_asset_context(
                 &preimage,
                 &claim_pk,
+                from_chain,
                 to_chain,
                 Some(to_currency),
                 expected_asset_context,

@@ -65,6 +65,7 @@ export type {
   Webhook,
   CreateSubmarineRequest,
   CreateSubmarineResponse,
+  InternalHopRef,
   CreateReverseRequest,
   CreateReverseResponse,
   CreateChainRequest,

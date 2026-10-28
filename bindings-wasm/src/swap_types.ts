@@ -52,6 +52,8 @@ transportEndpoints: Array<string>,
  */
 minConfirmations: number, };
 
+export type InternalHopRef = { payeeId: string, };
+
 export type SubSwapStates = "swap.created" | "transaction.mempool" | "transaction.confirmed" | "invoice.set" | "invoice.paid" | "invoice.pending" | "invoice.failedToPay" | "transaction.claimed" | "transaction.claim.pending" | "transaction.lockupFailed" | "swap.expired";
 
 export type RevSwapStates = "swap.created" | "minerfee.paid" | "transaction.mempool" | "transaction.confirmed" | "invoice.settled" | "invoice.expired" | "swap.expired" | "transaction.failed" | "transaction.refunded";
@@ -62,7 +64,7 @@ export type Webhook<T> = { url: string, hashSwapId?: boolean | null, status?: Ar
 
 export type CreateSubmarineRequest = { from: string, to: string, invoice: string, refundPublicKey: string, pairHash?: string | null, referralId?: string | null, webhook?: Webhook<SubSwapStates> | null, };
 
-export type CreateSubmarineResponse = { acceptZeroConf: boolean, address: string, bip21: string, claimPublicKey: string, expectedAmount: bigint, id: string, referralId?: string, swapTree: SwapTree, timeoutBlockHeight: bigint, blindingKey?: string, assetId?: string, feeAssetId?: string,
+export type CreateSubmarineResponse = { internalHop?: InternalHopRef, acceptZeroConf: boolean, address: string, bip21: string, claimPublicKey: string, expectedAmount: bigint, id: string, referralId?: string, swapTree: SwapTree, timeoutBlockHeight: bigint, blindingKey?: string, assetId?: string, feeAssetId?: string,
 /**
  * Per-swap taker credential, returned on creation by the
  * KaleidoSwap maker. Pass it to cooperative refunds through

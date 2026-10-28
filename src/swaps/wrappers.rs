@@ -1125,7 +1125,9 @@ impl SwapScript {
     ///
     /// Run once the lock has `minConfirmations` (the maker sends no
     /// `transaction.confirmed` for it) and the wallet has accepted the lock
-    /// consignment. Then color the template in the wallet and finish with
+    /// consignment. Preparation independently checks chain evidence using the
+    /// default [`ClaimPolicy`]. Color and finalize promptly; a prepared template
+    /// is not fresh evidence that the lock remains safe to claim. Then finish with
     /// [`PreparedRgbSpend::finalize_claim`]. The claim must confirm before
     /// the swap's timeout block, when the maker's refund becomes valid.
     pub async fn prepare_rgb_claim(
@@ -1176,6 +1178,16 @@ impl SwapScript {
             .ok_or_else(|| {
                 Error::Protocol("No RGB HTLC output in the supplied lock transaction".into())
             })?;
+        if kind == SwapTxKind::Claim {
+            ClaimPolicy::default()
+                .ensure_bitcoin_claimable(
+                    bitcoin_client,
+                    &utxo.0,
+                    &utxo.1.script_pubkey,
+                    script.locktime,
+                )
+                .await?;
+        }
         if cooperative {
             return PreparedRgbSpend::new_cooperative_refund(
                 script,

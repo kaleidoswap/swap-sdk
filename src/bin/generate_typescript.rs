@@ -48,6 +48,7 @@ fn main() {
         Leaf,
         SwapTree,
         RgbLock,
+        InternalHopRef,
         SubSwapStates,
         RevSwapStates,
         ChainSwapStates,

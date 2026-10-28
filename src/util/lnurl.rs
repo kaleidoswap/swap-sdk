@@ -213,6 +213,7 @@ impl LnurlHttp {
             #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
+                .no_proxy() // Keep destination DNS inside our egress resolver.
                 .dns_resolver(std::sync::Arc::new(EgressResolver {
                     allow_private_hosts: options.allow_private_hosts,
                 }))

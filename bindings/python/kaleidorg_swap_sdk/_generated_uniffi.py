@@ -5448,6 +5448,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
 
 
 class CreateSubmarineResponse:
+    internal_hop: "typing.Optional[InternalHopRef]"
     accept_zero_conf: "bool"
     address: "str"
     bip21: "str"
@@ -5474,6 +5475,7 @@ class CreateSubmarineResponse:
     def __init__(
         self,
         *,
+        internal_hop: "typing.Optional[InternalHopRef]",
         accept_zero_conf: "bool",
         address: "str",
         bip21: "str",
@@ -5489,6 +5491,7 @@ class CreateSubmarineResponse:
         swap_auth: "typing.Optional[str]",
         rgb: "typing.Optional[RgbLock]",
     ):
+        self.internal_hop = internal_hop
         self.accept_zero_conf = accept_zero_conf
         self.address = address
         self.bip21 = bip21
@@ -5505,7 +5508,8 @@ class CreateSubmarineResponse:
         self.rgb = rgb
 
     def __str__(self):
-        return "CreateSubmarineResponse(accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={}, rgb={})".format(
+        return "CreateSubmarineResponse(internal_hop={}, accept_zero_conf={}, address={}, bip21={}, claim_public_key={}, expected_amount={}, id={}, referral_id={}, swap_tree={}, timeout_block_height={}, blinding_key={}, asset_id={}, fee_asset_id={}, swap_auth={}, rgb={})".format(
+            self.internal_hop,
             self.accept_zero_conf,
             self.address,
             self.bip21,
@@ -5523,6 +5527,8 @@ class CreateSubmarineResponse:
         )
 
     def __eq__(self, other):
+        if self.internal_hop != other.internal_hop:
+            return False
         if self.accept_zero_conf != other.accept_zero_conf:
             return False
         if self.address != other.address:
@@ -5558,6 +5564,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return CreateSubmarineResponse(
+            internal_hop=_UniffiConverterOptionalTypeInternalHopRef.read(buf),
             accept_zero_conf=_UniffiConverterBool.read(buf),
             address=_UniffiConverterString.read(buf),
             bip21=_UniffiConverterString.read(buf),
@@ -5576,6 +5583,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
 
     @staticmethod
     def check_lower(value):
+        _UniffiConverterOptionalTypeInternalHopRef.check_lower(value.internal_hop)
         _UniffiConverterBool.check_lower(value.accept_zero_conf)
         _UniffiConverterString.check_lower(value.address)
         _UniffiConverterString.check_lower(value.bip21)
@@ -5593,6 +5601,7 @@ class _UniffiConverterTypeCreateSubmarineResponse(_UniffiConverterRustBuffer):
 
     @staticmethod
     def write(value, buf):
+        _UniffiConverterOptionalTypeInternalHopRef.write(value.internal_hop, buf)
         _UniffiConverterBool.write(value.accept_zero_conf, buf)
         _UniffiConverterString.write(value.address, buf)
         _UniffiConverterString.write(value.bip21, buf)
@@ -6209,6 +6218,37 @@ class _UniffiConverterTypeHeightResponse(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterUInt32.write(value.btc, buf)
         _UniffiConverterUInt32.write(value.lbtc, buf)
+
+
+class InternalHopRef:
+    payee_id: "str"
+
+    def __init__(self, *, payee_id: "str"):
+        self.payee_id = payee_id
+
+    def __str__(self):
+        return "InternalHopRef(payee_id={})".format(self.payee_id)
+
+    def __eq__(self, other):
+        if self.payee_id != other.payee_id:
+            return False
+        return True
+
+
+class _UniffiConverterTypeInternalHopRef(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return InternalHopRef(
+            payee_id=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.payee_id)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.payee_id, buf)
 
 
 class Leaf:
@@ -10814,6 +10854,32 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeInternalHopRef(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeInternalHopRef.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeInternalHopRef.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeInternalHopRef.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeMrhDestination(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -15123,6 +15189,7 @@ __all__ = [
     "GetSubmarinePairsResponse",
     "GetSwapResponse",
     "HeightResponse",
+    "InternalHopRef",
     "Leaf",
     "LightningReceiveRequest",
     "LightningSendRequest",

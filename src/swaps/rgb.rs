@@ -1815,6 +1815,7 @@ mod tests {
 
     fn submarine_response(f: &Fixture) -> crate::swaps::boltz::CreateSubmarineResponse {
         crate::swaps::boltz::CreateSubmarineResponse {
+            internal_hop: None,
             accept_zero_conf: false,
             address: address(f),
             bip21: String::new(),

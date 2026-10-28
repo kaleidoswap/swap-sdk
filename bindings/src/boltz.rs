@@ -331,9 +331,10 @@ impl SwapClient {
                 contract_id,
             )?;
         } else {
-            response.validate_with_currency_and_asset_context(
+            response.validate_with_source_and_asset_context(
                 &Preimage::from_sha256_str(&swap_request.preimage_hash)?,
                 &swap_request.claim_public_key,
+                swap_request.from,
                 swap_request.to,
                 Some(to_currency),
                 expected_asset_context,
@@ -852,7 +853,13 @@ pub struct RgbLock {
 }
 
 #[uniffi::remote(Record)]
+pub struct InternalHopRef {
+    pub payee_id: String,
+}
+
+#[uniffi::remote(Record)]
 pub struct CreateSubmarineResponse {
+    pub internal_hop: Option<InternalHopRef>,
     pub accept_zero_conf: bool,
     pub address: String,
     pub bip21: String,

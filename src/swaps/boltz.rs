@@ -2314,11 +2314,21 @@ impl std::fmt::Debug for RedactedSecret<'_> {
     }
 }
 
+/// Attribution of a payment settled internally by the maker.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+pub struct InternalHopRef {
+    pub payee_id: String,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[cfg_attr(feature = "typescript", ts(optional_fields))]
 pub struct CreateSubmarineResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub internal_hop: Option<InternalHopRef>,
     pub accept_zero_conf: bool,
     pub address: String,
     pub bip21: String,
@@ -2355,6 +2365,7 @@ pub struct CreateSubmarineResponse {
 impl std::fmt::Debug for CreateSubmarineResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Self {
+            internal_hop,
             accept_zero_conf,
             address,
             bip21,
@@ -2371,6 +2382,7 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             rgb,
         } = self;
         f.debug_struct("CreateSubmarineResponse")
+            .field("internal_hop", internal_hop)
             .field("accept_zero_conf", accept_zero_conf)
             .field("address", address)
             .field("bip21", bip21)
@@ -3312,7 +3324,30 @@ impl CreateReverseResponse {
         currency: Option<Currency>,
         expected_asset_context: Option<LiquidAssetContext>,
     ) -> Result<(), Error> {
-        self.validate_invoice(preimage, chain)?;
+        self.validate_with_source_and_asset_context(
+            preimage,
+            our_pubkey,
+            chain,
+            chain,
+            currency,
+            expected_asset_context,
+        )
+    }
+
+    /// Validate the invoice against the source Lightning network and the HTLC
+    /// against the destination chain. Liquid testnet can receive from Signet
+    /// or Bitcoin testnet, so the destination alone cannot identify the source.
+    #[allow(clippy::too_many_arguments)]
+    pub fn validate_with_source_and_asset_context(
+        &self,
+        preimage: &Preimage,
+        our_pubkey: &PublicKey,
+        source: Chain,
+        chain: Chain,
+        currency: Option<Currency>,
+        expected_asset_context: Option<LiquidAssetContext>,
+    ) -> Result<(), Error> {
+        self.validate_invoice(preimage, source)?;
 
         match chain {
             Chain::Bitcoin(bitcoin_chain) => {
@@ -4760,6 +4795,89 @@ mod tests {
         // The hash check still comes first.
         let other = Preimage::from_vec(vec![6u8; 32]).unwrap();
         assert!(regtest.validate_invoice(&other, bitcoin_regtest).is_err());
+    }
+
+    #[test]
+    fn submarine_internal_hop_is_optional_and_round_trips() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/lusdt-v1/wire-contract.json"
+        ))
+        .unwrap();
+        let mut wire = fixture["create"]["submarine"]["response"].clone();
+        let legacy: CreateSubmarineResponse = serde_json::from_value(wire.clone()).unwrap();
+        assert!(legacy.internal_hop.is_none());
+        assert!(serde_json::to_value(legacy)
+            .unwrap()
+            .get("internalHop")
+            .is_none());
+        wire["internalHop"] = serde_json::json!({"payeeId": "recipient-123"});
+        let current: CreateSubmarineResponse = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!(
+            current.internal_hop.as_ref().unwrap().payee_id,
+            "recipient-123"
+        );
+        assert_eq!(
+            serde_json::to_value(current).unwrap()["internalHop"],
+            wire["internalHop"]
+        );
+    }
+
+    #[test]
+    fn reverse_invoice_uses_source_network_for_liquid_testnet() {
+        use crate::network::LiquidChain;
+        use lightning_invoice::Currency as LnCurrency;
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/lusdt-v1/wire-contract.json"
+        ))
+        .unwrap();
+        let request = &fixture["create"]["reverse"]["request"];
+        let preimage =
+            Preimage::from_sha256_str(request["preimageHash"].as_str().unwrap()).unwrap();
+        let key = PublicKey::from_str(request["claimPublicKey"].as_str().unwrap()).unwrap();
+        let mut response: CreateReverseResponse =
+            serde_json::from_value(fixture["create"]["reverse"]["response"].clone()).unwrap();
+        let liquid = LiquidChain::LiquidTestnet;
+        response.fee_asset_id = Some(liquid.bitcoin().to_string());
+        let script = LiquidSwapScript::reverse_from_swap_resp(&response, key).unwrap();
+        response.lockup_address = script.to_address(liquid).unwrap().to_string();
+        let assets = LiquidAssetContext::from_asset_ids(
+            response.asset_id.as_deref(),
+            response.fee_asset_id.as_deref(),
+        )
+        .unwrap();
+        let source = Chain::Bitcoin(BitcoinChain::BitcoinSignet);
+        let destination = Chain::Liquid(liquid);
+        response.invoice = Some(signed_invoice(
+            LnCurrency::Signet,
+            Some(1_000),
+            preimage.sha256,
+        ));
+        response
+            .validate_with_source_and_asset_context(
+                &preimage,
+                &key,
+                source,
+                destination,
+                Some(Currency::LUsdt),
+                assets,
+            )
+            .unwrap();
+        response.invoice = Some(signed_invoice(
+            LnCurrency::BitcoinTestnet,
+            Some(1_000),
+            preimage.sha256,
+        ));
+        let error = response
+            .validate_with_source_and_asset_context(
+                &preimage,
+                &key,
+                source,
+                destination,
+                Some(Currency::LUsdt),
+                assets,
+            )
+            .unwrap_err();
+        assert!(error.message().contains("network"), "{error}");
     }
 
     /// Whichever leg the request fixed must come back exactly as requested;
