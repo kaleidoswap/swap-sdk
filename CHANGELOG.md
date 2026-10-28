@@ -6,6 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Security
 
+- WASM/TypeScript: browser requests to the maker no longer follow redirects.
+  Native clients already refused them, but reqwest hands `fetch` no
+  `redirect` mode in the browser, so a `302` from the maker was followed —
+  and `fetch` strips only `Authorization` on a cross-origin hop, never a
+  custom header. The per-swap `X-Swap-Auth` credential (and an organization
+  key on a creation request) therefore rode along to whatever host the
+  `Location` named, and the post-response guard could only report the
+  disclosure afterwards. The WASM build now issues every maker request itself
+  with `redirect: "error"`: the browser rejects the request at the first
+  `3xx` and the credential never leaves the maker's origin. The maker API
+  redirects nowhere, so a well-behaved maker sees no change; a redirecting
+  one now fails the call with an error naming the refusal. Security review
+  2026-10-28, finding 8.
 - Magic routing hints bound the BIP21 amount by the invoice. The maker signs
   only the address, so `check_for_mrh` now refuses a BIP21 amount of zero or
   above the invoice amount (smaller is fine: the maker deducts its fees) and

@@ -600,7 +600,7 @@ const SWAP_CREATION_ENDPOINTS: [&str; 4] =
 /// successful creation is checked, and only when the header is present: a
 /// browser hides response headers the maker's edge does not expose, and an
 /// absent header proves nothing either way.
-fn warn_if_attribution_dropped(response: &reqwest::Response, org_key: OrgKey) {
+fn warn_if_attribution_dropped(response: &MakerResponse, org_key: OrgKey) {
     if !response.status().is_success() {
         return;
     }
@@ -614,6 +614,193 @@ fn warn_if_attribution_dropped(response: &reqwest::Response, org_key: OrgKey) {
             response.url().path(),
         );
     }
+}
+
+/// A maker's answer, read to the end as it arrived: the status, the URL the
+/// request ended at, the headers and the body text.
+///
+/// One shape on both targets. Native fills it from a [`reqwest::Response`];
+/// the browser from the [`web_sys::Response`] of a `fetch` that
+/// [`BoltzApiClientV2::send`] issued itself, so that the redirect policy is
+/// the SDK's on both. Reading the body up front costs nothing here — every
+/// caller reads it — and keeps the per-request deadline covering the whole
+/// exchange on both targets.
+#[derive(Debug)]
+pub(crate) struct MakerResponse {
+    status: reqwest::StatusCode,
+    url: reqwest::Url,
+    headers: reqwest::header::HeaderMap,
+    body: String,
+}
+
+impl MakerResponse {
+    pub fn status(&self) -> reqwest::StatusCode {
+        self.status
+    }
+
+    /// The URL the response came from. With redirects refused it is the one
+    /// the request was addressed to; a caller-supplied native client that
+    /// follows them may end elsewhere, which
+    /// [`BoltzApiClientV2::reject_credential_leaking_redirect`] reports.
+    pub fn url(&self) -> &reqwest::Url {
+        &self.url
+    }
+
+    pub fn headers(&self) -> &reqwest::header::HeaderMap {
+        &self.headers
+    }
+
+    pub fn into_text(self) -> String {
+        self.body
+    }
+
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    async fn from_reqwest(response: reqwest::Response) -> Result<Self, Error> {
+        let status = response.status();
+        let url = response.url().clone();
+        let headers = response.headers().clone();
+        let body = response.text().await?;
+        Ok(Self {
+            status,
+            url,
+            headers,
+            body,
+        })
+    }
+
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    async fn from_browser(
+        response: web_sys::Response,
+        sent_to: reqwest::Url,
+    ) -> Result<Self, Error> {
+        use wasm_bindgen_futures::JsFuture;
+
+        let failure = |cause: wasm_bindgen::JsValue| fetch_failure(&sent_to, cause);
+        let status = reqwest::StatusCode::from_u16(response.status()).map_err(|_| {
+            Error::Protocol(format!(
+                "the maker at {sent_to} answered with HTTP status {}, which is not one",
+                response.status()
+            ))
+        })?;
+        // `Response.url` is the final URL of the fetch, or empty for a
+        // synthetic response; an empty one is read as "where it was sent".
+        let url = match response.url() {
+            url if url.is_empty() => sent_to.clone(),
+            url => reqwest::Url::parse(&url)?,
+        };
+        let mut headers = reqwest::header::HeaderMap::new();
+        // The browser exposes only the headers CORS lets this origin read; the
+        // rest are absent here as they are absent to any script on the page.
+        for entry in js_sys::try_iter(&response.headers().entries())
+            .map_err(failure)?
+            .into_iter()
+            .flatten()
+        {
+            let entry = entry.map_err(failure)?;
+            let pair = js_sys::Array::from(&entry);
+            let (Some(name), Some(value)) = (pair.get(0).as_string(), pair.get(1).as_string())
+            else {
+                continue;
+            };
+            if let (Ok(name), Ok(value)) = (
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()),
+                HeaderValue::from_str(&value),
+            ) {
+                headers.append(name, value);
+            }
+        }
+        let body = JsFuture::from(response.text().map_err(failure)?)
+            .await
+            .map_err(failure)?
+            .as_string()
+            .ok_or_else(|| {
+                Error::Protocol(format!(
+                    "the maker at {sent_to} answered with a body that is not text"
+                ))
+            })?;
+        Ok(Self {
+            status,
+            url,
+            headers,
+            body,
+        })
+    }
+}
+
+/// Owns a fetch's `AbortController` and aborts it on drop, so an exchange that
+/// is abandoned — by its deadline or by the caller dropping the future — does
+/// not keep running in the browser.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+struct AbortOnDrop(web_sys::AbortController);
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// The browser's `fetch` request for a maker request reqwest has built:
+/// method, URL, headers and body carried over, `redirect: "error"` set.
+///
+/// `redirect: "error"` is what keeps a credential on the maker's origin. The
+/// browser rejects the fetch at the first `3xx` instead of following it, so
+/// [`SWAP_AUTH_HEADER`] — a custom header, which `fetch` does *not* strip on a
+/// cross-origin hop the way it strips `Authorization` — never leaves for the
+/// host a `Location` names. No `credentials` mode is set: the maker API uses
+/// no cookies, and the default (`same-origin`) attaches none cross-origin.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn browser_fetch_request(
+    request: &reqwest::Request,
+) -> Result<(web_sys::Request, AbortOnDrop), Error> {
+    let url = request.url();
+    let failure = |cause: wasm_bindgen::JsValue| fetch_failure(url, cause);
+    let abort = AbortOnDrop(web_sys::AbortController::new().map_err(failure)?);
+    let init = web_sys::RequestInit::new();
+    init.set_method(request.method().as_str());
+    init.set_redirect(web_sys::RequestRedirect::Error);
+    init.set_signal(Some(&abort.0.signal()));
+    let headers = web_sys::Headers::new().map_err(failure)?;
+    for (name, value) in request.headers() {
+        let value = value.to_str().map_err(|_| {
+            Error::Protocol(format!(
+                "header {name} is not text and cannot be sent by a browser"
+            ))
+        })?;
+        headers.append(name.as_str(), value).map_err(failure)?;
+    }
+    init.set_headers(&headers);
+    if let Some(body) = request.body() {
+        let bytes = body.as_bytes().ok_or_else(|| {
+            Error::Protocol(format!(
+                "a streaming body cannot be sent to {url} from a browser"
+            ))
+        })?;
+        init.set_body(&js_sys::Uint8Array::from(bytes));
+    }
+    let request = web_sys::Request::new_with_str_and_init(url.as_str(), &init).map_err(failure)?;
+    Ok((request, abort))
+}
+
+/// A `fetch` that was rejected before any response arrived.
+///
+/// The browser reports a refused redirect, a CORS failure, a network error
+/// and an aborted deadline all as one `TypeError`, so the message names each.
+/// What it can promise is the negative: nothing was followed, so whatever the
+/// request carried went to the maker's origin and nowhere else.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn fetch_failure(url: &reqwest::Url, cause: wasm_bindgen::JsValue) -> Error {
+    use wasm_bindgen::JsCast;
+    let cause = cause
+        .dyn_ref::<js_sys::Error>()
+        .map(|error| String::from(error.message()))
+        .or_else(|| cause.as_string())
+        .unwrap_or_else(|| "no detail".to_string());
+    Error::Generic(format!(
+        "the browser rejected the request to {url} ({cause}): a redirect the SDK refuses \
+         to follow, a CORS failure, a network error or the deadline; nothing was sent \
+         anywhere but that origin"
+    ))
 }
 
 /// Reference Documnetation: <https://api.boltz.exchange/swagger>
@@ -677,15 +864,89 @@ impl BoltzApiClientV2 {
             .expect("reqwest client with a redirect policy and no other configuration")
     }
 
-    /// `reqwest` sets no `RequestInit.redirect` on wasm, so `fetch` follows
-    /// redirects and there is no policy to set here. A cross-origin hop does
-    /// need a CORS preflight for [`SWAP_AUTH_HEADER`], but the host the
-    /// `Location` names answers that preflight itself, so it is no barrier.
-    /// [`Self::reject_credential_leaking_redirect`] catches it after the fact
-    /// instead — the browser path can report the disclosure, not prevent it.
+    /// `reqwest` sets no `RequestInit.redirect` on wasm, so a client built here
+    /// carries no redirect policy — and none is needed, because in the browser
+    /// this module does not let reqwest send at all. [`Self::send`] builds the
+    /// request through reqwest, so the headers and the deadline are assembled
+    /// the same way on both targets, then issues the `fetch` itself with
+    /// `redirect: "error"`, which is the one place the browser lets a caller
+    /// decline to follow a redirect.
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     fn default_http_client() -> reqwest::Client {
         reqwest::Client::new()
+    }
+
+    /// Send a request to the maker and read its answer in full.
+    ///
+    /// Native: reqwest sends it. The client from [`Self::default_http_client`]
+    /// follows no redirects, and a caller-supplied one ([`Self::with_client`])
+    /// is the caller's own policy, which
+    /// [`Self::reject_credential_leaking_redirect`] then reports on.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    async fn send(&self, req_builder: RequestBuilder) -> Result<MakerResponse, Error> {
+        MakerResponse::from_reqwest(req_builder.send().await?).await
+    }
+
+    /// Send a request to the maker and read its answer in full.
+    ///
+    /// Browser: reqwest only *builds* the request. Its wasm backend hands
+    /// `fetch` a `RequestInit` with no `redirect` set, so the browser follows
+    /// every redirect — and `fetch` strips only `Authorization` and the other
+    /// CORS non-wildcard headers across an origin hop, not a custom one.
+    /// [`SWAP_AUTH_HEADER`] would therefore ride a `302` to whatever host the
+    /// `Location` names; that host answers its own CORS preflight, so the
+    /// preflight is no barrier either. Reporting the hop afterwards
+    /// ([`Self::reject_credential_leaking_redirect`]) cannot undo it, and
+    /// cannot even see a detour that ends back at the maker.
+    ///
+    /// So the fetch is issued here with `redirect: "error"`, which makes the
+    /// browser reject the request at the first `3xx` without following it —
+    /// the credential never leaves for another host. This applies to every
+    /// maker request, not only the credential-bearing ones, matching the
+    /// native client: the maker API redirects nowhere, so a redirect is a
+    /// fault to surface, not a route to take.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    async fn send(&self, req_builder: RequestBuilder) -> Result<MakerResponse, Error> {
+        use wasm_bindgen::{JsCast, JsValue};
+        use wasm_bindgen_futures::JsFuture;
+
+        let request = req_builder.build()?;
+        let url = request.url().clone();
+        let failure = |cause: JsValue| fetch_failure(&url, cause);
+        let (js_request, abort) = browser_fetch_request(&request)?;
+        // Aborts the fetch if the deadline passes, and is a no-op once the body
+        // is in: the timer and the controller both live to the end of this
+        // function.
+        let _timer = request.timeout().map(|timeout| {
+            let controller = abort.0.clone();
+            gloo_timers::callback::Timeout::new(
+                timeout.as_millis().min(u32::MAX as u128) as u32,
+                move || controller.abort(),
+            )
+        });
+        let global = js_sys::global();
+        let fetch = js_sys::Reflect::get(&global, &JsValue::from_str("fetch"))
+            .map_err(failure)?
+            .dyn_into::<js_sys::Function>()
+            .map_err(failure)?;
+        let promise = fetch
+            .call1(&global, &js_request)
+            .map_err(failure)?
+            .dyn_into::<js_sys::Promise>()
+            .map_err(failure)?;
+        let response = JsFuture::from(promise)
+            .await
+            .map_err(failure)?
+            .dyn_into::<web_sys::Response>()
+            .map_err(failure)?;
+        // `redirect: "error"` makes this unreachable; it stays as the assertion
+        // that the policy was in force rather than as a second line of defence.
+        if response.redirected() {
+            return Err(Error::Protocol(format!(
+                "a request to {url} was redirected although redirects are refused"
+            )));
+        }
+        MakerResponse::from_browser(response, url).await
     }
 
     /// Client pointed at the default **KaleidoSwap maker** for a network.
@@ -738,7 +999,9 @@ impl BoltzApiClientV2 {
     /// `swapAuth`: reqwest forwards custom headers across a cross-origin
     /// redirect, so a redirect-following client can hand [`SWAP_AUTH_HEADER`]
     /// to another host. [`Self::new`] does this for you — see
-    /// [`Self::default_http_client`].
+    /// [`Self::default_http_client`]. In the browser the client's own policy is
+    /// moot: reqwest only builds the request there, and [`Self::send`] issues
+    /// the fetch with `redirect: "error"` regardless of the client passed in.
     pub fn with_client(
         base_url: String,
         http_client: reqwest::Client,
@@ -827,7 +1090,7 @@ impl BoltzApiClientV2 {
     }
 
     /// Make a GET request. Returns the Response
-    async fn get_response(&self, end_point: &str) -> Result<reqwest::Response, Error> {
+    async fn get_response(&self, end_point: &str) -> Result<MakerResponse, Error> {
         self.get_response_at(format!("{}/{}", self.base_url, end_point))
             .await
     }
@@ -835,23 +1098,23 @@ impl BoltzApiClientV2 {
     /// GET an absolute URL with every guard a `/v2` GET gets. Split out so
     /// the corridor, which lives beside `/v2` rather than under it, reaches
     /// the same origin through the same checks instead of a second client.
-    async fn get_response_at(&self, url: String) -> Result<reqwest::Response, Error> {
+    async fn get_response_at(&self, url: String) -> Result<MakerResponse, Error> {
         let req_builder = self.http_client.get(&url);
         let req_builder = self.maybe_add_timeout(req_builder);
         let req_builder = self.maybe_add_api_key(req_builder, &url)?;
-        let response = req_builder.send().await?;
+        let response = self.send(req_builder).await?;
         self.reject_credential_leaking_redirect(&response, self.credentials_sent(None))?;
         Ok(response)
     }
 
     /// Make a GET request. Returns the Response as text
     async fn get(&self, end_point: &str) -> Result<String, Error> {
-        Ok(self.get_response(end_point).await?.text().await?)
+        Ok(self.get_response(end_point).await?.into_text())
     }
 
     pub(crate) async fn get_json<T: DeserializeOwned>(&self, end_point: &str) -> Result<T, Error> {
         let response = self.get_response(end_point).await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     fn parse_value(body: String) -> Value {
@@ -878,7 +1141,7 @@ impl BoltzApiClientV2 {
         // client can send goes on in `request_response`, so that is the one place
         // that knows what a response might have carried away.
         let response = self.post_response(end_point, data, swap_auth).await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     /// The credential headers a request just went out with: the per-swap
@@ -900,15 +1163,13 @@ impl BoltzApiClientV2 {
     /// Fail a credential-bearing request that came back from a host other than
     /// the one it was addressed to.
     ///
-    /// [`Self::default_http_client`] follows no redirects, so this cannot fire
-    /// for a client built here. It can for a caller-supplied one
-    /// ([`Self::with_client`]) and in the browser, where `fetch` owns redirect
-    /// handling and reqwest sets no policy on it — a cross-origin hop needs a
-    /// CORS preflight for [`SWAP_AUTH_HEADER`], but the host the `Location`
-    /// names is free to answer that preflight itself. An *authenticated* client
-    /// is narrower still: both [`KaleidoMakerClient`] constructors set
-    /// `Policy::none()` themselves, so on native this is unreachable for one and
-    /// the browser is the only case left.
+    /// [`Self::default_http_client`] follows no redirects, and in the browser
+    /// [`Self::send`] issues every fetch with `redirect: "error"`, so this
+    /// cannot fire for a client built here on either target. It can for a
+    /// caller-supplied native client ([`Self::with_client`]) built on reqwest's
+    /// default policy, which follows. An *authenticated* client is narrower
+    /// still: both [`KaleidoMakerClient`] constructors set `Policy::none()`
+    /// themselves, so for one of those this is unreachable.
     ///
     /// The hop has already happened by the time this runs, so this prevents
     /// nothing. What it does is refuse to hand back a response the maker did not
@@ -922,8 +1183,8 @@ impl BoltzApiClientV2 {
     /// maker is therefore indistinguishable from no redirect at all, and
     /// [`SWAP_AUTH_HEADER`] would have ridden along to the detour. Only owning
     /// the redirect policy closes that, which is what
-    /// [`Self::default_http_client`] and both [`KaleidoMakerClient`]
-    /// constructors do.
+    /// [`Self::default_http_client`], [`Self::send`] in the browser and both
+    /// [`KaleidoMakerClient`] constructors do.
     ///
     /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
     ///
@@ -945,7 +1206,7 @@ impl BoltzApiClientV2 {
     /// pessimistic there rather than wrong.
     fn reject_credential_leaking_redirect(
         &self,
-        response: &reqwest::Response,
+        response: &MakerResponse,
         carried: Vec<&'static str>,
     ) -> Result<(), Error> {
         if carried.is_empty() {
@@ -980,12 +1241,9 @@ impl BoltzApiClientV2 {
         Err(Error::Protocol(message))
     }
 
-    async fn parse_json_response<T: DeserializeOwned>(
-        response: reqwest::Response,
-    ) -> Result<T, Error> {
+    fn parse_json_response<T: DeserializeOwned>(response: MakerResponse) -> Result<T, Error> {
         let status = response.status();
-        let body = response.text().await?;
-        Self::json_from_body(status, body)
+        Self::json_from_body(status, response.into_text())
     }
 
     /// Decide what a response body means, given the status it arrived with.
@@ -1178,7 +1436,7 @@ impl BoltzApiClientV2 {
         end_point: &str,
         data: impl Serialize,
         swap_auth: Option<&str>,
-    ) -> Result<reqwest::Response, Error> {
+    ) -> Result<MakerResponse, Error> {
         let url = format!("{}/{}", self.base_url, end_point);
         self.request_response(Method::POST, url, data, swap_auth)
             .await
@@ -1200,7 +1458,7 @@ impl BoltzApiClientV2 {
         let response = self
             .request_response(method.clone(), url, data, None)
             .await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     async fn request_response(
@@ -1209,7 +1467,7 @@ impl BoltzApiClientV2 {
         url: String,
         data: impl Serialize,
         swap_auth: Option<&str>,
-    ) -> Result<reqwest::Response, Error> {
+    ) -> Result<MakerResponse, Error> {
         let method_str = method.to_string();
         let org_key = self.org_key_for(&method, &url);
         let req_builder = self.http_client.request(method, &url).json(&data);
@@ -1220,7 +1478,7 @@ impl BoltzApiClientV2 {
             Some(org_key) => req_builder.header(ORG_KEY_HEADER, org_key.header_value()),
             None => req_builder,
         };
-        match req_builder.send().await {
+        match self.send(req_builder).await {
             Ok(response) => {
                 self.reject_credential_leaking_redirect(
                     &response,
@@ -1233,7 +1491,7 @@ impl BoltzApiClientV2 {
             }
             Err(e) => {
                 log::error!("{method_str} error: {e:#?}");
-                Err(e.into())
+                Err(e)
             }
         }
     }
@@ -1412,7 +1670,7 @@ impl BoltzApiClientV2 {
             .get_response_at(format!("{}/v1/card", self.corridor_root()?))
             .await?;
         let status = response.status();
-        let body = response.text().await?;
+        let body = response.into_text();
         if status == reqwest::StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -1443,7 +1701,7 @@ impl BoltzApiClientV2 {
         let response = self
             .request_response(Method::POST, url, request, None)
             .await?;
-        Self::parse_json_response(response).await
+        Self::parse_json_response(response)
     }
 
     /// Quote `arkade:BTC->lightning:BTC`: the trader will fund an Arkade
@@ -1483,7 +1741,7 @@ impl BoltzApiClientV2 {
     pub async fn rfq_status(&self, rfq_id: &str) -> Result<Option<corridor::RfqStatus>, Error> {
         let url = format!("{}/v1/rfq/{rfq_id}", self.corridor_root()?);
         let response = self.get_response_at(url).await?;
-        match Self::parse_json_response::<corridor::RfqStatus>(response).await {
+        match Self::parse_json_response::<corridor::RfqStatus>(response) {
             Ok(status) => Ok(Some(status)),
             Err(Error::HTTPStatusNotSuccess(status, _))
                 if status == reqwest::StatusCode::NOT_FOUND =>
@@ -4278,6 +4536,47 @@ mod tests {
              error is reporting, and what default_http_client exists to prevent. \
              Got:\n{forwarded}",
         );
+    }
+
+    /// The browser request for a maker call refuses redirects *at the
+    /// browser*, which is the only thing standing between [`SWAP_AUTH_HEADER`]
+    /// and whatever host a `302` names: `fetch` strips `Authorization` across
+    /// an origin hop, never a custom header. Everything reqwest assembled —
+    /// method, URL, the credential, the JSON content type and the body — must
+    /// still be on the request, or the policy would have been bought with a
+    /// broken client.
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    #[wasm_bindgen_test::wasm_bindgen_test]
+    fn browser_requests_refuse_redirects_and_keep_the_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+        let client = BoltzApiClientV2::new(
+            "https://maker.example/v2".to_string(),
+            Some(Duration::from_secs(5)),
+        );
+        let url = format!("{}/swap/reverse/quote", client.base_url);
+        let req_builder = client
+            .http_client
+            .post(&url)
+            .json(&serde_json::json!({ "quote": true }));
+        let req_builder = client.maybe_add_timeout(req_builder);
+        let req_builder = BoltzApiClientV2::maybe_add_swap_auth(req_builder, Some(auth)).unwrap();
+        let request = req_builder.build().unwrap();
+
+        let (js_request, _abort) = browser_fetch_request(&request).unwrap();
+
+        assert_eq!(js_request.redirect(), web_sys::RequestRedirect::Error);
+        assert_eq!(js_request.method(), "POST");
+        assert_eq!(js_request.url(), url);
+        let headers = js_request.headers();
+        assert_eq!(
+            headers.get(SWAP_AUTH_HEADER).unwrap().as_deref(),
+            Some(auth)
+        );
+        assert_eq!(
+            headers.get("content-type").unwrap().as_deref(),
+            Some("application/json")
+        );
+        assert!(!js_request.signal().aborted());
     }
 
     /// An org key on a client, as [`crate::kaleido::KaleidoOrgClient`] binds it.

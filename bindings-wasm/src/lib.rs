@@ -826,12 +826,10 @@ impl BoltzClient {
     /// constructor. A browser here includes Web, shared and service workers and
     /// browser extensions, none of which has a `document`; see [`in_browser`].
     ///
-    /// One protection is also weaker here than on the server. `fetch` owns
-    /// redirect handling and wasm-bindgen can set no policy on it, so a `3xx`
-    /// away from the maker is caught after the fact instead of declined: the
-    /// request fails naming the host that answered. The key itself is not
-    /// disclosed by that hop — `fetch` drops `Authorization` when a redirect
-    /// crosses origins — but the response is not the maker's.
+    /// Redirects are declined here as on the server: the core issues every
+    /// maker `fetch` with `redirect: "error"`, so a `3xx` away from the maker
+    /// fails the request without being followed and no header reaches the
+    /// host it named.
     #[wasm_bindgen(js_name = forKaleidoMaker)]
     pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
         let options = KaleidoMakerOptions::from_js_options(options)?;

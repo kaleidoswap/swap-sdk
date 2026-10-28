@@ -133,12 +133,9 @@ export interface KaleidoMakerClientOptions {
  * browser, an extension or a mobile app, use {@link createKaleidoOrgClient}
  * with the organization's public key instead.
  *
- * One protection is also weaker under `fetch` than on a server: `fetch` owns
- * redirect handling and the SDK can set no policy on it, so a `3xx` away from
- * the maker is reported after the fact instead of declined. The key is not
- * disclosed by such a hop — `fetch` drops `Authorization` when a redirect
- * crosses origins — but the response is not the maker's, and the call fails
- * naming the host that answered.
+ * Redirects are declined under `fetch` as on a server: the SDK issues every
+ * maker request with `redirect: "error"`, so a `3xx` away from the maker fails
+ * the call without being followed and no header reaches the host it named.
  *
  * ## Error reporters that capture locals
  *

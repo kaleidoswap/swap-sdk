@@ -207,9 +207,9 @@ plain HTTP is readable by anything on the path, and it may not carry userinfo �
 would displace the key and leave the swap unattributed. Redirects are declined
 outright on both native constructors — `with_client_builder` takes a
 `reqwest::ClientBuilder` rather than a built client precisely so the SDK can set
-the policy while keeping your proxy and TLS configuration; only in the browser,
-where `fetch` owns redirects, is a hop off the maker reported after the fact
-instead. Nothing renders the secret: the
+the policy while keeping your proxy and TLS configuration — and in the browser,
+where the SDK issues every maker `fetch` itself with `redirect: "error"`, so a
+`3xx` fails the call without being followed. Nothing renders the secret: the
 Rust `Debug` prints `kld_test_<key_id>_<redacted>`, Python and JS expose the key
 id and environment and no accessor for the secret at all. A value that cannot be
 a key is rejected locally rather than reaching the maker as a `401`, which is the
