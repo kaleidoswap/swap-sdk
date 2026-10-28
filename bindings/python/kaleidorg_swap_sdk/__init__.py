@@ -16,6 +16,14 @@ except ImportError:
     # <pkg>/<pkg>/<pkg>.py, so this fallback is load-bearing there. The host
     # (macOS/Windows) and sdist-rebuild paths do include Maturin's own glue and
     # never reach this branch — verify before assuming this is dead code.
+    from . import _generated_uniffi as _glue
     from ._generated_uniffi import *  # noqa: F403
 else:
+    from . import kaleidorg_swap_sdk as _glue
     from .kaleidorg_swap_sdk import *  # noqa: F403
+
+from ._redact import redact_secret_fields as _redact_secret_fields
+
+# Whichever glue loaded, its records print `swap_auth` and `blinding_key`
+# verbatim; the Rust `Debug` impls do not, and neither may `str()` here.
+_redact_secret_fields(_glue)
