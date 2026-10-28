@@ -1166,7 +1166,11 @@ impl BoltzClient {
                 "reverse swap request needs preimageHash or invoice",
             ));
         };
-        let resp = self.inner.post_reverse_req(req).await.map_err(core_err)?;
+        let resp = self
+            .inner
+            .post_reverse_req(req.clone())
+            .await
+            .map_err(core_err)?;
         if let Some(contract_id) = rgb_contract_id {
             let Chain::Bitcoin(chain) = to_chain else {
                 unreachable!("RGB is Bitcoin only")
@@ -1183,6 +1187,7 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
+        resp.validate_amounts(&req, None).map_err(core_err)?;
         to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
@@ -1245,7 +1250,11 @@ impl BoltzClient {
             _ => (None, None),
         };
         let preimage_hash = req.preimage_hash;
-        let resp = self.inner.post_chain_req(req).await.map_err(core_err)?;
+        let resp = self
+            .inner
+            .post_chain_req(req.clone())
+            .await
+            .map_err(core_err)?;
         resp.validate_with_currency_and_asset_context(
             &claim_pk,
             &refund_pk,
@@ -1258,6 +1267,7 @@ impl BoltzClient {
             to_asset_context,
         )
         .map_err(core_err)?;
+        resp.validate_amounts(&req, None).map_err(core_err)?;
         to_typed_js(&resp)
     }
 

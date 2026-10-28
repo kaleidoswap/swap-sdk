@@ -50,6 +50,24 @@ BTC, L-BTC and USDT-RGB swaps are unaffected.
   redirects nowhere, so a well-behaved maker sees no change; a redirecting
   one now fails the call with an error naming the refusal. Security review
   2026-10-28, finding 8.
+- Create responses are bound to the amounts the caller requested. A reverse
+  response's maker-generated invoice had only its payment hash checked, so a
+  maker could return an invoice for ten times `invoiceAmount` and an automated
+  payer paid it; a chain response's `lockupDetails.amount` and
+  `claimDetails.amount` were never compared with `userLockAmount` and
+  `serverLockAmount`, and the later lockup checks only enforced whatever the
+  response said. New `CreateReverseResponse::validate_amounts(request, pair)`
+  requires the invoice to be present, carry an amount, and equal
+  `invoiceAmount` (compared in millisatoshis with checked arithmetic); new
+  `CreateChainResponse::validate_amounts(request, pair)` requires exact
+  equality on every leg the request fixed and non-zero legs. With the pair
+  card the caller accepted, both also bound the leg the maker computed
+  (`floor(amount × rate) − fees.total(amount)` as a floor on the payout, the
+  inverse as a ceiling on the funding). A maker-issued invoice must now also
+  be for the swap's network. Python/UniFFI `create_reverse_swap` and
+  `create_chain_swap`, and WASM/TypeScript `createReverseSwap` and
+  `createChainSwap`, run these checks before returning the response. Security
+  review 2026-10-28, findings 4 and 5.
 - Magic routing hints bound the BIP21 amount by the invoice. The maker signs
   only the address, so `check_for_mrh` now refuses a BIP21 amount of zero or
   above the invoice amount (smaller is fine: the maker deducts its fees) and

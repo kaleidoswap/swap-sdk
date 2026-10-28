@@ -299,29 +299,27 @@ impl SwapClient {
             }
             None => None,
         };
-        let response = self
-            .inner
-            .post_reverse_req(boltz::CreateReverseRequest {
-                invoice_amount: Some(swap_request.invoice_amount),
-                invoice: None,
-                from: from_currency.to_string(),
-                to: to_currency.to_string(),
-                preimage_hash: Some(
-                    swap_request
-                        .preimage_hash
-                        .parse::<sha256::Hash>()
-                        .map_err(|e| Error::Generic(e.to_string()))?,
-                ),
-                claim_public_key: swap_request.claim_public_key,
-                pair_hash: swap_request.pair_hash,
-                description: swap_request.description,
-                description_hash: swap_request.description_hash,
-                address: swap_request.address,
-                address_signature: swap_request.address_signature,
-                referral_id: swap_request.referral_id,
-                webhook: None,
-            })
-            .await?;
+        let request = boltz::CreateReverseRequest {
+            invoice_amount: Some(swap_request.invoice_amount),
+            invoice: None,
+            from: from_currency.to_string(),
+            to: to_currency.to_string(),
+            preimage_hash: Some(
+                swap_request
+                    .preimage_hash
+                    .parse::<sha256::Hash>()
+                    .map_err(|e| Error::Generic(e.to_string()))?,
+            ),
+            claim_public_key: swap_request.claim_public_key,
+            pair_hash: swap_request.pair_hash,
+            description: swap_request.description,
+            description_hash: swap_request.description_hash,
+            address: swap_request.address,
+            address_signature: swap_request.address_signature,
+            referral_id: swap_request.referral_id,
+            webhook: None,
+        };
+        let response = self.inner.post_reverse_req(request.clone()).await?;
         if let Some(contract_id) = rgb_contract_id {
             let Chain::Bitcoin(chain) = swap_request.to else {
                 unreachable!("USDT-RGB resolves only on Bitcoin")
@@ -341,6 +339,7 @@ impl SwapClient {
                 expected_asset_context,
             )?;
         }
+        response.validate_amounts(&request, None)?;
         Ok(response)
     }
 
@@ -389,21 +388,19 @@ impl SwapClient {
             .preimage_hash
             .parse::<sha256::Hash>()
             .map_err(|e| Error::Generic(e.to_string()))?;
-        let response = self
-            .inner
-            .post_chain_req(boltz::CreateChainRequest {
-                from: from_currency.to_string(),
-                to: to_currency.to_string(),
-                preimage_hash,
-                claim_public_key: Some(swap_request.claim_public_key),
-                refund_public_key: Some(swap_request.refund_public_key),
-                user_lock_amount: swap_request.user_lock_amount,
-                server_lock_amount: swap_request.server_lock_amount,
-                pair_hash: swap_request.pair_hash,
-                referral_id: swap_request.referral_id,
-                webhook: None,
-            })
-            .await?;
+        let request = boltz::CreateChainRequest {
+            from: from_currency.to_string(),
+            to: to_currency.to_string(),
+            preimage_hash,
+            claim_public_key: Some(swap_request.claim_public_key),
+            refund_public_key: Some(swap_request.refund_public_key),
+            user_lock_amount: swap_request.user_lock_amount,
+            server_lock_amount: swap_request.server_lock_amount,
+            pair_hash: swap_request.pair_hash,
+            referral_id: swap_request.referral_id,
+            webhook: None,
+        };
+        let response = self.inner.post_chain_req(request.clone()).await?;
         response.validate_with_currency_and_asset_context(
             &swap_request.claim_public_key,
             &swap_request.refund_public_key,
@@ -415,6 +412,7 @@ impl SwapClient {
             from_asset_context,
             to_asset_context,
         )?;
+        response.validate_amounts(&request, None)?;
         Ok(response)
     }
 
