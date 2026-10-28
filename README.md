@@ -409,6 +409,12 @@ invoice. The reverse example covers response validation and the wallet-neutral,
 caller-funded PSET claim flow required to receive L-USDT while paying Liquid
 fees in L-BTC.
 
+The L-USDT asset id is never taken from the maker. `LiquidAssetContext::trusted_lusdt`
+resolves it from the canonical Liquid USDt on mainnet, or from a caller pin
+(`lusdt_asset_id` on the binding requests, `LUSDT_ASSET_ID` in the examples) on
+testnet and regtest, and only cross-checks the maker's pair card against it. A
+create response is then validated against that trusted context.
+
 ## USDT-RGB wallet integration
 
 The Rust core, UniFFI/Python and wasm/TypeScript expose RGB-on-Bitcoin submarine

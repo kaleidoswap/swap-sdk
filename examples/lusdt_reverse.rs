@@ -17,7 +17,7 @@ use kaleidorg_swap_sdk::swaps::{
     BtcLikeTransaction, ChainClient, FundedLiquidPset, LiquidPsetParams, SwapScript,
 };
 use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::PublicKey;
+use kaleidorg_swap_sdk::{LiquidAssetContext, PublicKey};
 
 use lusdt_common::{
     api_client, network, optional_env, optional_u64, required_env, sdk, swap_key, wait_for_file,
@@ -77,9 +77,21 @@ async fn main() -> Result<()> {
         pair.limits.within(invoice_amount),
         "validate reverse amount against pair limits",
     )?;
-    let expected_assets = sdk(
+    // The pair card is the maker's claim about which asset is L-USDT, and the
+    // maker is the party a substituted asset would pay. The trusted asset is
+    // the canonical USDt on mainnet, or `LUSDT_ASSET_ID` elsewhere; the card
+    // is only cross-checked against it.
+    let pair_card = sdk(
         pairs.expected_liquid_asset_context(Currency::Btc, Currency::LUsdt),
-        "resolve pair asset ids",
+        "read pair asset ids",
+    )?;
+    let expected_assets = sdk(
+        LiquidAssetContext::trusted_lusdt(
+            liquid_chain,
+            std::env::var("LUSDT_ASSET_ID").ok().as_deref(),
+        )
+        .and_then(|trusted| trusted.cross_check_pair_card(pair_card)),
+        "pin the L-USDT asset",
     )?;
 
     let response = sdk(
@@ -111,7 +123,7 @@ async fn main() -> Result<()> {
             &claim_public_key,
             Chain::Liquid(liquid_chain),
             Some(Currency::LUsdt),
-            expected_assets,
+            Some(expected_assets),
         ),
         "validate reverse response",
     )?;

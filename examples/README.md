@@ -40,9 +40,15 @@ KALEIDO_MAKER_URL=http://localhost:9001/v2 \
 KALEIDO_NETWORK=regtest \
 KALEIDO_SWAP_MNEMONIC="your persisted swap mnemonic" \
 KALEIDO_SWAP_INDEX=0 \
+LUSDT_ASSET_ID="<the deployment's L-USDT asset id>" \
 BOLT11_INVOICE="lnbcrt..." \
 cargo run --example lusdt_submarine
 ```
+
+`LUSDT_ASSET_ID` pins the asset the swap must carry. It is required on regtest
+and testnet, where USDT is issued per deployment; on mainnet it may be omitted
+(the canonical Liquid USDt is used) and must equal it when set. The maker's
+pair card is only cross-checked against the pin, never used as its source.
 
 After validating the response, the example prints:
 
@@ -63,6 +69,7 @@ KALEIDO_NETWORK=regtest \
 KALEIDO_SWAP_MNEMONIC="your persisted swap mnemonic" \
 KALEIDO_SWAP_INDEX=1 \
 INVOICE_AMOUNT_SATS=100000 \
+LUSDT_ASSET_ID="<the deployment's L-USDT asset id>" \
 LUSDT_CLAIM_ADDRESS="el1..." \
 LIQUID_ESPLORA_URL=http://localhost:4003/api \
 LUSDT_PSET_TEMPLATE=lusdt-reverse-claim-template.json \

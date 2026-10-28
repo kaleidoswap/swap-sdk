@@ -359,7 +359,12 @@ impl GetSubmarinePairsResponse {
         self.get("USDT-RGB", "BTC").cloned()
     }
 
-    /// Resolve the Liquid assets committed by the selected public pair card.
+    /// The Liquid assets the selected public pair card advertises.
+    ///
+    /// This is the maker's claim, not a trust anchor: resolve the trusted
+    /// context with [`LiquidAssetContext::trusted_lusdt`], pass this to its
+    /// `cross_check_pair_card`, and validate the create response against the
+    /// trusted context.
     pub fn expected_liquid_asset_context(
         &self,
         from: Currency,
@@ -425,7 +430,12 @@ impl GetReversePairsResponse {
         self.get("BTC", "USDT-RGB").cloned()
     }
 
-    /// Resolve the Liquid assets committed by the selected public pair card.
+    /// The Liquid assets the selected public pair card advertises.
+    ///
+    /// This is the maker's claim, not a trust anchor: resolve the trusted
+    /// context with [`LiquidAssetContext::trusted_lusdt`], pass this to its
+    /// `cross_check_pair_card`, and validate the create response against the
+    /// trusted context.
     pub fn expected_liquid_asset_context(
         &self,
         from: Currency,
@@ -485,7 +495,12 @@ impl GetChainPairsResponse {
         self.get("BTC", "L-USDT").cloned()
     }
 
-    /// Resolve the Liquid assets committed by the selected public pair card.
+    /// The Liquid assets the selected public pair card advertises.
+    ///
+    /// This is the maker's claim, not a trust anchor: resolve the trusted
+    /// context with [`LiquidAssetContext::trusted_lusdt`], pass this to its
+    /// `cross_check_pair_card`, and validate the create response against the
+    /// trusted context.
     pub fn expected_liquid_asset_context(
         &self,
         from: Currency,

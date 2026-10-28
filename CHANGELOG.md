@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — L-USDT on testnet and regtest requires a pinned asset id
+
+The L-USDT asset a swap must carry was anchored only to the maker's pair card:
+the create response was validated against asset ids the same maker served, so
+a maker advertising a worthless asset as L-USDT passed every check and a
+submarine or chain swap would pay real BTC for it (security review 2026-10-28,
+finding 3). The asset now has to come from something the maker does not
+control.
+
+- Rust: `LiquidAssetContext::trusted_lusdt(network, pinned_asset_id)` and
+  `trusted_lusdt_for_swap(...)` resolve the trusted context without I/O: the
+  canonical Liquid USDt (`network::LIQUID_USDT_ASSET_ID`,
+  `LiquidChain::canonical_lusdt`) on mainnet, else the caller's pin, which is
+  required on testnet and regtest where USDT is issued per deployment.
+  `cross_check_pair_card` then refuses a maker whose pair card advertises
+  another asset; `expected_liquid_asset_context` on the pair responses is now
+  that cross-check, not a trust anchor. On mainnet
+  `validate_currency` also refuses an L-USDT response whose asset is not the
+  canonical one whatever context the caller passed.
+- UniFFI/Python: `CreateSubmarineRequest`, `CreateReverseRequest` and
+  `CreateChainRequest` take `lusdt_asset_id` (optional, never sent to the
+  maker). An L-USDT create on testnet or regtest without it is refused before
+  any request is posted.
+- WASM/TypeScript: `createSubmarineSwap`, `createReverseSwap` and
+  `createChainSwap` take a trailing optional `lusdtAssetId` with the same
+  rules.
+- Examples: `LUSDT_ASSET_ID` pins the asset for `lusdt_submarine` and
+  `lusdt_reverse`.
+
+BTC, L-BTC and USDT-RGB swaps are unaffected.
+
 ### Security
 
 - Magic routing hints bound the BIP21 amount by the invoice. The maker signs

@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use kaleidorg_swap_sdk::network::{Chain, Currency};
 use kaleidorg_swap_sdk::swaps::boltz::CreateSubmarineRequest;
 use kaleidorg_swap_sdk::swaps::SwapScript;
-use kaleidorg_swap_sdk::PublicKey;
+use kaleidorg_swap_sdk::{LiquidAssetContext, PublicKey};
 
 use lusdt_common::{api_client, network, required_env, sdk, swap_key, wait_for_status};
 
@@ -21,9 +21,10 @@ async fn main() -> Result<()> {
     let (swap_index, refund_key) = swap_key(network)?;
     let refund_public_key = PublicKey::new(refund_key.public_key());
 
-    // Always obtain the asset ids and pair hash from the pair card immediately
-    // before creating the swap. L-USDT asset ids are network/deployment data,
-    // not constants that an application should guess.
+    // Always obtain the pair hash from the pair card immediately before
+    // creating the swap. The asset ids on the card are read too, but only to
+    // cross-check the pinned asset below: the maker does not get to say which
+    // asset is L-USDT.
     let pairs = sdk(
         api.get_submarine_pairs().await,
         "fetch L-USDT submarine pair",
@@ -31,9 +32,20 @@ async fn main() -> Result<()> {
     let pair = pairs
         .get_lusdt_to_btc_pair()
         .context("Maker does not advertise the L-USDT/BTC submarine pair")?;
-    let expected_assets = sdk(
+    // The pair card is the maker's claim about which asset is L-USDT; the
+    // trusted asset is the canonical USDt on mainnet, or `LUSDT_ASSET_ID`
+    // elsewhere, and the card is only cross-checked against it.
+    let pair_card = sdk(
         pairs.expected_liquid_asset_context(Currency::LUsdt, Currency::Btc),
-        "resolve pair asset ids",
+        "read pair asset ids",
+    )?;
+    let expected_assets = sdk(
+        LiquidAssetContext::trusted_lusdt(
+            liquid_chain,
+            std::env::var("LUSDT_ASSET_ID").ok().as_deref(),
+        )
+        .and_then(|trusted| trusted.cross_check_pair_card(pair_card)),
+        "pin the L-USDT asset",
     )?;
 
     let response = sdk(
@@ -59,7 +71,7 @@ async fn main() -> Result<()> {
             &refund_public_key,
             Chain::Liquid(liquid_chain),
             Some(Currency::LUsdt),
-            expected_assets,
+            Some(expected_assets),
         ),
         "validate submarine response",
     )?;

@@ -83,6 +83,13 @@ fn rgb() {
     run_test("tests/bindings/rgb.py");
 }
 
+/// L-USDT asset pinning against a local HTTP stub, without regtest daemons.
+#[test]
+#[serial]
+fn lusdt() {
+    run_test("tests/bindings/lusdt.py");
+}
+
 #[test]
 #[serial]
 fn transaction_restore() {

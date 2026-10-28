@@ -118,12 +118,33 @@ pub enum LiquidChain {
 const ASSET_ID_REGTEST: &str = "5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225";
 const ASSET_ID_TESTNET: &str = "144c654344aa716d6f3abcc1ca90e5641e4e2a7f633bc09fe3baf64585819a49";
 
+/// Tether USDt on Liquid mainnet, as issued by Tether and listed by the
+/// Liquid asset registry. The only L-USDT asset id this SDK trusts without a
+/// caller pin: see [`LiquidChain::canonical_lusdt`].
+pub const LIQUID_USDT_ASSET_ID: &str =
+    "ce091c998b83c78bb71a632313ba3760f1763d9cfcffae02258ffa9865a37bd2";
+
 impl LiquidChain {
     pub fn bitcoin(self) -> AssetId {
         match self {
             LiquidChain::Liquid => AssetId::LIQUID_BTC,
             LiquidChain::LiquidTestnet => AssetId::from_str(ASSET_ID_TESTNET).unwrap(),
             LiquidChain::LiquidRegtest => AssetId::from_str(ASSET_ID_REGTEST).unwrap(),
+        }
+    }
+
+    /// The L-USDT asset this network is known to carry, independently of any
+    /// maker.
+    ///
+    /// Only Liquid mainnet has one: [`LIQUID_USDT_ASSET_ID`]. Testnet and
+    /// regtest USDT is issued per deployment, so there the asset id has to be
+    /// pinned by the caller (`lusdt_asset_id` on the create requests) and this
+    /// returns `None`. A pair card is never a source for it: the maker that
+    /// serves the card is the party a substituted asset would benefit.
+    pub fn canonical_lusdt(self) -> Option<AssetId> {
+        match self {
+            LiquidChain::Liquid => Some(AssetId::from_str(LIQUID_USDT_ASSET_ID).unwrap()),
+            LiquidChain::LiquidTestnet | LiquidChain::LiquidRegtest => None,
         }
     }
 }
