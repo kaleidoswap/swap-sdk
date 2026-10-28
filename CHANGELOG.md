@@ -41,6 +41,30 @@ All notable changes to this project will be documented in this file.
   `blinding_key`, as `LiquidSwapScript` already did. The key unblinds the
   swap's confidential outputs, so a logged create or restore response gave the
   reader every amount and asset behind them.
+- LNURL-withdraw (`create_withdraw_response`, `process_withdrawal`) runs over
+  the same hardened transport as LNURL-pay: HTTPS on clearnet (HTTP only for
+  onion services), no URL credentials or fragments, no redirects, a 30-second
+  deadline per request. It previously used lnurl-rs's default client, which
+  accepted plain HTTP and followed redirects while carrying the replayable
+  `k1` withdrawal capability. The callback is now built by the SDK and bound
+  to the validated request: it must pass the transport policy, `k1` must be
+  present, the invoice must carry an amount within the advertised limits, and
+  the service must answer `status: OK`.
+- Every LNURL request (pay and withdraw, discovery and callback) refuses
+  non-public destinations: loopback, RFC 1918, link-local, CGNAT, multicast,
+  unspecified, documentation and the other reserved ranges, for IPv4 and IPv6
+  including IPv4-mapped, IPv4-compatible and 6to4 addresses. Literal hosts are
+  checked before any request; on native every name is resolved through a
+  vetting resolver and the connection pinned to the vetted addresses, so a
+  rebinding name is judged again on each connection. A server resolving an
+  attacker-chosen Lightning address or voucher could otherwise be steered at
+  services reachable only from its own network. `LnurlOptions
+  { allow_private_hosts: true }` (`*_with_options` variants of
+  `resolve_lightning_address`, `fetch_invoice`, `create_withdraw_response`,
+  `process_withdrawal`) opts a development setup back in; it also permits
+  plain HTTP to those private hosts, never to the clearnet.
+  `blocked_ip_reason` exposes the classification. The policy is in the Rust
+  core, so the UniFFI and WASM `resolveLightningAddress` inherit the default.
 
 ## [0.12.0] - 2026-10-19
 
