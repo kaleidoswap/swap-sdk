@@ -1250,10 +1250,40 @@ impl BoltzClient {
                 .map_err(core_err)?,
         )
     }
+    /// The maker's raw, **unvalidated** BIP21 for an invoice's magic-routing
+    /// hint. Only the address is signed; the amount, scheme and asset are
+    /// whatever the maker sent. Pay what `checkMrh` returns instead.
     #[wasm_bindgen(js_name = mrhBip21)]
     pub async fn mrh_bip21(&self, invoice: StringArg) -> Result<JsValue, JsValue> {
         let invoice = str_arg(invoice, "invoice")?;
         to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
+    }
+    /// `checkMrh(invoice, chain, network)` — the validated magic-routing
+    /// destination `{ address, amountSat }` for `invoice` on `chain`
+    /// (`"bitcoin"` or `"liquid"`) and `network`, or `undefined` when the
+    /// invoice carries no hint. Paying `amountSat` to `address` on-chain
+    /// settles the invoice and skips the swap entirely.
+    ///
+    /// Checks the maker's signature over the address, that the BIP21 scheme,
+    /// address and asset belong to the chain, and that the amount is positive
+    /// and at most the invoice amount (it may be smaller: the maker deducts
+    /// its fees). The invoice must carry an amount.
+    #[wasm_bindgen(js_name = checkMrh)]
+    pub async fn check_mrh(
+        &self,
+        invoice: StringArg,
+        chain: StringArg,
+        network: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let invoice = str_arg(invoice, "invoice")?;
+        let chain = build_chain(&str_arg(chain, "chain")?, &str_arg(network, "network")?)?;
+        match magic_routing::check_mrh(&self.inner, &invoice, chain)
+            .await
+            .map_err(core_err)?
+        {
+            Some(destination) => to_js(&destination),
+            None => Ok(JsValue::UNDEFINED),
+        }
     }
     /// `GET /v2/swap/atomic/pairs` — the atomic BTC <-> USDT-RGB rate cards.
     #[wasm_bindgen(js_name = atomicPairs)]
@@ -1486,6 +1516,7 @@ use kaleidorg_swap_sdk::network::Chain;
 use kaleidorg_swap_sdk::swaps::liquid::{
     FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
 };
+use kaleidorg_swap_sdk::swaps::magic_routing;
 use kaleidorg_swap_sdk::swaps::rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
     PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,

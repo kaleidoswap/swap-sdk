@@ -2023,9 +2023,16 @@ pub struct CreateSubmarineRequest {
 /// logs a whole create response — `log::debug!("{resp:?}")` — must not thereby
 /// log the credential. Whether the maker issued one is still worth seeing, so
 /// only the value is withheld.
-struct RedactedSwapAuth<'a>(&'a Option<String>);
+///
+/// The same wrapper covers a Liquid `blinding_key`: it is the private key
+/// that unblinds the swap's confidential outputs, so a log line carrying it
+/// gives the reader the amounts and assets behind every output it blinds.
+/// [`crate::swaps::liquid::LiquidSwapScript`] already withholds it from
+/// `Debug`, and the DTOs it is parsed from must not print what the script
+/// hides.
+struct RedactedSecret<'a>(&'a Option<String>);
 
-impl std::fmt::Debug for RedactedSwapAuth<'_> {
+impl std::fmt::Debug for RedactedSecret<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.0 {
             Some(_) => f.write_str("Some(<redacted>)"),
@@ -2068,10 +2075,10 @@ pub struct CreateSubmarineResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rgb: Option<RgbLock>,
 }
-/// Hand-written only to redact `swap_auth`; every other field prints as the
-/// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
-/// added to the struct later fails to compile here rather than silently going
-/// missing from the output.
+/// Hand-written only to redact `swap_auth` and `blinding_key`; every other
+/// field prints as the derive would. The exhaustive `let Self { .. }` is
+/// load-bearing — a field added to the struct later fails to compile here
+/// rather than silently going missing from the output.
 impl std::fmt::Debug for CreateSubmarineResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Self {
@@ -2100,10 +2107,10 @@ impl std::fmt::Debug for CreateSubmarineResponse {
             .field("referral_id", referral_id)
             .field("swap_tree", swap_tree)
             .field("timeout_block_height", timeout_block_height)
-            .field("blinding_key", blinding_key)
+            .field("blinding_key", &RedactedSecret(blinding_key))
             .field("asset_id", asset_id)
             .field("fee_asset_id", fee_asset_id)
-            .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("swap_auth", &RedactedSecret(swap_auth))
             .field("rgb", rgb)
             .finish()
     }
@@ -2394,7 +2401,7 @@ pub struct Leaf {
     pub version: u8,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[cfg_attr(feature = "typescript", ts(optional_fields))]
@@ -2412,8 +2419,40 @@ pub struct ClaimDetails {
     pub blinding_key: Option<String>,
     pub preimage_hash: String,
 }
+/// Hand-written only to redact `blinding_key`; every other field prints as
+/// the derive would. The exhaustive `let Self { .. }` is load-bearing — a
+/// field added to the struct later fails to compile here rather than silently
+/// going missing from the output.
+impl std::fmt::Debug for ClaimDetails {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            detail_type,
+            tree,
+            amount,
+            key_index,
+            transaction,
+            lockup_address,
+            server_public_key,
+            timeout_block_height,
+            blinding_key,
+            preimage_hash,
+        } = self;
+        f.debug_struct("ClaimDetails")
+            .field("detail_type", detail_type)
+            .field("tree", tree)
+            .field("amount", amount)
+            .field("key_index", key_index)
+            .field("transaction", transaction)
+            .field("lockup_address", lockup_address)
+            .field("server_public_key", server_public_key)
+            .field("timeout_block_height", timeout_block_height)
+            .field("blinding_key", &RedactedSecret(blinding_key))
+            .field("preimage_hash", preimage_hash)
+            .finish()
+    }
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[cfg_attr(feature = "typescript", ts(optional_fields))]
@@ -2429,6 +2468,33 @@ pub struct RefundDetails {
     pub server_public_key: String,
     pub timeout_block_height: u32,
     pub blinding_key: Option<String>,
+}
+/// Hand-written only to redact `blinding_key`; see [`ClaimDetails`].
+impl std::fmt::Debug for RefundDetails {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            detail_type,
+            tree,
+            amount,
+            key_index,
+            transaction,
+            lockup_address,
+            server_public_key,
+            timeout_block_height,
+            blinding_key,
+        } = self;
+        f.debug_struct("RefundDetails")
+            .field("detail_type", detail_type)
+            .field("tree", tree)
+            .field("amount", amount)
+            .field("key_index", key_index)
+            .field("transaction", transaction)
+            .field("lockup_address", lockup_address)
+            .field("server_public_key", server_public_key)
+            .field("timeout_block_height", timeout_block_height)
+            .field("blinding_key", &RedactedSecret(blinding_key))
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2712,10 +2778,10 @@ pub struct CreateReverseResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rgb: Option<RgbLock>,
 }
-/// Hand-written only to redact `swap_auth`; every other field prints as the
-/// derive would. The exhaustive `let Self { .. }` is load-bearing — a field
-/// added to the struct later fails to compile here rather than silently going
-/// missing from the output.
+/// Hand-written only to redact `swap_auth` and `blinding_key`; every other
+/// field prints as the derive would. The exhaustive `let Self { .. }` is
+/// load-bearing — a field added to the struct later fails to compile here
+/// rather than silently going missing from the output.
 impl std::fmt::Debug for CreateReverseResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let Self {
@@ -2740,10 +2806,10 @@ impl std::fmt::Debug for CreateReverseResponse {
             .field("refund_public_key", refund_public_key)
             .field("timeout_block_height", timeout_block_height)
             .field("onchain_amount", onchain_amount)
-            .field("blinding_key", blinding_key)
+            .field("blinding_key", &RedactedSecret(blinding_key))
             .field("asset_id", asset_id)
             .field("fee_asset_id", fee_asset_id)
-            .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("swap_auth", &RedactedSecret(swap_auth))
             .field("rgb", rgb)
             .finish()
     }
@@ -2862,7 +2928,7 @@ pub enum Side {
     Claim,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
 #[cfg_attr(feature = "typescript", ts(optional_fields))]
@@ -2885,6 +2951,41 @@ pub struct ChainSwapDetails {
     pub asset_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_asset_id: Option<String>,
+}
+/// Hand-written only to redact `blinding_key`; every other field prints as
+/// the derive would. The exhaustive `let Self { .. }` is load-bearing — a
+/// field added to the struct later fails to compile here rather than silently
+/// going missing from the output. `CreateChainResponse`'s own `Debug` goes
+/// through this one for both legs.
+impl std::fmt::Debug for ChainSwapDetails {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let Self {
+            swap_tree,
+            lockup_address,
+            server_public_key,
+            timeout_block_height,
+            amount,
+            blinding_key,
+            refund_address,
+            claim_address,
+            bip21,
+            asset_id,
+            fee_asset_id,
+        } = self;
+        f.debug_struct("ChainSwapDetails")
+            .field("swap_tree", swap_tree)
+            .field("lockup_address", lockup_address)
+            .field("server_public_key", server_public_key)
+            .field("timeout_block_height", timeout_block_height)
+            .field("amount", amount)
+            .field("blinding_key", &RedactedSecret(blinding_key))
+            .field("refund_address", refund_address)
+            .field("claim_address", claim_address)
+            .field("bip21", bip21)
+            .field("asset_id", asset_id)
+            .field("fee_asset_id", fee_asset_id)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2961,7 +3062,7 @@ impl std::fmt::Debug for CreateChainResponse {
             .field("id", id)
             .field("claim_details", claim_details)
             .field("lockup_details", lockup_details)
-            .field("swap_auth", &RedactedSwapAuth(swap_auth))
+            .field("swap_auth", &RedactedSecret(swap_auth))
             .finish()
     }
 }
@@ -3174,7 +3275,7 @@ impl std::fmt::Debug for Cooperative<'_> {
         f.debug_struct("Cooperative")
             .field("swap_id", &self.swap_id)
             .field("signature", &self.signature)
-            .field("swap_auth", &RedactedSwapAuth(&self.swap_auth))
+            .field("swap_auth", &RedactedSecret(&self.swap_auth))
             .finish()
     }
 }
@@ -4941,6 +5042,110 @@ mod tests {
             format!("{none:?}").contains("swap_auth: None"),
             "whether the maker issued one is still worth seeing",
         );
+    }
+
+    /// `{:?}` on a create or restore DTO must not print a Liquid blinding key.
+    ///
+    /// It is the private key that unblinds the swap's confidential outputs,
+    /// so a log line carrying it hands the reader every amount and asset
+    /// behind them. `LiquidSwapScript` already withholds it from `Debug`; the
+    /// DTOs it is parsed from printed it verbatim.
+    #[test]
+    fn debug_redacts_liquid_blinding_keys() {
+        let key = "07e3b7a6c5d4f3a2b1908f7e6d5c4b3a2918f7e6d5c4b3a2918f7e6d5c4b3a29";
+        let tree = serde_json::json!({
+            "claimLeaf": {"output": "00", "version": 196},
+            "refundLeaf": {"output": "01", "version": 196},
+        });
+        let server_key = "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2";
+
+        let submarine: CreateSubmarineResponse = serde_json::from_value(serde_json::json!({
+            "acceptZeroConf": false,
+            "address": "el1qqlockup",
+            "bip21": "liquidnetwork:el1qqlockup?amount=0.001",
+            "claimPublicKey": server_key,
+            "expectedAmount": 100_000,
+            "id": "submarine-id",
+            "swapTree": tree,
+            "timeoutBlockHeight": 200,
+            "blindingKey": key,
+        }))
+        .unwrap();
+        let reverse: CreateReverseResponse = serde_json::from_value(serde_json::json!({
+            "id": "reverse-id",
+            "invoice": null,
+            "swapTree": tree,
+            "lockupAddress": "el1qqlockup",
+            "refundPublicKey": server_key,
+            "timeoutBlockHeight": 200,
+            "onchainAmount": 100_000,
+            "blindingKey": key,
+        }))
+        .unwrap();
+        let mut chain_json = chain_create_response_json(None);
+        chain_json["claimDetails"]["blindingKey"] = serde_json::json!(key);
+        chain_json["lockupDetails"]["blindingKey"] = serde_json::json!(key);
+        let chain: CreateChainResponse = serde_json::from_value(chain_json).unwrap();
+        let details = serde_json::json!({
+            "type": "utxo",
+            "tree": tree,
+            "amount": 100_000,
+            "keyIndex": 7,
+            "lockupAddress": "el1qqlockup",
+            "serverPublicKey": server_key,
+            "timeoutBlockHeight": 144,
+            "blindingKey": key,
+            "preimageHash": "ab".repeat(32),
+        });
+        let restore: SwapRestoreResponse = serde_json::from_value(serde_json::json!({
+            "id": "restore-id",
+            "type": "chain",
+            "status": "swap.created",
+            "createdAt": 1,
+            "from": "BTC",
+            "to": "L-BTC",
+            "invoice": null,
+            "claimDetails": details,
+            "refundDetails": details,
+        }))
+        .unwrap();
+
+        for (name, rendered, keep) in [
+            ("submarine", format!("{submarine:?}"), "submarine-id"),
+            ("reverse", format!("{reverse:?}"), "reverse-id"),
+            ("chain", format!("{chain:?}"), "01KZZYB138E7C3HZX7Q1YBGAQG"),
+            ("restore", format!("{restore:?}"), "restore-id"),
+        ] {
+            assert!(
+                !rendered.contains(key),
+                "{name}: the blinding key must not reach a log line, got:\n{rendered}",
+            );
+            assert!(
+                rendered.contains("blinding_key: Some(<redacted>)"),
+                "{name}: {rendered}"
+            );
+            // Everything else still prints, so the redaction did not cost the
+            // DTO its usefulness in a log.
+            assert!(rendered.contains(keep), "{name}: {rendered}");
+        }
+        // Both chain legs and both restore sides go through the redaction.
+        assert_eq!(
+            format!("{chain:?}")
+                .matches("blinding_key: Some(<redacted>)")
+                .count(),
+            2
+        );
+        assert_eq!(
+            format!("{restore:?}")
+                .matches("blinding_key: Some(<redacted>)")
+                .count(),
+            2
+        );
+
+        // A swap without a blinding key (Bitcoin) still says so.
+        let plain: CreateChainResponse =
+            serde_json::from_value(chain_create_response_json(None)).unwrap();
+        assert!(format!("{plain:?}").contains("blinding_key: None"));
     }
 
     /// A 2xx response the SDK cannot deserialize must not put the body in the
