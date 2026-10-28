@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-28
+
+This release hardens the swap flows following the security review of
+2026-10-28: claims ask the chain, not the maker, before revealing the preimage;
+create responses are bound to the requested amounts and to a locally pinned
+L-USDT asset; browser requests to the maker refuse redirects; LNURL gains a
+public-only egress policy and a hardened withdraw transport; magic-routing
+amounts are bounded by the invoice; and per-swap secrets are redacted from Rust
+`Debug` and Python `str()`. It also aligns the SDK with maker 0.11 and makes the
+React Native package load the SDK again. Rust, Python, TypeScript and React
+Native packages share version **0.13.0**. It contains three breaking changes,
+listed below: claims require a confirmed lockup by default, L-USDT on testnet
+and regtest requires a pinned asset id, and the React Native
+`SwapClient.kaleidoMaker` refuses to run in an app.
+
 ### Fixed — security integration and maker compatibility
 
 - LNURL ignores environment proxies so DNS egress checks cannot be bypassed.
