@@ -2138,6 +2138,124 @@ fn ensure_plain_btc_response(currency: Currency, rgb: Option<&RgbLock>) -> Resul
     }
 }
 
+/// Nominal block interval, for comparing timeouts that live on different
+/// chains. Rough is fine: the cross-leg rule below is a sanity check on the
+/// maker's choice of windows, not a consensus computation.
+fn nominal_block_interval_secs(chain: Chain) -> u64 {
+    match chain {
+        Chain::Bitcoin(_) => 600,
+        Chain::Liquid(_) => 60,
+    }
+}
+
+/// A create response whose timeout is already mature, or within
+/// `min_headroom_blocks` of a trusted `current_height`, is not one to pay or
+/// fund: on the legs the maker refunds, its refund would be valid before or
+/// soon after our claim, and a claim then reveals the preimage for nothing.
+/// `current_height` must come from the chain client, not from the maker.
+fn ensure_timeout_headroom(
+    what: &str,
+    timeout_block_height: u32,
+    current_height: u32,
+    min_headroom_blocks: u32,
+) -> Result<(), Error> {
+    if timeout_block_height == 0 {
+        return Err(Error::Protocol(format!(
+            "{what} timeout block height must be positive"
+        )));
+    }
+    let earliest_acceptable = current_height.saturating_add(min_headroom_blocks);
+    if timeout_block_height <= earliest_acceptable {
+        return Err(Error::Protocol(format!(
+            "{what} timeout {timeout_block_height} leaves no headroom: current height {current_height} plus the required {min_headroom_blocks} blocks reaches it"
+        )));
+    }
+    Ok(())
+}
+
+/// Chain-swap timing from the claimer's side: our claim leg (the server's
+/// lock, which the server refunds at its timeout) needs headroom, and our own
+/// lock must stay refundable only *after* the server's window has closed. If
+/// the server's lock outlives ours, the maker can wait for our refund path
+/// to open, see which way we go, and still claim or refund at leisure; it is
+/// also simply not the protocol's shape, so the response is refused.
+fn ensure_chain_swap_timing(
+    lockup_timeout: u32,
+    lockup_chain: Chain,
+    lockup_height: u32,
+    claim_timeout: u32,
+    claim_chain: Chain,
+    claim_height: u32,
+    min_claim_headroom_blocks: u32,
+) -> Result<(), Error> {
+    ensure_timeout_headroom(
+        "Chain swap claim leg",
+        claim_timeout,
+        claim_height,
+        min_claim_headroom_blocks,
+    )?;
+    // Our own refund path must not already be open; that is not a theft
+    // risk for us, but a response shaped like that is not a live swap.
+    ensure_timeout_headroom("Chain swap lockup leg", lockup_timeout, lockup_height, 0)?;
+    let remaining = |timeout: u32, height: u32, chain: Chain| {
+        u64::from(timeout - height) * nominal_block_interval_secs(chain)
+    };
+    let lockup_remaining = remaining(lockup_timeout, lockup_height, lockup_chain);
+    let claim_remaining = remaining(claim_timeout, claim_height, claim_chain);
+    if lockup_remaining <= claim_remaining {
+        return Err(Error::Protocol(format!(
+            "Chain swap lockup timeout (about {lockup_remaining}s away) does not outlast the claim leg timeout (about {claim_remaining}s away)"
+        )));
+    }
+    Ok(())
+}
+
+impl CreateReverseResponse {
+    /// Refuse to pay a reverse swap whose lockup timeout is already mature or
+    /// closer than `min_headroom_blocks` to `current_height`, the lockup
+    /// chain's tip from a trusted chain client (never the maker's `/chain/heights`).
+    /// The maker refunds this lockup at the timeout, so a claim against a
+    /// nearly mature one hands over the preimage for a payout the maker can
+    /// take back.
+    pub fn validate_timeout_headroom(
+        &self,
+        current_height: u32,
+        min_headroom_blocks: u32,
+    ) -> Result<(), Error> {
+        ensure_timeout_headroom(
+            "Reverse swap",
+            self.timeout_block_height,
+            current_height,
+            min_headroom_blocks,
+        )
+    }
+}
+
+impl CreateChainResponse {
+    /// Refuse a chain swap whose timing is unsafe to fund, given trusted
+    /// current heights for both chains: the claim leg (`to_chain`, the
+    /// server's lock) must be at least `min_claim_headroom_blocks` away from
+    /// its timeout, and our lock on `from_chain` must outlast it.
+    pub fn validate_timeout_headroom(
+        &self,
+        from_chain: Chain,
+        from_height: u32,
+        to_chain: Chain,
+        to_height: u32,
+        min_claim_headroom_blocks: u32,
+    ) -> Result<(), Error> {
+        ensure_chain_swap_timing(
+            self.lockup_details.timeout_block_height,
+            from_chain,
+            from_height,
+            self.claim_details.timeout_block_height,
+            to_chain,
+            to_height,
+            min_claim_headroom_blocks,
+        )
+    }
+}
+
 impl CreateSubmarineResponse {
     /// Validate a KaleidoSwap `USDT-RGB → BTC` submarine response before the
     /// asset is locked.
@@ -3566,6 +3684,46 @@ mod tests {
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+
+    /// A mature or nearly mature timeout must be refused before anything is
+    /// paid: the maker refunds at that height, and a claim then only leaks
+    /// the preimage.
+    #[macros::test_all]
+    fn timeout_headroom_refuses_mature_and_tight_timeouts() {
+        assert!(ensure_timeout_headroom("x", 0, 10, 0).is_err());
+        // Already mature.
+        assert!(ensure_timeout_headroom("x", 100, 100, 0).is_err());
+        assert!(ensure_timeout_headroom("x", 100, 150, 0).is_err());
+        // Exactly at the margin is still too tight; one block past it is fine.
+        assert!(ensure_timeout_headroom("x", 112, 100, 12).is_err());
+        assert!(ensure_timeout_headroom("x", 113, 100, 12).is_ok());
+        assert!(ensure_timeout_headroom("x", 101, 100, 0).is_ok());
+        // Saturating: an absurd margin cannot wrap into acceptance.
+        assert!(ensure_timeout_headroom("x", u32::MAX, 10, u32::MAX).is_err());
+    }
+
+    /// Chain swaps: the claim leg needs headroom, our own lock must not be
+    /// refundable yet, and it must outlast the server's lock in wall-clock
+    /// terms even when the two legs sit on chains with different intervals.
+    #[macros::test_all]
+    fn chain_swap_timing_requires_our_lock_to_outlast_the_claim_leg() {
+        let btc = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let lbtc = Chain::Liquid(crate::network::LiquidChain::LiquidRegtest);
+        // BTC -> L-BTC: our lock 288 BTC blocks out (~48h), claim leg 1440
+        // Liquid blocks out (~24h).
+        assert!(ensure_chain_swap_timing(100 + 288, btc, 100, 5000 + 1440, lbtc, 5000, 60).is_ok());
+        // Claim leg too close.
+        assert!(ensure_chain_swap_timing(100 + 288, btc, 100, 5000 + 60, lbtc, 5000, 60).is_err());
+        // Claim leg mature.
+        assert!(ensure_chain_swap_timing(100 + 288, btc, 100, 4999, lbtc, 5000, 60).is_err());
+        // Our lock already refundable.
+        assert!(ensure_chain_swap_timing(100, btc, 100, 5000 + 1440, lbtc, 5000, 60).is_err());
+        // Our BTC lock (~5h) does not outlast the Liquid claim leg (~24h).
+        assert!(ensure_chain_swap_timing(100 + 30, btc, 100, 5000 + 1440, lbtc, 5000, 60).is_err());
+        // L-BTC -> BTC: our Liquid lock 2880 blocks (~48h), claim leg 144 BTC blocks (~24h).
+        assert!(ensure_chain_swap_timing(5000 + 2880, lbtc, 5000, 100 + 144, btc, 100, 6).is_ok());
+        assert!(ensure_chain_swap_timing(5000 + 1440, lbtc, 5000, 100 + 144, btc, 100, 6).is_err());
+    }
 
     /// A currency the SDK has no named accessor for must still survive
     /// deserialization and stay reachable.

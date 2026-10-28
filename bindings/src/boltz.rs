@@ -1228,3 +1228,42 @@ pub struct SwapRestoreResponse {
 pub struct SwapRestoreIndexResponse {
     pub index: i64,
 }
+
+/// Refuse to pay a reverse swap whose lockup timeout is mature or within
+/// `min_headroom_blocks` of `current_height`, which must be the lockup chain's
+/// tip from a `ChainClient` (`bitcoin_tip_height` / `liquid_tip_height`), not
+/// the maker's `get_height`. Security review 2026-10-28, finding 2.
+#[uniffi::export]
+pub fn validate_reverse_timeout_headroom(
+    response: CreateReverseResponse,
+    current_height: u32,
+    min_headroom_blocks: u32,
+) -> Result<(), Error> {
+    response
+        .validate_timeout_headroom(current_height, min_headroom_blocks)
+        .map_err(Error::from)
+}
+
+/// Refuse to fund a chain swap whose claim leg (`to_chain`, the server's
+/// lock) is within `min_claim_headroom_blocks` of its timeout at `to_height`,
+/// or whose lockup leg on `from_chain` does not outlast it. Both heights come
+/// from trusted chain clients.
+#[uniffi::export]
+pub fn validate_chain_timeout_headroom(
+    response: CreateChainResponse,
+    from_chain: Chain,
+    from_height: u32,
+    to_chain: Chain,
+    to_height: u32,
+    min_claim_headroom_blocks: u32,
+) -> Result<(), Error> {
+    response
+        .validate_timeout_headroom(
+            from_chain,
+            from_height,
+            to_chain,
+            to_height,
+            min_claim_headroom_blocks,
+        )
+        .map_err(Error::from)
+}

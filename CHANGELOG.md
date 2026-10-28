@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — claims check the chain before revealing the preimage
+
+`SwapScript::construct_claim` (and `prepare_liquid_claim`) now ask the chain
+client, in the Rust core, for the tip height and the lockup output's status
+before any cooperative request or script-path witness reveals the preimage, so
+UniFFI/Python/React Native, WASM/TypeScript and direct Rust callers all inherit
+the check (security review 2026-10-28, findings 1 and 2). By default a claim is
+refused when the chain source has not seen the lockup, when it has fewer than
+one confirmation, when a spend of it is visible in the mempool or in a block,
+or when the tip is within the safety margin (6 blocks on Bitcoin, 60 on Liquid)
+of the swap's refund timeout. The maker's status strings are never used for
+this. Zero-conf claims, including a lockup passed to `with_lockup_tx` and
+broadcast in the same call, now need an explicit opt-in. The policy lives in
+`ClaimPolicy` on `TransactionOptions` (`with_min_confirmations`,
+`with_allow_zero_conf`, `with_claim_safety_margin_blocks`,
+`with_allow_conflicting_spend`), in the UniFFI `TransactionOptions` record
+(`min_confirmations`, `allow_zero_conf`, `claim_safety_margin_blocks`,
+`allow_conflicting_spend`, also on `LiquidPsetParams.options`), and in the WASM
+`TxParams` / `LiquidPsetParams` (`minConfirmations`, `allowZeroConf`,
+`claimSafetyMarginBlocks`, `allowConflictingSpend`). The TypeScript
+`claimReverseSwap` / `claimChainSwap` helpers forward their options, and their
+own snapshot checks are unchanged.
+
+Implementors of the `BitcoinClient` / `LiquidClient` traits must add
+`get_tip_height` and `get_output_status`; the Esplora and Electrum clients
+implement them (`/blocks/tip/height`, `/tx/:txid/status`,
+`/tx/:txid/outspend/:vout`; script history on Electrum). Bitcoin Esplora
+discovery still lists unconfirmed outputs, but a claim no longer proceeds on
+one.
+
+### Added — create-time timeout headroom checks
+
+`CreateReverseResponse::validate_timeout_headroom(current_height,
+min_headroom_blocks)` and `CreateChainResponse::validate_timeout_headroom(
+from_chain, from_height, to_chain, to_height, min_claim_headroom_blocks)`
+refuse a response whose timeout is already mature or too close to a trusted
+tip; the chain variant also requires our own lock to outlast the server's.
+Exposed as `validate_reverse_timeout_headroom` / `validate_chain_timeout_headroom`
+in UniFFI and `validateReverseTimeoutHeadroom` / `validateChainTimeoutHeadroom`
+in WASM/TypeScript. UniFFI `ChainClient` gains `bitcoin_tip_height` and
+`liquid_tip_height` so native callers have a trusted tip; TypeScript already has
+`esploraTipHeight`. The reverse-swap example demonstrates both checks.
+
 ## [0.12.0] - 2026-10-19
 
 This release adds a client for the maker's single-transaction atomic

@@ -233,13 +233,26 @@ async fn v2_chain(chain_client: &ChainClient, underpay: bool, from: Chain, to: C
         chain_client.broadcast_tx(&tx).await.unwrap();
         log::info!("Successfully broadcasted claim tx!");
 
-        // Constructing a chain tx more than once should work...
-        let _tx = claim_script
+        // The broadcast claim is now a visible spend of the server lock, so a
+        // plain re-construction is refused: the SDK will not reveal the
+        // preimage against an output something else is already spending...
+        claim_script
             .construct_claim(&preimage, swap_params.clone())
+            .await
+            .expect_err("re-construction over our own unconfirmed claim must be refused");
+
+        // ... unless the caller says this is a fee-bump of their own claim,
+        // in which case constructing more than once works...
+        let mut rebuild = swap_params.clone();
+        rebuild.options = rebuild
+            .options
+            .map(|options| options.with_allow_conflicting_spend(true));
+        let _tx = claim_script
+            .construct_claim(&preimage, rebuild.clone())
             .await
             .unwrap();
         let _tx = claim_script
-            .construct_claim(&preimage, swap_params)
+            .construct_claim(&preimage, rebuild)
             .await
             .unwrap();
 

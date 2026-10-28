@@ -187,6 +187,29 @@ to that transaction; it neither discovers a different mempool HTLC nor
 rebroadcasts the lockup. `allowZeroConf: true` explicitly accepts an unconfirmed
 lockup, but still requires its raw bytes and txid.
 
+The same policy is enforced inside the WASM core, for every caller of
+`constructClaim`, `constructCooperativeClaim` and `prepareLiquidClaim` and not
+only for the helpers: before the preimage is sent to the maker or placed in a
+witness, the core asks the Esplora the params name for the tip height and the
+lockup output's status, and refuses a lockup the source has not seen, one with
+fewer than `minConfirmations` confirmations (unless `allowZeroConf`), one with a
+spend already visible in the mempool or in a block, and a tip within
+`claimSafetyMarginBlocks` of the swap timeout. The `TxParams` fields
+`minConfirmations`, `allowZeroConf`, `claimSafetyMarginBlocks` and
+`allowConflictingSpend` configure it; the helpers forward their own options.
+`allowConflictingSpend` exists for one case only, fee-bumping a stuck claim of
+your own, and never admits a spend that is already in a block.
+
+Before paying a reverse swap's invoice or funding a chain swap, check the
+response's timeouts against a trusted tip: `validateReverseTimeoutHeadroom(
+response, tipHeight, minHeadroomBlocks)` and `validateChainTimeoutHeadroom(
+response, network, fromChain, fromHeight, toChain, toHeight,
+minClaimHeadroomBlocks)`. The maker refunds the legs you claim at their
+timeouts, so a response whose timeout is mature or nearly so is one where your
+claim would reveal the preimage for a payout the maker can take back. Use
+`esploraTipHeight` for the heights; the maker's `height()` is the maker's claim,
+not the chain's.
+
 Claims stop before the deadline by `claimSafetyMarginBlocks`: default 6 blocks
 for Bitcoin and 60 for Liquid. Override this policy explicitly; 0 accepts an
 expiry race. These margins cannot guarantee confirmation in time. Chain swaps
