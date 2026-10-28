@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   init,
@@ -30,9 +31,38 @@ function hasCode(code, message) {
 test("RGB create pins, colored claims and caller-funded refunds cross the wasm boundary", async () => {
   let reply;
   const requests = [];
+  const lockTxid = createHash("sha256")
+    .update(
+      createHash("sha256")
+        .update(Buffer.from(vectors.swaps.reverse.lockTxHex, "hex"))
+        .digest(),
+    )
+    .digest()
+    .reverse()
+    .toString("hex");
   const server = createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) body += chunk;
+    if (req.method === "GET") {
+      const evidence =
+        req.url === "/v2/blocks/tip/height"
+          ? "100"
+          : req.url === `/v2/tx/${lockTxid}/status`
+            ? { confirmed: true, block_height: 100 }
+            : req.url === `/v2/tx/${lockTxid}/outspend/0`
+              ? { spent: false }
+              : undefined;
+      assert.notEqual(
+        evidence,
+        undefined,
+        `unexpected chain lookup: ${req.url}`,
+      );
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        typeof evidence === "string" ? evidence : JSON.stringify(evidence),
+      );
+      return;
+    }
     requests.push(JSON.parse(body));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(reply));
