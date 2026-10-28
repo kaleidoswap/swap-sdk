@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Python: `str()` on a generated record no longer prints the maker's per-swap
+  `swap_auth` credential or a Liquid `blinding_key`. `print(response)` or
+  `logger.info("%s", response)` on a create response, restore detail or
+  `TransactionOptions` wrote the credential — the taker's full capability over
+  the swap — to application logs. The package now redacts both fields in the
+  generated glue at import time (`swap_auth=<redacted>`), whichever glue the
+  wheel loads; attribute access is unchanged so the value can still be
+  persisted with the swap.
+- Rust: `Debug` on `CreateSubmarineResponse`, `CreateReverseResponse`,
+  `ChainSwapDetails`, `ClaimDetails` and `RefundDetails` redacts
+  `blinding_key`, as `LiquidSwapScript` already did. The key unblinds the
+  swap's confidential outputs, so a logged create or restore response gave the
+  reader every amount and asset behind them.
+
 ## [0.12.0] - 2026-10-19
 
 This release adds a client for the maker's single-transaction atomic
