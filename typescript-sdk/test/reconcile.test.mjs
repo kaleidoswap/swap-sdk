@@ -210,12 +210,26 @@ test(
       .reverse()
       .toString("hex");
     const requests = [];
+    // One server plays both the maker (under /v2) and Esplora. The maker
+    // refuses to cooperate; Esplora answers only what the core's claim guard
+    // asks before revealing the preimage: the tip, and the pinned lockup's
+    // status and spend. Any address discovery would expose the bug: there
+    // could be a different unconfirmed HTLC here. Claims must use only the
+    // pinned raw transaction, so every other route is an error.
+    const chainRoutes = {
+      "/blocks/tip/height": "100",
+      [`/tx/${txid}/status`]: '{"confirmed":true,"block_height":100}',
+      [`/tx/${txid}/outspend/0`]: '{"spent":false}',
+    };
     const server = createServer(async (req, res) => {
       let body = "";
       for await (const chunk of req) body += chunk;
+      if (req.url in chainRoutes) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(chainRoutes[req.url]);
+        return;
+      }
       requests.push({ path: req.url, body });
-      // Any address discovery would expose the bug: there could be a different
-      // unconfirmed HTLC here. Claims must use only the pinned raw transaction.
       res.writeHead(503, { "content-type": "application/json" });
       res.end('{"error":"signature_refused"}');
     });
