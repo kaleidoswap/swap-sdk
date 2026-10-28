@@ -57,6 +57,13 @@ fn auth_recovery() {
     run_test("tests/bindings/auth_recovery.py");
 }
 
+/// `str()` on generated records must not print `swap_auth` or `blinding_key`.
+#[test]
+#[serial]
+fn secret_redaction() {
+    run_test("tests/bindings/secret_redaction.py");
+}
+
 #[test]
 #[serial]
 fn lightning_address() {
