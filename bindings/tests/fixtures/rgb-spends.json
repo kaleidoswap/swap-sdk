@@ -14,7 +14,7 @@
       "lockTxHex": "020000000105050505050505050505050505050505050505050505050505050505050505050000000000ffffffff01f105000000000000225120a91ff1878afdbc74627706671a0a80f3438770c87abed1f1a3803e27712b87cc00000000",
       "response": {
         "id": "rgb-reverse",
-        "invoice": null,
+        "invoice": "lnbcrt10050n1pnwp2uqdqjwfnkygrjv4mx2unnv5pp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5qurswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurswpc8qurs9qrsgqcqzysxjaucdnum7hk0pjrhnqujrjfxc076rdc2kffdugqq5ca49j58jf8myhxevewla4j0lv7se3c38qa6s6suxzllw6uda4upkgew8hr9kqpg5dhlu",
         "lockupAddress": "bcrt1p4y0lrpu2lk78gcnhqen35z5q7dpcwuxg02ldrudrsqlzwuftslxqkw6qlf",
         "onchainAmount": 1005,
         "refundPublicKey": "0256b328b30c8bf5839e24058747879408bdb36241dc9c2e7c619faa12b2920967",
