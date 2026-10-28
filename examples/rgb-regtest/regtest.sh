@@ -19,7 +19,6 @@ case "${1:-}" in
 network = "regtest"
 listening_addresses = ["0.0.0.0:9735"]
 grpc_service_address = "0.0.0.0:$port"
-rest_service_address = "0.0.0.0:$((port + 1))"
 alias = "rgb-sdk-$name"
 [tls]
 cert_path = "/certs/$name.crt"
