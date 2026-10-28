@@ -97,6 +97,97 @@ impl LiquidAssetContext {
         }
     }
 
+    /// The L-USDT asset context a create response has to match, rooted in
+    /// something the maker does not control. No I/O: a caller can refuse a
+    /// swap before fetching anything.
+    ///
+    /// The swap asset is the caller's `pinned_asset_id` when given, otherwise
+    /// the network's [`LiquidChain::canonical_lusdt`]. On a network with a
+    /// canonical id a pin has to equal it; on one without (testnet, regtest)
+    /// the pin is required, as there is nothing else to trust. The policy
+    /// asset is always the network's L-BTC. A pin equal to L-BTC is refused:
+    /// that would not be a USDT swap.
+    ///
+    /// The maker's pair card is never a source for the asset: see
+    /// [`Self::cross_check_pair_card`]. This is the same model as the
+    /// caller-pinned RGB contract id in [`crate::swaps::rgb`], where the pair
+    /// card does not identify the contract either.
+    pub fn trusted_lusdt(
+        network: LiquidChain,
+        pinned_asset_id: Option<&str>,
+    ) -> Result<Self, Error> {
+        let pinned = pinned_asset_id
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(|id| {
+                elements::AssetId::from_str(id).map_err(|_| {
+                    Error::Protocol(format!("lusdt_asset_id is not a Liquid asset id: {id}"))
+                })
+            })
+            .transpose()?;
+        let swap_asset = match (pinned, network.canonical_lusdt()) {
+            (Some(pinned), Some(canonical)) if pinned != canonical => {
+                return Err(Error::Protocol(format!(
+                    "lusdt_asset_id {pinned} is not the canonical L-USDT asset {canonical} on {network:?}"
+                )));
+            }
+            (Some(pinned), _) => pinned,
+            (None, Some(canonical)) => canonical,
+            (None, None) => {
+                return Err(Error::Protocol(format!(
+                    "L-USDT on {network:?} has no canonical asset id: pin the deployment's asset with lusdt_asset_id"
+                )));
+            }
+        };
+        let policy_asset = network.bitcoin();
+        if swap_asset == policy_asset {
+            return Err(Error::Protocol(
+                "lusdt_asset_id is the network's L-BTC, not a USDT asset".to_string(),
+            ));
+        }
+        Ok(Self {
+            swap_asset,
+            policy_asset,
+        })
+    }
+
+    /// Cross-check a trusted context against the assets the maker's pair card
+    /// advertises (`None` when the caller fetched no card). A card naming
+    /// another asset as L-USDT is refused; a card never supplies the asset.
+    pub fn cross_check_pair_card(self, pair_card: Option<Self>) -> Result<Self, Error> {
+        match pair_card {
+            Some(card) if card != self => Err(Error::Protocol(format!(
+                "the pair card advertises asset {} with fee asset {} as L-USDT, but the trusted L-USDT asset is {} with fee asset {}",
+                card.swap_asset, card.policy_asset, self.swap_asset, self.policy_asset
+            ))),
+            _ => Ok(self),
+        }
+    }
+
+    /// [`Self::trusted_lusdt`] for a swap between `from` and `to`: `None` when
+    /// neither side is L-USDT, else the trusted context for the L-USDT side's
+    /// Liquid network. No I/O, so a missing pin on testnet or regtest is
+    /// refused before anything is fetched or posted.
+    pub fn trusted_lusdt_for_swap(
+        from: crate::network::Chain,
+        to: crate::network::Chain,
+        from_currency: Currency,
+        to_currency: Currency,
+        pinned_asset_id: Option<&str>,
+    ) -> Result<Option<Self>, Error> {
+        let side = match (from_currency, to_currency) {
+            (Currency::LUsdt, _) => from,
+            (_, Currency::LUsdt) => to,
+            _ => return Ok(None),
+        };
+        let crate::network::Chain::Liquid(network) = side else {
+            return Err(Error::Protocol(
+                "L-USDT is a Liquid asset, not a Bitcoin one".to_string(),
+            ));
+        };
+        Self::trusted_lusdt(network, pinned_asset_id).map(Some)
+    }
+
     pub fn is_policy_asset_swap(self) -> bool {
         self.swap_asset == self.policy_asset
     }
@@ -650,9 +741,17 @@ impl LiquidSwapScript {
             {
                 Ok(())
             }
+            // `expected_context` is what the caller trusts (see
+            // `LiquidAssetContext::trusted_lusdt`). Where the network has a
+            // canonical L-USDT, the response has to carry it whatever the
+            // caller passed, so a raw caller that hands a pair-card context
+            // straight through is still refused a substituted asset.
             Currency::LUsdt
                 if self.asset_context.is_some()
                     && expected_context.is_some_and(|expected| expected == context)
+                    && network
+                        .canonical_lusdt()
+                        .is_none_or(|canonical| canonical == context.swap_asset)
                     && context.swap_asset != context.policy_asset
                     && context.policy_asset == network.bitcoin()
                     && self.blinding_key.is_none() =>
@@ -2880,6 +2979,169 @@ mod tests {
         confidential_lbtc
             .validate_currency(network, Currency::LBtc, None)
             .unwrap();
+    }
+
+    #[test]
+    fn trusted_lusdt_comes_from_the_network_or_the_caller_never_the_pair_card() {
+        use crate::network::{BitcoinChain, Chain, LIQUID_USDT_ASSET_ID};
+
+        let canonical = elements::AssetId::from_str(LIQUID_USDT_ASSET_ID).unwrap();
+        let deployed = elements::AssetId::from_str(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+        )
+        .unwrap();
+        let other = "2222222222222222222222222222222222222222222222222222222222222222";
+
+        // Mainnet: the canonical USDt, with or without an agreeing pin; any
+        // other pin is refused even if a pair card agrees with it.
+        let mainnet = LiquidAssetContext::trusted_lusdt(LiquidChain::Liquid, None).unwrap();
+        assert_eq!(mainnet.swap_asset, canonical);
+        assert_eq!(mainnet.policy_asset, LiquidChain::Liquid.bitcoin());
+        assert_eq!(
+            LiquidAssetContext::trusted_lusdt(LiquidChain::Liquid, Some(LIQUID_USDT_ASSET_ID))
+                .unwrap()
+                .cross_check_pair_card(Some(mainnet))
+                .unwrap(),
+            mainnet
+        );
+        let substituted_card = LiquidAssetContext {
+            swap_asset: elements::AssetId::from_str(other).unwrap(),
+            policy_asset: LiquidChain::Liquid.bitcoin(),
+        };
+        let err = LiquidAssetContext::trusted_lusdt(LiquidChain::Liquid, Some(other)).unwrap_err();
+        assert!(err.to_string().contains("canonical"), "{err}");
+        let err = mainnet
+            .cross_check_pair_card(Some(substituted_card))
+            .unwrap_err();
+        assert!(err.to_string().contains("pair card"), "{err}");
+
+        // Testnet and regtest have no canonical asset: the pin is required,
+        // and a blank pin is no pin.
+        for network in [LiquidChain::LiquidTestnet, LiquidChain::LiquidRegtest] {
+            for pin in [None, Some(""), Some("  ")] {
+                let err = LiquidAssetContext::trusted_lusdt(network, pin).unwrap_err();
+                assert!(err.to_string().contains("lusdt_asset_id"), "{err}");
+            }
+        }
+        let regtest = LiquidAssetContext::trusted_lusdt(
+            LiquidChain::LiquidRegtest,
+            Some(&format!(" {deployed} ")),
+        )
+        .unwrap();
+        assert_eq!(regtest.swap_asset, deployed);
+        assert_eq!(regtest.policy_asset, LiquidChain::LiquidRegtest.bitcoin());
+
+        // The pair card is only cross-checked against the pin.
+        assert_eq!(regtest.cross_check_pair_card(None).unwrap(), regtest);
+        assert_eq!(
+            regtest.cross_check_pair_card(Some(regtest)).unwrap(),
+            regtest
+        );
+        for card in [
+            LiquidAssetContext {
+                swap_asset: elements::AssetId::from_str(other).unwrap(),
+                policy_asset: regtest.policy_asset,
+            },
+            LiquidAssetContext {
+                swap_asset: deployed,
+                policy_asset: deployed,
+            },
+        ] {
+            let err = regtest.cross_check_pair_card(Some(card)).unwrap_err();
+            assert!(err.to_string().contains("pair card"), "{err}");
+        }
+
+        // A pin that is L-BTC, or not an asset id at all, is refused.
+        let err = LiquidAssetContext::trusted_lusdt(
+            LiquidChain::LiquidRegtest,
+            Some(&LiquidChain::LiquidRegtest.bitcoin().to_string()),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("L-BTC"), "{err}");
+        assert!(
+            LiquidAssetContext::trusted_lusdt(LiquidChain::LiquidRegtest, Some("not-hex")).is_err()
+        );
+
+        // The swap-shaped helper picks the L-USDT side and skips other pairs.
+        let btc = Chain::Bitcoin(BitcoinChain::BitcoinRegtest);
+        let liquid = Chain::Liquid(LiquidChain::LiquidRegtest);
+        let pin = deployed.to_string();
+        assert_eq!(
+            LiquidAssetContext::trusted_lusdt_for_swap(
+                btc,
+                liquid,
+                Currency::Btc,
+                Currency::LUsdt,
+                Some(&pin)
+            )
+            .unwrap(),
+            Some(regtest)
+        );
+        assert_eq!(
+            LiquidAssetContext::trusted_lusdt_for_swap(
+                liquid,
+                btc,
+                Currency::LUsdt,
+                Currency::Btc,
+                Some(&pin)
+            )
+            .unwrap(),
+            Some(regtest)
+        );
+        assert_eq!(
+            LiquidAssetContext::trusted_lusdt_for_swap(
+                btc,
+                liquid,
+                Currency::Btc,
+                Currency::LBtc,
+                None
+            )
+            .unwrap(),
+            None
+        );
+        assert!(LiquidAssetContext::trusted_lusdt_for_swap(
+            btc,
+            liquid,
+            Currency::Btc,
+            Currency::LUsdt,
+            None
+        )
+        .is_err());
+        assert!(LiquidAssetContext::trusted_lusdt_for_swap(
+            btc,
+            btc,
+            Currency::Btc,
+            Currency::LUsdt,
+            Some(&pin)
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn mainnet_lusdt_responses_must_carry_the_canonical_asset_whatever_was_expected() {
+        use crate::network::LIQUID_USDT_ASSET_ID;
+
+        let network = LiquidChain::Liquid;
+        let canonical = LiquidAssetContext {
+            swap_asset: elements::AssetId::from_str(LIQUID_USDT_ASSET_ID).unwrap(),
+            policy_asset: network.bitcoin(),
+        };
+        let substituted = LiquidAssetContext {
+            swap_asset: elements::AssetId::from_str(
+                "2222222222222222222222222222222222222222222222222222222222222222",
+            )
+            .unwrap(),
+            policy_asset: network.bitcoin(),
+        };
+
+        test_script(None, Some(canonical), 42)
+            .validate_currency(network, Currency::LUsdt, Some(canonical))
+            .unwrap();
+        // A raw caller that trusted a substituted pair card and passes its
+        // context straight through is still refused on mainnet.
+        assert!(test_script(None, Some(substituted), 42)
+            .validate_currency(network, Currency::LUsdt, Some(substituted))
+            .is_err());
     }
 
     fn legacy_swap_tx(

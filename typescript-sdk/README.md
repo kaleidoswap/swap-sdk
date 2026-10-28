@@ -513,6 +513,19 @@ Values rejected earlier by wasm-bindgen's generated ABI glue remain native
 JavaScript errors. In particular, passing a `number` where a declared `bigint` is
 required throws `TypeError` before Rust can attach a code.
 
+## L-USDT swaps
+
+`createSubmarineSwap(network, request, rgbContractId, rgbMaxHtlcSat, lusdtAssetId)`,
+`createReverseSwap(network, request, rgbContractId, lusdtAssetId)` and
+`createChainSwap(network, request, lusdtAssetId)` take the L-USDT asset id as a
+local pin, in the same way `rgbContractId` pins an RGB contract. It is never
+sent to the maker. On `mainnet` it may be omitted: the canonical Liquid USDt is
+used, and any other value is refused. On `testnet` and `regtest` USDT is issued
+per deployment, so the pin is required and a missing one is refused before any
+request reaches the maker. The maker's pair card is fetched and cross-checked
+against the pin, but is never the source of the asset: a maker advertising
+another asset as L-USDT is refused.
+
 ## USDT-RGB swaps
 
 `createSubmarineSwap(network, request, rgbContractId)` supports `USDT-RGB → BTC`;

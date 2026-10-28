@@ -4648,6 +4648,14 @@ class CreateChainRequest:
     server_lock_amount: "typing.Optional[int]"
     pair_hash: "typing.Optional[str]"
     referral_id: "typing.Optional[str]"
+    lusdt_asset_id: "typing.Optional[str]"
+    """
+    The L-USDT asset the swap must carry, pinned locally and never sent
+    to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    any other value; testnet and regtest issue USDT per deployment, so
+    there it is required. The maker's pair card is only cross-checked
+    against it. Ignored unless a side is `L-USDT`.
+    """
 
     def __init__(
         self,
@@ -4663,6 +4671,7 @@ class CreateChainRequest:
         server_lock_amount: "typing.Optional[int]" = _DEFAULT,
         pair_hash: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
+        lusdt_asset_id: "typing.Optional[str]" = _DEFAULT,
     ):
         self._from = _from
         self.to = to
@@ -4693,9 +4702,13 @@ class CreateChainRequest:
             self.referral_id = None
         else:
             self.referral_id = referral_id
+        if lusdt_asset_id is _DEFAULT:
+            self.lusdt_asset_id = None
+        else:
+            self.lusdt_asset_id = lusdt_asset_id
 
     def __str__(self):
-        return "CreateChainRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, refund_public_key={}, user_lock_amount={}, server_lock_amount={}, pair_hash={}, referral_id={})".format(
+        return "CreateChainRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, refund_public_key={}, user_lock_amount={}, server_lock_amount={}, pair_hash={}, referral_id={}, lusdt_asset_id={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -4707,6 +4720,7 @@ class CreateChainRequest:
             self.server_lock_amount,
             self.pair_hash,
             self.referral_id,
+            self.lusdt_asset_id,
         )
 
     def __eq__(self, other):
@@ -4732,6 +4746,8 @@ class CreateChainRequest:
             return False
         if self.referral_id != other.referral_id:
             return False
+        if self.lusdt_asset_id != other.lusdt_asset_id:
+            return False
         return True
 
 
@@ -4750,6 +4766,7 @@ class _UniffiConverterTypeCreateChainRequest(_UniffiConverterRustBuffer):
             server_lock_amount=_UniffiConverterOptionalUInt64.read(buf),
             pair_hash=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
+            lusdt_asset_id=_UniffiConverterOptionalString.read(buf),
         )
 
     @staticmethod
@@ -4765,6 +4782,7 @@ class _UniffiConverterTypeCreateChainRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.check_lower(value.server_lock_amount)
         _UniffiConverterOptionalString.check_lower(value.pair_hash)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
+        _UniffiConverterOptionalString.check_lower(value.lusdt_asset_id)
 
     @staticmethod
     def write(value, buf):
@@ -4779,6 +4797,7 @@ class _UniffiConverterTypeCreateChainRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.write(value.server_lock_amount, buf)
         _UniffiConverterOptionalString.write(value.pair_hash, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
+        _UniffiConverterOptionalString.write(value.lusdt_asset_id, buf)
 
 
 class CreateChainResponse:
@@ -4866,6 +4885,15 @@ class CreateReverseRequest:
     address: "typing.Optional[str]"
     address_signature: "typing.Optional[str]"
     referral_id: "typing.Optional[str]"
+    lusdt_asset_id: "typing.Optional[str]"
+    """
+    The L-USDT asset the swap must carry, pinned locally and never sent
+    to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    any other value; testnet and regtest issue USDT per deployment, so
+    there it is required. The maker's pair card is only cross-checked
+    against it. Ignored unless a side is `L-USDT`.
+    """
+
     rgb_contract_id: "typing.Optional[str]"
     """
     Expected RGB contract, pinned locally and never sent to the maker.
@@ -4887,6 +4915,7 @@ class CreateReverseRequest:
         address: "typing.Optional[str]" = _DEFAULT,
         address_signature: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
+        lusdt_asset_id: "typing.Optional[str]" = _DEFAULT,
         rgb_contract_id: "typing.Optional[str]" = _DEFAULT,
     ):
         self._from = _from
@@ -4926,13 +4955,17 @@ class CreateReverseRequest:
             self.referral_id = None
         else:
             self.referral_id = referral_id
+        if lusdt_asset_id is _DEFAULT:
+            self.lusdt_asset_id = None
+        else:
+            self.lusdt_asset_id = lusdt_asset_id
         if rgb_contract_id is _DEFAULT:
             self.rgb_contract_id = None
         else:
             self.rgb_contract_id = rgb_contract_id
 
     def __str__(self):
-        return "CreateReverseRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, invoice_amount={}, pair_hash={}, description={}, description_hash={}, address={}, address_signature={}, referral_id={}, rgb_contract_id={})".format(
+        return "CreateReverseRequest(_from={}, to={}, from_currency={}, to_currency={}, preimage_hash={}, claim_public_key={}, invoice_amount={}, pair_hash={}, description={}, description_hash={}, address={}, address_signature={}, referral_id={}, lusdt_asset_id={}, rgb_contract_id={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -4946,6 +4979,7 @@ class CreateReverseRequest:
             self.address,
             self.address_signature,
             self.referral_id,
+            self.lusdt_asset_id,
             self.rgb_contract_id,
         )
 
@@ -4976,6 +5010,8 @@ class CreateReverseRequest:
             return False
         if self.referral_id != other.referral_id:
             return False
+        if self.lusdt_asset_id != other.lusdt_asset_id:
+            return False
         if self.rgb_contract_id != other.rgb_contract_id:
             return False
         return True
@@ -4998,6 +5034,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
             address=_UniffiConverterOptionalString.read(buf),
             address_signature=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
+            lusdt_asset_id=_UniffiConverterOptionalString.read(buf),
             rgb_contract_id=_UniffiConverterOptionalString.read(buf),
         )
 
@@ -5016,6 +5053,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.address)
         _UniffiConverterOptionalString.check_lower(value.address_signature)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
+        _UniffiConverterOptionalString.check_lower(value.lusdt_asset_id)
         _UniffiConverterOptionalString.check_lower(value.rgb_contract_id)
 
     @staticmethod
@@ -5033,6 +5071,7 @@ class _UniffiConverterTypeCreateReverseRequest(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.address, buf)
         _UniffiConverterOptionalString.write(value.address_signature, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
+        _UniffiConverterOptionalString.write(value.lusdt_asset_id, buf)
         _UniffiConverterOptionalString.write(value.rgb_contract_id, buf)
 
 
@@ -5189,6 +5228,15 @@ class CreateSubmarineRequest:
     refund_public_key: "PublicKey"
     pair_hash: "typing.Optional[str]"
     referral_id: "typing.Optional[str]"
+    lusdt_asset_id: "typing.Optional[str]"
+    """
+    The L-USDT asset the swap must carry, pinned locally and never sent
+    to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    any other value; testnet and regtest issue USDT per deployment, so
+    there it is required. The maker's pair card is only cross-checked
+    against it. Ignored unless a side is `L-USDT`.
+    """
+
     rgb_contract_id: "typing.Optional[str]"
     """
     Expected RGB contract, pinned locally and never sent to the maker.
@@ -5210,6 +5258,7 @@ class CreateSubmarineRequest:
         refund_public_key: "PublicKey",
         pair_hash: "typing.Optional[str]" = _DEFAULT,
         referral_id: "typing.Optional[str]" = _DEFAULT,
+        lusdt_asset_id: "typing.Optional[str]" = _DEFAULT,
         rgb_contract_id: "typing.Optional[str]" = _DEFAULT,
         rgb_max_htlc_sat: "typing.Optional[int]" = _DEFAULT,
     ):
@@ -5233,6 +5282,10 @@ class CreateSubmarineRequest:
             self.referral_id = None
         else:
             self.referral_id = referral_id
+        if lusdt_asset_id is _DEFAULT:
+            self.lusdt_asset_id = None
+        else:
+            self.lusdt_asset_id = lusdt_asset_id
         if rgb_contract_id is _DEFAULT:
             self.rgb_contract_id = None
         else:
@@ -5243,7 +5296,7 @@ class CreateSubmarineRequest:
             self.rgb_max_htlc_sat = rgb_max_htlc_sat
 
     def __str__(self):
-        return "CreateSubmarineRequest(_from={}, to={}, from_currency={}, to_currency={}, invoice={}, refund_public_key={}, pair_hash={}, referral_id={}, rgb_contract_id={}, rgb_max_htlc_sat={})".format(
+        return "CreateSubmarineRequest(_from={}, to={}, from_currency={}, to_currency={}, invoice={}, refund_public_key={}, pair_hash={}, referral_id={}, lusdt_asset_id={}, rgb_contract_id={}, rgb_max_htlc_sat={})".format(
             self._from,
             self.to,
             self.from_currency,
@@ -5252,6 +5305,7 @@ class CreateSubmarineRequest:
             self.refund_public_key,
             self.pair_hash,
             self.referral_id,
+            self.lusdt_asset_id,
             self.rgb_contract_id,
             self.rgb_max_htlc_sat,
         )
@@ -5273,6 +5327,8 @@ class CreateSubmarineRequest:
             return False
         if self.referral_id != other.referral_id:
             return False
+        if self.lusdt_asset_id != other.lusdt_asset_id:
+            return False
         if self.rgb_contract_id != other.rgb_contract_id:
             return False
         if self.rgb_max_htlc_sat != other.rgb_max_htlc_sat:
@@ -5292,6 +5348,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
             refund_public_key=_UniffiConverterTypePublicKey.read(buf),
             pair_hash=_UniffiConverterOptionalString.read(buf),
             referral_id=_UniffiConverterOptionalString.read(buf),
+            lusdt_asset_id=_UniffiConverterOptionalString.read(buf),
             rgb_contract_id=_UniffiConverterOptionalString.read(buf),
             rgb_max_htlc_sat=_UniffiConverterOptionalUInt64.read(buf),
         )
@@ -5306,6 +5363,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
         _UniffiConverterTypePublicKey.check_lower(value.refund_public_key)
         _UniffiConverterOptionalString.check_lower(value.pair_hash)
         _UniffiConverterOptionalString.check_lower(value.referral_id)
+        _UniffiConverterOptionalString.check_lower(value.lusdt_asset_id)
         _UniffiConverterOptionalString.check_lower(value.rgb_contract_id)
         _UniffiConverterOptionalUInt64.check_lower(value.rgb_max_htlc_sat)
 
@@ -5319,6 +5377,7 @@ class _UniffiConverterTypeCreateSubmarineRequest(_UniffiConverterRustBuffer):
         _UniffiConverterTypePublicKey.write(value.refund_public_key, buf)
         _UniffiConverterOptionalString.write(value.pair_hash, buf)
         _UniffiConverterOptionalString.write(value.referral_id, buf)
+        _UniffiConverterOptionalString.write(value.lusdt_asset_id, buf)
         _UniffiConverterOptionalString.write(value.rgb_contract_id, buf)
         _UniffiConverterOptionalUInt64.write(value.rgb_max_htlc_sat, buf)
 

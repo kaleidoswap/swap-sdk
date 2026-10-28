@@ -21,6 +21,9 @@ import { fundWithExplicitInput } from "./pset.mjs";
 
 const FEE = 1_000n;
 const ZERO = "00".repeat(32);
+// The L-USDT asset is pinned locally, never taken from the maker's pair card.
+// Regtest issues it per deployment, so the create calls need it from the env.
+const LUSDT_ASSET_ID = process.env.KALEIDO_LIVE_LUSDT_ASSET_ID;
 const FAILED = ["invoice.expired", "transaction.failed", "swap.expired"];
 
 describe("L-USDT", { skip }, () => {
@@ -29,6 +32,10 @@ describe("L-USDT", { skip }, () => {
   let index = 0n;
 
   before(async () => {
+    assert.ok(
+      LUSDT_ASSET_ID,
+      "set KALEIDO_LIVE_LUSDT_ASSET_ID to the regtest L-USDT asset id: the SDK pins it locally and refuses an L-USDT create without it",
+    );
     env = await live();
     master = freshMaster();
   });
@@ -92,14 +99,19 @@ describe("L-USDT", { skip }, () => {
     const at = index++;
     const key = master.deriveSwapKey(at);
     const preimage = master.derivePreimage(at);
-    const response = await env.client.createReverseSwap(NETWORK, {
-      from: "BTC",
-      to: "L-USDT",
-      invoiceAmount: 60_000n,
-      preimageHash: preimage.sha256,
-      claimPublicKey: key.publicKey,
-      pairHash: pair.hash,
-    });
+    const response = await env.client.createReverseSwap(
+      NETWORK,
+      {
+        from: "BTC",
+        to: "L-USDT",
+        invoiceAmount: 60_000n,
+        preimageHash: preimage.sha256,
+        claimPublicKey: key.publicKey,
+        pairHash: pair.hash,
+      },
+      undefined,
+      LUSDT_ASSET_ID,
+    );
     const script = SwapScript.fromReverse(
       "liquid",
       NETWORK,
@@ -159,13 +171,19 @@ describe("L-USDT", { skip }, () => {
     );
     const key = master.deriveSwapKey(index++);
     invoice ??= (await env.ln.invoice(60_000)).invoice;
-    const response = await env.client.createSubmarineSwap(NETWORK, {
-      from: "L-USDT",
-      to: "BTC",
-      invoice,
-      refundPublicKey: key.publicKey,
-      pairHash: card.hash,
-    });
+    const response = await env.client.createSubmarineSwap(
+      NETWORK,
+      {
+        from: "L-USDT",
+        to: "BTC",
+        invoice,
+        refundPublicKey: key.publicKey,
+        pairHash: card.hash,
+      },
+      undefined,
+      undefined,
+      LUSDT_ASSET_ID,
+    );
     const script = SwapScript.fromSubmarine(
       "liquid",
       NETWORK,
@@ -273,15 +291,19 @@ describe("L-USDT", { skip }, () => {
     const claimKey = master.deriveSwapKey(at);
     const refundKey = master.deriveSwapKey(at + 1n);
     const preimage = master.derivePreimage(at);
-    const response = await env.client.createChainSwap(NETWORK, {
-      from: "BTC",
-      to: "L-USDT",
-      preimageHash: preimage.sha256,
-      claimPublicKey: claimKey.publicKey,
-      refundPublicKey: refundKey.publicKey,
-      userLockAmount: 60_000n,
-      pairHash: pair.hash,
-    });
+    const response = await env.client.createChainSwap(
+      NETWORK,
+      {
+        from: "BTC",
+        to: "L-USDT",
+        preimageHash: preimage.sha256,
+        claimPublicKey: claimKey.publicKey,
+        refundPublicKey: refundKey.publicKey,
+        userLockAmount: 60_000n,
+        pairHash: pair.hash,
+      },
+      LUSDT_ASSET_ID,
+    );
     // Both legs rebuild from the response, or the swap is refused here.
     SwapScript.fromChain(
       "bitcoin",

@@ -1027,6 +1027,11 @@ impl BoltzClient {
     // `network` ("mainnet" | "testnet" | "regtest") is used to validate the
     // returned lockup address/tree against the request before the caller funds
     // it — mirroring the checks the native bindings run.
+    //
+    // `lusdtAssetId` pins the L-USDT asset locally, like `rgbContractId` pins
+    // the RGB contract: it is never sent to the maker. Liquid mainnet defaults
+    // to the canonical USDt and refuses any other value; testnet and regtest
+    // require it. The pair card is only cross-checked against it.
 
     #[wasm_bindgen(js_name = createSubmarineSwap)]
     pub async fn create_submarine_swap(
@@ -1035,33 +1040,45 @@ impl BoltzClient {
         req: CreateSubmarineRequestJs,
         rgb_contract_id: Option<StringArg>,
         rgb_max_htlc_sat: Option<BigIntArg>,
+        lusdt_asset_id: Option<StringArg>,
     ) -> Result<CreateSubmarineResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
         let rgb_max_htlc_sat = opt_u64_arg(rgb_max_htlc_sat, "rgbMaxHtlcSat")?;
+        let lusdt_asset_id = opt_str_arg(lusdt_asset_id, "lusdtAssetId")?;
         let req: CreateSubmarineRequest = from_js(req.into())?;
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
-        let (_, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
         let rgb_contract_id = rgb_contract_before_create(
             from_currency,
             to_currency,
             false,
             rgb_contract_id.as_deref(),
         )?;
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
-                | (_, kaleidorg_swap_sdk::network::Currency::LUsdt)
-        ) {
-            self.inner
-                .get_submarine_pairs()
-                .await
-                .map_err(core_err)?
-                .expected_liquid_asset_context(from_currency, to_currency)
-                .map_err(core_err)?
-        } else {
-            None
-        };
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context =
+            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
+                from_chain,
+                to_chain,
+                from_currency,
+                to_currency,
+                lusdt_asset_id.as_deref(),
+            )
+            .map_err(core_err)?
+            {
+                Some(trusted) => {
+                    let pair_card = self
+                        .inner
+                        .get_submarine_pairs()
+                        .await
+                        .map_err(core_err)?
+                        .expected_liquid_asset_context(from_currency, to_currency)
+                        .map_err(core_err)?;
+                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+                }
+                None => None,
+            };
         let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
         if let Some(contract_id) = rgb_contract_id {
             let Chain::Bitcoin(chain) = from_chain else {
@@ -1094,15 +1111,17 @@ impl BoltzClient {
         network: StringArg,
         req: CreateReverseRequestJs,
         rgb_contract_id: Option<StringArg>,
+        lusdt_asset_id: Option<StringArg>,
     ) -> Result<CreateReverseResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
         let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
+        let lusdt_asset_id = opt_str_arg(lusdt_asset_id, "lusdtAssetId")?;
         let req: CreateReverseRequest = from_js(req.into())?;
         let claim_pk = req.claim_public_key;
         let to = req.to.clone();
         let preimage_hash = req.preimage_hash;
         let invoice = req.invoice.clone();
-        let (_, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (to_chain, to_currency) = asset_from_boltz(&to, &network)?;
         let rgb_contract_id = rgb_contract_before_create(
             from_currency,
@@ -1110,20 +1129,30 @@ impl BoltzClient {
             true,
             rgb_contract_id.as_deref(),
         )?;
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
-                | (_, kaleidorg_swap_sdk::network::Currency::LUsdt)
-        ) {
-            self.inner
-                .get_reverse_pairs()
-                .await
-                .map_err(core_err)?
-                .expected_liquid_asset_context(from_currency, to_currency)
-                .map_err(core_err)?
-        } else {
-            None
-        };
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context =
+            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
+                from_chain,
+                to_chain,
+                from_currency,
+                to_currency,
+                lusdt_asset_id.as_deref(),
+            )
+            .map_err(core_err)?
+            {
+                Some(trusted) => {
+                    let pair_card = self
+                        .inner
+                        .get_reverse_pairs()
+                        .await
+                        .map_err(core_err)?
+                        .expected_liquid_asset_context(from_currency, to_currency)
+                        .map_err(core_err)?;
+                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+                }
+                None => None,
+            };
         // Validate the returned tree/address regardless of request form: derive
         // the payment hash from `preimage_hash` or, in the invoice form, from the
         // invoice itself. Never hand back an unvalidated response to fund.
@@ -1161,8 +1190,10 @@ impl BoltzClient {
         &self,
         network: StringArg,
         req: CreateChainRequestJs,
+        lusdt_asset_id: Option<StringArg>,
     ) -> Result<CreateChainResponseJs, JsValue> {
         let network = str_arg(network, "network")?;
+        let lusdt_asset_id = opt_str_arg(lusdt_asset_id, "lusdtAssetId")?;
         let req: CreateChainRequest = from_js(req.into())?;
         // Both keys are required so the returned lockup script/tree can be
         // checked against the request — never hand back an unvalidated
@@ -1184,20 +1215,30 @@ impl BoltzClient {
         {
             return Err(arg_err("USDT-RGB chain swaps are unsupported"));
         }
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (kaleidorg_swap_sdk::network::Currency::LUsdt, _)
-                | (_, kaleidorg_swap_sdk::network::Currency::LUsdt)
-        ) {
-            self.inner
-                .get_chain_pairs()
-                .await
-                .map_err(core_err)?
-                .expected_liquid_asset_context(from_currency, to_currency)
-                .map_err(core_err)?
-        } else {
-            None
-        };
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context =
+            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
+                from_chain,
+                to_chain,
+                from_currency,
+                to_currency,
+                lusdt_asset_id.as_deref(),
+            )
+            .map_err(core_err)?
+            {
+                Some(trusted) => {
+                    let pair_card = self
+                        .inner
+                        .get_chain_pairs()
+                        .await
+                        .map_err(core_err)?
+                        .expected_liquid_asset_context(from_currency, to_currency)
+                        .map_err(core_err)?;
+                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+                }
+                None => None,
+            };
         let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
             (kaleidorg_swap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
             (_, kaleidorg_swap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),

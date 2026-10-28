@@ -209,16 +209,24 @@ impl SwapClient {
             false,
             swap_request.rgb_contract_id.as_deref(),
         )?;
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (Currency::LUsdt, _) | (_, Currency::LUsdt)
-        ) {
-            self.inner
-                .get_submarine_pairs()
-                .await?
-                .expected_liquid_asset_context(from_currency, to_currency)?
-        } else {
-            None
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context = match LiquidAssetContext::trusted_lusdt_for_swap(
+            swap_request.from,
+            swap_request.to,
+            from_currency,
+            to_currency,
+            swap_request.lusdt_asset_id.as_deref(),
+        )? {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_submarine_pairs()
+                    .await?
+                    .expected_liquid_asset_context(from_currency, to_currency)?;
+                Some(trusted.cross_check_pair_card(pair_card)?)
+            }
+            None => None,
         };
         let response = self
             .inner
@@ -272,16 +280,24 @@ impl SwapClient {
             true,
             swap_request.rgb_contract_id.as_deref(),
         )?;
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (Currency::LUsdt, _) | (_, Currency::LUsdt)
-        ) {
-            self.inner
-                .get_reverse_pairs()
-                .await?
-                .expected_liquid_asset_context(from_currency, to_currency)?
-        } else {
-            None
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context = match LiquidAssetContext::trusted_lusdt_for_swap(
+            swap_request.from,
+            swap_request.to,
+            from_currency,
+            to_currency,
+            swap_request.lusdt_asset_id.as_deref(),
+        )? {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_reverse_pairs()
+                    .await?
+                    .expected_liquid_asset_context(from_currency, to_currency)?;
+                Some(trusted.cross_check_pair_card(pair_card)?)
+            }
+            None => None,
         };
         let response = self
             .inner
@@ -342,16 +358,24 @@ impl SwapClient {
                 "USDT-RGB chain swaps are unsupported".into(),
             ));
         }
-        let expected_asset_context = if matches!(
-            (from_currency, to_currency),
-            (Currency::LUsdt, _) | (_, Currency::LUsdt)
-        ) {
-            self.inner
-                .get_chain_pairs()
-                .await?
-                .expected_liquid_asset_context(from_currency, to_currency)?
-        } else {
-            None
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context = match LiquidAssetContext::trusted_lusdt_for_swap(
+            swap_request.from,
+            swap_request.to,
+            from_currency,
+            to_currency,
+            swap_request.lusdt_asset_id.as_deref(),
+        )? {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_chain_pairs()
+                    .await?
+                    .expected_liquid_asset_context(from_currency, to_currency)?;
+                Some(trusted.cross_check_pair_card(pair_card)?)
+            }
+            None => None,
         };
         let (from_asset_context, to_asset_context): (
             Option<LiquidAssetContext>,
@@ -725,6 +749,13 @@ pub struct CreateSubmarineRequest {
     pub pair_hash: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// The L-USDT asset the swap must carry, pinned locally and never sent
+    /// to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    /// any other value; testnet and regtest issue USDT per deployment, so
+    /// there it is required. The maker's pair card is only cross-checked
+    /// against it. Ignored unless a side is `L-USDT`.
+    #[uniffi(default = None)]
+    pub lusdt_asset_id: Option<String>,
     /// Expected RGB contract, pinned locally and never sent to the maker.
     #[uniffi(default = None)]
     pub rgb_contract_id: Option<String>,
@@ -757,6 +788,13 @@ pub struct CreateReverseRequest {
     pub address_signature: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// The L-USDT asset the swap must carry, pinned locally and never sent
+    /// to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    /// any other value; testnet and regtest issue USDT per deployment, so
+    /// there it is required. The maker's pair card is only cross-checked
+    /// against it. Ignored unless a side is `L-USDT`.
+    #[uniffi(default = None)]
+    pub lusdt_asset_id: Option<String>,
     /// Expected RGB contract, pinned locally and never sent to the maker.
     #[uniffi(default = None)]
     pub rgb_contract_id: Option<String>,
@@ -875,6 +913,13 @@ pub struct CreateChainRequest {
     pub pair_hash: Option<String>,
     #[uniffi(default = None)]
     pub referral_id: Option<String>,
+    /// The L-USDT asset the swap must carry, pinned locally and never sent
+    /// to the maker. Liquid mainnet defaults to the canonical USDt and refuses
+    /// any other value; testnet and regtest issue USDT per deployment, so
+    /// there it is required. The maker's pair card is only cross-checked
+    /// against it. Ignored unless a side is `L-USDT`.
+    #[uniffi(default = None)]
+    pub lusdt_asset_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
