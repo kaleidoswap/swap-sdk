@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — TypeScript: `createKaleidoSwap`, a high-level surface over the swap engine
+
+One verb per step — `quote`, `start`, `resume` — for the routes the maker
+serves over Boltz `/v2`: Lightning to on-chain BTC or L-BTC (reverse) and
+on-chain BTC or L-BTC to Lightning (submarine). Assets are named with their
+chain (`"lightning:BTC"`, `"liquid:BTC"`), so a destination on the wrong
+chain or network is refused locally. `quote` answers with a `Quote` or a
+`Refusal` value; `start` creates the swap, verifies the lockup against the
+caller's own key and persists the record — including `swapAuth` — before it
+returns, and never moves funds. A `Swap` exposes one phase machine over every
+protocol (`awaiting_funding → funded → locked → claiming → settled`, with
+`refundable → refunding → refunded` and `failed`), as an async iterator or a
+promise, and claims or refunds on its own as the maker's status moves. Every
+failure is a `SwapError` with a code.
+
+Keys and persistence are injected: a `SwapSigner` (`mnemonicSigner` wraps
+`SwapMasterKey`) and a `SwapStore` that also owns the BIP85 index counter.
+`MemoryStore` ships for tests; in Node, `FileStore` keeps one JSON file per
+swap, owner-readable only, and refuses ids that are not plain tokens. Records
+are plain JSON; the fields that crossed the wasm boundary as `bigint` are
+recorded and restored before the response is handed back to the engine, so a
+claim after a restart rebuilds the same tree as the one verified at `start`.
+`resume()` makes one pass over the store at startup and reports what it
+settled, refunded, failed or is still following.
+
+L-USDT, the Arkade corridor and pay-through are not routed by this layer yet
+and come back as a `pair_unavailable` refusal that names the lower-level
+entry to use. The default Liquid testnet Esplora for this layer is
+`liquid.network`, which does not rate-limit UTXO lookups. Three examples under
+`typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts`
+in a fraction of the lines, plus a `resume.ts`.
+
 ## [0.13.0] - 2026-10-28
 
 This release hardens the swap flows following the security review of
@@ -32,7 +64,6 @@ and regtest requires a pinned asset id, and the React Native
 - React Native guidance now recommends the available public organization keys.
 - The RGB regtest bridge uses the current LDK macaroon credentials, channel
   amount API and actual inbound payment IDs instead of treating hashes as IDs.
-
 
 ### BREAKING — React Native: `SwapClient.kaleidoMaker` refuses to run in an app
 
@@ -96,6 +127,7 @@ control.
   `lusdt_reverse`.
 
 BTC, L-BTC and USDT-RGB swaps are unaffected.
+
 ### BREAKING — claims check the chain before revealing the preimage
 
 `SwapScript::construct_claim` (and `prepare_liquid_claim`) now ask the chain
@@ -212,7 +244,7 @@ in WASM/TypeScript. UniFFI `ChainClient` gains `bitcoin_tip_height` and
   rebinding name is judged again on each connection. A server resolving an
   attacker-chosen Lightning address or voucher could otherwise be steered at
   services reachable only from its own network. `LnurlOptions
-  { allow_private_hosts: true }` (`*_with_options` variants of
+{ allow_private_hosts: true }` (`*_with_options` variants of
   `resolve_lightning_address`, `fetch_invoice`, `create_withdraw_response`,
   `process_withdrawal`) opts a development setup back in; it also permits
   plain HTTP to those private hosts, never to the clearnet.
@@ -364,6 +396,7 @@ card fetching does not verify the advertised signature.
 
 `npm run test:live` in `typescript-sdk` runs the TypeScript package against a
 regtest KaleidoSwap maker (maker-rs's e2e stack, 0.8.0 or later). It covers:
+
 - BTC and L-BTC submarine swaps, paid out and refunded after the timelock;
 - BTC cooperative refunds with the create-time and the recovered `swapAuth`;
 - L-BTC reverse claims;
@@ -479,16 +512,16 @@ Rust, Python, TypeScript and React Native packages share version **0.11.0**.
 RGB chain swaps remain unsupported by the SDK; the maker ships atomic-chain
 pairs disabled pending production sign-off.
 
-| Was | Now | Migration |
-|---|---|---|
-| Rust `Cooperative { .. }` struct literals | new optional `swap_auth` field | add `swap_auth: None` for makers without auth, or the saved credential for KaleidoSwap refunds |
-| UniFFI `TransactionOptions { .. }` Rust struct literals | new optional `swap_auth` field | add `swap_auth: None` or the saved credential; Python defaults remain optional |
-| `BtcSwapScript { .. }` struct literals | new public field `rgb: Option<RgbHtlcContext>` | add `rgb: None`; the constructors set it from the response |
-| `Currency` had three variants | adds `Currency::UsdtRgb` (`"USDT-RGB"`, Bitcoin only) | cover it in exhaustive matches |
-| `CreateSubmarineResponse` / `CreateReverseResponse` struct literals | new field `rgb: Option<RgbLock>` | add `rgb: None` |
-| The Bitcoin branch of `validate_with_currency*` ignored `currency` | resolves it and refuses anything but BTC, and refuses a BTC response that carries an RGB lock | pass `None` or `Some(Currency::Btc)` for BTC swaps; validate USDT-RGB swaps with `validate_rgb` |
-| UniFFI `CreateSubmarineRequest` / `CreateReverseRequest` Rust struct literals | gain optional `rgb_contract_id`; submarine also gains `rgb_max_htlc_sat` | add `None` for BTC/Liquid; pin the contract for RGB and choose the collateral cap locally; Python defaults remain optional |
-| UniFFI `CreateSubmarineResponse` / `CreateReverseResponse` records | gain `rgb: Option<RgbLock>` | Kotlin, Swift and Python constructors take the new field |
+| Was                                                                           | Now                                                                                           | Migration                                                                                                                  |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Rust `Cooperative { .. }` struct literals                                     | new optional `swap_auth` field                                                                | add `swap_auth: None` for makers without auth, or the saved credential for KaleidoSwap refunds                             |
+| UniFFI `TransactionOptions { .. }` Rust struct literals                       | new optional `swap_auth` field                                                                | add `swap_auth: None` or the saved credential; Python defaults remain optional                                             |
+| `BtcSwapScript { .. }` struct literals                                        | new public field `rgb: Option<RgbHtlcContext>`                                                | add `rgb: None`; the constructors set it from the response                                                                 |
+| `Currency` had three variants                                                 | adds `Currency::UsdtRgb` (`"USDT-RGB"`, Bitcoin only)                                         | cover it in exhaustive matches                                                                                             |
+| `CreateSubmarineResponse` / `CreateReverseResponse` struct literals           | new field `rgb: Option<RgbLock>`                                                              | add `rgb: None`                                                                                                            |
+| The Bitcoin branch of `validate_with_currency*` ignored `currency`            | resolves it and refuses anything but BTC, and refuses a BTC response that carries an RGB lock | pass `None` or `Some(Currency::Btc)` for BTC swaps; validate USDT-RGB swaps with `validate_rgb`                            |
+| UniFFI `CreateSubmarineRequest` / `CreateReverseRequest` Rust struct literals | gain optional `rgb_contract_id`; submarine also gains `rgb_max_htlc_sat`                      | add `None` for BTC/Liquid; pin the contract for RGB and choose the collateral cap locally; Python defaults remain optional |
+| UniFFI `CreateSubmarineResponse` / `CreateReverseResponse` records            | gain `rgb: Option<RgbLock>`                                                                   | Kotlin, Swift and Python constructors take the new field                                                                   |
 
 ### Added — RGB cooperative submarine refunds
 
@@ -548,6 +581,7 @@ L-USDT flow; see `docs/rgb-swaps-plan.md`.
   - rgb-lib's allocations are exactly the locked amount at output 1.
 
   The signature uses `Prevouts::All` at the re-derived HTLC input index.
+
 - An uncolored spend of an RGB HTLC burns the asset, so these now refuse a
   script that carries an RGB lock:
   - `BtcSwapTx::new_claim` / `new_refund` / `sign_*`;
@@ -706,14 +740,14 @@ Python call sites are unchanged, because the bindings already hold the preimage
 hash and pass it through. The stricter checks in the last row apply to every
 binding.
 
-| Was | Now | Migration |
-|---|---|---|
-| `CreateChainResponse::validate(claim, refund, from, to)` | `validate(claim, refund, from, to, &preimage_hash)` | pass the `preimage_hash` you created the swap with; the same applies to `validate_with_currency` and `validate_with_currency_and_asset_context`, after `to_chain` |
-| `BtcSwapTx { .. }`, `LiquidSwapTx { .. }` struct literals | new public field `additional_outputs` | add `additional_outputs: Vec::new()`; the constructors already set it |
-| `SwapScriptCommon` | new required method `receiver_pubkey` | implement it on any external implementor (both in-crate types do) |
-| `swaps::bitcoin::bytes_to_u32_little_endian` | removed | timelocks are decoded by the strict script-number parser inside the script constructors |
-| `From<Chain> for Network` returned `Mainnet` for every chain | returns the chain's own network | callers relying on `Mainnet` for testnet, signet or regtest must match on the chain instead |
-| `swaps::boltz::RefundDetails` and the UniFFI `RefundDetails` record | gain `amount: Option<u64>` | add `amount` to Rust struct literals; Kotlin, Swift and Python constructors take the new field |
+| Was                                                                                            | Now                                                                    | Migration                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CreateChainResponse::validate(claim, refund, from, to)`                                       | `validate(claim, refund, from, to, &preimage_hash)`                    | pass the `preimage_hash` you created the swap with; the same applies to `validate_with_currency` and `validate_with_currency_and_asset_context`, after `to_chain`                                                                  |
+| `BtcSwapTx { .. }`, `LiquidSwapTx { .. }` struct literals                                      | new public field `additional_outputs`                                  | add `additional_outputs: Vec::new()`; the constructors already set it                                                                                                                                                              |
+| `SwapScriptCommon`                                                                             | new required method `receiver_pubkey`                                  | implement it on any external implementor (both in-crate types do)                                                                                                                                                                  |
+| `swaps::bitcoin::bytes_to_u32_little_endian`                                                   | removed                                                                | timelocks are decoded by the strict script-number parser inside the script constructors                                                                                                                                            |
+| `From<Chain> for Network` returned `Mainnet` for every chain                                   | returns the chain's own network                                        | callers relying on `Mainnet` for testnet, signet or regtest must match on the chain instead                                                                                                                                        |
+| `swaps::boltz::RefundDetails` and the UniFFI `RefundDetails` record                            | gain `amount: Option<u64>`                                             | add `amount` to Rust struct literals; Kotlin, Swift and Python constructors take the new field                                                                                                                                     |
 | Create responses, fetched lockups, claim preimages and spend outputs were checked only in part | each is rejected when it fails a check listed under **Security** below | nothing, against a conforming maker. A claim or refund whose explicit primary output would be dust now fails instead of building a transaction that cannot relay. A Liquid claim or refund address must be on the client's network |
 
 There is no deprecation window, for the reason 0.9.0 gave: nothing outside
@@ -898,12 +932,12 @@ from — but the name in an integrator's code should say whose SDK this is, not
 whose wire format it inherited. That provenance is recorded in the README and
 the LICENSE, in full, and it stays there.
 
-| Was | Now |
-|---|---|
-| `BoltzClient` | `SwapClient` |
-| `BoltzWsApi` | `SwapWsApi` |
-| `BoltzWsUpdates` | `SwapWsUpdates` |
-| `TxParams.boltzBaseUrl`, `LiquidPsetParams.boltzBaseUrl` | `makerBaseUrl` |
+| Was                                                              | Now                |
+| ---------------------------------------------------------------- | ------------------ |
+| `BoltzClient`                                                    | `SwapClient`       |
+| `BoltzWsApi`                                                     | `SwapWsApi`        |
+| `BoltzWsUpdates`                                                 | `SwapWsUpdates`    |
+| `TxParams.boltzBaseUrl`, `LiquidPsetParams.boltzBaseUrl`         | `makerBaseUrl`     |
 | `TxParams.boltzTimeoutSecs`, `LiquidPsetParams.boltzTimeoutSecs` | `makerTimeoutSecs` |
 
 **Migration:** rename the symbols and the two fields. There is no alias — the
@@ -1122,7 +1156,7 @@ every L-USDT claim rather than an edge case.
 
 - **The template did not parse.** `PSET_IN_EXPLICIT_VALUE` and
   `PSET_IN_EXPLICIT_ASSET` were written on the swap input unconditionally.
-  Those fields reveal what a *confidential* prevout holds, and Elements
+  Those fields reveal what a _confidential_ prevout holds, and Elements
   requires each to travel with the blind proof tying it to the commitment — an
   explicit prevout has no commitment, so the proofs cannot be constructed. The
   template went out with the fields and without the proofs, which neither
@@ -1142,7 +1176,7 @@ every L-USDT claim rather than an edge case.
   zero-length scriptSig, which is its own parse failure behind the first two.
 
 `verify_input_metadata` reads the prevout on the explicit branch and holds any
-fields that *are* present to it, so a funded PSET is checked as strictly as
+fields that _are_ present to it, so a funded PSET is checked as strictly as
 before. The asymmetry with `verify_output_metadata` is deliberate and spec-correct:
 `PSET_IN_EXPLICIT_*` are optional and must be paired with their proofs, while
 `PSET_OUT_*` are mandatory for every output.
@@ -1205,8 +1239,8 @@ other u64 at that boundary.
 **Pre-commit checks are on the quote.** `RfqQuote::assert_fundable(now)`
 (send: 90-minute headroom before the refund deadline, quote still valid),
 `verify_receive_invoice(payment_hash)` (receive: the maker's invoice pays
-*our* hash for exactly `from_amount`) and `assert_receivable(...)` (receive:
-30-minute claim window measured from the *pay deadline*, optional price
+_our_ hash for exactly `from_amount`) and `assert_receivable(...)` (receive:
+30-minute claim window measured from the _pay deadline_, optional price
 ceiling) mirror the SDK's gates. They exist because funding a quote is
 accepting it — there is no accept message — so the moment before value moves
 is the only one that matters.
@@ -1237,10 +1271,10 @@ reached the caller. The map simply came back shorter, with nothing to say why.
 
 Against a maker publishing four source currencies on both endpoints:
 
-| | before | after |
-|---|---|---|
+|                     | before               | after                      |
+| ------------------- | -------------------- | -------------------------- |
 | `submarine_pairs()` | `BTC, L-BTC, L-USDT` | `ARKD, BTC, L-BTC, L-USDT` |
-| `chain_pairs()` | `BTC, L-BTC` | `ARKD, BTC, L-BTC, L-USDT` |
+| `chain_pairs()`     | `BTC, L-BTC`         | `ARKD, BTC, L-BTC, L-USDT` |
 
 `ARKD → BTC` was a live, quotable submarine route that no caller of this SDK
 could see.
@@ -1354,7 +1388,7 @@ It derived `Debug` and implemented `Display`, but not `std::error::Error` — so
 `anyhow::Result`, and it could not be a `source()` inside a caller's own error
 type. Every consumer needed a `map_err` at each call site to work around it.
 
-`source()` forwards *past* the error a variant wraps, to that error's own cause,
+`source()` forwards _past_ the error a variant wraps, to that error's own cause,
 rather than handing the wrapped error back. This enum's `Display` is already
 that error's text — `JSON(serde_json::Error)` adds no context of its own — so
 returning it as the cause would make a reported chain print one message at two
@@ -1421,14 +1455,14 @@ operationally.
 **No message text moves on this crate's own requests.** For an error from
 `From<reqwest::Error>`, `Display` and `message()` still render exactly
 reqwest's own layer, byte-identical to before, which is what the binding
-surfaces read. The detail is *added* below, not folded into the message.
+surfaces read. The detail is _added_ below, not folded into the message.
 
 It does move on the `util::lnurl` path, and there it initially moved the wrong
 way. `lnurl::Error`'s `Display` is `write!(f, "{:?}", self)`, and reqwest's
 `Debug` recurses into `source`, so the old `Error::HTTP(e.to_string())`
 happened to carry the whole chain inside one string — while the new
 `message()` renders only reqwest's own layer. So on that path `message()` alone
-now says *less* than before. Every in-repo reader of it was moved to
+now says _less_ than before. Every in-repo reader of it was moved to
 `message_with_causes()`, which says the same or more; a downstream caller
 reading `message()` on an lnurl transport failure should do the same. There is
 a test pinning both halves: that the old flattened string carried the refusal,
@@ -1457,7 +1491,7 @@ Anything that stored or matched on the `String` itself needs `.to_string()` (or
 patch.
 
 One consequence with no migration, because there is no substitute:
-`Error::HTTP` can no longer be *constructed* outside this crate. reqwest's
+`Error::HTTP` can no longer be _constructed_ outside this crate. reqwest's
 error constructors are `pub(crate)`, and `#[non_exhaustive]` sits on the enum
 rather than the variant, so downstream code that built one for its own tests or
 mocks — `Error::HTTP("simulated timeout".to_string())` — has no replacement
@@ -1472,7 +1506,7 @@ On the bindings, Python, Kotlin and Swift now receive the causes: `bindings`
 maps `HTTP` through `message_with_causes()`, so `Error.Http` reads "error
 sending request for url (…): client error (Connect): …" instead of stopping at
 the first clause. The WebAssembly surface is unchanged — `core_err` renders
-`message()` for every variant, and moving that would move every *other*
+`message()` for every variant, and moving that would move every _other_
 variant's message too; a JS caller that wants the causes can be given
 `message_with_causes()` deliberately.
 
@@ -1529,7 +1563,7 @@ existing constructor authenticates nothing, which is also what keeps the client
 usable against a Boltz maker, where organizations do not exist.
 
 - Rust: `kaleido::KaleidoMakerClient::new(KaleidoMakerClientOptions { maker_url,
-  api_key, timeout })`, which derefs to `BoltzApiClientV2` — it is the ordinary
+api_key, timeout })`, which derefs to `BoltzApiClientV2` — it is the ordinary
   client plus a credential, not a second API. `kaleido::ApiKey` parses the key
   (`FromStr`, so `"kld_test_…".parse()` works).
 - Python: `BoltzApiClientV2.kaleido_maker(maker_url, api_key, timeout)`, plus
@@ -1544,7 +1578,7 @@ artifact serves Node and the browser, so there is no build-time split to make
 that decision at, and an organization key in a page is readable by every
 visitor. Pass `allowBrowser: true` for a deliberate exception.
 
-The key answers *which partner organization created this swap?* and nothing
+The key answers _which partner organization created this swap?_ and nothing
 else. It authorizes no claim, no refund, no fund movement, no panel access and
 no administrative operation; the per-swap `swapAuth` below is what authorizes
 the outcome of a specific swap, and the two travel as separate headers.
@@ -1561,7 +1595,7 @@ Credential handling, on every target:
   bearer credential over plain HTTP is readable by anything on the path, and an
   organization key read once has to be revoked. A maker URL carrying userinfo is
   refused as well — `reqwest` turns `https://user:pw@host/v2` into an
-  `Authorization: Basic …` of its own and the key would be *appended* behind it,
+  `Authorization: Basic …` of its own and the key would be _appended_ behind it,
   so the maker would read the wrong header and record the swap as anonymous.
 - Redirects are declined outright on every native path, because the SDK owns the
   policy on both constructors: `KaleidoMakerClient::new` builds its client on
@@ -1569,7 +1603,7 @@ Credential handling, on every target:
   `reqwest::ClientBuilder` — not a built `Client` — so it can apply the same
   policy while keeping the caller's proxy, TLS and pool settings. That shape is
   deliberate: a `Client` does not report its redirect policy and a `Response`
-  carries only the URL the chain *ended* at, so a hop that detoured through
+  carries only the URL the chain _ended_ at, so a hop that detoured through
   another host and came back cannot be detected afterwards. In the browser
   `fetch` owns redirects with no knob to set, so there alone a hop off the maker
   is caught after the fact by the check below rather than prevented.
@@ -1590,12 +1624,12 @@ Credential handling, on every target:
   port and **ignores the scheme**, so an `https` maker redirected to
   `http://same-host:443/…` re-sends the key in the clear. The advice is chosen
   from that rule rather than from the SDK's stricter notion of an origin, so a
-  scheme-only hop says *revoke the key* instead of promising there is nothing to
+  scheme-only hop says _revoke the key_ instead of promising there is nothing to
   revoke. (Browsers are stricter still — `fetch` treats a scheme change as
   cross-origin — so the advice is pessimistic there, never wrong.) Neither branch
   claims more than the final URL can support: `reqwest` applies its rule per hop
   and a `Response` exposes no hop list, so the reassuring branch says the key did
-  not travel *to that host* and names the multi-hop chain — where an earlier
+  not travel _to that host_ and names the multi-hop chain — where an earlier
   scheme-only hop would have kept it — as one to treat the key as exposed.
 
 **Browsers are out of scope for this release.** An organization key has no
@@ -1672,11 +1706,11 @@ The maker enforces the lock correctly once it arrives — a wrong hash comes bac
 for reverse. Measured against a live maker, the same call per swap type with a
 well-formed but deliberately wrong hash:
 
-| type | result before |
-|---|---|
+| type      | result before        |
+| --------- | -------------------- |
 | submarine | `pair_hash_mismatch` |
-| chain | `pair_hash_mismatch` |
-| reverse | swap created |
+| chain     | `pair_hash_mismatch` |
+| reverse   | swap created         |
 
 **Callers who were passing a stale or wrong `pairHash` on a reverse create and
 succeeding will now be rejected.** That is the point of the field, but it is a
@@ -1690,10 +1724,15 @@ bearing.
 so serde discarded everything else the maker sends:
 
 ```json
-{"events":[{"kind":"invoice_issued","ts":1786704659}],
- "failureDetails":null,"failureReason":null,
- "id":"01KZZYB138E7C3HZX7Q1YBGAQG","paymentStatus":"pending",
- "status":"swap.created","type":"reverse"}
+{
+  "events": [{ "kind": "invoice_issued", "ts": 1786704659 }],
+  "failureDetails": null,
+  "failureReason": null,
+  "id": "01KZZYB138E7C3HZX7Q1YBGAQG",
+  "paymentStatus": "pending",
+  "status": "swap.created",
+  "type": "reverse"
+}
 ```
 
 Callers got the bare `status` — no history to see what a swap had done, and no
@@ -1716,7 +1755,7 @@ that tells those apart.
 ### Fixed — `is_connected()` reports the socket rather than the loop
 
 It tested whether `restart_sender` was `Some`. That sender is installed at the
-top of *every* connection attempt, before the dial, and reinstalled on each
+top of _every_ connection attempt, before the dial, and reinstalled on each
 retry — so through an outage, with the loop cycling failed dials and
 `reconnect_delay` sleeps, it answered `true` throughout.
 
@@ -1732,7 +1771,7 @@ one.
 
 `parse_json_response` answered a **2xx** response whose body failed to
 deserialize with `Error::HTTPStatusNotSuccess(status, body)` — the variant a
-maker *rejection* uses, carrying the whole body. `Error::message()` formats that
+maker _rejection_ uses, carrying the whole body. `Error::message()` formats that
 body verbatim, `core_err` in the WebAssembly binding turns it into a JS `Error`
 message, and callers log those.
 
@@ -1872,12 +1911,12 @@ through this serializer and are unaffected.
 `serialize_maps_as_objects`, so the JS shape of a response followed the Rust type
 that produced it — a struct became a plain object, a `HashMap` became a `Map`.
 The pairs and nodes responses are a struct wrapping a `HashMap<String, _>`, which
-put the transition *inside* a single response, with nothing in the shape to mark
+put the transition _inside_ a single response, with nothing in the shape to mark
 where:
 
 ```js
-pairs.BTC            // struct field — a property read
-pairs.BTC["L-BTC"]   // HashMap entry — undefined; needed .get("L-BTC")
+pairs.BTC; // struct field — a property read
+pairs.BTC["L-BTC"]; // HashMap entry — undefined; needed .get("L-BTC")
 ```
 
 Property access on a `Map` returns `undefined` rather than throwing, so this
@@ -1946,7 +1985,7 @@ Passing a non-string where the binding declares `string` trapped with
 `RuntimeError: memory access out of bounds`, from a frame containing no Rust. It
 reproduces on the published `@kaleidorg/swap-sdk@0.2.0`.
 
-wasm-bindgen marshals a `String` parameter in its generated JS glue, *before* any
+wasm-bindgen marshals a `String` parameter in its generated JS glue, _before_ any
 Rust code runs: `passStringToWasm0` reads `arg.length` and `arg.charCodeAt` and
 hands the result to the wasm allocator. Given a non-string it computed a bogus
 length and trapped inside the allocator. Passing arguments in the wrong order was
@@ -1977,12 +2016,12 @@ together.
 
 `init` no longer takes wasm-bindgen's `InitInput`. It takes a hand-written
 `WasmSource` (`BufferSource | URL | Request | Response | string`) — the same
-union minus `WebAssembly.Module`, which TypeScript declares as an *empty*
+union minus `WebAssembly.Module`, which TypeScript declares as an _empty_
 interface. An empty interface is structurally assignable from any non-nullish
 value, so its presence collapsed the union and `init(42)` typechecked. A caller
 holding a pre-compiled module now uses the new `initWithModule` export. A
 zero-emit type assertion in `src/index.ts` fails the build if the union is ever
-widened back, since such a union still *looks* precise.
+widened back, since such a union still _looks_ precise.
 
 Callers who passed the object form (`init({ module_or_path: bytes })`) must pass
 the bytes, or nothing at all — `init` wraps the argument itself, so the object
@@ -2257,7 +2296,7 @@ protocol only**, pointed at **our** maker.
   `https://esplora.signet.kaleidoswap.com`, KaleidoSwap's own index of the
   maker's chain — note the API is at the root, not under `/api`) and, on the
   Liquid side, to `LiquidTestnet`. Signet is therefore fully first-party: maker
-  *and* chain access. Mainnet/testnet3 chain defaults stay public explorers, and
+  _and_ chain access. Mainnet/testnet3 chain defaults stay public explorers, and
   Liquid has no KaleidoSwap explorer yet.
   `ElectrumBitcoinClient::default` **errors** for signet: Mutinynet publishes
   no public Electrum server, and a vanilla-signet server would silently serve a
@@ -2275,13 +2314,13 @@ protocol only**, pointed at **our** maker.
 
 Every published surface now shares one identity, at `0.1.0`:
 
-| Surface | Was | Now |
-| --- | --- | --- |
-| Rust crate | `kaleidoswap-sdk` | `kaleidorg-swap-sdk` |
-| Rust lib / Python import | `kaleidoswap_sdk` | `kaleidorg_swap_sdk` |
-| Proc-macro crate | `kaleidoswap-sdk-macros` | `kaleidorg-swap-sdk-macros` |
-| Python distribution | `kaleidoswap_sdk` | `kaleidorg_swap_sdk` |
-| npm package | `@kaleidoswap/sdk` | `@kaleidorg/swap-sdk` |
+| Surface                  | Was                      | Now                         |
+| ------------------------ | ------------------------ | --------------------------- |
+| Rust crate               | `kaleidoswap-sdk`        | `kaleidorg-swap-sdk`        |
+| Rust lib / Python import | `kaleidoswap_sdk`        | `kaleidorg_swap_sdk`        |
+| Proc-macro crate         | `kaleidoswap-sdk-macros` | `kaleidorg-swap-sdk-macros` |
+| Python distribution      | `kaleidoswap_sdk`        | `kaleidorg_swap_sdk`        |
+| npm package              | `@kaleidoswap/sdk`       | `@kaleidorg/swap-sdk`       |
 
 The native library basename follows (`libkaleidoswap_sdk.*` →
 `libkaleidorg_swap_sdk.*`), as does `uniffi.toml`'s `cdylib_name`. The GitHub
@@ -2434,7 +2473,7 @@ Mechanical, non-functional rename of the crate identity:
 - Proc-macro crate `boltz-client-macros` → `kaleidoswap-sdk-macros`.
 - Bindings lib + `cdylib_name`, Python package/module, and native lib basename
   (`libboltz_client.*` → `libkaleidoswap_sdk.*`) all follow.
-- The Boltz *protocol* surface is intentionally untouched: the `boltz` module,
+- The Boltz _protocol_ surface is intentionally untouched: the `boltz` module,
   `BoltzApiClientV2`, and the `boltz.exchange` URLs remain (repointing those to
   the KaleidoSwap maker is a separate, functional change). The
   `SwapTransactionParams` Boltz-client field is named `boltz_api` — the mechanical
@@ -2489,7 +2528,7 @@ Second review round:
 
 L-BTC / magic-routing round:
 
-- **Explicit L-BTC HTLCs are accepted *and* spendable.** `validate_currency` no
+- **Explicit L-BTC HTLCs are accepted _and_ spendable.** `validate_currency` no
   longer requires a blinding key for L-BTC, since KaleidoSwap Maker creates
   explicit L-BTC HTLCs and correctly omits `blindingKey`. The legacy
   single-input claim/refund builders were relaxed in the same change: they now

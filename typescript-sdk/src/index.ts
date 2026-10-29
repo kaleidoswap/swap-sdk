@@ -13,6 +13,7 @@ import initWasm, {
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
 } from "../vendor/bindings_wasm.js";
+import { makeCreateKaleidoSwap, type SwapSigner } from "./kaleidoswap.js";
 
 /** URL of the packaged WebAssembly binary. */
 export const wasmUrl = new URL(
@@ -1212,6 +1213,44 @@ export class AtomicSwaps {
       });
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// KaleidoSwap — the high-level surface. See ./kaleidoswap.ts.
+// ---------------------------------------------------------------------------
+
+export * from "./kaleidoswap.js";
+
+/**
+ * The high-level entry: `quote`, `start`, `resume` over an injected store and
+ * signer. Runs `init()` itself.
+ */
+export const createKaleidoSwap = makeCreateKaleidoSwap({
+  init: () => init(),
+  SwapClient: WasmSwapClient,
+  SwapScript,
+});
+
+/**
+ * A {@link SwapSigner} over a swap mnemonic (`SwapMasterKey.fromSwapMnemonic`).
+ * The master key is built on first use, after `init()` has run.
+ */
+export function mnemonicSigner(
+  mnemonic: string,
+  network: Network,
+  passphrase?: string,
+): SwapSigner {
+  let master: SwapMasterKey | undefined;
+  const get = () =>
+    (master ??= SwapMasterKey.fromSwapMnemonic(mnemonic, network, passphrase));
+  return {
+    async deriveKey(index) {
+      return get().deriveSwapKey(index);
+    },
+    async derivePreimage(index) {
+      return get().derivePreimage(index);
+    },
+  };
 }
 
 export function toJson(value: unknown, space?: string | number): string {
