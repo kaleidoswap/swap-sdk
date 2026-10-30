@@ -96,6 +96,54 @@ claiming a receive lockup needs an Ark wallet, which is the
 Build that venue's transport from the same maker URL with
 `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
+## High-level API: `KaleidoSwap`
+
+For a swap rather than a protocol. `quote` prices a route, `start` creates the
+swap and returns what to pay or fund, and the swap follows itself to the end;
+`resume` finishes or refunds whatever a previous run left in the store. The
+store and the signer are yours: the SDK holds no key material and never
+funds anything on your behalf.
+
+```rust
+use std::sync::Arc;
+use kaleidorg_swap_sdk::kaleidoswap::*;
+use kaleidorg_swap_sdk::network::Network;
+
+let kaleido = KaleidoSwap::new(KaleidoSwapOptions {
+    network: Network::Signet,
+    store: Arc::new(FileStore::new("swaps")),
+    signer: Arc::new(MnemonicSigner::from_swap_mnemonic(&mnemonic, None, Network::Signet)?),
+    maker_url: None,
+    bitcoin_esplora_url: None,
+    liquid_esplora_url: None,
+    poll_interval: None,
+    fee_sat_per_vb: None,
+    quote_ttl: None,
+})?;
+kaleido.resume().await?;
+
+let quote = kaleido
+    .quote(QuoteRequest {
+        from_asset: AssetId::LightningBtc,
+        to_asset: AssetId::LiquidBtc,
+        side: None,
+        amount: Some(50_000),
+        invoice: None,
+    })
+    .await?
+    .quote()
+    .map_err(|refusal| refusal.message)?;
+let swap = kaleido
+    .start(&quote, StartOptions { destination: Some(address), refund_address: None })
+    .await?;
+println!("pay {}", swap.action().invoice.unwrap());
+swap.settled().await?;
+```
+
+The same surface is `KaleidoSwap` in Python and React Native (the store and
+signer are classes you subclass) and `createKaleidoSwap` in TypeScript (plain
+objects); see `typescript-sdk/examples/easy/`.
+
 ## Partner attribution
 
 A partner organization can have the swaps it originates attributed to it, so the

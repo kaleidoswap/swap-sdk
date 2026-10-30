@@ -14,13 +14,16 @@ Node 22+ runs these `.ts` files directly — no bundler, no `tsx`, no build step
 of their own. In your own application the import is the bare package name, which
 is exactly what these files use.
 
-|                   | What it does                                                                      | Needs                                                |
-| ----------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `01-pairs.ts`     | Prints every route the maker will trade and on what terms.                        | nothing                                              |
-| `02-submarine.ts` | On-chain BTC → a Lightning invoice. Prints what to fund; refunds with `--refund`. | a swap mnemonic, a BOLT11 invoice, signet bitcoin    |
-| `03-reverse.ts`   | A Lightning payment → L-BTC on Liquid. Claims and broadcasts by itself.           | a swap mnemonic, a Liquid address, 50k signet sats   |
-| `04-corridor.ts`  | Quotes the Arkade Intents corridor and shows a refusal.                           | nothing                                              |
-| `06-atomic.ts`    | Quotes, verifies and tracks an atomic BTC <-> USDT-RGB L1 swap; rgb-lib signs.    | a regtest maker with atomic pairs, an rgb-lib wallet |
+|                     | What it does                                                                      | Needs                                                |
+| ------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `01-pairs.ts`       | Prints every route the maker will trade and on what terms.                        | nothing                                              |
+| `02-submarine.ts`   | On-chain BTC → a Lightning invoice. Prints what to fund; refunds with `--refund`. | a swap mnemonic, a BOLT11 invoice, signet bitcoin    |
+| `03-reverse.ts`     | A Lightning payment → L-BTC on Liquid. Claims and broadcasts by itself.           | a swap mnemonic, a Liquid address, 50k signet sats   |
+| `04-corridor.ts`    | Quotes the Arkade Intents corridor and shows a refusal.                           | nothing                                              |
+| `06-atomic.ts`      | Quotes, verifies and tracks an atomic BTC <-> USDT-RGB L1 swap; rgb-lib signs.    | a regtest maker with atomic pairs, an rgb-lib wallet |
+| `easy/reverse.ts`   | `03-reverse.ts` on the high-level surface: `quote`, `start`, `phases`.            | the same as `03-reverse.ts`                          |
+| `easy/submarine.ts` | `02-submarine.ts` on the high-level surface; refunds on its own if it unwinds.    | the same as `02-submarine.ts`, plus a refund address |
+| `easy/resume.ts`    | Finishes or refunds whatever the store still holds; run it at startup.            | a swap mnemonic                                      |
 
 Start with `01-pairs.ts`. If it prints a table, the SDK, its WebAssembly binary
 and the maker are all reachable, and everything else is configuration.

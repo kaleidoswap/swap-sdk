@@ -39,7 +39,7 @@ pub use swaps::liquid::{LBtcSwapScript, LBtcSwapTx};
 pub use swaps::{
     atomic,
     bitcoin::{BtcSwapScript, BtcSwapTx},
-    boltz, corridor, kaleido,
+    boltz, corridor, kaleido, kaleidoswap,
     liquid::{decode_swap_output, LiquidAssetContext, LiquidSwapScript, LiquidSwapTx},
 };
 pub use util::fees;

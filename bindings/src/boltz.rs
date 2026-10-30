@@ -40,6 +40,14 @@ pub enum Error {
 
     #[error("A caller-provided Bitcoin fee input is required for this RGB spend")]
     RgbFeeInputRequired,
+
+    // Appended, not inserted: variant order is the FFI wire order.
+    #[error("{code:?}: {message}")]
+    Swap {
+        code: kaleidorg_swap_sdk::kaleidoswap::SwapErrorCode,
+        message: String,
+        swap_id: Option<String>,
+    },
 }
 
 impl From<CoreError> for Error {

@@ -569,11 +569,81 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_get() != 23077:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_list() != 36848:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_next_index() != 46200:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_put() != 57283:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_network() != 49640:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_quote() != 64482:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_resume() != 7132:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_start() != 6570:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_swap() != 62339:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public() != 25695:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_secret() != 50235:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_get() != 63104:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_list() != 61532:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_next_index() != 27259:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put() != 1851:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_key()
+        != 14350
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage()
+        != 52754
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase() != 53185:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -657,6 +727,42 @@ def _uniffi_check_api_checksums(lib):
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request()
         != 7198
     ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_action() != 30011:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_id() != 11574:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_phase() != 30777:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_protocol() != 2466:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_record() != 44583:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_refund() != 16558:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_settled() != 62762:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_tick() != 8073:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_watch() != 47245:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -961,6 +1067,33 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_key() != 23884:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage()
+        != 63874
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get() != 7014:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_put() != 43166:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_list() != 62276:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_next_index() != 53736:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected() != 21523:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1003,6 +1136,14 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_filestore_new() != 63797:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_kaleidoswap_new() != 56939:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_from_secret_key()
         != 58765
@@ -1011,6 +1152,14 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_new() != 49100:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_memorystore_new() != 40643:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_mnemonicsigner_new() != 21457:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -1300,6 +1449,81 @@ _UNIFFI_FOREIGN_FUTURE_COMPLETE_VOID = ctypes.CFUNCTYPE(
     ctypes.c_uint64,
     _UniffiForeignFutureStructVoid,
 )
+_UNIFFI_CALLBACK_INTERFACE_PHASE_LISTENER_METHOD0 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD0 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD1 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD0 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD1 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD2 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD3 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.POINTER(ctypes.c_uint64),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+
+
+class _UniffiVTableCallbackInterfacePhaseListener(ctypes.Structure):
+    _fields_ = [
+        ("on_phase", _UNIFFI_CALLBACK_INTERFACE_PHASE_LISTENER_METHOD0),
+        ("uniffi_free", _UNIFFI_CALLBACK_INTERFACE_FREE),
+    ]
+
+
+class _UniffiVTableCallbackInterfaceSwapSigner(ctypes.Structure):
+    _fields_ = [
+        ("derive_key", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD0),
+        ("derive_preimage", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD1),
+        ("uniffi_free", _UNIFFI_CALLBACK_INTERFACE_FREE),
+    ]
+
+
+class _UniffiVTableCallbackInterfaceSwapStore(ctypes.Structure):
+    _fields_ = [
+        ("get", _UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD0),
+        ("put", _UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD1),
+        ("list", _UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD2),
+        ("next_index", _UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD3),
+        ("uniffi_free", _UNIFFI_CALLBACK_INTERFACE_FREE),
+    ]
+
+
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_btcliketransaction.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1371,6 +1595,102 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.arg
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_filestore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_filestore.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_filestore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_filestore.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_filestore_new.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_filestore_new.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_get.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_get.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_list.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_list.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_next_index.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_next_index.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_put.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_put.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_kaleidoswap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_kaleidoswap.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_kaleidoswap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_kaleidoswap.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_kaleidoswap_new.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_kaleidoswap_new.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_network.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_network.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_quote.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_resume.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_resume.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_start.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_start.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_swap.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_keypair.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1408,6 +1728,106 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_secret.argtypes = (
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_secret.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_memorystore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_memorystore.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_memorystore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_memorystore.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_memorystore_new.argtypes = (
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_memorystore_new.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_get.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_get.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_list.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_list.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_next_index.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_next_index.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_put.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_put.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_mnemonicsigner.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_mnemonicsigner.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_mnemonicsigner.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_mnemonicsigner.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_key.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_key.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_phaselistener.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_phaselistener.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_phaselistener.argtypes = (
+    ctypes.POINTER(_UniffiVTableCallbackInterfacePhaseListener),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_phaselistener.restype = (
+    None
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_phaselistener_on_phase.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_phaselistener_on_phase.restype = None
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -1569,6 +1989,54 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request.argt
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request.restype = (
     _UniffiRustBuffer
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swap.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swap.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_action.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_action.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_id.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_id.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_phase.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_phase.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_protocol.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_protocol.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_record.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_record.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_refund.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_refund.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_settled.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_settled.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_tick.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_tick.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_watch.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_watch.restype = ctypes.c_uint64
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapclient.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2013,6 +2481,77 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_submarine_cooperative_
     ctypes.c_void_p,
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapsigner.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapsigner.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapsigner.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapsigner.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner.argtypes = (
+    ctypes.POINTER(_UniffiVTableCallbackInterfaceSwapSigner),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_key.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_key.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapstore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapstore.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapstore.argtypes = (
+    ctypes.POINTER(_UniffiVTableCallbackInterfaceSwapStore),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapstore.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_get.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_get.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_put.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_put.restype = None
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_list.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_list.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_next_index.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_next_index.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsapi.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2378,12 +2917,72 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.ar
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_get.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_get.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_list.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_list.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_next_index.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_next_index.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_put.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_put.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_network.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_network.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_quote.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_resume.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_resume.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_start.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_start.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_swap.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.restype = (
     ctypes.c_uint16
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_secret.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_secret.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_get.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_get.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_list.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_list.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_next_index.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_next_index.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_key.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_key.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase.restype = (
     ctypes.c_uint16
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_bytes.argtypes = ()
@@ -2424,6 +3023,38 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_comple
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_action.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_action.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_id.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_phase.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_phase.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_protocol.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_protocol.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_record.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_record.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_refund.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_settled.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_settled.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_tick.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_tick.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_watch.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_watch.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.restype = (
     ctypes.c_uint16
@@ -2550,6 +3181,28 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refu
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_key.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_key.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_put.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_put.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_list.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_list.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_next_index.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_next_index.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected.restype = (
     ctypes.c_uint16
@@ -2580,10 +3233,26 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new.argtyp
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_filestore_new.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_filestore_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_kaleidoswap_new.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_kaleidoswap_new.restype = (
+    ctypes.c_uint16
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_from_secret_key.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_from_secret_key.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_new.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_memorystore_new.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_memorystore_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_mnemonicsigner_new.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_mnemonicsigner_new.restype = (
     ctypes.c_uint16
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_from_bytes.argtypes = ()
@@ -2627,6 +3296,39 @@ _uniffi_check_contract_api_version(_UniffiLib)
 # _uniffi_check_api_checksums(_UniffiLib)
 
 # Public interface members begin here.
+# Magic number for the Rust proxy to call using the same mechanism as every other method,
+# to free the callback once it's dropped by Rust.
+_UNIFFI_IDX_CALLBACK_FREE = 0
+# Return codes for callback calls
+_UNIFFI_CALLBACK_SUCCESS = 0
+_UNIFFI_CALLBACK_ERROR = 1
+_UNIFFI_CALLBACK_UNEXPECTED_ERROR = 2
+
+
+class _UniffiCallbackInterfaceFfiConverter:
+    _handle_map = _UniffiHandleMap()
+
+    @classmethod
+    def lift(cls, handle):
+        return cls._handle_map.get(handle)
+
+    @classmethod
+    def read(cls, buf):
+        handle = buf.read_u64()
+        cls.lift(handle)
+
+    @classmethod
+    def check_lower(cls, cb):
+        pass
+
+    @classmethod
+    def lower(cls, cb):
+        handle = cls._handle_map.insert(cb)
+        return handle
+
+    @classmethod
+    def write(cls, cb, buf):
+        buf.write_u64(cls.lower(cb))
 
 
 class _UniffiConverterUInt8(_UniffiConverterPrimitiveInt):
@@ -5766,6 +6468,44 @@ class _UniffiConverterTypeFailureReasonIncorrectAmounts(_UniffiConverterRustBuff
         _UniffiConverterUInt64.write(value.actual, buf)
 
 
+class Fees:
+    maker: "int"
+    miner: "int"
+
+    def __init__(self, *, maker: "int", miner: "int"):
+        self.maker = maker
+        self.miner = miner
+
+    def __str__(self):
+        return "Fees(maker={}, miner={})".format(self.maker, self.miner)
+
+    def __eq__(self, other):
+        if self.maker != other.maker:
+            return False
+        if self.miner != other.miner:
+            return False
+        return True
+
+
+class _UniffiConverterTypeFees(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return Fees(
+            maker=_UniffiConverterUInt64.read(buf),
+            miner=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt64.check_lower(value.maker)
+        _UniffiConverterUInt64.check_lower(value.miner)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt64.write(value.maker, buf)
+        _UniffiConverterUInt64.write(value.miner, buf)
+
+
 class FinalizedRgbSpend:
     psbt: "str"
     swap_input_index: "int"
@@ -6251,6 +6991,148 @@ class _UniffiConverterTypeInternalHopRef(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.payee_id, buf)
 
 
+class KaleidoSwapOptions:
+    network: "Network"
+    store: "SwapStore"
+    signer: "SwapSigner"
+    maker_url: "typing.Optional[str]"
+    bitcoin_esplora_url: "typing.Optional[str]"
+    liquid_esplora_url: "typing.Optional[str]"
+    poll_interval_ms: "typing.Optional[int]"
+    fee_sat_per_vb: "typing.Optional[float]"
+    quote_ttl_secs: "typing.Optional[int]"
+    maker_timeout_ms: "typing.Optional[int]"
+    """
+    Timeout of every request to the maker. Default 30 s.
+    """
+
+    def __init__(
+        self,
+        *,
+        network: "Network",
+        store: "SwapStore",
+        signer: "SwapSigner",
+        maker_url: "typing.Optional[str]" = _DEFAULT,
+        bitcoin_esplora_url: "typing.Optional[str]" = _DEFAULT,
+        liquid_esplora_url: "typing.Optional[str]" = _DEFAULT,
+        poll_interval_ms: "typing.Optional[int]" = _DEFAULT,
+        fee_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        quote_ttl_secs: "typing.Optional[int]" = _DEFAULT,
+        maker_timeout_ms: "typing.Optional[int]" = _DEFAULT,
+    ):
+        self.network = network
+        self.store = store
+        self.signer = signer
+        if maker_url is _DEFAULT:
+            self.maker_url = None
+        else:
+            self.maker_url = maker_url
+        if bitcoin_esplora_url is _DEFAULT:
+            self.bitcoin_esplora_url = None
+        else:
+            self.bitcoin_esplora_url = bitcoin_esplora_url
+        if liquid_esplora_url is _DEFAULT:
+            self.liquid_esplora_url = None
+        else:
+            self.liquid_esplora_url = liquid_esplora_url
+        if poll_interval_ms is _DEFAULT:
+            self.poll_interval_ms = None
+        else:
+            self.poll_interval_ms = poll_interval_ms
+        if fee_sat_per_vb is _DEFAULT:
+            self.fee_sat_per_vb = None
+        else:
+            self.fee_sat_per_vb = fee_sat_per_vb
+        if quote_ttl_secs is _DEFAULT:
+            self.quote_ttl_secs = None
+        else:
+            self.quote_ttl_secs = quote_ttl_secs
+        if maker_timeout_ms is _DEFAULT:
+            self.maker_timeout_ms = None
+        else:
+            self.maker_timeout_ms = maker_timeout_ms
+
+    def __str__(self):
+        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={}, maker_timeout_ms={})".format(
+            self.network,
+            self.store,
+            self.signer,
+            self.maker_url,
+            self.bitcoin_esplora_url,
+            self.liquid_esplora_url,
+            self.poll_interval_ms,
+            self.fee_sat_per_vb,
+            self.quote_ttl_secs,
+            self.maker_timeout_ms,
+        )
+
+    def __eq__(self, other):
+        if self.network != other.network:
+            return False
+        if self.store != other.store:
+            return False
+        if self.signer != other.signer:
+            return False
+        if self.maker_url != other.maker_url:
+            return False
+        if self.bitcoin_esplora_url != other.bitcoin_esplora_url:
+            return False
+        if self.liquid_esplora_url != other.liquid_esplora_url:
+            return False
+        if self.poll_interval_ms != other.poll_interval_ms:
+            return False
+        if self.fee_sat_per_vb != other.fee_sat_per_vb:
+            return False
+        if self.quote_ttl_secs != other.quote_ttl_secs:
+            return False
+        if self.maker_timeout_ms != other.maker_timeout_ms:
+            return False
+        return True
+
+
+class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return KaleidoSwapOptions(
+            network=_UniffiConverterTypeNetwork.read(buf),
+            store=_UniffiConverterTypeSwapStore.read(buf),
+            signer=_UniffiConverterTypeSwapSigner.read(buf),
+            maker_url=_UniffiConverterOptionalString.read(buf),
+            bitcoin_esplora_url=_UniffiConverterOptionalString.read(buf),
+            liquid_esplora_url=_UniffiConverterOptionalString.read(buf),
+            poll_interval_ms=_UniffiConverterOptionalUInt64.read(buf),
+            fee_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            quote_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
+            maker_timeout_ms=_UniffiConverterOptionalUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeNetwork.check_lower(value.network)
+        _UniffiConverterTypeSwapStore.check_lower(value.store)
+        _UniffiConverterTypeSwapSigner.check_lower(value.signer)
+        _UniffiConverterOptionalString.check_lower(value.maker_url)
+        _UniffiConverterOptionalString.check_lower(value.bitcoin_esplora_url)
+        _UniffiConverterOptionalString.check_lower(value.liquid_esplora_url)
+        _UniffiConverterOptionalUInt64.check_lower(value.poll_interval_ms)
+        _UniffiConverterOptionalDouble.check_lower(value.fee_sat_per_vb)
+        _UniffiConverterOptionalUInt64.check_lower(value.quote_ttl_secs)
+        _UniffiConverterOptionalUInt64.check_lower(value.maker_timeout_ms)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeNetwork.write(value.network, buf)
+        _UniffiConverterTypeSwapStore.write(value.store, buf)
+        _UniffiConverterTypeSwapSigner.write(value.signer, buf)
+        _UniffiConverterOptionalString.write(value.maker_url, buf)
+        _UniffiConverterOptionalString.write(value.bitcoin_esplora_url, buf)
+        _UniffiConverterOptionalString.write(value.liquid_esplora_url, buf)
+        _UniffiConverterOptionalUInt64.write(value.poll_interval_ms, buf)
+        _UniffiConverterOptionalDouble.write(value.fee_sat_per_vb, buf)
+        _UniffiConverterOptionalUInt64.write(value.quote_ttl_secs, buf)
+        _UniffiConverterOptionalUInt64.write(value.maker_timeout_ms, buf)
+
+
 class Leaf:
     output: "str"
     version: "int"
@@ -6439,6 +7321,44 @@ class _UniffiConverterTypeLightningSendRequest(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.invoice, buf)
         _UniffiConverterString.write(value.refund_address, buf)
         _UniffiConverterString.write(value.client_refund_pubkey, buf)
+
+
+class Limits:
+    min: "int"
+    max: "int"
+
+    def __init__(self, *, min: "int", max: "int"):
+        self.min = min
+        self.max = max
+
+    def __str__(self):
+        return "Limits(min={}, max={})".format(self.min, self.max)
+
+    def __eq__(self, other):
+        if self.min != other.min:
+            return False
+        if self.max != other.max:
+            return False
+        return True
+
+
+class _UniffiConverterTypeLimits(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return Limits(
+            min=_UniffiConverterUInt64.read(buf),
+            max=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterUInt64.check_lower(value.min)
+        _UniffiConverterUInt64.check_lower(value.max)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterUInt64.write(value.min, buf)
+        _UniffiConverterUInt64.write(value.max, buf)
 
 
 class LiquidOutputSecrets:
@@ -6948,6 +7868,212 @@ class _UniffiConverterTypePairMinerFees(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.write(value.claim, buf)
 
 
+class Quote:
+    protocol: "Protocol"
+    from_asset: "AssetId"
+    to_asset: "AssetId"
+    from_amount: "int"
+    to_amount: "int"
+    fees: "Fees"
+    limits: "Limits"
+    expires_at: "int"
+    binding: "QuoteBinding"
+
+    def __init__(
+        self,
+        *,
+        protocol: "Protocol",
+        from_asset: "AssetId",
+        to_asset: "AssetId",
+        from_amount: "int",
+        to_amount: "int",
+        fees: "Fees",
+        limits: "Limits",
+        expires_at: "int",
+        binding: "QuoteBinding",
+    ):
+        self.protocol = protocol
+        self.from_asset = from_asset
+        self.to_asset = to_asset
+        self.from_amount = from_amount
+        self.to_amount = to_amount
+        self.fees = fees
+        self.limits = limits
+        self.expires_at = expires_at
+        self.binding = binding
+
+    def __str__(self):
+        return "Quote(protocol={}, from_asset={}, to_asset={}, from_amount={}, to_amount={}, fees={}, limits={}, expires_at={}, binding={})".format(
+            self.protocol,
+            self.from_asset,
+            self.to_asset,
+            self.from_amount,
+            self.to_amount,
+            self.fees,
+            self.limits,
+            self.expires_at,
+            self.binding,
+        )
+
+    def __eq__(self, other):
+        if self.protocol != other.protocol:
+            return False
+        if self.from_asset != other.from_asset:
+            return False
+        if self.to_asset != other.to_asset:
+            return False
+        if self.from_amount != other.from_amount:
+            return False
+        if self.to_amount != other.to_amount:
+            return False
+        if self.fees != other.fees:
+            return False
+        if self.limits != other.limits:
+            return False
+        if self.expires_at != other.expires_at:
+            return False
+        if self.binding != other.binding:
+            return False
+        return True
+
+
+class _UniffiConverterTypeQuote(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return Quote(
+            protocol=_UniffiConverterTypeProtocol.read(buf),
+            from_asset=_UniffiConverterTypeAssetId.read(buf),
+            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            from_amount=_UniffiConverterUInt64.read(buf),
+            to_amount=_UniffiConverterUInt64.read(buf),
+            fees=_UniffiConverterTypeFees.read(buf),
+            limits=_UniffiConverterTypeLimits.read(buf),
+            expires_at=_UniffiConverterUInt64.read(buf),
+            binding=_UniffiConverterTypeQuoteBinding.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeProtocol.check_lower(value.protocol)
+        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
+        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterUInt64.check_lower(value.from_amount)
+        _UniffiConverterUInt64.check_lower(value.to_amount)
+        _UniffiConverterTypeFees.check_lower(value.fees)
+        _UniffiConverterTypeLimits.check_lower(value.limits)
+        _UniffiConverterUInt64.check_lower(value.expires_at)
+        _UniffiConverterTypeQuoteBinding.check_lower(value.binding)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeProtocol.write(value.protocol, buf)
+        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
+        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterUInt64.write(value.from_amount, buf)
+        _UniffiConverterUInt64.write(value.to_amount, buf)
+        _UniffiConverterTypeFees.write(value.fees, buf)
+        _UniffiConverterTypeLimits.write(value.limits, buf)
+        _UniffiConverterUInt64.write(value.expires_at, buf)
+        _UniffiConverterTypeQuoteBinding.write(value.binding, buf)
+
+
+class QuoteAnswer:
+    """
+    Exactly one of the two is set.
+    """
+
+    quote: "typing.Optional[Quote]"
+    refusal: "typing.Optional[Refusal]"
+
+    def __init__(
+        self, *, quote: "typing.Optional[Quote]", refusal: "typing.Optional[Refusal]"
+    ):
+        self.quote = quote
+        self.refusal = refusal
+
+    def __str__(self):
+        return "QuoteAnswer(quote={}, refusal={})".format(self.quote, self.refusal)
+
+    def __eq__(self, other):
+        if self.quote != other.quote:
+            return False
+        if self.refusal != other.refusal:
+            return False
+        return True
+
+
+class _UniffiConverterTypeQuoteAnswer(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return QuoteAnswer(
+            quote=_UniffiConverterOptionalTypeQuote.read(buf),
+            refusal=_UniffiConverterOptionalTypeRefusal.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalTypeQuote.check_lower(value.quote)
+        _UniffiConverterOptionalTypeRefusal.check_lower(value.refusal)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalTypeQuote.write(value.quote, buf)
+        _UniffiConverterOptionalTypeRefusal.write(value.refusal, buf)
+
+
+class QuoteBinding:
+    pair_hash: "str"
+    invoice: "typing.Optional[str]"
+    zero_conf_limit: "int"
+
+    def __init__(
+        self,
+        *,
+        pair_hash: "str",
+        invoice: "typing.Optional[str]",
+        zero_conf_limit: "int",
+    ):
+        self.pair_hash = pair_hash
+        self.invoice = invoice
+        self.zero_conf_limit = zero_conf_limit
+
+    def __str__(self):
+        return "QuoteBinding(pair_hash={}, invoice={}, zero_conf_limit={})".format(
+            self.pair_hash, self.invoice, self.zero_conf_limit
+        )
+
+    def __eq__(self, other):
+        if self.pair_hash != other.pair_hash:
+            return False
+        if self.invoice != other.invoice:
+            return False
+        if self.zero_conf_limit != other.zero_conf_limit:
+            return False
+        return True
+
+
+class _UniffiConverterTypeQuoteBinding(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return QuoteBinding(
+            pair_hash=_UniffiConverterString.read(buf),
+            invoice=_UniffiConverterOptionalString.read(buf),
+            zero_conf_limit=_UniffiConverterUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.pair_hash)
+        _UniffiConverterOptionalString.check_lower(value.invoice)
+        _UniffiConverterUInt64.check_lower(value.zero_conf_limit)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.pair_hash, buf)
+        _UniffiConverterOptionalString.write(value.invoice, buf)
+        _UniffiConverterUInt64.write(value.zero_conf_limit, buf)
+
+
 class QuoteProfile:
     payment_hash: "typing.Optional[str]"
     lockup_address: "typing.Optional[str]"
@@ -7019,6 +8145,75 @@ class _UniffiConverterTypeQuoteProfile(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.invoice, buf)
         _UniffiConverterOptionalString.write(value.receiver_pk_script, buf)
         _UniffiConverterOptionalString.write(value.solver_refund_pk_script, buf)
+
+
+class QuoteRequest:
+    from_asset: "AssetId"
+    to_asset: "AssetId"
+    side: "typing.Optional[QuoteSide]"
+    amount: "typing.Optional[int]"
+    invoice: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        from_asset: "AssetId",
+        to_asset: "AssetId",
+        side: "typing.Optional[QuoteSide]",
+        amount: "typing.Optional[int]",
+        invoice: "typing.Optional[str]",
+    ):
+        self.from_asset = from_asset
+        self.to_asset = to_asset
+        self.side = side
+        self.amount = amount
+        self.invoice = invoice
+
+    def __str__(self):
+        return "QuoteRequest(from_asset={}, to_asset={}, side={}, amount={}, invoice={})".format(
+            self.from_asset, self.to_asset, self.side, self.amount, self.invoice
+        )
+
+    def __eq__(self, other):
+        if self.from_asset != other.from_asset:
+            return False
+        if self.to_asset != other.to_asset:
+            return False
+        if self.side != other.side:
+            return False
+        if self.amount != other.amount:
+            return False
+        if self.invoice != other.invoice:
+            return False
+        return True
+
+
+class _UniffiConverterTypeQuoteRequest(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return QuoteRequest(
+            from_asset=_UniffiConverterTypeAssetId.read(buf),
+            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            side=_UniffiConverterOptionalTypeQuoteSide.read(buf),
+            amount=_UniffiConverterOptionalUInt64.read(buf),
+            invoice=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
+        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterOptionalTypeQuoteSide.check_lower(value.side)
+        _UniffiConverterOptionalUInt64.check_lower(value.amount)
+        _UniffiConverterOptionalString.check_lower(value.invoice)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
+        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterOptionalTypeQuoteSide.write(value.side, buf)
+        _UniffiConverterOptionalUInt64.write(value.amount, buf)
+        _UniffiConverterOptionalString.write(value.invoice, buf)
 
 
 class RefundDetails:
@@ -7131,6 +8326,196 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.server_public_key, buf)
         _UniffiConverterUInt32.write(value.timeout_block_height, buf)
         _UniffiConverterOptionalString.write(value.blinding_key, buf)
+
+
+class Refusal:
+    from_asset: "AssetId"
+    to_asset: "AssetId"
+    reason: "QuoteRefusalReason"
+    limits: "typing.Optional[Limits]"
+    message: "str"
+
+    def __init__(
+        self,
+        *,
+        from_asset: "AssetId",
+        to_asset: "AssetId",
+        reason: "QuoteRefusalReason",
+        limits: "typing.Optional[Limits]",
+        message: "str",
+    ):
+        self.from_asset = from_asset
+        self.to_asset = to_asset
+        self.reason = reason
+        self.limits = limits
+        self.message = message
+
+    def __str__(self):
+        return "Refusal(from_asset={}, to_asset={}, reason={}, limits={}, message={})".format(
+            self.from_asset, self.to_asset, self.reason, self.limits, self.message
+        )
+
+    def __eq__(self, other):
+        if self.from_asset != other.from_asset:
+            return False
+        if self.to_asset != other.to_asset:
+            return False
+        if self.reason != other.reason:
+            return False
+        if self.limits != other.limits:
+            return False
+        if self.message != other.message:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRefusal(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return Refusal(
+            from_asset=_UniffiConverterTypeAssetId.read(buf),
+            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            reason=_UniffiConverterTypeQuoteRefusalReason.read(buf),
+            limits=_UniffiConverterOptionalTypeLimits.read(buf),
+            message=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
+        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterTypeQuoteRefusalReason.check_lower(value.reason)
+        _UniffiConverterOptionalTypeLimits.check_lower(value.limits)
+        _UniffiConverterString.check_lower(value.message)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
+        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterTypeQuoteRefusalReason.write(value.reason, buf)
+        _UniffiConverterOptionalTypeLimits.write(value.limits, buf)
+        _UniffiConverterString.write(value.message, buf)
+
+
+class ResumeFailure:
+    """
+    A swap one `resume` pass could not move, with why. It stays in the store;
+    the other swaps are resumed regardless.
+    """
+
+    id: "str"
+    code: "SwapErrorCode"
+    message: "str"
+
+    def __init__(self, *, id: "str", code: "SwapErrorCode", message: "str"):
+        self.id = id
+        self.code = code
+        self.message = message
+
+    def __str__(self):
+        return "ResumeFailure(id={}, code={}, message={})".format(
+            self.id, self.code, self.message
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.code != other.code:
+            return False
+        if self.message != other.message:
+            return False
+        return True
+
+
+class _UniffiConverterTypeResumeFailure(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ResumeFailure(
+            id=_UniffiConverterString.read(buf),
+            code=_UniffiConverterTypeSwapErrorCode.read(buf),
+            message=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterTypeSwapErrorCode.check_lower(value.code)
+        _UniffiConverterString.check_lower(value.message)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterTypeSwapErrorCode.write(value.code, buf)
+        _UniffiConverterString.write(value.message, buf)
+
+
+class ResumeReport:
+    resumed: "typing.List[Swap]"
+    settled: "typing.List[SwapRecord]"
+    refunded: "typing.List[SwapRecord]"
+    failed: "typing.List[SwapRecord]"
+    errors: "typing.List[ResumeFailure]"
+
+    def __init__(
+        self,
+        *,
+        resumed: "typing.List[Swap]",
+        settled: "typing.List[SwapRecord]",
+        refunded: "typing.List[SwapRecord]",
+        failed: "typing.List[SwapRecord]",
+        errors: "typing.List[ResumeFailure]",
+    ):
+        self.resumed = resumed
+        self.settled = settled
+        self.refunded = refunded
+        self.failed = failed
+        self.errors = errors
+
+    def __str__(self):
+        return "ResumeReport(resumed={}, settled={}, refunded={}, failed={}, errors={})".format(
+            self.resumed, self.settled, self.refunded, self.failed, self.errors
+        )
+
+    def __eq__(self, other):
+        if self.resumed != other.resumed:
+            return False
+        if self.settled != other.settled:
+            return False
+        if self.refunded != other.refunded:
+            return False
+        if self.failed != other.failed:
+            return False
+        if self.errors != other.errors:
+            return False
+        return True
+
+
+class _UniffiConverterTypeResumeReport(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ResumeReport(
+            resumed=_UniffiConverterSequenceTypeSwap.read(buf),
+            settled=_UniffiConverterSequenceTypeSwapRecord.read(buf),
+            refunded=_UniffiConverterSequenceTypeSwapRecord.read(buf),
+            failed=_UniffiConverterSequenceTypeSwapRecord.read(buf),
+            errors=_UniffiConverterSequenceTypeResumeFailure.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterSequenceTypeSwap.check_lower(value.resumed)
+        _UniffiConverterSequenceTypeSwapRecord.check_lower(value.settled)
+        _UniffiConverterSequenceTypeSwapRecord.check_lower(value.refunded)
+        _UniffiConverterSequenceTypeSwapRecord.check_lower(value.failed)
+        _UniffiConverterSequenceTypeResumeFailure.check_lower(value.errors)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterSequenceTypeSwap.write(value.resumed, buf)
+        _UniffiConverterSequenceTypeSwapRecord.write(value.settled, buf)
+        _UniffiConverterSequenceTypeSwapRecord.write(value.refunded, buf)
+        _UniffiConverterSequenceTypeSwapRecord.write(value.failed, buf)
+        _UniffiConverterSequenceTypeResumeFailure.write(value.errors, buf)
 
 
 class ReverseFees:
@@ -8172,6 +9557,51 @@ class _UniffiConverterTypeRgbPsbtTemplate(_UniffiConverterRustBuffer):
         _UniffiConverterBool.write(value.requires_funding, buf)
 
 
+class StartOptions:
+    destination: "typing.Optional[str]"
+    refund_address: "typing.Optional[str]"
+
+    def __init__(
+        self,
+        *,
+        destination: "typing.Optional[str]",
+        refund_address: "typing.Optional[str]",
+    ):
+        self.destination = destination
+        self.refund_address = refund_address
+
+    def __str__(self):
+        return "StartOptions(destination={}, refund_address={})".format(
+            self.destination, self.refund_address
+        )
+
+    def __eq__(self, other):
+        if self.destination != other.destination:
+            return False
+        if self.refund_address != other.refund_address:
+            return False
+        return True
+
+
+class _UniffiConverterTypeStartOptions(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return StartOptions(
+            destination=_UniffiConverterOptionalString.read(buf),
+            refund_address=_UniffiConverterOptionalString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.destination)
+        _UniffiConverterOptionalString.check_lower(value.refund_address)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalString.write(value.destination, buf)
+        _UniffiConverterOptionalString.write(value.refund_address, buf)
+
+
 class SubmarineFees:
     percentage: "float"
     """
@@ -8494,6 +9924,70 @@ class _UniffiConverterTypeSubmarineSwapTxResp(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt32.write(value.timeout_eta, buf)
 
 
+class SwapAction:
+    invoice: "typing.Optional[str]"
+    funding_address: "typing.Optional[str]"
+    funding_amount: "typing.Optional[int]"
+    zero_conf_limit: "typing.Optional[int]"
+
+    def __init__(
+        self,
+        *,
+        invoice: "typing.Optional[str]",
+        funding_address: "typing.Optional[str]",
+        funding_amount: "typing.Optional[int]",
+        zero_conf_limit: "typing.Optional[int]",
+    ):
+        self.invoice = invoice
+        self.funding_address = funding_address
+        self.funding_amount = funding_amount
+        self.zero_conf_limit = zero_conf_limit
+
+    def __str__(self):
+        return "SwapAction(invoice={}, funding_address={}, funding_amount={}, zero_conf_limit={})".format(
+            self.invoice,
+            self.funding_address,
+            self.funding_amount,
+            self.zero_conf_limit,
+        )
+
+    def __eq__(self, other):
+        if self.invoice != other.invoice:
+            return False
+        if self.funding_address != other.funding_address:
+            return False
+        if self.funding_amount != other.funding_amount:
+            return False
+        if self.zero_conf_limit != other.zero_conf_limit:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSwapAction(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SwapAction(
+            invoice=_UniffiConverterOptionalString.read(buf),
+            funding_address=_UniffiConverterOptionalString.read(buf),
+            funding_amount=_UniffiConverterOptionalUInt64.read(buf),
+            zero_conf_limit=_UniffiConverterOptionalUInt64.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalString.check_lower(value.invoice)
+        _UniffiConverterOptionalString.check_lower(value.funding_address)
+        _UniffiConverterOptionalUInt64.check_lower(value.funding_amount)
+        _UniffiConverterOptionalUInt64.check_lower(value.zero_conf_limit)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalString.write(value.invoice, buf)
+        _UniffiConverterOptionalString.write(value.funding_address, buf)
+        _UniffiConverterOptionalUInt64.write(value.funding_amount, buf)
+        _UniffiConverterOptionalUInt64.write(value.zero_conf_limit, buf)
+
+
 class SwapEvent:
     kind: "str"
     """
@@ -8625,6 +10119,138 @@ class _UniffiConverterTypeSwapPayoutStatus(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.destination, buf)
         _UniffiConverterOptionalString.write(value.layer, buf)
         _UniffiConverterOptionalString.write(value.reference, buf)
+
+
+class SwapRecord:
+    """
+    The persisted record: the fields worth showing, plus the whole record as
+    JSON — which is what a store keeps and what rebuilds the swap later.
+    """
+
+    id: "str"
+    protocol: "Protocol"
+    network: "Network"
+    maker_url: "str"
+    from_asset: "AssetId"
+    to_asset: "AssetId"
+    phase: "SwapPhase"
+    raw_status: "str"
+    created_at: "int"
+    updated_at: "int"
+    json: "str"
+
+    def __init__(
+        self,
+        *,
+        id: "str",
+        protocol: "Protocol",
+        network: "Network",
+        maker_url: "str",
+        from_asset: "AssetId",
+        to_asset: "AssetId",
+        phase: "SwapPhase",
+        raw_status: "str",
+        created_at: "int",
+        updated_at: "int",
+        json: "str",
+    ):
+        self.id = id
+        self.protocol = protocol
+        self.network = network
+        self.maker_url = maker_url
+        self.from_asset = from_asset
+        self.to_asset = to_asset
+        self.phase = phase
+        self.raw_status = raw_status
+        self.created_at = created_at
+        self.updated_at = updated_at
+        self.json = json
+
+    def __str__(self):
+        return "SwapRecord(id={}, protocol={}, network={}, maker_url={}, from_asset={}, to_asset={}, phase={}, raw_status={}, created_at={}, updated_at={}, json={})".format(
+            self.id,
+            self.protocol,
+            self.network,
+            self.maker_url,
+            self.from_asset,
+            self.to_asset,
+            self.phase,
+            self.raw_status,
+            self.created_at,
+            self.updated_at,
+            self.json,
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.protocol != other.protocol:
+            return False
+        if self.network != other.network:
+            return False
+        if self.maker_url != other.maker_url:
+            return False
+        if self.from_asset != other.from_asset:
+            return False
+        if self.to_asset != other.to_asset:
+            return False
+        if self.phase != other.phase:
+            return False
+        if self.raw_status != other.raw_status:
+            return False
+        if self.created_at != other.created_at:
+            return False
+        if self.updated_at != other.updated_at:
+            return False
+        if self.json != other.json:
+            return False
+        return True
+
+
+class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return SwapRecord(
+            id=_UniffiConverterString.read(buf),
+            protocol=_UniffiConverterTypeProtocol.read(buf),
+            network=_UniffiConverterTypeNetwork.read(buf),
+            maker_url=_UniffiConverterString.read(buf),
+            from_asset=_UniffiConverterTypeAssetId.read(buf),
+            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            phase=_UniffiConverterTypeSwapPhase.read(buf),
+            raw_status=_UniffiConverterString.read(buf),
+            created_at=_UniffiConverterUInt64.read(buf),
+            updated_at=_UniffiConverterUInt64.read(buf),
+            json=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterTypeProtocol.check_lower(value.protocol)
+        _UniffiConverterTypeNetwork.check_lower(value.network)
+        _UniffiConverterString.check_lower(value.maker_url)
+        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
+        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterTypeSwapPhase.check_lower(value.phase)
+        _UniffiConverterString.check_lower(value.raw_status)
+        _UniffiConverterUInt64.check_lower(value.created_at)
+        _UniffiConverterUInt64.check_lower(value.updated_at)
+        _UniffiConverterString.check_lower(value.json)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterTypeProtocol.write(value.protocol, buf)
+        _UniffiConverterTypeNetwork.write(value.network, buf)
+        _UniffiConverterString.write(value.maker_url, buf)
+        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
+        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterTypeSwapPhase.write(value.phase, buf)
+        _UniffiConverterString.write(value.raw_status, buf)
+        _UniffiConverterUInt64.write(value.created_at, buf)
+        _UniffiConverterUInt64.write(value.updated_at, buf)
+        _UniffiConverterString.write(value.json, buf)
 
 
 class SwapRestoreIndexResponse:
@@ -9305,6 +10931,62 @@ class _UniffiConverterTypeAmountSide(_UniffiConverterRustBuffer):
             buf.write_i32(2)
 
 
+class AssetId(enum.Enum):
+    BITCOIN_BTC = 0
+
+    LIGHTNING_BTC = 1
+
+    LIQUID_BTC = 2
+
+    LIQUID_USDT = 3
+
+    ARKADE_BTC = 4
+
+
+class _UniffiConverterTypeAssetId(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return AssetId.BITCOIN_BTC
+        if variant == 2:
+            return AssetId.LIGHTNING_BTC
+        if variant == 3:
+            return AssetId.LIQUID_BTC
+        if variant == 4:
+            return AssetId.LIQUID_USDT
+        if variant == 5:
+            return AssetId.ARKADE_BTC
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == AssetId.BITCOIN_BTC:
+            return
+        if value == AssetId.LIGHTNING_BTC:
+            return
+        if value == AssetId.LIQUID_BTC:
+            return
+        if value == AssetId.LIQUID_USDT:
+            return
+        if value == AssetId.ARKADE_BTC:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == AssetId.BITCOIN_BTC:
+            buf.write_i32(1)
+        if value == AssetId.LIGHTNING_BTC:
+            buf.write_i32(2)
+        if value == AssetId.LIQUID_BTC:
+            buf.write_i32(3)
+        if value == AssetId.LIQUID_USDT:
+            buf.write_i32(4)
+        if value == AssetId.ARKADE_BTC:
+            buf.write_i32(5)
+
+
 class AtomicAmountDirection(enum.Enum):
     FROM = 0
 
@@ -9809,6 +11491,26 @@ class Error:  # type: ignore
 
     _UniffiTempError.RgbFeeInputRequired = RgbFeeInputRequired  # type: ignore
 
+    class Swap(_UniffiTempError):
+        def __init__(self, code, message, swap_id):
+            super().__init__(
+                ", ".join(
+                    [
+                        "code={!r}".format(code),
+                        "message={!r}".format(message),
+                        "swap_id={!r}".format(swap_id),
+                    ]
+                )
+            )
+            self.code = code
+            self.message = message
+            self.swap_id = swap_id
+
+        def __repr__(self):
+            return "Error.Swap({})".format(str(self))
+
+    _UniffiTempError.Swap = Swap  # type: ignore
+
 
 Error = _UniffiTempError  # type: ignore
 del _UniffiTempError
@@ -9830,6 +11532,12 @@ class _UniffiConverterTypeError(_UniffiConverterRustBuffer):
             )
         if variant == 4:
             return Error.RgbFeeInputRequired()
+        if variant == 5:
+            return Error.Swap(
+                _UniffiConverterTypeSwapErrorCode.read(buf),
+                _UniffiConverterString.read(buf),
+                _UniffiConverterOptionalString.read(buf),
+            )
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -9844,6 +11552,11 @@ class _UniffiConverterTypeError(_UniffiConverterRustBuffer):
             return
         if isinstance(value, Error.RgbFeeInputRequired):
             return
+        if isinstance(value, Error.Swap):
+            _UniffiConverterTypeSwapErrorCode.check_lower(value.code)
+            _UniffiConverterString.check_lower(value.message)
+            _UniffiConverterOptionalString.check_lower(value.swap_id)
+            return
 
     @staticmethod
     def write(value, buf):
@@ -9857,6 +11570,11 @@ class _UniffiConverterTypeError(_UniffiConverterRustBuffer):
             _UniffiConverterString.write(value._values[0], buf)
         if isinstance(value, Error.RgbFeeInputRequired):
             buf.write_i32(4)
+        if isinstance(value, Error.Swap):
+            buf.write_i32(5)
+            _UniffiConverterTypeSwapErrorCode.write(value.code, buf)
+            _UniffiConverterString.write(value.message, buf)
+            _UniffiConverterOptionalString.write(value.swap_id, buf)
 
 
 class Fee:
@@ -10054,6 +11772,142 @@ class _UniffiConverterTypeNetwork(_UniffiConverterRustBuffer):
             buf.write_i32(3)
         if value == Network.SIGNET:
             buf.write_i32(4)
+
+
+class Protocol(enum.Enum):
+    BOLTZ_SUBMARINE = 0
+
+    BOLTZ_REVERSE = 1
+
+    ARKADE_RFQ = 2
+
+    PAY_THROUGH = 3
+
+
+class _UniffiConverterTypeProtocol(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return Protocol.BOLTZ_SUBMARINE
+        if variant == 2:
+            return Protocol.BOLTZ_REVERSE
+        if variant == 3:
+            return Protocol.ARKADE_RFQ
+        if variant == 4:
+            return Protocol.PAY_THROUGH
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == Protocol.BOLTZ_SUBMARINE:
+            return
+        if value == Protocol.BOLTZ_REVERSE:
+            return
+        if value == Protocol.ARKADE_RFQ:
+            return
+        if value == Protocol.PAY_THROUGH:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == Protocol.BOLTZ_SUBMARINE:
+            buf.write_i32(1)
+        if value == Protocol.BOLTZ_REVERSE:
+            buf.write_i32(2)
+        if value == Protocol.ARKADE_RFQ:
+            buf.write_i32(3)
+        if value == Protocol.PAY_THROUGH:
+            buf.write_i32(4)
+
+
+class QuoteRefusalReason(enum.Enum):
+    PAIR_UNAVAILABLE = 0
+
+    AMOUNT_BELOW_MIN = 1
+
+    AMOUNT_ABOVE_MAX = 2
+
+    NO_LIQUIDITY = 3
+
+    MAKER_PAUSED = 4
+
+
+class _UniffiConverterTypeQuoteRefusalReason(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return QuoteRefusalReason.PAIR_UNAVAILABLE
+        if variant == 2:
+            return QuoteRefusalReason.AMOUNT_BELOW_MIN
+        if variant == 3:
+            return QuoteRefusalReason.AMOUNT_ABOVE_MAX
+        if variant == 4:
+            return QuoteRefusalReason.NO_LIQUIDITY
+        if variant == 5:
+            return QuoteRefusalReason.MAKER_PAUSED
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == QuoteRefusalReason.PAIR_UNAVAILABLE:
+            return
+        if value == QuoteRefusalReason.AMOUNT_BELOW_MIN:
+            return
+        if value == QuoteRefusalReason.AMOUNT_ABOVE_MAX:
+            return
+        if value == QuoteRefusalReason.NO_LIQUIDITY:
+            return
+        if value == QuoteRefusalReason.MAKER_PAUSED:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == QuoteRefusalReason.PAIR_UNAVAILABLE:
+            buf.write_i32(1)
+        if value == QuoteRefusalReason.AMOUNT_BELOW_MIN:
+            buf.write_i32(2)
+        if value == QuoteRefusalReason.AMOUNT_ABOVE_MAX:
+            buf.write_i32(3)
+        if value == QuoteRefusalReason.NO_LIQUIDITY:
+            buf.write_i32(4)
+        if value == QuoteRefusalReason.MAKER_PAUSED:
+            buf.write_i32(5)
+
+
+class QuoteSide(enum.Enum):
+    FROM = 0
+
+    TO = 1
+
+
+class _UniffiConverterTypeQuoteSide(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return QuoteSide.FROM
+        if variant == 2:
+            return QuoteSide.TO
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == QuoteSide.FROM:
+            return
+        if value == QuoteSide.TO:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == QuoteSide.FROM:
+            buf.write_i32(1)
+        if value == QuoteSide.TO:
+            buf.write_i32(2)
 
 
 class RefusalReason(enum.Enum):
@@ -10463,6 +12317,238 @@ class _UniffiConverterTypeSubSwapStates(_UniffiConverterRustBuffer):
             buf.write_i32(11)
 
 
+class SwapErrorCode(enum.Enum):
+    INVALID_AMOUNT = 0
+
+    AMOUNT_OUT_OF_LIMITS = 1
+
+    PAIR_UNAVAILABLE = 2
+
+    QUOTE_EXPIRED = 3
+
+    WRONG_NETWORK_ADDRESS = 4
+
+    INVALID_DESTINATION = 5
+
+    REFUND_ADDRESS_REQUIRED = 6
+
+    LOCKUP_MISMATCH = 7
+
+    MAKER_UNREACHABLE = 8
+
+    MAKER_REJECTED = 9
+
+    SWAP_EXPIRED = 10
+
+    SWAP_FAILED = 11
+
+    SWAP_NOT_FOUND = 12
+
+    STORE_FAILED = 13
+
+    ABORTED = 14
+
+
+class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return SwapErrorCode.INVALID_AMOUNT
+        if variant == 2:
+            return SwapErrorCode.AMOUNT_OUT_OF_LIMITS
+        if variant == 3:
+            return SwapErrorCode.PAIR_UNAVAILABLE
+        if variant == 4:
+            return SwapErrorCode.QUOTE_EXPIRED
+        if variant == 5:
+            return SwapErrorCode.WRONG_NETWORK_ADDRESS
+        if variant == 6:
+            return SwapErrorCode.INVALID_DESTINATION
+        if variant == 7:
+            return SwapErrorCode.REFUND_ADDRESS_REQUIRED
+        if variant == 8:
+            return SwapErrorCode.LOCKUP_MISMATCH
+        if variant == 9:
+            return SwapErrorCode.MAKER_UNREACHABLE
+        if variant == 10:
+            return SwapErrorCode.MAKER_REJECTED
+        if variant == 11:
+            return SwapErrorCode.SWAP_EXPIRED
+        if variant == 12:
+            return SwapErrorCode.SWAP_FAILED
+        if variant == 13:
+            return SwapErrorCode.SWAP_NOT_FOUND
+        if variant == 14:
+            return SwapErrorCode.STORE_FAILED
+        if variant == 15:
+            return SwapErrorCode.ABORTED
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == SwapErrorCode.INVALID_AMOUNT:
+            return
+        if value == SwapErrorCode.AMOUNT_OUT_OF_LIMITS:
+            return
+        if value == SwapErrorCode.PAIR_UNAVAILABLE:
+            return
+        if value == SwapErrorCode.QUOTE_EXPIRED:
+            return
+        if value == SwapErrorCode.WRONG_NETWORK_ADDRESS:
+            return
+        if value == SwapErrorCode.INVALID_DESTINATION:
+            return
+        if value == SwapErrorCode.REFUND_ADDRESS_REQUIRED:
+            return
+        if value == SwapErrorCode.LOCKUP_MISMATCH:
+            return
+        if value == SwapErrorCode.MAKER_UNREACHABLE:
+            return
+        if value == SwapErrorCode.MAKER_REJECTED:
+            return
+        if value == SwapErrorCode.SWAP_EXPIRED:
+            return
+        if value == SwapErrorCode.SWAP_FAILED:
+            return
+        if value == SwapErrorCode.SWAP_NOT_FOUND:
+            return
+        if value == SwapErrorCode.STORE_FAILED:
+            return
+        if value == SwapErrorCode.ABORTED:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == SwapErrorCode.INVALID_AMOUNT:
+            buf.write_i32(1)
+        if value == SwapErrorCode.AMOUNT_OUT_OF_LIMITS:
+            buf.write_i32(2)
+        if value == SwapErrorCode.PAIR_UNAVAILABLE:
+            buf.write_i32(3)
+        if value == SwapErrorCode.QUOTE_EXPIRED:
+            buf.write_i32(4)
+        if value == SwapErrorCode.WRONG_NETWORK_ADDRESS:
+            buf.write_i32(5)
+        if value == SwapErrorCode.INVALID_DESTINATION:
+            buf.write_i32(6)
+        if value == SwapErrorCode.REFUND_ADDRESS_REQUIRED:
+            buf.write_i32(7)
+        if value == SwapErrorCode.LOCKUP_MISMATCH:
+            buf.write_i32(8)
+        if value == SwapErrorCode.MAKER_UNREACHABLE:
+            buf.write_i32(9)
+        if value == SwapErrorCode.MAKER_REJECTED:
+            buf.write_i32(10)
+        if value == SwapErrorCode.SWAP_EXPIRED:
+            buf.write_i32(11)
+        if value == SwapErrorCode.SWAP_FAILED:
+            buf.write_i32(12)
+        if value == SwapErrorCode.SWAP_NOT_FOUND:
+            buf.write_i32(13)
+        if value == SwapErrorCode.STORE_FAILED:
+            buf.write_i32(14)
+        if value == SwapErrorCode.ABORTED:
+            buf.write_i32(15)
+
+
+class SwapPhase(enum.Enum):
+    CREATED = 0
+
+    AWAITING_FUNDING = 1
+
+    FUNDED = 2
+
+    LOCKED = 3
+
+    CLAIMING = 4
+
+    SETTLED = 5
+
+    REFUNDABLE = 6
+
+    REFUNDING = 7
+
+    REFUNDED = 8
+
+    FAILED = 9
+
+
+class _UniffiConverterTypeSwapPhase(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return SwapPhase.CREATED
+        if variant == 2:
+            return SwapPhase.AWAITING_FUNDING
+        if variant == 3:
+            return SwapPhase.FUNDED
+        if variant == 4:
+            return SwapPhase.LOCKED
+        if variant == 5:
+            return SwapPhase.CLAIMING
+        if variant == 6:
+            return SwapPhase.SETTLED
+        if variant == 7:
+            return SwapPhase.REFUNDABLE
+        if variant == 8:
+            return SwapPhase.REFUNDING
+        if variant == 9:
+            return SwapPhase.REFUNDED
+        if variant == 10:
+            return SwapPhase.FAILED
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value == SwapPhase.CREATED:
+            return
+        if value == SwapPhase.AWAITING_FUNDING:
+            return
+        if value == SwapPhase.FUNDED:
+            return
+        if value == SwapPhase.LOCKED:
+            return
+        if value == SwapPhase.CLAIMING:
+            return
+        if value == SwapPhase.SETTLED:
+            return
+        if value == SwapPhase.REFUNDABLE:
+            return
+        if value == SwapPhase.REFUNDING:
+            return
+        if value == SwapPhase.REFUNDED:
+            return
+        if value == SwapPhase.FAILED:
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value == SwapPhase.CREATED:
+            buf.write_i32(1)
+        if value == SwapPhase.AWAITING_FUNDING:
+            buf.write_i32(2)
+        if value == SwapPhase.FUNDED:
+            buf.write_i32(3)
+        if value == SwapPhase.LOCKED:
+            buf.write_i32(4)
+        if value == SwapPhase.CLAIMING:
+            buf.write_i32(5)
+        if value == SwapPhase.SETTLED:
+            buf.write_i32(6)
+        if value == SwapPhase.REFUNDABLE:
+            buf.write_i32(7)
+        if value == SwapPhase.REFUNDING:
+            buf.write_i32(8)
+        if value == SwapPhase.REFUNDED:
+            buf.write_i32(9)
+        if value == SwapPhase.FAILED:
+            buf.write_i32(10)
+
+
 class SwapRestoreType(enum.Enum):
     REVERSE = 0
 
@@ -10588,6 +12674,32 @@ class _UniffiConverterOptionalUInt64(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterUInt64.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalDouble(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterDouble.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterDouble.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterDouble.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -10880,6 +12992,32 @@ class _UniffiConverterOptionalTypeInternalHopRef(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeLimits(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeLimits.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeLimits.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeLimits.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeMrhDestination(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -10906,6 +13044,32 @@ class _UniffiConverterOptionalTypeMrhDestination(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeQuote(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeQuote.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeQuote.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeQuote.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeRefundDetails(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -10928,6 +13092,32 @@ class _UniffiConverterOptionalTypeRefundDetails(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeRefundDetails.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeRefusal(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeRefusal.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeRefusal.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeRefusal.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -11218,6 +13408,32 @@ class _UniffiConverterOptionalTypeCurrency(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected flag byte for optional type")
 
 
+class _UniffiConverterOptionalTypeQuoteSide(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeQuoteSide.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeQuoteSide.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeQuoteSide.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
 class _UniffiConverterOptionalTypeSide(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -11344,6 +13560,28 @@ class _UniffiConverterSequenceString(_UniffiConverterRustBuffer):
         return [_UniffiConverterString.read(buf) for i in range(count)]
 
 
+class _UniffiConverterSequenceTypeSwap(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeSwap.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeSwap.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeSwap.read(buf) for i in range(count)]
+
+
 class _UniffiConverterSequenceTypeAtomicOutpoint(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -11388,6 +13626,28 @@ class _UniffiConverterSequenceTypeCardMarket(_UniffiConverterRustBuffer):
         return [_UniffiConverterTypeCardMarket.read(buf) for i in range(count)]
 
 
+class _UniffiConverterSequenceTypeResumeFailure(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeResumeFailure.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeResumeFailure.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeResumeFailure.read(buf) for i in range(count)]
+
+
 class _UniffiConverterSequenceTypeRgbAllocation(_UniffiConverterRustBuffer):
     @classmethod
     def check_lower(cls, value):
@@ -11430,6 +13690,28 @@ class _UniffiConverterSequenceTypeSwapEvent(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected negative sequence length")
 
         return [_UniffiConverterTypeSwapEvent.read(buf) for i in range(count)]
+
+
+class _UniffiConverterSequenceTypeSwapRecord(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeSwapRecord.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeSwapRecord.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeSwapRecord.read(buf) for i in range(count)]
 
 
 class _UniffiConverterSequenceTypeSwapRestoreResponse(_UniffiConverterRustBuffer):
@@ -11831,6 +14113,620 @@ class _UniffiConverterTypeSwapEventData:
 
 
 # objects.
+class PhaseListenerProtocol(typing.Protocol):
+    """
+    Called on every phase change while a swap is watched.
+    """
+
+    def on_phase(self, phase: "SwapPhase"):
+        raise NotImplementedError
+
+
+# PhaseListener is a foreign trait so treated like a callback interface, where the
+# primary use-case is the trait being implemented locally.
+# It is a base-class local implementations might subclass.
+
+
+class PhaseListener:
+    """
+    Called on every phase change while a swap is watched.
+    """
+
+    def on_phase(self, phase: "SwapPhase"):
+        raise NotImplementedError
+
+
+# `PhaseListenerImpl` is the implementation for a Rust implemented version.
+class PhaseListenerImpl:
+    """
+    Called on every phase change while a swap is watched.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_phaselistener, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def on_phase(self, phase: "SwapPhase") -> None:
+        _UniffiConverterTypeSwapPhase.check_lower(phase)
+
+        _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_phaselistener_on_phase,
+            self._uniffi_clone_pointer(),
+            _UniffiConverterTypeSwapPhase.lower(phase),
+        )
+
+
+# Put all the bits inside a class to keep the top-level namespace clean
+class _UniffiTraitImplPhaseListener:
+    # For each method, generate a callback function to pass to Rust
+
+    @_UNIFFI_CALLBACK_INTERFACE_PHASE_LISTENER_METHOD0
+    def on_phase(
+        uniffi_handle,
+        phase,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypePhaseListener._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (_UniffiConverterTypeSwapPhase.lift(phase),)
+            method = uniffi_obj.on_phase
+            return method(*args)
+
+        write_return_value = lambda v: None
+        _uniffi_trait_interface_call(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_FREE
+    def _uniffi_free(uniffi_handle):
+        _UniffiConverterTypePhaseListener._handle_map.remove(uniffi_handle)
+
+    # Generate the FFI VTable.  This has a field for each callback interface method.
+    _uniffi_vtable = _UniffiVTableCallbackInterfacePhaseListener(on_phase, _uniffi_free)
+    # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
+    # or else bad things will happen when Rust tries to access it.
+    _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_phaselistener(
+        ctypes.byref(_uniffi_vtable)
+    )
+
+
+class _UniffiConverterTypePhaseListener:
+    _handle_map = _UniffiHandleMap()
+
+    @staticmethod
+    def lift(value: int):
+        return PhaseListenerImpl._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: PhaseListener):
+        pass
+
+    @staticmethod
+    def lower(value: PhaseListenerProtocol):
+        return _UniffiConverterTypePhaseListener._handle_map.insert(value)
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: PhaseListenerProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class SwapSignerProtocol(typing.Protocol):
+    """
+    Derives per-swap material from a root the application owns. Hex in, hex
+    out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
+    `derive_preimage`.
+    """
+
+    def derive_key(self, index: "int"):
+        raise NotImplementedError
+
+    def derive_preimage(self, index: "int"):
+        raise NotImplementedError
+
+
+# SwapSigner is a foreign trait so treated like a callback interface, where the
+# primary use-case is the trait being implemented locally.
+# It is a base-class local implementations might subclass.
+
+
+class SwapSigner:
+    """
+    Derives per-swap material from a root the application owns. Hex in, hex
+    out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
+    `derive_preimage`.
+    """
+
+    def derive_key(self, index: "int"):
+        raise NotImplementedError
+
+    def derive_preimage(self, index: "int"):
+        raise NotImplementedError
+
+
+# `SwapSignerImpl` is the implementation for a Rust implemented version.
+class SwapSignerImpl:
+    """
+    Derives per-swap material from a root the application owns. Hex in, hex
+    out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
+    `derive_preimage`.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapsigner, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapsigner, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def derive_key(self, index: "int") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_key,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+    def derive_preimage(self, index: "int") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+
+# Put all the bits inside a class to keep the top-level namespace clean
+class _UniffiTraitImplSwapSigner:
+    # For each method, generate a callback function to pass to Rust
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD0
+    def derive_key(
+        uniffi_handle,
+        index,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapSigner._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (_UniffiConverterUInt64.lift(index),)
+            method = uniffi_obj.derive_key
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD1
+    def derive_preimage(
+        uniffi_handle,
+        index,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapSigner._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (_UniffiConverterUInt64.lift(index),)
+            method = uniffi_obj.derive_preimage
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_FREE
+    def _uniffi_free(uniffi_handle):
+        _UniffiConverterTypeSwapSigner._handle_map.remove(uniffi_handle)
+
+    # Generate the FFI VTable.  This has a field for each callback interface method.
+    _uniffi_vtable = _UniffiVTableCallbackInterfaceSwapSigner(
+        derive_key, derive_preimage, _uniffi_free
+    )
+    # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
+    # or else bad things will happen when Rust tries to access it.
+    _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner(
+        ctypes.byref(_uniffi_vtable)
+    )
+
+
+class _UniffiConverterTypeSwapSigner:
+    _handle_map = _UniffiHandleMap()
+
+    @staticmethod
+    def lift(value: int):
+        return SwapSignerImpl._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: SwapSigner):
+        pass
+
+    @staticmethod
+    def lower(value: SwapSignerProtocol):
+        return _UniffiConverterTypeSwapSigner._handle_map.insert(value)
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: SwapSignerProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class SwapStoreProtocol(typing.Protocol):
+    """
+    Where the SDK keeps everything a swap needs to finish or unwind after a
+    restart. Records are JSON strings; persist them verbatim. Every write
+    lands before the irreversible step it precedes.
+    """
+
+    def get(self, id: "str"):
+        raise NotImplementedError
+
+    def put(self, id: "str", record_json: "str"):
+        raise NotImplementedError
+
+    def list(
+        self,
+    ):
+        raise NotImplementedError
+
+    def next_index(
+        self,
+    ):
+        """
+        Hands out the next BIP85 child index, exactly once.
+        """
+
+        raise NotImplementedError
+
+
+# SwapStore is a foreign trait so treated like a callback interface, where the
+# primary use-case is the trait being implemented locally.
+# It is a base-class local implementations might subclass.
+
+
+class SwapStore:
+    """
+    Where the SDK keeps everything a swap needs to finish or unwind after a
+    restart. Records are JSON strings; persist them verbatim. Every write
+    lands before the irreversible step it precedes.
+    """
+
+    def get(self, id: "str"):
+        raise NotImplementedError
+
+    def put(self, id: "str", record_json: "str"):
+        raise NotImplementedError
+
+    def list(
+        self,
+    ):
+        raise NotImplementedError
+
+    def next_index(
+        self,
+    ):
+        """
+        Hands out the next BIP85 child index, exactly once.
+        """
+
+        raise NotImplementedError
+
+
+# `SwapStoreImpl` is the implementation for a Rust implemented version.
+class SwapStoreImpl:
+    """
+    Where the SDK keeps everything a swap needs to finish or unwind after a
+    restart. Records are JSON strings; persist them verbatim. Every write
+    lands before the irreversible step it precedes.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapstore, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def get(self, id: "str") -> "typing.Optional[str]":
+        _UniffiConverterString.check_lower(id)
+
+        return _UniffiConverterOptionalString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_get,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(id),
+            )
+        )
+
+    def put(self, id: "str", record_json: "str") -> None:
+        _UniffiConverterString.check_lower(id)
+
+        _UniffiConverterString.check_lower(record_json)
+
+        _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_put,
+            self._uniffi_clone_pointer(),
+            _UniffiConverterString.lower(id),
+            _UniffiConverterString.lower(record_json),
+        )
+
+    def list(
+        self,
+    ) -> "typing.List[str]":
+        return _UniffiConverterSequenceString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_list,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def next_index(
+        self,
+    ) -> "int":
+        """
+        Hands out the next BIP85 child index, exactly once.
+        """
+
+        return _UniffiConverterUInt64.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_next_index,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+
+# Put all the bits inside a class to keep the top-level namespace clean
+class _UniffiTraitImplSwapStore:
+    # For each method, generate a callback function to pass to Rust
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD0
+    def get(
+        uniffi_handle,
+        id,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapStore._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (_UniffiConverterString.lift(id),)
+            method = uniffi_obj.get
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterOptionalString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD1
+    def put(
+        uniffi_handle,
+        id,
+        record_json,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapStore._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (
+                _UniffiConverterString.lift(id),
+                _UniffiConverterString.lift(record_json),
+            )
+            method = uniffi_obj.put
+            return method(*args)
+
+        write_return_value = lambda v: None
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD2
+    def list(
+        uniffi_handle,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapStore._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = ()
+            method = uniffi_obj.list
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterSequenceString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD3
+    def next_index(
+        uniffi_handle,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapStore._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = ()
+            method = uniffi_obj.next_index
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterUInt64.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_FREE
+    def _uniffi_free(uniffi_handle):
+        _UniffiConverterTypeSwapStore._handle_map.remove(uniffi_handle)
+
+    # Generate the FFI VTable.  This has a field for each callback interface method.
+    _uniffi_vtable = _UniffiVTableCallbackInterfaceSwapStore(
+        get, put, list, next_index, _uniffi_free
+    )
+    # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
+    # or else bad things will happen when Rust tries to access it.
+    _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapstore(
+        ctypes.byref(_uniffi_vtable)
+    )
+
+
+class _UniffiConverterTypeSwapStore:
+    _handle_map = _UniffiHandleMap()
+
+    @staticmethod
+    def lift(value: int):
+        return SwapStoreImpl._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: SwapStore):
+        pass
+
+    @staticmethod
+    def lower(value: SwapStoreProtocol):
+        return _UniffiConverterTypeSwapStore._handle_map.insert(value)
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: SwapStoreProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
 class BtcLikeTransactionProtocol(typing.Protocol):
     def hex(
         self,
@@ -12117,6 +15013,318 @@ class _UniffiConverterTypeChainClient:
         buf.write_u64(cls.lower(value))
 
 
+class FileStoreProtocol(typing.Protocol):
+    """
+    One JSON file per swap under `dir`, owner-readable only, plus an `index`
+    file for the counter. Single-process.
+    """
+
+    def get(self, id: "str"):
+        raise NotImplementedError
+
+    def list(
+        self,
+    ):
+        raise NotImplementedError
+
+    def next_index(
+        self,
+    ):
+        raise NotImplementedError
+
+    def put(self, id: "str", record_json: "str"):
+        raise NotImplementedError
+
+
+# FileStore is a Rust-only trait - it's a wrapper around a Rust implementation.
+class FileStore(
+    SwapStore,
+):
+    """
+    One JSON file per swap under `dir`, owner-readable only, plus an `index`
+    file for the counter. Single-process.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, dir: "str"):
+        _UniffiConverterString.check_lower(dir)
+
+        self._pointer = _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_filestore_new,
+            _UniffiConverterString.lower(dir),
+        )
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_filestore, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_filestore, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def get(self, id: "str") -> "typing.Optional[str]":
+        _UniffiConverterString.check_lower(id)
+
+        return _UniffiConverterOptionalString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_get,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(id),
+            )
+        )
+
+    def list(
+        self,
+    ) -> "typing.List[str]":
+        return _UniffiConverterSequenceString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_list,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def next_index(
+        self,
+    ) -> "int":
+        return _UniffiConverterUInt64.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_next_index,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def put(self, id: "str", record_json: "str") -> None:
+        _UniffiConverterString.check_lower(id)
+
+        _UniffiConverterString.check_lower(record_json)
+
+        _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_put,
+            self._uniffi_clone_pointer(),
+            _UniffiConverterString.lower(id),
+            _UniffiConverterString.lower(record_json),
+        )
+
+
+class _UniffiConverterTypeFileStore:
+    @staticmethod
+    def lift(value: int):
+        return FileStore._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: FileStore):
+        if not isinstance(value, FileStore):
+            raise TypeError(
+                "Expected FileStore instance, {} found".format(type(value).__name__)
+            )
+
+    @staticmethod
+    def lower(value: FileStoreProtocol):
+        if not isinstance(value, FileStore):
+            raise TypeError(
+                "Expected FileStore instance, {} found".format(type(value).__name__)
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: FileStoreProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class KaleidoSwapProtocol(typing.Protocol):
+    def network(
+        self,
+    ):
+        raise NotImplementedError
+
+    def quote(self, request: "QuoteRequest"):
+        raise NotImplementedError
+
+    def resume(
+        self,
+    ):
+        raise NotImplementedError
+
+    def start(self, quote: "Quote", options: "StartOptions"):
+        raise NotImplementedError
+
+    def swap(self, id: "str"):
+        raise NotImplementedError
+
+
+# KaleidoSwap is a Rust-only trait - it's a wrapper around a Rust implementation.
+class KaleidoSwap:
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, options: "KaleidoSwapOptions"):
+        _UniffiConverterTypeKaleidoSwapOptions.check_lower(options)
+
+        self._pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_kaleidoswap_new,
+            _UniffiConverterTypeKaleidoSwapOptions.lower(options),
+        )
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_kaleidoswap, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_kaleidoswap, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def network(
+        self,
+    ) -> "Network":
+        return _UniffiConverterTypeNetwork.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_network,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    async def quote(self, request: "QuoteRequest") -> "QuoteAnswer":
+        _UniffiConverterTypeQuoteRequest.check_lower(request)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_quote(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeQuoteRequest.lower(request),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeQuoteAnswer.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def resume(
+        self,
+    ) -> "ResumeReport":
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_resume(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeResumeReport.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def start(self, quote: "Quote", options: "StartOptions") -> "Swap":
+        _UniffiConverterTypeQuote.check_lower(quote)
+
+        _UniffiConverterTypeStartOptions.check_lower(options)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_start(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypeQuote.lower(quote),
+                _UniffiConverterTypeStartOptions.lower(options),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            # lift function
+            _UniffiConverterTypeSwap.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def swap(self, id: "str") -> "Swap":
+        _UniffiConverterString.check_lower(id)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_swap(
+                self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            # lift function
+            _UniffiConverterTypeSwap.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+
+class _UniffiConverterTypeKaleidoSwap:
+    @staticmethod
+    def lift(value: int):
+        return KaleidoSwap._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: KaleidoSwap):
+        if not isinstance(value, KaleidoSwap):
+            raise TypeError(
+                "Expected KaleidoSwap instance, {} found".format(type(value).__name__)
+            )
+
+    @staticmethod
+    def lower(value: KaleidoSwapProtocol):
+        if not isinstance(value, KaleidoSwap):
+            raise TypeError(
+                "Expected KaleidoSwap instance, {} found".format(type(value).__name__)
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: KaleidoSwapProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
 class KeyPairProtocol(typing.Protocol):
     def public(
         self,
@@ -12223,6 +15431,269 @@ class _UniffiConverterTypeKeyPair:
 
     @classmethod
     def write(cls, value: KeyPairProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class MemoryStoreProtocol(typing.Protocol):
+    """
+    Nothing survives the process.
+    """
+
+    def get(self, id: "str"):
+        raise NotImplementedError
+
+    def list(
+        self,
+    ):
+        raise NotImplementedError
+
+    def next_index(
+        self,
+    ):
+        raise NotImplementedError
+
+    def put(self, id: "str", record_json: "str"):
+        raise NotImplementedError
+
+
+# MemoryStore is a Rust-only trait - it's a wrapper around a Rust implementation.
+class MemoryStore(
+    SwapStore,
+):
+    """
+    Nothing survives the process.
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(
+        self,
+    ):
+        self._pointer = _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_memorystore_new,
+        )
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_memorystore, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_memorystore, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def get(self, id: "str") -> "typing.Optional[str]":
+        _UniffiConverterString.check_lower(id)
+
+        return _UniffiConverterOptionalString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_get,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(id),
+            )
+        )
+
+    def list(
+        self,
+    ) -> "typing.List[str]":
+        return _UniffiConverterSequenceString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_list,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def next_index(
+        self,
+    ) -> "int":
+        return _UniffiConverterUInt64.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_next_index,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def put(self, id: "str", record_json: "str") -> None:
+        _UniffiConverterString.check_lower(id)
+
+        _UniffiConverterString.check_lower(record_json)
+
+        _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_put,
+            self._uniffi_clone_pointer(),
+            _UniffiConverterString.lower(id),
+            _UniffiConverterString.lower(record_json),
+        )
+
+
+class _UniffiConverterTypeMemoryStore:
+    @staticmethod
+    def lift(value: int):
+        return MemoryStore._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: MemoryStore):
+        if not isinstance(value, MemoryStore):
+            raise TypeError(
+                "Expected MemoryStore instance, {} found".format(type(value).__name__)
+            )
+
+    @staticmethod
+    def lower(value: MemoryStoreProtocol):
+        if not isinstance(value, MemoryStore):
+            raise TypeError(
+                "Expected MemoryStore instance, {} found".format(type(value).__name__)
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: MemoryStoreProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class MnemonicSignerProtocol(typing.Protocol):
+    """
+    A [`SwapSigner`] over a swap mnemonic (`SwapMasterKey::from_swap_mnemonic`).
+    """
+
+    def derive_key(self, index: "int"):
+        raise NotImplementedError
+
+    def derive_preimage(self, index: "int"):
+        raise NotImplementedError
+
+
+# MnemonicSigner is a Rust-only trait - it's a wrapper around a Rust implementation.
+class MnemonicSigner(
+    SwapSigner,
+):
+    """
+    A [`SwapSigner`] over a swap mnemonic (`SwapMasterKey::from_swap_mnemonic`).
+    """
+
+    _pointer: ctypes.c_void_p
+
+    def __init__(
+        self, mnemonic: "str", passphrase: "typing.Optional[str]", network: "Network"
+    ):
+        _UniffiConverterString.check_lower(mnemonic)
+
+        _UniffiConverterOptionalString.check_lower(passphrase)
+
+        _UniffiConverterTypeNetwork.check_lower(network)
+
+        self._pointer = _uniffi_rust_call_with_error(
+            _UniffiConverterTypeError,
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new,
+            _UniffiConverterString.lower(mnemonic),
+            _UniffiConverterOptionalString.lower(passphrase),
+            _UniffiConverterTypeNetwork.lower(network),
+        )
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_mnemonicsigner, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_mnemonicsigner, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def derive_key(self, index: "int") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_key,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+    def derive_preimage(self, index: "int") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+
+class _UniffiConverterTypeMnemonicSigner:
+    @staticmethod
+    def lift(value: int):
+        return MnemonicSigner._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: MnemonicSigner):
+        if not isinstance(value, MnemonicSigner):
+            raise TypeError(
+                "Expected MnemonicSigner instance, {} found".format(
+                    type(value).__name__
+                )
+            )
+
+    @staticmethod
+    def lower(value: MnemonicSignerProtocol):
+        if not isinstance(value, MnemonicSigner):
+            raise TypeError(
+                "Expected MnemonicSigner instance, {} found".format(
+                    type(value).__name__
+                )
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: MnemonicSignerProtocol, buf: _UniffiRustBuffer):
         buf.write_u64(cls.lower(value))
 
 
@@ -12775,6 +16246,252 @@ class _UniffiConverterTypeRgbCooperativeRefund:
 
     @classmethod
     def write(cls, value: RgbCooperativeRefundProtocol, buf: _UniffiRustBuffer):
+        buf.write_u64(cls.lower(value))
+
+
+class SwapProtocol(typing.Protocol):
+    def action(
+        self,
+    ):
+        raise NotImplementedError
+
+    def id(
+        self,
+    ):
+        raise NotImplementedError
+
+    def phase(
+        self,
+    ):
+        raise NotImplementedError
+
+    def protocol(
+        self,
+    ):
+        raise NotImplementedError
+
+    def record(
+        self,
+    ):
+        raise NotImplementedError
+
+    def refund(
+        self,
+    ):
+        raise NotImplementedError
+
+    def settled(
+        self,
+    ):
+        """
+        Follows the swap to the end; resolves on `Settled`, errors otherwise.
+        """
+
+        raise NotImplementedError
+
+    def tick(
+        self,
+    ):
+        """
+        One observation of the maker plus whatever action it calls for.
+        """
+
+        raise NotImplementedError
+
+    def watch(self, listener: "PhaseListener"):
+        """
+        `settled` with a listener for every phase change.
+        """
+
+        raise NotImplementedError
+
+
+# Swap is a Rust-only trait - it's a wrapper around a Rust implementation.
+class Swap:
+    _pointer: ctypes.c_void_p
+
+    def __init__(self, *args, **kwargs):
+        raise ValueError("This class has no default constructor")
+
+    def __del__(self):
+        # In case of partial initialization of instances.
+        pointer = getattr(self, "_pointer", None)
+        if pointer is not None:
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swap, pointer
+            )
+
+    def _uniffi_clone_pointer(self):
+        return _uniffi_rust_call(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swap, self._pointer
+        )
+
+    # Used by alternative constructors or any methods which return this type.
+    @classmethod
+    def _make_instance_(cls, pointer):
+        # Lightly yucky way to bypass the usual __init__ logic
+        # and just create a new instance with the required pointer.
+        inst = cls.__new__(cls)
+        inst._pointer = pointer
+        return inst
+
+    def action(
+        self,
+    ) -> "SwapAction":
+        return _UniffiConverterTypeSwapAction.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_action,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def id(
+        self,
+    ) -> "str":
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_id,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def phase(
+        self,
+    ) -> "SwapPhase":
+        return _UniffiConverterTypeSwapPhase.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_phase,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def protocol(
+        self,
+    ) -> "Protocol":
+        return _UniffiConverterTypeProtocol.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_protocol,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    def record(
+        self,
+    ) -> "SwapRecord":
+        return _UniffiConverterTypeSwapRecord.lift(
+            _uniffi_rust_call(
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_record,
+                self._uniffi_clone_pointer(),
+            )
+        )
+
+    async def refund(
+        self,
+    ) -> "SwapRecord":
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_refund(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSwapRecord.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def settled(
+        self,
+    ) -> "SwapRecord":
+        """
+        Follows the swap to the end; resolves on `Settled`, errors otherwise.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_settled(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSwapRecord.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def tick(
+        self,
+    ) -> "SwapRecord":
+        """
+        One observation of the maker plus whatever action it calls for.
+        """
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_tick(
+                self._uniffi_clone_pointer(),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSwapRecord.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+    async def watch(self, listener: "PhaseListener") -> "SwapRecord":
+        """
+        `settled` with a listener for every phase change.
+        """
+
+        _UniffiConverterTypePhaseListener.check_lower(listener)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_watch(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterTypePhaseListener.lower(listener),
+            ),
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeSwapRecord.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
+
+class _UniffiConverterTypeSwap:
+    @staticmethod
+    def lift(value: int):
+        return Swap._make_instance_(value)
+
+    @staticmethod
+    def check_lower(value: Swap):
+        if not isinstance(value, Swap):
+            raise TypeError(
+                "Expected Swap instance, {} found".format(type(value).__name__)
+            )
+
+    @staticmethod
+    def lower(value: SwapProtocol):
+        if not isinstance(value, Swap):
+            raise TypeError(
+                "Expected Swap instance, {} found".format(type(value).__name__)
+            )
+        return value._uniffi_clone_pointer()
+
+    @classmethod
+    def read(cls, buf: _UniffiRustBuffer):
+        ptr = buf.read_u64()
+        if ptr == 0:
+            raise InternalError("Raw pointer value was null")
+        return cls.lift(ptr)
+
+    @classmethod
+    def write(cls, value: SwapProtocol, buf: _UniffiRustBuffer):
         buf.write_u64(cls.lower(value))
 
 
@@ -15124,6 +18841,7 @@ def validate_reverse_timeout_headroom(
 __all__ = [
     "InternalError",
     "AmountSide",
+    "AssetId",
     "AtomicAmountDirection",
     "AtomicSwapState",
     "BitcoinChain",
@@ -15134,11 +18852,16 @@ __all__ = [
     "Fee",
     "LiquidChain",
     "Network",
+    "Protocol",
+    "QuoteRefusalReason",
+    "QuoteSide",
     "RefusalReason",
     "RfqState",
     "RgbSpendFunding",
     "Side",
     "SubSwapStates",
+    "SwapErrorCode",
+    "SwapPhase",
     "SwapRestoreType",
     "TransactionChain",
     "AtomicCompletion",
@@ -15179,6 +18902,7 @@ __all__ = [
     "ElectrumBuilder",
     "EsploraBuilder",
     "FailureReasonIncorrectAmounts",
+    "Fees",
     "FinalizedRgbSpend",
     "FundedLiquidPset",
     "GetChainPairsResponse",
@@ -15190,9 +18914,11 @@ __all__ = [
     "GetSwapResponse",
     "HeightResponse",
     "InternalHopRef",
+    "KaleidoSwapOptions",
     "Leaf",
     "LightningReceiveRequest",
     "LightningSendRequest",
+    "Limits",
     "LiquidOutputSecrets",
     "LiquidPsetParams",
     "LiquidPsetTemplate",
@@ -15201,8 +18927,15 @@ __all__ = [
     "Node",
     "PairLimits",
     "PairMinerFees",
+    "Quote",
+    "QuoteAnswer",
+    "QuoteBinding",
     "QuoteProfile",
+    "QuoteRequest",
     "RefundDetails",
+    "Refusal",
+    "ResumeFailure",
+    "ResumeReport",
     "ReverseFees",
     "ReverseLimits",
     "ReversePair",
@@ -15217,13 +18950,16 @@ __all__ = [
     "RgbLock",
     "RgbPsbtParams",
     "RgbPsbtTemplate",
+    "StartOptions",
     "SubmarineFees",
     "SubmarinePair",
     "SubmarinePairLimits",
     "SubmarineSwapPreimageResp",
     "SubmarineSwapTxResp",
+    "SwapAction",
     "SwapEvent",
     "SwapPayoutStatus",
+    "SwapRecord",
     "SwapRestoreIndexResponse",
     "SwapRestoreResponse",
     "SwapStatus",
@@ -15241,14 +18977,22 @@ __all__ = [
     "validate_reverse_timeout_headroom",
     "BtcLikeTransaction",
     "ChainClient",
+    "FileStore",
+    "KaleidoSwap",
     "KeyPair",
+    "MemoryStore",
+    "MnemonicSigner",
+    "PhaseListener",
     "Preimage",
     "PreparedLiquidSpend",
     "PreparedRgbSpend",
     "RgbCooperativeRefund",
+    "Swap",
     "SwapClient",
     "SwapMasterKey",
     "SwapScript",
+    "SwapSigner",
+    "SwapStore",
     "SwapWsApi",
     "SwapWsUpdates",
 ]

@@ -4,6 +4,47 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — `kaleidoswap`, a high-level surface in the Rust core, with Python, React Native and TypeScript bindings
+
+One verb per step — `quote`, `start`, `resume` — for the routes the maker
+serves over Boltz `/v2`: Lightning to on-chain BTC or L-BTC (reverse) and
+on-chain BTC or L-BTC to Lightning (submarine). Assets are named with their
+layer (`lightning:BTC`, `liquid:BTC`), so a destination on the wrong layer or
+network is refused locally. `quote` answers with a `Quote` or a `Refusal`
+value; `start` creates the swap, verifies the lockup against the caller's own
+key and persists the record, including `swap_auth`, before it returns, and
+never moves funds. Before persisting, it checks the maker's response against
+the quote: the hashlock and invoice against the swap's own preimage, the
+invoice amount against the request, the payout and the lockup amount against
+the quoted terms, and that the pair terms are still the ones quoted. A `Swap` follows one phase machine over every protocol
+(`awaiting_funding → funded → locked → claiming → settled`, with
+`refundable → refunding → refunded` and `failed`), claims or refunds on its
+own as the maker's status moves, and reports every failure as a `SwapError`
+with a code.
+
+The phase machine, the pricing and every check live in the Rust core
+(`kaleidorg_swap_sdk::kaleidoswap`), so each binding inherits the same one.
+Keys and persistence are injected: a `SwapSigner` (`MnemonicSigner` wraps
+`SwapMasterKey`) and a `SwapStore` that also owns the BIP85 index counter. The
+application implements both — foreign traits in Python and React Native, plain
+objects in TypeScript — and records cross the store as JSON. `MemoryStore`
+ships everywhere; `FileStore` keeps one JSON file per swap, owner-readable
+only, refuses ids that are not plain tokens, and never hands out an index
+twice. `resume()` makes one pass over the store at startup and reports what it
+settled, refunded, failed or is still following, and lists any swap it could not
+move with its error — one such swap never stops the others from being resumed.
+Every request to the maker has a timeout (30 s by default, `maker_timeout`), and
+a refund falls back to the script path when the maker will not co-sign.
+
+L-USDT, the Arkade corridor and pay-through are not routed by this layer yet
+and come back as a `pair_unavailable` refusal that names the lower-level entry
+to use. The default Liquid testnet Esplora for this layer is `liquid.network`,
+which does not rate-limit UTXO lookups. Status is polled. `BoltzApiClientV2`
+gains `base_url()`, and `Error` in the Python and React Native bindings gains a
+`Swap` variant carrying the code. Three examples under
+`typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts` in
+a fraction of the lines, plus a `resume.ts`.
+
 ## [0.13.0] - 2026-10-28
 
 This release hardens the swap flows following the security review of

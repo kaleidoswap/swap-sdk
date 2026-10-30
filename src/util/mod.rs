@@ -48,6 +48,21 @@ pub(crate) fn ensure_rustls_crypto_provider() {
 #[cfg(all(feature = "ws", target_family = "wasm", target_os = "unknown"))]
 pub(crate) fn ensure_rustls_crypto_provider() {}
 
+/// Seconds since the Unix epoch, on every target.
+pub fn unix_now() -> u64 {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    {
+        (js_sys::Date::now() / 1000.0) as u64
+    }
+}
+
 pub async fn sleep(duration: Duration) {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     {
