@@ -10,9 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import kaleidorg_swap_sdk as sdk
 
-INVOICE_SIGNET_50K = (
-    "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e"
-)
+INVOICE_SIGNET_50K = "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e"
 REVERSE_CARD = {
     "hash": "rev-hash",
     "rate": 1,
@@ -137,7 +135,10 @@ async def run():
         )
         assert below.quote is None
         assert below.refusal.reason == sdk.QuoteRefusalReason.AMOUNT_BELOW_MIN
-        assert (below.refusal.limits.min, below.refusal.limits.max) == (10_000, 1_000_000)
+        assert (below.refusal.limits.min, below.refusal.limits.max) == (
+            10_000,
+            1_000_000,
+        )
 
         # A submarine is priced against its invoice.
         sub = await kaleido.quote(
@@ -154,10 +155,14 @@ async def run():
 
         # Checks made before the maker is contacted come back coded.
         for start, expected in [
-            (sdk.StartOptions(destination="lq1mainnet", refund_address=None),
-             sdk.SwapErrorCode.WRONG_NETWORK_ADDRESS),
-            (sdk.StartOptions(destination=None, refund_address=None),
-             sdk.SwapErrorCode.INVALID_DESTINATION),
+            (
+                sdk.StartOptions(destination="lq1mainnet", refund_address=None),
+                sdk.SwapErrorCode.WRONG_NETWORK_ADDRESS,
+            ),
+            (
+                sdk.StartOptions(destination=None, refund_address=None),
+                sdk.SwapErrorCode.INVALID_DESTINATION,
+            ),
         ]:
             try:
                 await kaleido.start(quote, start)
@@ -166,7 +171,9 @@ async def run():
             else:
                 raise AssertionError("an unusable destination was accepted")
         try:
-            await kaleido.start(sub.quote, sdk.StartOptions(destination=None, refund_address=None))
+            await kaleido.start(
+                sub.quote, sdk.StartOptions(destination=None, refund_address=None)
+            )
         except sdk.Error.Swap as error:
             assert code_of(error) == sdk.SwapErrorCode.REFUND_ADDRESS_REQUIRED
         else:
@@ -179,7 +186,12 @@ async def run():
         except sdk.Error.Swap as error:
             assert code_of(error) == sdk.SwapErrorCode.SWAP_NOT_FOUND
         report = await kaleido.resume()
-        assert (report.resumed, report.settled, report.refunded, report.failed) == ([], [], [], [])
+        assert (report.resumed, report.settled, report.refunded, report.failed) == (
+            [],
+            [],
+            [],
+            [],
+        )
 
         # A store that fails is reported as such, not swallowed.
         class Broken(DictStore):
