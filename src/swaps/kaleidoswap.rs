@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
 use crate::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use crate::network::{BitcoinChain, Chain as ChainKind, LiquidChain, Network};
+use crate::network::{BitcoinChain, Chain as ChainKind, Currency, LiquidChain, Network};
 use crate::swaps::boltz::{
     BoltzApiClientV2, CreateReverseRequest, CreateReverseResponse, CreateSubmarineRequest,
     CreateSubmarineResponse, GetReversePairsResponse, GetSubmarinePairsResponse, PairMinerFees,
@@ -561,7 +561,16 @@ impl MakerApi for BoltzApiClientV2 {
 /// through [`SwapScript`]; tests replace it so nothing here needs a chain.
 #[macros::async_trait]
 pub trait SwapFlows: Send + Sync {
-    fn verify_lockup(&self, record: &SwapRecord, keys: &Keypair) -> Result<(), Error>;
+    /// Checks the maker's create response against what we asked for and
+    /// against our own keys: the lockup tree and address, the hashlock
+    /// against `preimage`, and for a reverse swap the invoice's payment hash
+    /// and network. Runs before anything is persisted or funded.
+    fn verify_lockup(
+        &self,
+        record: &SwapRecord,
+        keys: &Keypair,
+        preimage: &Preimage,
+    ) -> Result<(), Error>;
     async fn claim(
         &self,
         record: &SwapRecord,
@@ -868,8 +877,40 @@ impl DefaultFlows {
 
 #[macros::async_trait]
 impl SwapFlows for DefaultFlows {
-    fn verify_lockup(&self, record: &SwapRecord, keys: &Keypair) -> Result<(), Error> {
-        Self::script(record, keys).map(|_| ())
+    fn verify_lockup(
+        &self,
+        record: &SwapRecord,
+        keys: &Keypair,
+        preimage: &Preimage,
+    ) -> Result<(), Error> {
+        Self::script(record, keys)?;
+        let pubkey = bitcoin::PublicKey::new(keys.public_key());
+        let chain = Self::chain_kind(record);
+        let on_chain = match record.protocol {
+            Protocol::BoltzReverse => record.to_asset,
+            _ => record.from_asset,
+        };
+        let currency = Some(match on_chain {
+            AssetId::LiquidBtc => Currency::LBtc,
+            _ => Currency::Btc,
+        });
+        match &record.state.response {
+            CreateResponse::BoltzReverse(r) => {
+                // The invoice is paid from Lightning on this network; the
+                // HTLC lives on the destination chain.
+                let source = ChainKind::Bitcoin(BitcoinChain::from(record.network));
+                r.validate_with_source_and_asset_context(
+                    preimage, &pubkey, source, chain, currency, None,
+                )
+            }
+            CreateResponse::BoltzSubmarine(r) => r.validate_with_currency_and_asset_context(
+                &record.state.destination,
+                &pubkey,
+                chain,
+                currency,
+                None,
+            ),
+        }
     }
 
     async fn claim(
@@ -1583,26 +1624,63 @@ impl KaleidoSwap {
         let pubkey = bitcoin::PublicKey::new(keys.public_key());
 
         let (id, response) = if reverse {
+            // The terms the quote was priced on must still be the maker's.
+            let pairs = self
+                .env
+                .maker
+                .reverse_pairs()
+                .await
+                .map_err(|e| SwapError::from_core(e, None))?;
+            let card = pairs
+                .get(quote.from_asset.symbol(), quote.to_asset.symbol())
+                .filter(|card| card.hash == quote.binding.pair_hash)
+                .cloned()
+                .ok_or_else(|| {
+                    SwapError::new(
+                        SwapErrorCode::QuoteExpired,
+                        "the pair terms changed since the quote; ask for a new one",
+                    )
+                })?;
+            let request = CreateReverseRequest {
+                from: quote.from_asset.symbol().to_string(),
+                to: quote.to_asset.symbol().to_string(),
+                claim_public_key: pubkey,
+                invoice: None,
+                invoice_amount: Some(quote.from_amount),
+                preimage_hash: Some(preimage.sha256),
+                pair_hash: Some(quote.binding.pair_hash.clone()),
+                description: None,
+                description_hash: None,
+                address: None,
+                address_signature: None,
+                referral_id: None,
+                webhook: None,
+            };
             let r = self
                 .env
                 .maker
-                .create_reverse(CreateReverseRequest {
-                    from: quote.from_asset.symbol().to_string(),
-                    to: quote.to_asset.symbol().to_string(),
-                    claim_public_key: pubkey,
-                    invoice: None,
-                    invoice_amount: Some(quote.from_amount),
-                    preimage_hash: Some(preimage.sha256),
-                    pair_hash: Some(quote.binding.pair_hash.clone()),
-                    description: None,
-                    description_hash: None,
-                    address: None,
-                    address_signature: None,
-                    referral_id: None,
-                    webhook: None,
-                })
+                .create_reverse(request.clone())
                 .await
                 .map_err(|e| SwapError::from_core(e, None))?;
+            // The invoice must carry the amount we asked for, and the payout
+            // must be at least what the accepted terms promise.
+            r.validate_amounts(&request, Some(&card)).map_err(|e| {
+                SwapError::for_swap(
+                    SwapErrorCode::LockupMismatch,
+                    format!("the maker's response does not match the request: {e:?}"),
+                    &r.id,
+                )
+            })?;
+            if r.onchain_amount < quote.to_amount {
+                return Err(SwapError::for_swap(
+                    SwapErrorCode::LockupMismatch,
+                    format!(
+                        "the maker would pay out {} but the quote promised {}",
+                        r.onchain_amount, quote.to_amount
+                    ),
+                    &r.id,
+                ));
+            }
             (r.id.clone(), CreateResponse::BoltzReverse(r))
         } else {
             let r = self
@@ -1619,6 +1697,17 @@ impl KaleidoSwap {
                 })
                 .await
                 .map_err(|e| SwapError::from_core(e, None))?;
+            // We fund exactly what the quote said, never more.
+            if r.expected_amount > quote.from_amount {
+                return Err(SwapError::for_swap(
+                    SwapErrorCode::LockupMismatch,
+                    format!(
+                        "the maker asks for {} but the quote said {}",
+                        r.expected_amount, quote.from_amount
+                    ),
+                    &r.id,
+                ));
+            }
             (r.id.clone(), CreateResponse::BoltzSubmarine(r))
         };
         if !is_plain_id(&id) {
@@ -1654,13 +1743,16 @@ impl KaleidoSwap {
         // A tree we could not claim or refund has to fail here, before
         // anything is funded — not after. Checked on the record exactly as
         // the store will hold it, so a restart rebuilds the same tree.
-        self.env.flows.verify_lockup(&record, &keys).map_err(|e| {
-            SwapError::for_swap(
-                SwapErrorCode::LockupMismatch,
-                format!("the maker's lockup does not match our key: {e:?}"),
-                &id,
-            )
-        })?;
+        self.env
+            .flows
+            .verify_lockup(&record, &keys, &preimage)
+            .map_err(|e| {
+                SwapError::for_swap(
+                    SwapErrorCode::LockupMismatch,
+                    format!("the maker's lockup does not match our key: {e:?}"),
+                    &id,
+                )
+            })?;
 
         // swap_auth rides in the response, issued once. This write is the one
         // that keeps it.
@@ -1772,6 +1864,12 @@ mod tests {
         statuses: Mutex<Vec<String>>,
         created: Mutex<Vec<serde_json::Value>>,
         reverse_id: Mutex<String>,
+        /// Sats the reverse payout falls short of the quoted one.
+        reverse_shortfall: Mutex<u64>,
+        /// Overrides the submarine lockup amount the maker asks for.
+        submarine_expected: Mutex<Option<u64>>,
+        /// Overrides the hash the reverse pair card carries.
+        reverse_card_hash: Mutex<Option<String>>,
     }
 
     impl FakeMaker {
@@ -1783,8 +1881,12 @@ mod tests {
     #[macros::async_trait]
     impl MakerApi for FakeMaker {
         async fn reverse_pairs(&self) -> Result<GetReversePairsResponse, Error> {
+            let mut card = reverse_card();
+            if let Some(hash) = self.reverse_card_hash.lock().unwrap().clone() {
+                card.hash = hash;
+            }
             Ok(serde_json::from_value(serde_json::json!({
-                "BTC": {"L-BTC": reverse_card(), "BTC": reverse_card()}
+                "BTC": {"L-BTC": card.clone(), "BTC": card}
             }))
             .unwrap())
         }
@@ -1814,7 +1916,7 @@ mod tests {
                 "refundPublicKey":
                     "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
                 "timeoutBlockHeight": 200,
-                "onchainAmount": req.invoice_amount.unwrap() - 550,
+                "onchainAmount": req.invoice_amount.unwrap() - 550 - *self.reverse_shortfall.lock().unwrap(),
                 "swapAuth": "secret-auth",
             }))
             .unwrap())
@@ -1833,7 +1935,7 @@ mod tests {
                 "bip21": "bitcoin:tb1qlockup?amount=0.000502",
                 "claimPublicKey":
                     "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
-                "expectedAmount": 50_200,
+                "expectedAmount": self.submarine_expected.lock().unwrap().unwrap_or(50_200),
                 "id": "sub-1",
                 "swapTree": {
                     "claimLeaf": {"output": "00", "version": 196},
@@ -1871,7 +1973,12 @@ mod tests {
 
     #[macros::async_trait]
     impl SwapFlows for FakeFlows {
-        fn verify_lockup(&self, record: &SwapRecord, keys: &Keypair) -> Result<(), Error> {
+        fn verify_lockup(
+            &self,
+            record: &SwapRecord,
+            keys: &Keypair,
+            _preimage: &Preimage,
+        ) -> Result<(), Error> {
             self.verify
                 .lock()
                 .unwrap()
@@ -2224,6 +2331,65 @@ mod tests {
         let expired = Quote { expires_at: 0, ..q };
         let err = h.kaleido.start(&expired, dest()).await.unwrap_err();
         assert_eq!(err.code, SwapErrorCode::QuoteExpired);
+    }
+
+    #[macros::async_test_all]
+    async fn start_checks_the_create_response_against_the_quote() {
+        let dest = || StartOptions {
+            destination: Some("tlq1dest".into()),
+            ..Default::default()
+        };
+
+        // A payout below what the accepted terms promise.
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        *h.maker.reverse_shortfall.lock().unwrap() = 1;
+        let err = h.kaleido.start(&q, dest()).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::LockupMismatch, "{err}");
+        assert!(h.store.list().await.unwrap().is_empty());
+
+        // An invoice for a different amount than was requested: the stub
+        // always answers with a 50 000 sat invoice.
+        let h = harness();
+        let q = h
+            .kaleido
+            .quote(reverse_request(40_000))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        let err = h.kaleido.start(&q, dest()).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::LockupMismatch, "{err}");
+        assert!(h.store.list().await.unwrap().is_empty());
+
+        // A pair whose terms moved since the quote is not created against.
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        *h.maker.reverse_card_hash.lock().unwrap() = Some("other-hash".into());
+        let err = h.kaleido.start(&q, dest()).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::QuoteExpired);
+        assert!(
+            h.maker.created.lock().unwrap().is_empty(),
+            "nothing was created"
+        );
+
+        // A submarine lockup larger than the quoted amount.
+        let h = harness();
+        let q = h
+            .kaleido
+            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        *h.maker.submarine_expected.lock().unwrap() = Some(q.from_amount + 1);
+        let refund = StartOptions {
+            refund_address: Some("tb1qrefund".into()),
+            ..Default::default()
+        };
+        let err = h.kaleido.start(&q, refund).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::LockupMismatch, "{err}");
+        assert!(h.store.list().await.unwrap().is_empty());
     }
 
     #[macros::async_test_all]

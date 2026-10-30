@@ -13,7 +13,10 @@ layer (`lightning:BTC`, `liquid:BTC`), so a destination on the wrong layer or
 network is refused locally. `quote` answers with a `Quote` or a `Refusal`
 value; `start` creates the swap, verifies the lockup against the caller's own
 key and persists the record, including `swap_auth`, before it returns, and
-never moves funds. A `Swap` follows one phase machine over every protocol
+never moves funds. Before persisting, it checks the maker's response against
+the quote: the hashlock and invoice against the swap's own preimage, the
+invoice amount against the request, the payout and the lockup amount against
+the quoted terms, and that the pair terms are still the ones quoted. A `Swap` follows one phase machine over every protocol
 (`awaiting_funding → funded → locked → claiming → settled`, with
 `refundable → refunding → refunded` and `failed`), claims or refunds on its
 own as the maker's status moves, and reports every failure as a `SwapError`
