@@ -888,6 +888,12 @@ transaction and requires a new wallet operation after safe reconciliation.
 V1 supports submarine refunds only, one colored transaction per swap, and no
 cooperative RBF or automatic fallback after ambiguous broadcast.
 
+## Examples
+
+See [`examples/README.md`](./examples/README.md) for the smallest TypeScript and
+React Native-shaped entrypoints. They start with key derivation only, then you
+can grow them into quote, funding, and claim flows.
+
 ## Development checks
 
 Build fresh WASM bindings from the repository root before running the package
