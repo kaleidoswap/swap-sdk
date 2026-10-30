@@ -460,11 +460,23 @@ pub struct KaleidoSwapOptions {
     pub fee_sat_per_vb: Option<f64>,
     #[uniffi(default = None)]
     pub quote_ttl_secs: Option<u64>,
+    /// Timeout of every request to the maker. Default 30 s.
+    #[uniffi(default = None)]
+    pub maker_timeout_ms: Option<u64>,
 }
 
 #[derive(uniffi::Object)]
 pub struct KaleidoSwap {
     inner: core::KaleidoSwap,
+}
+
+/// A swap one `resume` pass could not move, with why. It stays in the store;
+/// the other swaps are resumed regardless.
+#[derive(uniffi::Record)]
+pub struct ResumeFailure {
+    pub id: String,
+    pub code: SwapErrorCode,
+    pub message: String,
 }
 
 #[derive(uniffi::Record)]
@@ -473,6 +485,7 @@ pub struct ResumeReport {
     pub settled: Vec<SwapRecord>,
     pub refunded: Vec<SwapRecord>,
     pub failed: Vec<SwapRecord>,
+    pub errors: Vec<ResumeFailure>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
@@ -491,6 +504,9 @@ impl KaleidoSwap {
                 .map(std::time::Duration::from_millis),
             fee_sat_per_vb: options.fee_sat_per_vb,
             quote_ttl: options.quote_ttl_secs.map(std::time::Duration::from_secs),
+            maker_timeout: options
+                .maker_timeout_ms
+                .map(std::time::Duration::from_millis),
         })?;
         Ok(Self { inner })
     }
@@ -527,6 +543,15 @@ impl KaleidoSwap {
             settled: report.settled.into_iter().map(Into::into).collect(),
             refunded: report.refunded.into_iter().map(Into::into).collect(),
             failed: report.failed.into_iter().map(Into::into).collect(),
+            errors: report
+                .errors
+                .into_iter()
+                .map(|f| ResumeFailure {
+                    id: f.id,
+                    code: f.error.code,
+                    message: f.error.message,
+                })
+                .collect(),
         })
     }
 }

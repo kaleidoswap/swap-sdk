@@ -213,6 +213,7 @@ test("swap() and resume() on an empty store", async (t) => {
     settled: [],
     refunded: [],
     failed: [],
+    errors: [],
   });
 });
 
@@ -301,6 +302,48 @@ test("records cross the wasm boundary as plain objects the store can serialize",
   );
   assert.equal(report.resumed[0].record().id, "seed-1");
   assert.equal(report.resumed[0].phase, "funded");
+});
+
+test("settled() with an already aborted signal rejects ABORTED and leaves no unhandled rejection", async (t) => {
+  const real = globalThis.fetch;
+  let status = "transaction.mempool";
+  globalThis.fetch = async (input) => {
+    const url = String(input?.url ?? input);
+    if (url.endsWith("/v2/swap/seed-1")) return Response.json({ status });
+    return new Response("not found", { status: 404 });
+  };
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  t.after(() => {
+    globalThis.fetch = real;
+    process.off("unhandledRejection", onUnhandled);
+  });
+
+  const store = {
+    records: [seededRecord()],
+    get: () => undefined,
+    put() {},
+    list() {
+      return this.records;
+    },
+    nextIndex: () => 1n,
+  };
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store,
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+    pollIntervalMs: 1,
+  });
+  const { resumed } = await k.resume();
+  status = "swap.expired"; // the swap now ends in `failed`, so the inner settled() rejects
+  await assert.rejects(
+    resumed[0].settled(AbortSignal.abort()),
+    (e) => e.code === "ABORTED",
+  );
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(unhandled, []);
 });
 
 test("a store that throws surfaces as STORE_FAILED", async (t) => {

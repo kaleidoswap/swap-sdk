@@ -2801,6 +2801,7 @@ struct KaleidoSwapJsOptions {
     poll_interval_ms: Option<u64>,
     fee_sat_per_vb: Option<f64>,
     quote_ttl_ms: Option<u64>,
+    maker_timeout_ms: Option<u64>,
 }
 
 /// `new KaleidoSwap({ network, store, signer, makerUrl?, bitcoinEsploraUrl?,
@@ -2841,6 +2842,9 @@ impl KaleidoSwap {
                 .map(std::time::Duration::from_millis),
             fee_sat_per_vb: parsed.fee_sat_per_vb,
             quote_ttl: parsed.quote_ttl_ms.map(std::time::Duration::from_millis),
+            maker_timeout: parsed
+                .maker_timeout_ms
+                .map(std::time::Duration::from_millis),
         })
         .map_err(hl_err)?;
         Ok(KaleidoSwap {
@@ -2880,7 +2884,7 @@ impl KaleidoSwap {
         })
     }
 
-    /// `{ resumed: Swap[], settled: record[], refunded: record[], failed: record[] }`.
+    /// `{ resumed: Swap[], settled, refunded, failed: record[], errors: { id, code, message }[] }`.
     pub async fn resume(&self) -> Result<JsValue, JsValue> {
         let report = self.inner.resume().await.map_err(hl_err)?;
         let out = js_sys::Object::new();
@@ -2916,6 +2920,24 @@ impl KaleidoSwap {
             &JsValue::from(records(report.failed)?),
         )
         .map_err(internal_err_js)?;
+        let errors = js_sys::Array::new();
+        for failure in &report.errors {
+            let item = js_sys::Object::new();
+            let code = serde_json::to_value(failure.error.code)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            for (key, value) in [
+                ("id", failure.id.as_str()),
+                ("code", code.as_str()),
+                ("message", failure.error.message.as_str()),
+            ] {
+                js_sys::Reflect::set(&item, &key.into(), &JsValue::from_str(value))
+                    .map_err(internal_err_js)?;
+            }
+            errors.push(&item);
+        }
+        js_sys::Reflect::set(&out, &"errors".into(), &errors).map_err(internal_err_js)?;
         Ok(out.into())
     }
 }

@@ -186,12 +186,13 @@ async def run():
         except sdk.Error.Swap as error:
             assert code_of(error) == sdk.SwapErrorCode.SWAP_NOT_FOUND
         report = await kaleido.resume()
-        assert (report.resumed, report.settled, report.refunded, report.failed) == (
-            [],
-            [],
-            [],
-            [],
-        )
+        assert (
+            report.resumed,
+            report.settled,
+            report.refunded,
+            report.failed,
+            report.errors,
+        ) == ([], [], [], [], [])
 
         # A store that fails is reported as such, not swallowed.
         class Broken(DictStore):

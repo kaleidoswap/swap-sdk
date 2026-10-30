@@ -779,6 +779,8 @@ pub struct KaleidoSwapOptions {
     /// How long a quote may be held before `start` refuses it. Pair terms are
     /// bound by hash, so this guards staleness, not price. Default 10 minutes.
     pub quote_ttl: Option<Duration>,
+    /// Timeout of every request to the maker. Default 30 s.
+    pub maker_timeout: Option<Duration>,
 }
 
 pub(crate) struct Env {
@@ -949,9 +951,21 @@ impl SwapFlows for DefaultFlows {
             ));
         };
         let script = Self::script(record, keys)?;
-        let tx = script
-            .construct_refund(self.params(record, keys, address, true))
-            .await?;
+        // Cooperative first, the maker co-signing so there is no timelock to
+        // wait out; when it will not, the script path is always available once
+        // the timelock has matured, so fall back to it rather than leave the
+        // lockup behind.
+        let tx = match script
+            .construct_refund(self.params(record, keys, address.clone(), true))
+            .await
+        {
+            Ok(tx) => tx,
+            Err(_) => {
+                script
+                    .construct_refund(self.params(record, keys, address, false))
+                    .await?
+            }
+        };
         self.chain.broadcast_tx(&tx).await
     }
 }
@@ -1057,7 +1071,15 @@ fn map_status(protocol: Protocol, status: &str, state: &SwapState) -> Transition
         "transaction.claim.pending" => t(SwapPhase::Claiming, true),
         "invoice.paid" | "invoice.settled" | "transaction.claimed" => t(SwapPhase::Settled, false),
         "transaction.refunded" => t(SwapPhase::Refunded, false),
-        "transaction.lockupFailed" | "invoice.failedToPay" => t(SwapPhase::Refundable, true),
+        // Only a submarine swap has a lockup of ours to take back; a reverse
+        // swap that fails is over, whatever the maker calls it.
+        "transaction.lockupFailed" | "invoice.failedToPay" => {
+            if protocol == Protocol::BoltzSubmarine {
+                t(SwapPhase::Refundable, true)
+            } else {
+                t(SwapPhase::Failed, false)
+            }
+        }
         "swap.expired" | "invoice.expired" | "transaction.failed" | "invoice.error" => {
             t(refundable, false)
         }
@@ -1322,6 +1344,16 @@ pub struct ResumeReport {
     pub settled: Vec<SwapRecord>,
     pub refunded: Vec<SwapRecord>,
     pub failed: Vec<SwapRecord>,
+    /// Swaps this pass could not move — the maker did not know them, a claim
+    /// was refused — each with its error. They stay in the store, and one of
+    /// them never stops the others from being resumed.
+    pub errors: Vec<ResumeFailure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResumeFailure {
+    pub id: String,
+    pub error: SwapError,
 }
 
 pub struct KaleidoSwap {
@@ -1333,15 +1365,20 @@ impl KaleidoSwap {
     /// runs no maker on.
     pub fn new(options: KaleidoSwapOptions) -> Result<Self, SwapError> {
         let network = options.network;
-        let api = match &options.maker_url {
-            Some(url) => BoltzApiClientV2::new(url.clone(), None),
-            None => BoltzApiClientV2::default(network).map_err(|e| {
-                SwapError::new(
-                    SwapErrorCode::PairUnavailable,
-                    format!("KaleidoSwap runs no maker on {network:?}; pass maker_url to name one ({e:?})"),
-                )
-            })?,
+        let base_url = match &options.maker_url {
+            Some(url) => url.clone(),
+            None => BoltzApiClientV2::default(network)
+                .map_err(|e| {
+                    SwapError::new(
+                        SwapErrorCode::PairUnavailable,
+                        format!("KaleidoSwap runs no maker on {network:?}; pass maker_url to name one ({e:?})"),
+                    )
+                })?
+                .base_url()
+                .to_string(),
         };
+        let timeout = options.maker_timeout.unwrap_or(Duration::from_secs(30));
+        let api = BoltzApiClientV2::new(base_url, Some(timeout));
         let maker_url = api.base_url().to_string();
         let defaults = default_chain_urls(network);
         let bitcoin_url = options
@@ -1453,6 +1490,9 @@ impl KaleidoSwap {
             }));
         };
         let percent = card.fees.percentage;
+        if let Some(refusal) = unusable_percentage(from, to, percent) {
+            return Ok(QuoteAnswer::Refusal(refusal));
+        }
         let miner = miner_fee_total(&card.fees.miner_fees);
         let from_amount = if request.side == Some(QuoteSide::To) {
             // Invert `to = from - ceil(from * pct) - miner` closely enough; the
@@ -1533,6 +1573,9 @@ impl KaleidoSwap {
             }));
         };
         let percent = card.fees.percentage;
+        if let Some(refusal) = unusable_percentage(from, to, percent) {
+            return Ok(QuoteAnswer::Refusal(refusal));
+        }
         let miner = card.fees.miner_fees;
         let maker_fee = percent_fee(to_amount, percent);
         let from_amount = to_amount + maker_fee + miner;
@@ -1786,13 +1829,21 @@ impl KaleidoSwap {
             settled: vec![],
             refunded: vec![],
             failed: vec![],
+            errors: vec![],
         };
         for record in self.env.store.list().await? {
             if record.phase.is_terminal() {
                 continue;
             }
+            let id = record.id.clone();
             let swap = Swap::new(self.env.clone(), record);
-            let after = swap.tick().await?;
+            let after = match swap.tick().await {
+                Ok(after) => after,
+                Err(error) => {
+                    report.errors.push(ResumeFailure { id, error });
+                    continue;
+                }
+            };
             match after.phase {
                 SwapPhase::Settled => report.settled.push(after),
                 SwapPhase::Refunded => report.refunded.push(after),
@@ -1802,6 +1853,21 @@ impl KaleidoSwap {
         }
         Ok(report)
     }
+}
+
+/// A pair card is the maker's input; a fee percentage outside `0..100`
+/// cannot be priced and must not reach the arithmetic.
+fn unusable_percentage(from: AssetId, to: AssetId, percent: f64) -> Option<Refusal> {
+    if percent.is_finite() && (0.0..100.0).contains(&percent) {
+        return None;
+    }
+    Some(Refusal {
+        from_asset: from,
+        to_asset: to,
+        reason: QuoteRefusalReason::PairUnavailable,
+        limits: None,
+        message: format!("the pair card for {from} -> {to} carries an unusable fee percentage"),
+    })
 }
 
 fn out_of_limits(from: AssetId, to: AssetId, amount: u64, limits: Limits) -> Option<Refusal> {
@@ -1870,6 +1936,10 @@ mod tests {
         submarine_expected: Mutex<Option<u64>>,
         /// Overrides the hash the reverse pair card carries.
         reverse_card_hash: Mutex<Option<String>>,
+        /// Overrides the fee percentage the reverse pair card carries.
+        reverse_percentage: Mutex<Option<f64>>,
+        /// Swap ids whose status the maker cannot give.
+        unknown_ids: Mutex<Vec<String>>,
     }
 
     impl FakeMaker {
@@ -1884,6 +1954,9 @@ mod tests {
             let mut card = reverse_card();
             if let Some(hash) = self.reverse_card_hash.lock().unwrap().clone() {
                 card.hash = hash;
+            }
+            if let Some(percentage) = *self.reverse_percentage.lock().unwrap() {
+                card.fees.percentage = percentage;
             }
             Ok(serde_json::from_value(serde_json::json!({
                 "BTC": {"L-BTC": card.clone(), "BTC": card}
@@ -1946,7 +2019,10 @@ mod tests {
             }))
             .unwrap())
         }
-        async fn swap_status(&self, _id: &str) -> Result<String, Error> {
+        async fn swap_status(&self, id: &str) -> Result<String, Error> {
+            if self.unknown_ids.lock().unwrap().iter().any(|u| u == id) {
+                return Err(Error::Generic(format!("the maker does not know {id}")));
+            }
             let mut statuses = self.statuses.lock().unwrap();
             if statuses.is_empty() {
                 return Err(Error::Generic("script exhausted".into()));
@@ -2048,6 +2124,7 @@ mod tests {
                 poll_interval: Some(Duration::from_millis(1)),
                 fee_sat_per_vb: None,
                 quote_ttl: None,
+                maker_timeout: None,
             },
             "https://maker.example/v2".into(),
             maker.clone(),
@@ -2393,6 +2470,91 @@ mod tests {
     }
 
     #[macros::async_test_all]
+    async fn a_failed_reverse_swap_is_failed_not_refundable() {
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        let swap = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tlq1dest".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        h.maker
+            .script(&["transaction.mempool", "invoice.failedToPay"]);
+        let mut seen = vec![];
+        let err = swap.watch(|p| seen.push(p)).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed);
+        assert_eq!(seen, vec![SwapPhase::Funded, SwapPhase::Failed]);
+        assert!(h.flows.refund.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn one_swap_the_maker_cannot_report_does_not_stop_the_others() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        let q = reverse_quote(&first).await;
+        let dest = || StartOptions {
+            destination: Some("tlq1dest".into()),
+            ..Default::default()
+        };
+        *first.maker.reverse_id.lock().unwrap() = "a-pruned".into();
+        first.kaleido.start(&q, dest()).await.unwrap();
+        *first.maker.reverse_id.lock().unwrap() = "b-claimable".into();
+        first.kaleido.start(&q, dest()).await.unwrap();
+
+        let second = harness_with(store.clone(), FakeFlows::default());
+        second
+            .maker
+            .unknown_ids
+            .lock()
+            .unwrap()
+            .push("a-pruned".into());
+        second.maker.script(&["transaction.confirmed"]);
+        let report = second.kaleido.resume().await.unwrap();
+        assert_eq!(report.errors.len(), 1);
+        assert_eq!(report.errors[0].id, "a-pruned");
+        assert_eq!(report.resumed.len(), 1);
+        assert_eq!(report.resumed[0].id(), "b-claimable");
+        assert_eq!(
+            second.flows.claim.lock().unwrap().len(),
+            1,
+            "the claimable swap was claimed"
+        );
+        assert!(
+            store.get("a-pruned").await.unwrap().is_some(),
+            "the unreadable one stays in the store"
+        );
+    }
+
+    #[macros::async_test_all]
+    async fn a_pair_card_with_an_unusable_percentage_is_refused_not_priced() {
+        let h = harness();
+        for percentage in [100.0, 250.0, -1.0] {
+            *h.maker.reverse_percentage.lock().unwrap() = Some(percentage);
+            let refusal = h
+                .kaleido
+                .quote(QuoteRequest {
+                    side: Some(QuoteSide::To),
+                    ..reverse_request(50_000)
+                })
+                .await
+                .unwrap()
+                .quote()
+                .unwrap_err();
+            assert_eq!(
+                refusal.reason,
+                QuoteRefusalReason::PairUnavailable,
+                "{percentage}"
+            );
+        }
+    }
+
+    #[macros::async_test_all]
     async fn a_maker_supplied_id_that_is_not_a_plain_token_is_refused() {
         let h = harness();
         let q = reverse_quote(&h).await;
@@ -2635,7 +2797,7 @@ mod tests {
         assert_eq!(done.phase, SwapPhase::Settled);
 
         let quiet = third.kaleido.resume().await.unwrap();
-        assert!(quiet.resumed.is_empty() && quiet.settled.is_empty());
+        assert!(quiet.resumed.is_empty() && quiet.settled.is_empty() && quiet.errors.is_empty());
     }
 
     #[macros::async_test_all]

@@ -7001,6 +7001,10 @@ class KaleidoSwapOptions:
     poll_interval_ms: "typing.Optional[int]"
     fee_sat_per_vb: "typing.Optional[float]"
     quote_ttl_secs: "typing.Optional[int]"
+    maker_timeout_ms: "typing.Optional[int]"
+    """
+    Timeout of every request to the maker. Default 30 s.
+    """
 
     def __init__(
         self,
@@ -7014,6 +7018,7 @@ class KaleidoSwapOptions:
         poll_interval_ms: "typing.Optional[int]" = _DEFAULT,
         fee_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
         quote_ttl_secs: "typing.Optional[int]" = _DEFAULT,
+        maker_timeout_ms: "typing.Optional[int]" = _DEFAULT,
     ):
         self.network = network
         self.store = store
@@ -7042,9 +7047,13 @@ class KaleidoSwapOptions:
             self.quote_ttl_secs = None
         else:
             self.quote_ttl_secs = quote_ttl_secs
+        if maker_timeout_ms is _DEFAULT:
+            self.maker_timeout_ms = None
+        else:
+            self.maker_timeout_ms = maker_timeout_ms
 
     def __str__(self):
-        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={})".format(
+        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={}, maker_timeout_ms={})".format(
             self.network,
             self.store,
             self.signer,
@@ -7054,6 +7063,7 @@ class KaleidoSwapOptions:
             self.poll_interval_ms,
             self.fee_sat_per_vb,
             self.quote_ttl_secs,
+            self.maker_timeout_ms,
         )
 
     def __eq__(self, other):
@@ -7075,6 +7085,8 @@ class KaleidoSwapOptions:
             return False
         if self.quote_ttl_secs != other.quote_ttl_secs:
             return False
+        if self.maker_timeout_ms != other.maker_timeout_ms:
+            return False
         return True
 
 
@@ -7091,6 +7103,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
             poll_interval_ms=_UniffiConverterOptionalUInt64.read(buf),
             fee_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
             quote_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
+            maker_timeout_ms=_UniffiConverterOptionalUInt64.read(buf),
         )
 
     @staticmethod
@@ -7104,6 +7117,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.check_lower(value.poll_interval_ms)
         _UniffiConverterOptionalDouble.check_lower(value.fee_sat_per_vb)
         _UniffiConverterOptionalUInt64.check_lower(value.quote_ttl_secs)
+        _UniffiConverterOptionalUInt64.check_lower(value.maker_timeout_ms)
 
     @staticmethod
     def write(value, buf):
@@ -7116,6 +7130,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalUInt64.write(value.poll_interval_ms, buf)
         _UniffiConverterOptionalDouble.write(value.fee_sat_per_vb, buf)
         _UniffiConverterOptionalUInt64.write(value.quote_ttl_secs, buf)
+        _UniffiConverterOptionalUInt64.write(value.maker_timeout_ms, buf)
 
 
 class Leaf:
@@ -8382,11 +8397,64 @@ class _UniffiConverterTypeRefusal(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.message, buf)
 
 
+class ResumeFailure:
+    """
+    A swap one `resume` pass could not move, with why. It stays in the store;
+    the other swaps are resumed regardless.
+    """
+
+    id: "str"
+    code: "SwapErrorCode"
+    message: "str"
+
+    def __init__(self, *, id: "str", code: "SwapErrorCode", message: "str"):
+        self.id = id
+        self.code = code
+        self.message = message
+
+    def __str__(self):
+        return "ResumeFailure(id={}, code={}, message={})".format(
+            self.id, self.code, self.message
+        )
+
+    def __eq__(self, other):
+        if self.id != other.id:
+            return False
+        if self.code != other.code:
+            return False
+        if self.message != other.message:
+            return False
+        return True
+
+
+class _UniffiConverterTypeResumeFailure(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ResumeFailure(
+            id=_UniffiConverterString.read(buf),
+            code=_UniffiConverterTypeSwapErrorCode.read(buf),
+            message=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.id)
+        _UniffiConverterTypeSwapErrorCode.check_lower(value.code)
+        _UniffiConverterString.check_lower(value.message)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.id, buf)
+        _UniffiConverterTypeSwapErrorCode.write(value.code, buf)
+        _UniffiConverterString.write(value.message, buf)
+
+
 class ResumeReport:
     resumed: "typing.List[Swap]"
     settled: "typing.List[SwapRecord]"
     refunded: "typing.List[SwapRecord]"
     failed: "typing.List[SwapRecord]"
+    errors: "typing.List[ResumeFailure]"
 
     def __init__(
         self,
@@ -8395,15 +8463,17 @@ class ResumeReport:
         settled: "typing.List[SwapRecord]",
         refunded: "typing.List[SwapRecord]",
         failed: "typing.List[SwapRecord]",
+        errors: "typing.List[ResumeFailure]",
     ):
         self.resumed = resumed
         self.settled = settled
         self.refunded = refunded
         self.failed = failed
+        self.errors = errors
 
     def __str__(self):
-        return "ResumeReport(resumed={}, settled={}, refunded={}, failed={})".format(
-            self.resumed, self.settled, self.refunded, self.failed
+        return "ResumeReport(resumed={}, settled={}, refunded={}, failed={}, errors={})".format(
+            self.resumed, self.settled, self.refunded, self.failed, self.errors
         )
 
     def __eq__(self, other):
@@ -8414,6 +8484,8 @@ class ResumeReport:
         if self.refunded != other.refunded:
             return False
         if self.failed != other.failed:
+            return False
+        if self.errors != other.errors:
             return False
         return True
 
@@ -8426,6 +8498,7 @@ class _UniffiConverterTypeResumeReport(_UniffiConverterRustBuffer):
             settled=_UniffiConverterSequenceTypeSwapRecord.read(buf),
             refunded=_UniffiConverterSequenceTypeSwapRecord.read(buf),
             failed=_UniffiConverterSequenceTypeSwapRecord.read(buf),
+            errors=_UniffiConverterSequenceTypeResumeFailure.read(buf),
         )
 
     @staticmethod
@@ -8434,6 +8507,7 @@ class _UniffiConverterTypeResumeReport(_UniffiConverterRustBuffer):
         _UniffiConverterSequenceTypeSwapRecord.check_lower(value.settled)
         _UniffiConverterSequenceTypeSwapRecord.check_lower(value.refunded)
         _UniffiConverterSequenceTypeSwapRecord.check_lower(value.failed)
+        _UniffiConverterSequenceTypeResumeFailure.check_lower(value.errors)
 
     @staticmethod
     def write(value, buf):
@@ -8441,6 +8515,7 @@ class _UniffiConverterTypeResumeReport(_UniffiConverterRustBuffer):
         _UniffiConverterSequenceTypeSwapRecord.write(value.settled, buf)
         _UniffiConverterSequenceTypeSwapRecord.write(value.refunded, buf)
         _UniffiConverterSequenceTypeSwapRecord.write(value.failed, buf)
+        _UniffiConverterSequenceTypeResumeFailure.write(value.errors, buf)
 
 
 class ReverseFees:
@@ -13549,6 +13624,28 @@ class _UniffiConverterSequenceTypeCardMarket(_UniffiConverterRustBuffer):
             raise InternalError("Unexpected negative sequence length")
 
         return [_UniffiConverterTypeCardMarket.read(buf) for i in range(count)]
+
+
+class _UniffiConverterSequenceTypeResumeFailure(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        for item in value:
+            _UniffiConverterTypeResumeFailure.check_lower(item)
+
+    @classmethod
+    def write(cls, value, buf):
+        items = len(value)
+        buf.write_i32(items)
+        for item in value:
+            _UniffiConverterTypeResumeFailure.write(item, buf)
+
+    @classmethod
+    def read(cls, buf):
+        count = buf.read_i32()
+        if count < 0:
+            raise InternalError("Unexpected negative sequence length")
+
+        return [_UniffiConverterTypeResumeFailure.read(buf) for i in range(count)]
 
 
 class _UniffiConverterSequenceTypeRgbAllocation(_UniffiConverterRustBuffer):
@@ -18837,6 +18934,7 @@ __all__ = [
     "QuoteRequest",
     "RefundDetails",
     "Refusal",
+    "ResumeFailure",
     "ResumeReport",
     "ReverseFees",
     "ReverseLimits",

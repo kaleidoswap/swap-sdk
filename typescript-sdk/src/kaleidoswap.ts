@@ -73,6 +73,8 @@ export interface KaleidoSwapOptions {
   liquidEsploraUrl?: string;
   /** How often a swap in flight is asked for its status. Default 2 s. */
   pollIntervalMs?: number;
+  /** Timeout of every request to the maker. Default 30 s. */
+  makerTimeoutMs?: number;
   /** Fee rate for claims and refunds this layer broadcasts. Default 2 sat/vB. */
   feeSatPerVb?: number;
   /**
@@ -302,6 +304,12 @@ export interface ResumeReport {
   settled: SwapRecord[];
   refunded: SwapRecord[];
   failed: SwapRecord[];
+  /**
+   * Swaps this pass could not move — the maker did not know them, a claim was
+   * refused — each with its error. They stay in the store, and one of them
+   * never stops the others from being resumed.
+   */
+  errors: { id: string; code: SwapErrorCode; message: string }[];
 }
 
 export interface KaleidoSwap {
@@ -374,6 +382,7 @@ export interface WasmKaleidoSwap {
     settled: SwapRecord[];
     refunded: SwapRecord[];
     failed: SwapRecord[];
+    errors: ResumeReport["errors"];
   }>;
 }
 
@@ -485,11 +494,13 @@ function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
       error.name = "ABORTED";
       reject(error);
     };
-    if (signal.aborted) return abort();
-    signal.addEventListener("abort", abort, { once: true });
+    // The inner promise gets its handlers first, so that when the signal has
+    // already fired its later rejection is still handled.
     promise
       .then(resolve, reject)
       .finally(() => signal.removeEventListener("abort", abort));
+    if (signal.aborted) return abort();
+    signal.addEventListener("abort", abort, { once: true });
   });
 }
 

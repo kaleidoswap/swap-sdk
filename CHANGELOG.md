@@ -31,7 +31,10 @@ objects in TypeScript — and records cross the store as JSON. `MemoryStore`
 ships everywhere; `FileStore` keeps one JSON file per swap, owner-readable
 only, refuses ids that are not plain tokens, and never hands out an index
 twice. `resume()` makes one pass over the store at startup and reports what it
-settled, refunded, failed or is still following.
+settled, refunded, failed or is still following, and lists any swap it could not
+move with its error — one such swap never stops the others from being resumed.
+Every request to the maker has a timeout (30 s by default, `maker_timeout`), and
+a refund falls back to the script path when the maker will not co-sign.
 
 L-USDT, the Arkade corridor and pay-through are not routed by this layer yet
 and come back as a `pair_unavailable` refusal that names the lower-level entry
