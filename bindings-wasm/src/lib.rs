@@ -2615,3 +2615,373 @@ pub fn validate_chain_timeout_headroom(
         )
         .map_err(core_err)
 }
+
+// ============================================================================
+// KaleidoSwap — the high-level surface. `quote`, `start`, `resume` over the
+// core phase machine (`kaleidorg_swap_sdk::kaleidoswap`); this section only
+// carries values across the boundary.
+//
+// The store and the signer are JS objects the application provides:
+//   store  = { get(id) -> record | undefined, put(record), list() -> record[],
+//              nextIndex() -> bigint | number }   (each may return a Promise)
+//   signer = { deriveKey(index) -> { secretKey }, derivePreimage(index) -> { preimage } }
+// Records cross the store as plain JSON-compatible objects (numbers, no
+// bigint) so `JSON.stringify` and IndexedDB both take them unchanged.
+// ============================================================================
+
+use kaleidorg_swap_sdk::kaleidoswap as hl;
+
+/// wasm32-unknown-unknown is single-threaded; a `JsValue` never leaves the
+/// thread that made it. The core traits ask for `Send + Sync` because the
+/// native build is multi-threaded, and this is the one place that promise is
+/// made for a JS handle.
+struct JsHandle(JsValue);
+unsafe impl Send for JsHandle {}
+unsafe impl Sync for JsHandle {}
+
+async fn call_js(target: &JsValue, method: &str, args: &[JsValue]) -> Result<JsValue, String> {
+    let f = js_sys::Reflect::get(target, &JsValue::from_str(method))
+        .ok()
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+        .ok_or_else(|| format!("{method} is not a function on the provided object"))?;
+    let array = js_sys::Array::new();
+    for a in args {
+        array.push(a);
+    }
+    let out = js_sys::Reflect::apply(&f, target, &array).map_err(|e| format!("{method}: {e:?}"))?;
+    let out = if out.has_type::<js_sys::Promise>() {
+        wasm_bindgen_futures::JsFuture::from(js_sys::Promise::from(out))
+            .await
+            .map_err(|e| format!("{method}: {e:?}"))?
+    } else {
+        out
+    };
+    Ok(out)
+}
+
+fn plain_record(record: &hl::SwapRecord) -> Result<JsValue, String> {
+    // A plain JS object, numbers and no `bigint`: `serde_json::Value`'s maps
+    // would otherwise cross as `Map`s, which `JSON.stringify` writes as `{}`
+    // and which have no `.id`. Every number in a record is a sat amount, a
+    // block height, an index or a Unix time — all inside 2^53.
+    let value = serde_json::to_value(record).map_err(|e| e.to_string())?;
+    let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    serde::Serialize::serialize(&value, &ser).map_err(|e| e.to_string())
+}
+
+fn record_from_plain(value: JsValue) -> Result<hl::SwapRecord, String> {
+    let value: serde_json::Value =
+        serde_wasm_bindgen::from_value(value).map_err(|e| e.to_string())?;
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+fn hl_store_err(e: impl std::fmt::Display) -> hl::SwapError {
+    hl::SwapError::new(hl::SwapErrorCode::StoreFailed, e.to_string())
+}
+
+fn hl_signer_err(e: impl std::fmt::Display) -> hl::SwapError {
+    hl::SwapError::new(hl::SwapErrorCode::SwapFailed, format!("signer: {e}"))
+}
+
+struct JsStore(JsHandle);
+
+#[async_trait::async_trait(?Send)]
+impl hl::SwapStore for JsStore {
+    async fn get(&self, id: &str) -> Result<Option<hl::SwapRecord>, hl::SwapError> {
+        let out = call_js(&self.0 .0, "get", &[JsValue::from_str(id)])
+            .await
+            .map_err(hl_store_err)?;
+        if out.is_undefined() || out.is_null() {
+            return Ok(None);
+        }
+        record_from_plain(out).map(Some).map_err(hl_store_err)
+    }
+    async fn put(&self, record: &hl::SwapRecord) -> Result<(), hl::SwapError> {
+        let value = plain_record(record).map_err(hl_store_err)?;
+        call_js(&self.0 .0, "put", &[value])
+            .await
+            .map_err(hl_store_err)?;
+        Ok(())
+    }
+    async fn list(&self) -> Result<Vec<hl::SwapRecord>, hl::SwapError> {
+        let out = call_js(&self.0 .0, "list", &[])
+            .await
+            .map_err(hl_store_err)?;
+        let array = out
+            .dyn_into::<js_sys::Array>()
+            .map_err(|_| hl_store_err("list() must return an array"))?;
+        array
+            .iter()
+            .map(|v| record_from_plain(v).map_err(hl_store_err))
+            .collect()
+    }
+    async fn next_index(&self) -> Result<u64, hl::SwapError> {
+        let out = call_js(&self.0 .0, "nextIndex", &[])
+            .await
+            .map_err(hl_store_err)?;
+        if let Some(n) = out.as_f64() {
+            if n >= 0.0 && n.fract() == 0.0 {
+                return Ok(n as u64);
+            }
+        }
+        if let Ok(big) = out.clone().dyn_into::<js_sys::BigInt>() {
+            if let Ok(n) = u64::try_from(big) {
+                return Ok(n);
+            }
+        }
+        Err(hl_store_err(
+            "nextIndex() must return a nonnegative integer",
+        ))
+    }
+}
+
+struct JsSigner(JsHandle);
+
+fn string_field(value: &JsValue, field: &str) -> Result<String, String> {
+    js_sys::Reflect::get(value, &JsValue::from_str(field))
+        .ok()
+        .and_then(|v| v.as_string())
+        .ok_or_else(|| format!("missing string field {field}"))
+}
+
+#[async_trait::async_trait(?Send)]
+impl hl::SwapSigner for JsSigner {
+    async fn derive_key(&self, index: u64) -> Result<Keypair, hl::SwapError> {
+        let out = call_js(&self.0 .0, "deriveKey", &[JsValue::from(index)])
+            .await
+            .map_err(hl_signer_err)?;
+        let hex = string_field(&out, "secretKey").map_err(hl_signer_err)?;
+        let secret = SecretKey::from_str(&hex).map_err(hl_signer_err)?;
+        Ok(Keypair::from_secret_key(&Secp256k1::new(), &secret))
+    }
+    async fn derive_preimage(&self, index: u64) -> Result<CorePreimage, hl::SwapError> {
+        let out = call_js(&self.0 .0, "derivePreimage", &[JsValue::from(index)])
+            .await
+            .map_err(hl_signer_err)?;
+        let hex = string_field(&out, "preimage").map_err(hl_signer_err)?;
+        let bytes = hex_decode_bytes(&hex).map_err(hl_signer_err)?;
+        CorePreimage::from_vec(bytes).map_err(|e| hl_signer_err(format!("{e:?}")))
+    }
+}
+
+fn hex_decode_bytes(hex: &str) -> Result<Vec<u8>, String> {
+    if hex.len() % 2 != 0 {
+        return Err("odd-length hex".into());
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
+}
+
+fn hl_err(e: hl::SwapError) -> JsValue {
+    let error = js_sys::Error::new(&e.message);
+    let code = serde_json::to_value(e.code)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{:?}", e.code));
+    set_code(&error, &code);
+    if let Some(id) = &e.swap_id {
+        let _ = js_sys::Reflect::set(
+            error.as_ref(),
+            &JsValue::from_str("swapId"),
+            &JsValue::from_str(id),
+        );
+    }
+    error.into()
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KaleidoSwapJsOptions {
+    network: String,
+    maker_url: Option<String>,
+    bitcoin_esplora_url: Option<String>,
+    liquid_esplora_url: Option<String>,
+    poll_interval_ms: Option<u64>,
+    fee_sat_per_vb: Option<f64>,
+    quote_ttl_ms: Option<u64>,
+}
+
+/// `new KaleidoSwap({ network, store, signer, makerUrl?, bitcoinEsploraUrl?,
+/// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, quoteTtlMs? })`.
+#[wasm_bindgen]
+pub struct KaleidoSwap {
+    inner: Arc<hl::KaleidoSwap>,
+}
+
+#[wasm_bindgen]
+impl KaleidoSwap {
+    #[wasm_bindgen(constructor)]
+    pub fn new(options: JsValue) -> Result<KaleidoSwap, JsValue> {
+        let store = js_sys::Reflect::get(&options, &JsValue::from_str("store"))
+            .map_err(|_| arg_err("options.store is required"))?;
+        let signer = js_sys::Reflect::get(&options, &JsValue::from_str("signer"))
+            .map_err(|_| arg_err("options.signer is required"))?;
+        if !store.is_object() {
+            return Err(arg_err(
+                "options.store must be an object with get/put/list/nextIndex",
+            ));
+        }
+        if !signer.is_object() {
+            return Err(arg_err(
+                "options.signer must be an object with deriveKey/derivePreimage",
+            ));
+        }
+        let parsed: KaleidoSwapJsOptions = from_js(options)?;
+        let inner = hl::KaleidoSwap::new(hl::KaleidoSwapOptions {
+            network: parse_network(&parsed.network)?,
+            store: Arc::new(JsStore(JsHandle(store))),
+            signer: Arc::new(JsSigner(JsHandle(signer))),
+            maker_url: parsed.maker_url,
+            bitcoin_esplora_url: parsed.bitcoin_esplora_url,
+            liquid_esplora_url: parsed.liquid_esplora_url,
+            poll_interval: parsed
+                .poll_interval_ms
+                .map(std::time::Duration::from_millis),
+            fee_sat_per_vb: parsed.fee_sat_per_vb,
+            quote_ttl: parsed.quote_ttl_ms.map(std::time::Duration::from_millis),
+        })
+        .map_err(hl_err)?;
+        Ok(KaleidoSwap {
+            inner: Arc::new(inner),
+        })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn network(&self) -> String {
+        format!("{:?}", self.inner.network()).to_lowercase()
+    }
+
+    /// `{ kind: "quote", … } | { kind: "refusal", … }`; amounts are bigint.
+    pub async fn quote(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: hl::QuoteRequest = from_js(request)?;
+        to_js(&self.inner.quote(request).await.map_err(hl_err)?)
+    }
+
+    pub async fn start(&self, quote: JsValue, options: JsValue) -> Result<Swap, JsValue> {
+        let quote: hl::Quote = from_js(quote)?;
+        let options: hl::StartOptions = if options.is_undefined() || options.is_null() {
+            hl::StartOptions::default()
+        } else {
+            from_js(options)?
+        };
+        let swap = self.inner.start(&quote, options).await.map_err(hl_err)?;
+        Ok(Swap {
+            inner: Arc::new(swap),
+        })
+    }
+
+    pub async fn swap(&self, id: StringArg) -> Result<Swap, JsValue> {
+        let id = str_arg(id, "id")?;
+        let swap = self.inner.swap(&id).await.map_err(hl_err)?;
+        Ok(Swap {
+            inner: Arc::new(swap),
+        })
+    }
+
+    /// `{ resumed: Swap[], settled: record[], refunded: record[], failed: record[] }`.
+    pub async fn resume(&self) -> Result<JsValue, JsValue> {
+        let report = self.inner.resume().await.map_err(hl_err)?;
+        let out = js_sys::Object::new();
+        let resumed = js_sys::Array::new();
+        for swap in report.resumed {
+            resumed.push(&JsValue::from(Swap {
+                inner: Arc::new(swap),
+            }));
+        }
+        let records = |items: Vec<hl::SwapRecord>| -> Result<js_sys::Array, JsValue> {
+            let array = js_sys::Array::new();
+            for r in &items {
+                array.push(&plain_record(r).map_err(internal_err)?);
+            }
+            Ok(array)
+        };
+        js_sys::Reflect::set(&out, &"resumed".into(), &resumed).map_err(internal_err_js)?;
+        js_sys::Reflect::set(
+            &out,
+            &"settled".into(),
+            &JsValue::from(records(report.settled)?),
+        )
+        .map_err(internal_err_js)?;
+        js_sys::Reflect::set(
+            &out,
+            &"refunded".into(),
+            &JsValue::from(records(report.refunded)?),
+        )
+        .map_err(internal_err_js)?;
+        js_sys::Reflect::set(
+            &out,
+            &"failed".into(),
+            &JsValue::from(records(report.failed)?),
+        )
+        .map_err(internal_err_js)?;
+        Ok(out.into())
+    }
+}
+
+/// A swap in flight. `phase`, `action` and `record` read the handle's last
+/// view; `tick`, `watch`, `settled` and `refund` move it.
+#[wasm_bindgen]
+pub struct Swap {
+    inner: Arc<hl::Swap>,
+}
+
+#[wasm_bindgen]
+impl Swap {
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> String {
+        self.inner.id()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn protocol(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.protocol())
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn phase(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.phase())
+    }
+
+    /// `{ invoice?, fundingAddress?, fundingAmount?, zeroConfLimit? }`.
+    #[wasm_bindgen(getter)]
+    pub fn action(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.action())
+    }
+
+    /// The record as the handle last saw it — the same shape the store holds.
+    pub fn record(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.record()).map_err(internal_err)
+    }
+
+    pub async fn tick(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.tick().await.map_err(hl_err)?).map_err(internal_err)
+    }
+
+    pub async fn refund(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.refund().await.map_err(hl_err)?).map_err(internal_err)
+    }
+
+    /// Resolves with the record on `settled`; rejects with a coded error on
+    /// any other terminal phase. `onPhase(phase)` fires on every change.
+    pub async fn watch(&self, on_phase: Option<js_sys::Function>) -> Result<JsValue, JsValue> {
+        let listener = on_phase.map(|f| JsHandle(f.into()));
+        let record = self
+            .inner
+            .watch(|phase| {
+                if let Some(JsHandle(f)) = &listener {
+                    if let Ok(f) = f.clone().dyn_into::<js_sys::Function>() {
+                        let _ = f.call1(&JsValue::NULL, &JsValue::from_str(phase.as_str()));
+                    }
+                }
+            })
+            .await
+            .map_err(hl_err)?;
+        plain_record(&record).map_err(internal_err)
+    }
+
+    pub async fn settled(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.settled().await.map_err(hl_err)?).map_err(internal_err)
+    }
+}

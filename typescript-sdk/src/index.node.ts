@@ -13,10 +13,9 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import {
   init as initWithSource,
   makeCreateKaleidoSwap,
-  SwapClient,
-  SwapError,
-  SwapScript,
+  swapError,
   toJson,
+  wasmKaleidoSwapClass,
   wasmUrl,
   type SwapRecord,
   type SwapStore,
@@ -28,8 +27,7 @@ export * from "./index.js";
 /** The high-level entry, bound to this entry's `init` so the wasm is read from disk. */
 export const createKaleidoSwap = makeCreateKaleidoSwap({
   init: () => init(),
-  SwapClient,
-  SwapScript,
+  KaleidoSwap: wasmKaleidoSwapClass,
 });
 
 /**
@@ -55,10 +53,7 @@ export class FileStore implements SwapStore {
    */
   private file(name: string): URL {
     if (!/^[A-Za-z0-9_.-]{1,160}$/.test(name) || name.startsWith("."))
-      throw new SwapError(
-        "SWAP_FAILED",
-        `refusing to use ${name} as a file name`,
-      );
+      throw swapError("STORE_FAILED", `refusing to use ${name} as a file name`);
     return new URL(name, this.dir);
   }
 

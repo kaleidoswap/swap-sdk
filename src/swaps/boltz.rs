@@ -1078,6 +1078,11 @@ impl BoltzApiClientV2 {
     /// status for ids the subscriber already holds and creates nothing, so there
     /// is nothing on it to attribute — and the WebSocket client this SDK uses
     /// sends no custom headers on the handshake in the browser regardless.
+    /// The `/v2` base URL this client was built with.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     pub fn get_ws_url(&self) -> String {
         self.base_url.clone().replace("http", "ws") + "/ws"
     }

@@ -4,37 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added — TypeScript: `createKaleidoSwap`, a high-level surface over the swap engine
+### Added — `kaleidoswap`, a high-level surface in the Rust core, with Python, React Native and TypeScript bindings
 
 One verb per step — `quote`, `start`, `resume` — for the routes the maker
 serves over Boltz `/v2`: Lightning to on-chain BTC or L-BTC (reverse) and
 on-chain BTC or L-BTC to Lightning (submarine). Assets are named with their
-chain (`"lightning:BTC"`, `"liquid:BTC"`), so a destination on the wrong
-chain or network is refused locally. `quote` answers with a `Quote` or a
-`Refusal` value; `start` creates the swap, verifies the lockup against the
-caller's own key and persists the record — including `swapAuth` — before it
-returns, and never moves funds. A `Swap` exposes one phase machine over every
-protocol (`awaiting_funding → funded → locked → claiming → settled`, with
-`refundable → refunding → refunded` and `failed`), as an async iterator or a
-promise, and claims or refunds on its own as the maker's status moves. Every
-failure is a `SwapError` with a code.
+layer (`lightning:BTC`, `liquid:BTC`), so a destination on the wrong layer or
+network is refused locally. `quote` answers with a `Quote` or a `Refusal`
+value; `start` creates the swap, verifies the lockup against the caller's own
+key and persists the record, including `swap_auth`, before it returns, and
+never moves funds. A `Swap` follows one phase machine over every protocol
+(`awaiting_funding → funded → locked → claiming → settled`, with
+`refundable → refunding → refunded` and `failed`), claims or refunds on its
+own as the maker's status moves, and reports every failure as a `SwapError`
+with a code.
 
-Keys and persistence are injected: a `SwapSigner` (`mnemonicSigner` wraps
-`SwapMasterKey`) and a `SwapStore` that also owns the BIP85 index counter.
-`MemoryStore` ships for tests; in Node, `FileStore` keeps one JSON file per
-swap, owner-readable only, and refuses ids that are not plain tokens. Records
-are plain JSON; the fields that crossed the wasm boundary as `bigint` are
-recorded and restored before the response is handed back to the engine, so a
-claim after a restart rebuilds the same tree as the one verified at `start`.
-`resume()` makes one pass over the store at startup and reports what it
+The phase machine, the pricing and every check live in the Rust core
+(`kaleidorg_swap_sdk::kaleidoswap`), so each binding inherits the same one.
+Keys and persistence are injected: a `SwapSigner` (`MnemonicSigner` wraps
+`SwapMasterKey`) and a `SwapStore` that also owns the BIP85 index counter. The
+application implements both — foreign traits in Python and React Native, plain
+objects in TypeScript — and records cross the store as JSON. `MemoryStore`
+ships everywhere; `FileStore` keeps one JSON file per swap, owner-readable
+only, refuses ids that are not plain tokens, and never hands out an index
+twice. `resume()` makes one pass over the store at startup and reports what it
 settled, refunded, failed or is still following.
 
 L-USDT, the Arkade corridor and pay-through are not routed by this layer yet
-and come back as a `pair_unavailable` refusal that names the lower-level
-entry to use. The default Liquid testnet Esplora for this layer is
-`liquid.network`, which does not rate-limit UTXO lookups. Three examples under
-`typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts`
-in a fraction of the lines, plus a `resume.ts`.
+and come back as a `pair_unavailable` refusal that names the lower-level entry
+to use. The default Liquid testnet Esplora for this layer is `liquid.network`,
+which does not rate-limit UTXO lookups. Status is polled. `BoltzApiClientV2`
+gains `base_url()`, and `Error` in the Python and React Native bindings gains a
+`Swap` variant carrying the code. Three examples under
+`typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts` in
+a fraction of the lines, plus a `resume.ts`.
 
 ## [0.13.0] - 2026-10-28
 

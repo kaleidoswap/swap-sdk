@@ -1,148 +1,86 @@
-// Tests for the high-level surface. The maker is a fake `SwapClient` fed a
-// status script; the chain steps go through the `flows` seam, so nothing here
-// touches a network or builds a transaction. The one wasm-backed test at the
-// end checks that `mnemonicSigner` derives what `SwapMasterKey` does.
+// Tests for the high-level surface on the TypeScript side. The phase machine
+// itself — pricing, validation, persistence order, claim and refund, resume —
+// is the Rust core's and is tested there against a fake maker
+// (`src/swaps/kaleidoswap.rs`). Here: the wasm binding end to end for the
+// paths that need no valid swap tree (quote, and the checks `start` makes
+// before it contacts the maker), the adapters, and the Node stores.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  MemoryStore,
-  isQuote,
-  isSwapError,
-  makeCreateKaleidoSwap,
-} from "../dist/kaleidoswap.js";
+import { MemoryStore, isQuote, isSwapError } from "../dist/kaleidoswap.js";
 import {
   FileStore,
   SwapMasterKey,
+  createKaleidoSwap,
   init,
   mnemonicSigner,
 } from "../dist/index.node.js";
 
-// Hold invoices the signet maker issued (50 000 sat) and a regtest one, from
-// pay-through.test.mjs. Only amount and prefix matter here.
+// A hold invoice the signet maker issued (50 000 sat), and a regtest one.
 const INVOICE_SIGNET_50K =
   "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e";
 const INVOICE_REGTEST_100K =
-  "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
+  "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
 
 const REVERSE_CARD = {
   hash: "rev-hash",
   rate: 1,
-  limits: { minimal: 10_000n, maximal: 1_000_000n },
-  fees: { percentage: 0.5, minerFees: { lockup: 200n, claim: 100n } },
+  limits: { minimal: 10000, maximal: 1000000 },
+  fees: { percentage: 0.5, minerFees: { lockup: 200, claim: 100 } },
 };
 const SUBMARINE_CARD = {
   hash: "sub-hash",
   rate: 1,
-  limits: { minimal: 10_000n, maximal: 1_000_000n, maximalZeroConf: 0n },
-  fees: { percentage: 0.1, minerFees: 150n },
+  limits: { minimal: 10000, maximal: 1000000, maximalZeroConf: 0 },
+  fees: { percentage: 0.1, minerFees: 150 },
 };
 
-/** A maker that answers from a script of statuses, one per `swap()` call. */
-class FakeClient {
-  constructor(url) {
-    this.url = url;
-    this.statuses = [];
-    this.created = [];
-  }
-  async reversePairs() {
-    return { BTC: { "L-BTC": REVERSE_CARD, BTC: REVERSE_CARD } };
-  }
-  async submarinePairs() {
-    return { BTC: { BTC: SUBMARINE_CARD }, "L-BTC": { BTC: SUBMARINE_CARD } };
-  }
-  async createReverseSwap(network, req) {
-    this.created.push({ kind: "reverse", network, req });
-    return {
-      id: "rev-1",
-      invoice: INVOICE_SIGNET_50K,
-      lockupAddress: "tlq1lockup",
-      onchainAmount: req.invoiceAmount - 550n,
-      swapAuth: "secret-auth",
-      timeoutBlockHeight: 100n,
-    };
-  }
-  async createSubmarineSwap(network, req) {
-    this.created.push({ kind: "submarine", network, req });
-    return {
-      id: "sub-1",
-      address: "tb1qlockup",
-      expectedAmount: 50_200n,
-      acceptZeroConf: false,
-      swapAuth: "secret-auth",
-      timeoutBlockHeight: 100n,
-    };
-  }
-  async swap() {
-    if (this.statuses.length === 0) throw new Error("script exhausted");
-    const next =
-      this.statuses.length > 1 ? this.statuses.shift() : this.statuses[0];
-    return { status: next };
-  }
-}
-
-function harness({
-  network = "signet",
-  store = new MemoryStore(),
-  flows,
-} = {}) {
-  let client;
-  const calls = { verify: [], claim: [], refund: [] };
-  const create = makeCreateKaleidoSwap({
-    init: async () => {},
-    SwapClient: class extends FakeClient {
-      constructor(url) {
-        super(url);
-        client = this;
-      }
-      static forNetwork() {
-        throw new Error("tests always pass makerUrl");
-      }
-    },
-    SwapScript: {},
+/** The maker's pair catalogues, served through the global `fetch` the wasm HTTP stack uses. */
+function stubMaker(t) {
+  const real = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input?.url ?? input);
+    requests.push({ url, method: init?.method ?? input?.method ?? "GET" });
+    if (url.endsWith("/v2/swap/reverse"))
+      return Response.json({
+        BTC: { "L-BTC": REVERSE_CARD, BTC: REVERSE_CARD },
+      });
+    if (url.endsWith("/v2/swap/submarine"))
+      return Response.json({
+        BTC: { BTC: SUBMARINE_CARD },
+        "L-BTC": { BTC: SUBMARINE_CARD },
+      });
+    return new Response("not found", { status: 404 });
+  };
+  t.after(() => {
+    globalThis.fetch = real;
   });
-  const signer = {
-    async deriveKey(index) {
-      return { publicKey: `pub-${index}`, secretKey: `sec-${index}` };
-    },
-    async derivePreimage(index) {
-      return { preimage: `pre-${index}`, sha256: `hash-${index}`, hash160: "" };
-    },
-  };
-  const defaultFlows = {
-    verifyLockup(record, pubkey) {
-      calls.verify.push([record.id, pubkey]);
-    },
-    async claim(record, key, preimage) {
-      calls.claim.push([record.id, key.publicKey, preimage]);
-      return "claim-txid";
-    },
-    async refund(record, key) {
-      calls.refund.push([record.id, key.publicKey]);
-      return "refund-txid";
-    },
-  };
-  const kaleido = create(
-    {
-      network,
-      store,
-      signer,
-      makerUrl: "https://maker.example/v2",
-      pollIntervalMs: 1,
-    },
-    { ...defaultFlows, ...flows },
-  );
-  return { kaleido, store, calls, client: () => client };
+  return requests;
 }
 
-test("quote: reverse prices from the pair card and binds its hash", async () => {
-  const { kaleido } = harness();
-  const answer = await (
-    await kaleido
-  ).quote({
+const SIGNER = mnemonicSigner(
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  "signet",
+);
+
+async function kaleido() {
+  return createKaleidoSwap({
+    network: "signet",
+    store: new MemoryStore(),
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+    pollIntervalMs: 1,
+  });
+}
+
+test("quote: reverse prices from the pair card and binds its hash", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  const answer = await k.quote({
     from: "lightning:BTC",
     to: "liquid:BTC",
     amount: 50_000,
@@ -155,23 +93,28 @@ test("quote: reverse prices from the pair card and binds its hash", async () => 
   assert.equal(answer.binding.pairHash, "rev-hash");
 });
 
-test("quote: side 'to' inverts the fee formula", async () => {
-  const { kaleido } = harness();
-  const answer = await (
-    await kaleido
-  ).quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 49_450n,
-    side: "to",
-  });
-  assert.ok(isQuote(answer));
-  assert.ok(answer.toAmount >= 49_450n, `${answer.toAmount}`);
-  assert.ok(answer.fromAmount - 50_000n <= 1n, `${answer.fromAmount}`);
+test("quote: amounts in any accepted form, bad ones coded", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  for (const amount of [50_000n, 50_000, "50000"]) {
+    const answer = await k.quote({
+      from: "lightning:BTC",
+      to: "liquid:BTC",
+      amount,
+    });
+    assert.ok(isQuote(answer) && answer.fromAmount === 50_000n);
+  }
+  for (const amount of [1.5, "12abc", Number.MAX_SAFE_INTEGER + 1, -1]) {
+    await assert.rejects(
+      k.quote({ from: "lightning:BTC", to: "liquid:BTC", amount }),
+      (e) => isSwapError(e) && e.code === "INVALID_AMOUNT",
+    );
+  }
 });
 
-test("quote: refusals are values, not throws", async () => {
-  const k = await harness().kaleido;
+test("quote: refusals are values, not throws", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
   const below = await k.quote({
     from: "lightning:BTC",
     to: "liquid:BTC",
@@ -180,15 +123,12 @@ test("quote: refusals are values, not throws", async () => {
   assert.equal(below.kind, "refusal");
   assert.equal(below.reason, "amount_below_min");
   assert.deepEqual(below.limits, { min: 10_000n, max: 1_000_000n });
-
   const arkade = await k.quote({
     from: "arkade:BTC",
     to: "lightning:BTC",
     amount: 1,
   });
   assert.equal(arkade.reason, "pair_unavailable");
-  assert.match(arkade.message, /arkade/);
-
   const usdt = await k.quote({
     from: "lightning:BTC",
     to: "liquid:USDT",
@@ -197,18 +137,9 @@ test("quote: refusals are values, not throws", async () => {
   assert.equal(usdt.reason, "pair_unavailable");
 });
 
-test("quote: bad amounts are coded errors", async () => {
-  const k = await harness().kaleido;
-  for (const amount of [1.5, "12abc", Number.MAX_SAFE_INTEGER + 1]) {
-    await assert.rejects(
-      k.quote({ from: "lightning:BTC", to: "liquid:BTC", amount }),
-      (e) => isSwapError(e) && e.code === "INVALID_AMOUNT",
-    );
-  }
-});
-
-test("quote: submarine is priced against the invoice and checks its network", async () => {
-  const k = await harness().kaleido;
+test("quote: a submarine is priced against the invoice and checks its network", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
   const answer = await k.quote({
     from: "bitcoin:BTC",
     to: "lightning:BTC",
@@ -217,8 +148,7 @@ test("quote: submarine is priced against the invoice and checks its network", as
   assert.ok(isQuote(answer));
   assert.equal(answer.protocol, "boltz-submarine");
   assert.equal(answer.toAmount, 50_000n);
-  assert.equal(answer.fromAmount, 50_000n + 50n + 150n);
-
+  assert.equal(answer.fromAmount, 50_200n);
   await assert.rejects(
     k.quote({
       from: "bitcoin:BTC",
@@ -231,246 +161,54 @@ test("quote: submarine is priced against the invoice and checks its network", as
     k.quote({ from: "bitcoin:BTC", to: "lightning:BTC" }),
     (e) => e.code === "INVALID_DESTINATION",
   );
-  await assert.rejects(
-    k.quote({
-      from: "bitcoin:BTC",
-      to: "lightning:BTC",
-      invoice: INVOICE_SIGNET_50K,
-      amount: 1,
-    }),
-    (e) => e.code === "INVALID_AMOUNT",
-  );
 });
 
-test("start: validates the destination, verifies the lockup, persists before returning", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
+test("start: destination and refund address are checked before the maker is contacted", async (t) => {
+  const requests = stubMaker(t);
+  const k = await kaleido();
+  const reverse = await k.quote({
     from: "lightning:BTC",
     to: "liquid:BTC",
     amount: 50_000,
   });
-
   await assert.rejects(
-    k.start(quote, { destination: "lq1mainnet" }),
+    k.start(reverse, { destination: "lq1mainnet" }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   await assert.rejects(
-    k.start(quote, {}),
+    k.start(reverse, {}),
     (e) => e.code === "INVALID_DESTINATION",
   );
-  assert.equal(h.client().created.length, 0, "nothing reached the maker");
-
-  const swap = await k.start(quote, { destination: "tlq1dest" });
-  assert.equal(swap.id, "rev-1");
-  assert.equal(swap.phase, "awaiting_funding");
-  assert.equal(swap.action.invoice, INVOICE_SIGNET_50K);
-  assert.deepEqual(h.calls.verify, [["rev-1", "pub-0"]]);
-
-  const { req } = h.client().created[0];
-  assert.deepEqual(req, {
-    from: "BTC",
-    to: "L-BTC",
-    invoiceAmount: 50_000n,
-    preimageHash: "hash-0",
-    claimPublicKey: "pub-0",
-    pairHash: "rev-hash",
-  });
-
-  const record = await h.store.get("rev-1");
-  assert.equal(record.phase, "awaiting_funding");
-  assert.equal(record.state.swapIndex, "0");
-  assert.equal(record.state.response.swapAuth, "secret-auth");
-  // JSON-plain: the amount crossed as bigint and is stored as a string.
-  assert.equal(record.state.response.onchainAmount, "49450");
-  assert.deepEqual(record.state.bigints, [
-    "onchainAmount",
-    "timeoutBlockHeight",
-  ]);
-  assert.doesNotThrow(
-    () => JSON.stringify(record),
-    "no bigint left in the record",
-  );
-});
-
-test("start: a lockup that does not match our key never reaches the store", async () => {
-  const h = harness({
-    flows: {
-      verifyLockup() {
-        throw new Error("tree mismatch");
-      },
-    },
-  });
-  const k = await h.kaleido;
-  const quote = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
-  });
   await assert.rejects(
-    k.start(quote, { destination: "tlq1dest" }),
-    (e) => e.code === "LOCKUP_MISMATCH",
-  );
-  assert.equal(await h.store.get("rev-1"), undefined);
-});
-
-test("start: each swap takes a fresh index; expired quotes are refused", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
-  });
-  await k.start(quote, { destination: "tlq1a" });
-  await k.start(quote, { destination: "tlq1b" });
-  assert.deepEqual(
-    h.client().created.map((c) => c.req.claimPublicKey),
-    ["pub-0", "pub-1"],
-  );
-  await assert.rejects(
-    k.start({ ...quote, expiresAt: new Date(0) }, { destination: "tlq1a" }),
+    k.start({ ...reverse, expiresAt: 0n }, { destination: "tlq1dest" }),
     (e) => e.code === "QUOTE_EXPIRED",
   );
-});
 
-test("reverse: phases run to settled and the claim fires once, on confirmation", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
-  });
-  const swap = await k.start(quote, { destination: "tlq1dest" });
-  h.client().statuses = [
-    "swap.created",
-    "transaction.mempool",
-    "transaction.confirmed",
-    "transaction.confirmed", // still reported after our claim broadcast
-    "invoice.settled",
-  ];
-
-  const seen = [];
-  for await (const phase of swap.phases()) seen.push(phase);
-  assert.deepEqual(seen, ["funded", "locked", "claiming", "settled"]);
-  assert.deepEqual(h.calls.claim, [["rev-1", "pub-0", "pre-0"]]);
-
-  const record = await h.store.get("rev-1");
-  assert.equal(record.phase, "settled");
-  assert.equal(record.state.claimTxid, "claim-txid");
-  assert.equal(record.rawStatus, "invoice.settled");
-});
-
-test("reverse: settled() rejects with the terminal reason", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
-  });
-  const swap = await k.start(quote, { destination: "tlq1dest" });
-  h.client().statuses = ["swap.created", "swap.expired"];
-  await assert.rejects(
-    swap.settled(),
-    (e) => e.code === "SWAP_EXPIRED" && e.swapId === "rev-1",
-  );
-  assert.equal(
-    h.calls.refund.length,
-    0,
-    "a reverse swap has nothing of ours to refund",
-  );
-});
-
-test("submarine: funding then a failed payment refunds on its own", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
+  const submarine = await k.quote({
     from: "bitcoin:BTC",
     to: "lightning:BTC",
     invoice: INVOICE_SIGNET_50K,
   });
-
   await assert.rejects(
-    k.start(quote, {}),
+    k.start(submarine, {}),
     (e) => e.code === "REFUND_ADDRESS_REQUIRED",
   );
   await assert.rejects(
-    k.start(quote, { refundAddress: "bc1mainnet" }),
+    k.start(submarine, { refundAddress: "bc1mainnet" }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
-
-  const swap = await k.start(quote, { refundAddress: "tb1qrefund" });
-  assert.deepEqual(swap.action, {
-    fundingAddress: "tb1qlockup",
-    fundingAmount: 50_200n,
-    zeroConfLimit: 0n,
-  });
-  assert.equal(h.client().created[0].req.invoice, INVOICE_SIGNET_50K);
-
-  h.client().statuses = [
-    "transaction.mempool",
-    "invoice.failedToPay",
-    "invoice.failedToPay",
-    "transaction.refunded",
-  ];
-  const seen = [];
-  for await (const phase of swap.phases()) seen.push(phase);
-  assert.deepEqual(seen, ["funded", "refundable", "refunding", "refunded"]);
-  assert.deepEqual(h.calls.refund, [["sub-1", "pub-0"]]);
+  assert.equal(
+    requests.filter((r) => r.method === "POST").length,
+    0,
+    "nothing was created",
+  );
 });
 
-test("submarine: expiry before funding is failed, not refundable", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
-    from: "bitcoin:BTC",
-    to: "lightning:BTC",
-    invoice: INVOICE_SIGNET_50K,
-  });
-  const swap = await k.start(quote, { refundAddress: "tb1qrefund" });
-  h.client().statuses = ["swap.created", "swap.expired"];
-  const seen = [];
-  for await (const phase of swap.phases()) seen.push(phase);
-  assert.deepEqual(seen, ["failed"]);
-  assert.equal(h.calls.refund.length, 0);
-});
-
-test("resume: one pass over the store acts on what is actionable and reports the rest", async () => {
-  const store = new MemoryStore();
-  const first = harness({ store });
-  const k1 = await first.kaleido;
-  const quote = await k1.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
-  });
-  await k1.start(quote, { destination: "tlq1dest" });
-
-  // A new process over the same store: the previous one never saw the lockup.
-  const second = harness({ store });
-  const k2 = await second.kaleido;
-  second.client().statuses = ["transaction.confirmed"];
-  const report = await k2.resume();
-  assert.equal(report.resumed.length, 1);
-  assert.equal(report.resumed[0].phase, "claiming");
-  assert.deepEqual(second.calls.claim, [["rev-1", "pub-0", "pre-0"]]);
-  assert.equal((await store.get("rev-1")).state.claimTxid, "claim-txid");
-
-  // A third pass sees the claim already broadcast and does not repeat it.
-  const third = harness({ store });
-  const k3 = await third.kaleido;
-  third.client().statuses = ["transaction.confirmed", "invoice.settled"];
-  const again = await k3.resume();
-  assert.equal(third.calls.claim.length, 0);
-  assert.equal(again.resumed.length, 1);
-  assert.equal((await k3.swap("rev-1")).phase, "claiming");
-  const done = await again.resumed[0].settled();
-  assert.equal(done.phase, "settled");
-
-  const settled = await k3.resume();
-  assert.deepEqual(settled, {
+test("swap() and resume() on an empty store", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  await assert.rejects(k.swap("nope"), (e) => e.code === "SWAP_NOT_FOUND");
+  assert.deepEqual(await k.resume(), {
     resumed: [],
     settled: [],
     refunded: [],
@@ -478,9 +216,116 @@ test("resume: one pass over the store acts on what is actionable and reports the
   });
 });
 
-test("swap(): unknown ids are coded", async () => {
-  const k = await harness().kaleido;
-  await assert.rejects(k.swap("nope"), (e) => e.code === "SWAP_NOT_FOUND");
+/** A reverse-swap record as the store holds it, as written by the Rust core. */
+function seededRecord(overrides = {}) {
+  return {
+    id: "seed-1",
+    protocol: "boltz-reverse",
+    network: "signet",
+    makerUrl: "https://maker.example/v2",
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    phase: "awaiting_funding",
+    rawStatus: "swap.created",
+    createdAt: 1_700_000_000,
+    updatedAt: 1_700_000_000,
+    state: {
+      swapIndex: 0,
+      response: {
+        protocol: "boltz-reverse",
+        id: "seed-1",
+        invoice: INVOICE_SIGNET_50K,
+        swapTree: {
+          claimLeaf: { output: "00", version: 196 },
+          refundLeaf: { output: "01", version: 196 },
+        },
+        lockupAddress: "tlq1lockup",
+        refundPublicKey:
+          "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+        timeoutBlockHeight: 200,
+        onchainAmount: 49_450,
+        swapAuth: "secret-auth",
+      },
+      destination: "tlq1dest",
+    },
+    ...overrides,
+  };
+}
+
+test("records cross the wasm boundary as plain objects the store can serialize", async (t) => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url = String(input?.url ?? input);
+    if (url.endsWith("/v2/swap/seed-1"))
+      return Response.json({ status: "transaction.mempool" });
+    return new Response("not found", { status: 404 });
+  };
+  t.after(() => {
+    globalThis.fetch = real;
+  });
+
+  const written = [];
+  const store = {
+    records: [seededRecord()],
+    get: () => undefined,
+    put(record) {
+      written.push(record);
+    },
+    list() {
+      return this.records;
+    },
+    nextIndex: () => 1n,
+  };
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store,
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+    pollIntervalMs: 1,
+  });
+  const report = await k.resume();
+
+  assert.equal(report.resumed.length, 1);
+  assert.equal(written.length, 1, "the observed phase was persisted");
+  const [record] = written;
+  assert.equal(record.constructor, Object, "a plain object, not a Map");
+  assert.equal(record.id, "seed-1");
+  assert.equal(record.phase, "funded");
+  assert.equal(record.rawStatus, "transaction.mempool");
+  assert.equal(record.state.response.swapAuth, "secret-auth");
+  assert.equal(record.state.response.onchainAmount, 49_450);
+  // JSON.stringify must write the record whole: a Map becomes "{}", a bigint throws.
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(record)).state.response.id,
+    "seed-1",
+  );
+  assert.equal(report.resumed[0].record().id, "seed-1");
+  assert.equal(report.resumed[0].phase, "funded");
+});
+
+test("a store that throws surfaces as STORE_FAILED", async (t) => {
+  stubMaker(t);
+  const failing = {
+    get() {
+      throw new Error("disk gone");
+    },
+    put() {
+      throw new Error("disk gone");
+    },
+    list() {
+      throw new Error("disk gone");
+    },
+    nextIndex() {
+      throw new Error("disk gone");
+    },
+  };
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store: failing,
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+  });
+  await assert.rejects(k.resume(), (e) => e.code === "STORE_FAILED");
 });
 
 test("FileStore: records round-trip as JSON and the index never repeats", async () => {
@@ -537,31 +382,10 @@ test("FileStore: a swap id never names a path outside the directory", async () =
   try {
     const store = new FileStore(dir);
     for (const id of ["../escape", "a/b", ".hidden", "", "x".repeat(200)]) {
-      await assert.rejects(store.get(id), (e) => e.code === "SWAP_FAILED");
-      await assert.rejects(store.put({ id }), (e) => e.code === "SWAP_FAILED");
+      await assert.rejects(store.get(id), (e) => e.code === "STORE_FAILED");
+      await assert.rejects(store.put({ id }), (e) => e.code === "STORE_FAILED");
     }
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
-});
-
-test("start: a maker-supplied id that is not a plain token is refused", async () => {
-  const h = harness();
-  const k = await h.kaleido;
-  const quote = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
-  });
-  const client = h.client();
-  const real = client.createReverseSwap.bind(client);
-  client.createReverseSwap = async (...a) => ({
-    ...(await real(...a)),
-    id: "../x",
-  });
-  await assert.rejects(
-    k.start(quote, { destination: "tlq1dest" }),
-    (e) => e.code === "MAKER_REJECTED",
-  );
-  assert.deepEqual(await h.store.list(), []);
 });
