@@ -276,7 +276,8 @@ export type SwapErrorCode =
   | "SWAP_FAILED"
   | "SWAP_NOT_FOUND"
   | "STORE_FAILED"
-  | "ABORTED";
+  | "ABORTED"
+  | "CHAIN_UNREACHABLE";
 
 /** Every failure crosses this boundary coded; the engine's errors are mapped in Rust. */
 export interface SwapError extends Error {
@@ -300,6 +301,7 @@ const SWAP_ERROR_CODES: ReadonlySet<string> = new Set<SwapErrorCode>([
   "SWAP_NOT_FOUND",
   "STORE_FAILED",
   "ABORTED",
+  "CHAIN_UNREACHABLE",
 ]);
 
 export function isSwapError(error: unknown): error is SwapError {
@@ -334,8 +336,9 @@ export interface KaleidoSwap {
 
   /**
    * Creates the swap against `quote`, verifies the lockup against our own
-   * key, persists the record, then returns. Nothing is funded or paid here —
-   * that is the caller's step, via {@link Swap.action}.
+   * key and, for a reverse swap, that its timeout leaves room to confirm and
+   * claim, persists the record, then returns. Nothing is funded or paid here
+   * — that is the caller's step, via {@link Swap.action}.
    */
   start(quote: Quote, options?: StartOptions): Promise<Swap>;
 

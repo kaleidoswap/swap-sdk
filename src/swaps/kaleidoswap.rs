@@ -205,6 +205,7 @@ pub enum SwapErrorCode {
     SwapNotFound,
     StoreFailed,
     Aborted,
+    ChainUnreachable,
 }
 
 /// Every failure crosses this boundary coded; the engine's errors are mapped here.
@@ -637,6 +638,9 @@ pub trait SwapFlows: Send + Sync {
         preimage: &Preimage,
     ) -> Result<String, Error>;
     async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error>;
+    /// The tip of the chain the swap's lockup lives on, from the trusted
+    /// chain client, never the maker's `/chain/heights`.
+    async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error>;
 }
 
 /// A [`SwapSigner`] over a [`SwapMasterKey`].
@@ -1026,6 +1030,40 @@ impl SwapFlows for DefaultFlows {
             }
         };
         self.chain.broadcast_tx(&tx).await
+    }
+
+    async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error> {
+        let missing = |chain: &str| Error::Generic(format!("no {chain} chain client configured"));
+        match Self::chain_kind(record) {
+            ChainKind::Bitcoin(_) => {
+                self.chain
+                    .bitcoin_client()
+                    .ok_or_else(|| missing("Bitcoin"))?
+                    .get_tip_height()
+                    .await
+            }
+            ChainKind::Liquid(_) => {
+                self.chain
+                    .liquid_client()
+                    .ok_or_else(|| missing("Liquid"))?
+                    .get_tip_height()
+                    .await
+            }
+        }
+    }
+}
+
+/// Blocks a reverse swap's lockup must have left before its timeout when
+/// `start` hands out the invoice: room for the lockup to confirm, and then
+/// the claim path's own safety margin, which refuses a claim this close to
+/// the maker's refund ([`crate::swaps::ClaimPolicy`]: 6 on Bitcoin, 60 on
+/// Liquid, roughly an hour each). An invoice whose lockup could not be
+/// claimed in time is never one to pay.
+fn reverse_timeout_headroom(chain: ChainKind) -> u32 {
+    use crate::swaps::ClaimPolicy;
+    match chain {
+        ChainKind::Bitcoin(_) => 2 * ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS,
+        ChainKind::Liquid(_) => 2 * ClaimPolicy::LIQUID_SAFETY_MARGIN_BLOCKS,
     }
 }
 
@@ -1668,8 +1706,9 @@ impl KaleidoSwap {
     }
 
     /// Creates the swap against `quote`, verifies the lockup against our own
-    /// key, persists the record, then returns. Nothing is funded or paid
-    /// here — that is the caller's step, via [`Swap::action`].
+    /// key and, for a reverse swap, that its timeout leaves room to confirm
+    /// and claim, persists the record, then returns. Nothing is funded or
+    /// paid here — that is the caller's step, via [`Swap::action`].
     pub async fn start(&self, quote: &Quote, options: StartOptions) -> Result<Swap, SwapError> {
         if unix_now() > quote.expires_at {
             return Err(SwapError::new(
@@ -1867,6 +1906,40 @@ impl KaleidoSwap {
                     &id,
                 )
             })?;
+
+        // A reverse swap hands out an invoice to pay; its lockup has to leave
+        // time to confirm and be claimed before the maker can take it back.
+        // Measured against our own chain client, never the maker's heights.
+        if let CreateResponse::BoltzReverse(r) = &record.state.response {
+            let chain = DefaultFlows::chain_kind(&record);
+            let tip = self
+                .env
+                .flows
+                .lockup_tip_height(&record)
+                .await
+                .map_err(|e| {
+                    SwapError::for_swap(
+                        SwapErrorCode::ChainUnreachable,
+                        format!(
+                            "could not read the {chain:?} tip to check the lockup timeout: {e:?}"
+                        ),
+                        &id,
+                    )
+                })?;
+            let headroom = reverse_timeout_headroom(chain);
+            r.validate_timeout_headroom(tip, headroom).map_err(|_| {
+                SwapError::for_swap(
+                    SwapErrorCode::SwapExpired,
+                    format!(
+                        "the maker's lockup times out at block {}, {} blocks after the tip at {tip}; \
+                         paying needs at least {headroom} to confirm and claim, so the invoice was not handed out",
+                        r.timeout_block_height,
+                        r.timeout_block_height.saturating_sub(tip),
+                    ),
+                    &id,
+                )
+            })?;
+        }
 
         // swap_auth rides in the response, issued once. This write is the one
         // that keeps it.
@@ -2137,6 +2210,9 @@ mod tests {
         claim: Mutex<Vec<(String, String)>>,
         refund: Mutex<Vec<(String, String)>>,
         reject_lockup: bool,
+        /// The lockup chain's tip. The fake lockups time out at block 200.
+        tip: u32,
+        chain_down: bool,
     }
 
     fn pubkey_hex(keys: &Keypair) -> String {
@@ -2178,6 +2254,12 @@ mod tests {
                 .unwrap()
                 .push((record.id.clone(), pubkey_hex(keys)));
             Ok("refund-txid".into())
+        }
+        async fn lockup_tip_height(&self, _record: &SwapRecord) -> Result<u32, Error> {
+            if self.chain_down {
+                return Err(Error::Generic("connection refused".into()));
+            }
+            Ok(self.tip)
         }
     }
 
@@ -2497,6 +2579,86 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.code, SwapErrorCode::LockupMismatch);
         assert!(h.store.get("rev-1").await.unwrap().is_none());
+    }
+
+    #[macros::async_test_all]
+    async fn a_reverse_lockup_too_close_to_its_timeout_is_never_handed_out() {
+        // L-BTC needs 120 blocks of headroom; the fake lockup times out at 200.
+        for (flows, code) in [
+            (
+                FakeFlows {
+                    tip: 81,
+                    ..Default::default()
+                },
+                SwapErrorCode::SwapExpired,
+            ),
+            (
+                FakeFlows {
+                    chain_down: true,
+                    ..Default::default()
+                },
+                SwapErrorCode::ChainUnreachable,
+            ),
+        ] {
+            let store = Arc::new(MemoryStore::new());
+            let h = harness_with(store.clone(), flows);
+            let q = reverse_quote(&h).await;
+            let err = h
+                .kaleido
+                .start(
+                    &q,
+                    StartOptions {
+                        destination: Some("tlq1dest".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, code, "{}", err.message);
+            assert!(err.swap_id.is_some());
+            assert!(store.list().await.unwrap().is_empty(), "nothing persisted");
+        }
+
+        // Exactly enough headroom is not enough; one block more is.
+        let at_edge = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                tip: 80,
+                ..Default::default()
+            },
+        );
+        let q = reverse_quote(&at_edge).await;
+        let err = at_edge
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tlq1dest".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapExpired);
+        let roomy = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                tip: 79,
+                ..Default::default()
+            },
+        );
+        let q = reverse_quote(&roomy).await;
+        roomy
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tlq1dest".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
     }
 
     #[macros::async_test_all]

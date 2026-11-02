@@ -12739,6 +12739,8 @@ class SwapErrorCode(enum.Enum):
 
     ABORTED = 14
 
+    CHAIN_UNREACHABLE = 15
+
 
 class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
     @staticmethod
@@ -12774,6 +12776,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             return SwapErrorCode.STORE_FAILED
         if variant == 15:
             return SwapErrorCode.ABORTED
+        if variant == 16:
+            return SwapErrorCode.CHAIN_UNREACHABLE
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -12807,6 +12811,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
         if value == SwapErrorCode.STORE_FAILED:
             return
         if value == SwapErrorCode.ABORTED:
+            return
+        if value == SwapErrorCode.CHAIN_UNREACHABLE:
             return
         raise ValueError(value)
 
@@ -12842,6 +12848,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             buf.write_i32(14)
         if value == SwapErrorCode.ABORTED:
             buf.write_i32(15)
+        if value == SwapErrorCode.CHAIN_UNREACHABLE:
+            buf.write_i32(16)
 
 
 class SwapPhase(enum.Enum):

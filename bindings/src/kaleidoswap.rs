@@ -91,6 +91,7 @@ pub enum SwapErrorCode {
     SwapNotFound,
     StoreFailed,
     Aborted,
+    ChainUnreachable,
 }
 
 #[uniffi::remote(Record)]

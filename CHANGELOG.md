@@ -19,7 +19,12 @@ key and persists the record, including `swap_auth`, before it returns, and
 never moves funds. Before persisting, it checks the maker's response against
 the quote: the hashlock and invoice against the swap's own preimage, the
 invoice amount against the request, the payout and the lockup amount against
-the quoted terms, and that the pair terms are still the ones quoted. A `Swap` follows one phase machine over every protocol
+the quoted terms, and that the pair terms are still the ones quoted. A reverse
+swap's invoice is handed out only when its lockup timeout leaves room to
+confirm and claim (12 blocks on Bitcoin, 120 on Liquid, twice the claim
+safety margin), measured against the configured chain client rather than the
+maker; otherwise `start` fails with `SWAP_EXPIRED`, or `CHAIN_UNREACHABLE` when
+the tip cannot be read. A `Swap` follows one phase machine over every protocol
 (`awaiting_funding → funded → locked → claiming → settled`, with
 `refundable → refunding → refunded` and `failed`), claims or refunds on its
 own as the maker's status moves, and reports every failure as a `SwapError`
