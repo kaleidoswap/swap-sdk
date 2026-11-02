@@ -119,16 +119,15 @@ let kaleido = KaleidoSwap::new(KaleidoSwapOptions {
     poll_interval: None,
     fee_sat_per_vb: None,
     quote_ttl: None,
+    maker_timeout: None,
 })?;
 kaleido.resume().await?;
 
 let quote = kaleido
     .quote(QuoteRequest {
-        from_asset: AssetId::LightningBtc,
-        to_asset: AssetId::LiquidBtc,
-        side: None,
-        amount: Some(50_000),
-        invoice: None,
+        pay: Asset::BtcLightning,
+        receive: Asset::BtcLiquid,
+        amount: Amount::Pay(50_000),
     })
     .await?
     .quote()
@@ -140,9 +139,27 @@ println!("pay {}", swap.action().invoice.unwrap());
 swap.settled().await?;
 ```
 
+Both sides are yours to name, each an `Asset`: what it is and where it lives
+(`BtcLightning`, `BtcOnchain`, `BtcLiquid`, `UsdtLiquid`, `BtcArkade`,
+`BtcSpark`, `RgbOnchain { contract_id }`, `RgbLightning { contract_id }`,
+`SparkToken { token_id }`; on the wire `lightning:BTC`, `bitcoin:rgb:…`). The
+protocol follows from the two sides and is reported on the quote, never
+inferred from an address. The amount says what it fixes: `Amount::Pay`,
+`Amount::Receive`, or `Amount::Invoice` for a swap to Lightning. Routes this
+layer does not create swaps for yet (chain swaps, L-USDT, RGB, Arkade, Spark)
+are a `Refusal` whose message names where they live.
+
 The same surface is `KaleidoSwap` in Python and React Native (the store and
 signer are classes you subclass) and `createKaleidoSwap` in TypeScript (plain
-objects); see `typescript-sdk/examples/easy/`.
+objects); see `typescript-sdk/examples/easy/`. In Python:
+
+```python
+answer = await kaleido.quote(sdk.QuoteRequest(
+    pay=sdk.Asset.BTC_ONCHAIN(),
+    receive=sdk.Asset.BTC_LIGHTNING(),
+    amount=sdk.Amount.INVOICE(invoice),
+))
+```
 
 ## Partner attribution
 

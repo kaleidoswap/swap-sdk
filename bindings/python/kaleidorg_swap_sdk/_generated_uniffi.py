@@ -7870,8 +7870,8 @@ class _UniffiConverterTypePairMinerFees(_UniffiConverterRustBuffer):
 
 class Quote:
     protocol: "Protocol"
-    from_asset: "AssetId"
-    to_asset: "AssetId"
+    from_asset: "Asset"
+    to_asset: "Asset"
     from_amount: "int"
     to_amount: "int"
     fees: "Fees"
@@ -7883,8 +7883,8 @@ class Quote:
         self,
         *,
         protocol: "Protocol",
-        from_asset: "AssetId",
-        to_asset: "AssetId",
+        from_asset: "Asset",
+        to_asset: "Asset",
         from_amount: "int",
         to_amount: "int",
         fees: "Fees",
@@ -7942,8 +7942,8 @@ class _UniffiConverterTypeQuote(_UniffiConverterRustBuffer):
     def read(buf):
         return Quote(
             protocol=_UniffiConverterTypeProtocol.read(buf),
-            from_asset=_UniffiConverterTypeAssetId.read(buf),
-            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            from_asset=_UniffiConverterTypeAsset.read(buf),
+            to_asset=_UniffiConverterTypeAsset.read(buf),
             from_amount=_UniffiConverterUInt64.read(buf),
             to_amount=_UniffiConverterUInt64.read(buf),
             fees=_UniffiConverterTypeFees.read(buf),
@@ -7955,8 +7955,8 @@ class _UniffiConverterTypeQuote(_UniffiConverterRustBuffer):
     @staticmethod
     def check_lower(value):
         _UniffiConverterTypeProtocol.check_lower(value.protocol)
-        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
-        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterTypeAsset.check_lower(value.from_asset)
+        _UniffiConverterTypeAsset.check_lower(value.to_asset)
         _UniffiConverterUInt64.check_lower(value.from_amount)
         _UniffiConverterUInt64.check_lower(value.to_amount)
         _UniffiConverterTypeFees.check_lower(value.fees)
@@ -7967,8 +7967,8 @@ class _UniffiConverterTypeQuote(_UniffiConverterRustBuffer):
     @staticmethod
     def write(value, buf):
         _UniffiConverterTypeProtocol.write(value.protocol, buf)
-        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
-        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterTypeAsset.write(value.from_asset, buf)
+        _UniffiConverterTypeAsset.write(value.to_asset, buf)
         _UniffiConverterUInt64.write(value.from_amount, buf)
         _UniffiConverterUInt64.write(value.to_amount, buf)
         _UniffiConverterTypeFees.write(value.fees, buf)
@@ -8148,42 +8148,26 @@ class _UniffiConverterTypeQuoteProfile(_UniffiConverterRustBuffer):
 
 
 class QuoteRequest:
-    from_asset: "AssetId"
-    to_asset: "AssetId"
-    side: "typing.Optional[QuoteSide]"
-    amount: "typing.Optional[int]"
-    invoice: "typing.Optional[str]"
+    pay: "Asset"
+    receive: "Asset"
+    amount: "Amount"
 
-    def __init__(
-        self,
-        *,
-        from_asset: "AssetId",
-        to_asset: "AssetId",
-        side: "typing.Optional[QuoteSide]",
-        amount: "typing.Optional[int]",
-        invoice: "typing.Optional[str]",
-    ):
-        self.from_asset = from_asset
-        self.to_asset = to_asset
-        self.side = side
+    def __init__(self, *, pay: "Asset", receive: "Asset", amount: "Amount"):
+        self.pay = pay
+        self.receive = receive
         self.amount = amount
-        self.invoice = invoice
 
     def __str__(self):
-        return "QuoteRequest(from_asset={}, to_asset={}, side={}, amount={}, invoice={})".format(
-            self.from_asset, self.to_asset, self.side, self.amount, self.invoice
+        return "QuoteRequest(pay={}, receive={}, amount={})".format(
+            self.pay, self.receive, self.amount
         )
 
     def __eq__(self, other):
-        if self.from_asset != other.from_asset:
+        if self.pay != other.pay:
             return False
-        if self.to_asset != other.to_asset:
-            return False
-        if self.side != other.side:
+        if self.receive != other.receive:
             return False
         if self.amount != other.amount:
-            return False
-        if self.invoice != other.invoice:
             return False
         return True
 
@@ -8192,28 +8176,22 @@ class _UniffiConverterTypeQuoteRequest(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return QuoteRequest(
-            from_asset=_UniffiConverterTypeAssetId.read(buf),
-            to_asset=_UniffiConverterTypeAssetId.read(buf),
-            side=_UniffiConverterOptionalTypeQuoteSide.read(buf),
-            amount=_UniffiConverterOptionalUInt64.read(buf),
-            invoice=_UniffiConverterOptionalString.read(buf),
+            pay=_UniffiConverterTypeAsset.read(buf),
+            receive=_UniffiConverterTypeAsset.read(buf),
+            amount=_UniffiConverterTypeAmount.read(buf),
         )
 
     @staticmethod
     def check_lower(value):
-        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
-        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
-        _UniffiConverterOptionalTypeQuoteSide.check_lower(value.side)
-        _UniffiConverterOptionalUInt64.check_lower(value.amount)
-        _UniffiConverterOptionalString.check_lower(value.invoice)
+        _UniffiConverterTypeAsset.check_lower(value.pay)
+        _UniffiConverterTypeAsset.check_lower(value.receive)
+        _UniffiConverterTypeAmount.check_lower(value.amount)
 
     @staticmethod
     def write(value, buf):
-        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
-        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
-        _UniffiConverterOptionalTypeQuoteSide.write(value.side, buf)
-        _UniffiConverterOptionalUInt64.write(value.amount, buf)
-        _UniffiConverterOptionalString.write(value.invoice, buf)
+        _UniffiConverterTypeAsset.write(value.pay, buf)
+        _UniffiConverterTypeAsset.write(value.receive, buf)
+        _UniffiConverterTypeAmount.write(value.amount, buf)
 
 
 class RefundDetails:
@@ -8329,8 +8307,8 @@ class _UniffiConverterTypeRefundDetails(_UniffiConverterRustBuffer):
 
 
 class Refusal:
-    from_asset: "AssetId"
-    to_asset: "AssetId"
+    from_asset: "Asset"
+    to_asset: "Asset"
     reason: "QuoteRefusalReason"
     limits: "typing.Optional[Limits]"
     message: "str"
@@ -8338,8 +8316,8 @@ class Refusal:
     def __init__(
         self,
         *,
-        from_asset: "AssetId",
-        to_asset: "AssetId",
+        from_asset: "Asset",
+        to_asset: "Asset",
         reason: "QuoteRefusalReason",
         limits: "typing.Optional[Limits]",
         message: "str",
@@ -8373,8 +8351,8 @@ class _UniffiConverterTypeRefusal(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         return Refusal(
-            from_asset=_UniffiConverterTypeAssetId.read(buf),
-            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            from_asset=_UniffiConverterTypeAsset.read(buf),
+            to_asset=_UniffiConverterTypeAsset.read(buf),
             reason=_UniffiConverterTypeQuoteRefusalReason.read(buf),
             limits=_UniffiConverterOptionalTypeLimits.read(buf),
             message=_UniffiConverterString.read(buf),
@@ -8382,16 +8360,16 @@ class _UniffiConverterTypeRefusal(_UniffiConverterRustBuffer):
 
     @staticmethod
     def check_lower(value):
-        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
-        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterTypeAsset.check_lower(value.from_asset)
+        _UniffiConverterTypeAsset.check_lower(value.to_asset)
         _UniffiConverterTypeQuoteRefusalReason.check_lower(value.reason)
         _UniffiConverterOptionalTypeLimits.check_lower(value.limits)
         _UniffiConverterString.check_lower(value.message)
 
     @staticmethod
     def write(value, buf):
-        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
-        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterTypeAsset.write(value.from_asset, buf)
+        _UniffiConverterTypeAsset.write(value.to_asset, buf)
         _UniffiConverterTypeQuoteRefusalReason.write(value.reason, buf)
         _UniffiConverterOptionalTypeLimits.write(value.limits, buf)
         _UniffiConverterString.write(value.message, buf)
@@ -10131,8 +10109,8 @@ class SwapRecord:
     protocol: "Protocol"
     network: "Network"
     maker_url: "str"
-    from_asset: "AssetId"
-    to_asset: "AssetId"
+    from_asset: "Asset"
+    to_asset: "Asset"
     phase: "SwapPhase"
     raw_status: "str"
     created_at: "int"
@@ -10146,8 +10124,8 @@ class SwapRecord:
         protocol: "Protocol",
         network: "Network",
         maker_url: "str",
-        from_asset: "AssetId",
-        to_asset: "AssetId",
+        from_asset: "Asset",
+        to_asset: "Asset",
         phase: "SwapPhase",
         raw_status: "str",
         created_at: "int",
@@ -10215,8 +10193,8 @@ class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
             protocol=_UniffiConverterTypeProtocol.read(buf),
             network=_UniffiConverterTypeNetwork.read(buf),
             maker_url=_UniffiConverterString.read(buf),
-            from_asset=_UniffiConverterTypeAssetId.read(buf),
-            to_asset=_UniffiConverterTypeAssetId.read(buf),
+            from_asset=_UniffiConverterTypeAsset.read(buf),
+            to_asset=_UniffiConverterTypeAsset.read(buf),
             phase=_UniffiConverterTypeSwapPhase.read(buf),
             raw_status=_UniffiConverterString.read(buf),
             created_at=_UniffiConverterUInt64.read(buf),
@@ -10230,8 +10208,8 @@ class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
         _UniffiConverterTypeProtocol.check_lower(value.protocol)
         _UniffiConverterTypeNetwork.check_lower(value.network)
         _UniffiConverterString.check_lower(value.maker_url)
-        _UniffiConverterTypeAssetId.check_lower(value.from_asset)
-        _UniffiConverterTypeAssetId.check_lower(value.to_asset)
+        _UniffiConverterTypeAsset.check_lower(value.from_asset)
+        _UniffiConverterTypeAsset.check_lower(value.to_asset)
         _UniffiConverterTypeSwapPhase.check_lower(value.phase)
         _UniffiConverterString.check_lower(value.raw_status)
         _UniffiConverterUInt64.check_lower(value.created_at)
@@ -10244,8 +10222,8 @@ class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
         _UniffiConverterTypeProtocol.write(value.protocol, buf)
         _UniffiConverterTypeNetwork.write(value.network, buf)
         _UniffiConverterString.write(value.maker_url, buf)
-        _UniffiConverterTypeAssetId.write(value.from_asset, buf)
-        _UniffiConverterTypeAssetId.write(value.to_asset, buf)
+        _UniffiConverterTypeAsset.write(value.from_asset, buf)
+        _UniffiConverterTypeAsset.write(value.to_asset, buf)
         _UniffiConverterTypeSwapPhase.write(value.phase, buf)
         _UniffiConverterString.write(value.raw_status, buf)
         _UniffiConverterUInt64.write(value.created_at, buf)
@@ -10899,6 +10877,156 @@ class _UniffiConverterTypeTransactionResponse(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.hex, buf)
 
 
+class Amount:
+    def __init__(self):
+        raise RuntimeError("Amount cannot be instantiated directly")
+
+    # Each enum variant is a nested class of the enum itself.
+    class PAY:
+        def __init__(self, *values):
+            if len(values) != 1:
+                raise TypeError(f"Expected 1 arguments, found {len(values)}")
+            self._values = values
+
+        def __getitem__(self, index):
+            return self._values[index]
+
+        def __str__(self):
+            return f"Amount.PAY{self._values!r}"
+
+        def __eq__(self, other):
+            if not other.is_PAY():
+                return False
+            return self._values == other._values
+
+    class RECEIVE:
+        def __init__(self, *values):
+            if len(values) != 1:
+                raise TypeError(f"Expected 1 arguments, found {len(values)}")
+            self._values = values
+
+        def __getitem__(self, index):
+            return self._values[index]
+
+        def __str__(self):
+            return f"Amount.RECEIVE{self._values!r}"
+
+        def __eq__(self, other):
+            if not other.is_RECEIVE():
+                return False
+            return self._values == other._values
+
+    class INVOICE:
+        def __init__(self, *values):
+            if len(values) != 1:
+                raise TypeError(f"Expected 1 arguments, found {len(values)}")
+            self._values = values
+
+        def __getitem__(self, index):
+            return self._values[index]
+
+        def __str__(self):
+            return f"Amount.INVOICE{self._values!r}"
+
+        def __eq__(self, other):
+            if not other.is_INVOICE():
+                return False
+            return self._values == other._values
+
+    # For each variant, we have `is_NAME` and `is_name` methods for easily checking
+    # whether an instance is that variant.
+    def is_PAY(self) -> bool:
+        return isinstance(self, Amount.PAY)
+
+    def is_pay(self) -> bool:
+        return isinstance(self, Amount.PAY)
+
+    def is_RECEIVE(self) -> bool:
+        return isinstance(self, Amount.RECEIVE)
+
+    def is_receive(self) -> bool:
+        return isinstance(self, Amount.RECEIVE)
+
+    def is_INVOICE(self) -> bool:
+        return isinstance(self, Amount.INVOICE)
+
+    def is_invoice(self) -> bool:
+        return isinstance(self, Amount.INVOICE)
+
+
+# Now, a little trick - we make each nested variant class be a subclass of the main
+# enum class, so that method calls and instance checks etc will work intuitively.
+# We might be able to do this a little more neatly with a metaclass, but this'll do.
+Amount.PAY = type(
+    "Amount.PAY",
+    (
+        Amount.PAY,
+        Amount,
+    ),
+    {},
+)  # type: ignore
+Amount.RECEIVE = type(
+    "Amount.RECEIVE",
+    (
+        Amount.RECEIVE,
+        Amount,
+    ),
+    {},
+)  # type: ignore
+Amount.INVOICE = type(
+    "Amount.INVOICE",
+    (
+        Amount.INVOICE,
+        Amount,
+    ),
+    {},
+)  # type: ignore
+
+
+class _UniffiConverterTypeAmount(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        variant = buf.read_i32()
+        if variant == 1:
+            return Amount.PAY(
+                _UniffiConverterUInt64.read(buf),
+            )
+        if variant == 2:
+            return Amount.RECEIVE(
+                _UniffiConverterUInt64.read(buf),
+            )
+        if variant == 3:
+            return Amount.INVOICE(
+                _UniffiConverterString.read(buf),
+            )
+        raise InternalError("Raw enum value doesn't match any cases")
+
+    @staticmethod
+    def check_lower(value):
+        if value.is_PAY():
+            _UniffiConverterUInt64.check_lower(value._values[0])
+            return
+        if value.is_RECEIVE():
+            _UniffiConverterUInt64.check_lower(value._values[0])
+            return
+        if value.is_INVOICE():
+            _UniffiConverterString.check_lower(value._values[0])
+            return
+        raise ValueError(value)
+
+    @staticmethod
+    def write(value, buf):
+        if value.is_PAY():
+            buf.write_i32(1)
+            _UniffiConverterUInt64.write(value._values[0], buf)
+        if value.is_RECEIVE():
+            buf.write_i32(2)
+            _UniffiConverterUInt64.write(value._values[0], buf)
+        if value.is_INVOICE():
+            buf.write_i32(3)
+            _UniffiConverterString.write(value._values[0], buf)
+
+
 class AmountSide(enum.Enum):
     FROM = 0
 
@@ -10931,60 +11059,355 @@ class _UniffiConverterTypeAmountSide(_UniffiConverterRustBuffer):
             buf.write_i32(2)
 
 
-class AssetId(enum.Enum):
-    BITCOIN_BTC = 0
+class Asset:
+    def __init__(self):
+        raise RuntimeError("Asset cannot be instantiated directly")
 
-    LIGHTNING_BTC = 1
+    # Each enum variant is a nested class of the enum itself.
+    class BTC_ONCHAIN:
+        def __init__(
+            self,
+        ):
+            pass
 
-    LIQUID_BTC = 2
+        def __str__(self):
+            return "Asset.BTC_ONCHAIN()".format()
 
-    LIQUID_USDT = 3
+        def __eq__(self, other):
+            if not other.is_BTC_ONCHAIN():
+                return False
+            return True
 
-    ARKADE_BTC = 4
+    class BTC_LIGHTNING:
+        def __init__(
+            self,
+        ):
+            pass
+
+        def __str__(self):
+            return "Asset.BTC_LIGHTNING()".format()
+
+        def __eq__(self, other):
+            if not other.is_BTC_LIGHTNING():
+                return False
+            return True
+
+    class BTC_LIQUID:
+        def __init__(
+            self,
+        ):
+            pass
+
+        def __str__(self):
+            return "Asset.BTC_LIQUID()".format()
+
+        def __eq__(self, other):
+            if not other.is_BTC_LIQUID():
+                return False
+            return True
+
+    class USDT_LIQUID:
+        def __init__(
+            self,
+        ):
+            pass
+
+        def __str__(self):
+            return "Asset.USDT_LIQUID()".format()
+
+        def __eq__(self, other):
+            if not other.is_USDT_LIQUID():
+                return False
+            return True
+
+    class BTC_ARKADE:
+        def __init__(
+            self,
+        ):
+            pass
+
+        def __str__(self):
+            return "Asset.BTC_ARKADE()".format()
+
+        def __eq__(self, other):
+            if not other.is_BTC_ARKADE():
+                return False
+            return True
+
+    class BTC_SPARK:
+        def __init__(
+            self,
+        ):
+            pass
+
+        def __str__(self):
+            return "Asset.BTC_SPARK()".format()
+
+        def __eq__(self, other):
+            if not other.is_BTC_SPARK():
+                return False
+            return True
+
+    class RGB_ONCHAIN:
+        contract_id: "str"
+
+        def __init__(self, contract_id: "str"):
+            self.contract_id = contract_id
+
+        def __str__(self):
+            return "Asset.RGB_ONCHAIN(contract_id={})".format(self.contract_id)
+
+        def __eq__(self, other):
+            if not other.is_RGB_ONCHAIN():
+                return False
+            if self.contract_id != other.contract_id:
+                return False
+            return True
+
+    class RGB_LIGHTNING:
+        contract_id: "str"
+
+        def __init__(self, contract_id: "str"):
+            self.contract_id = contract_id
+
+        def __str__(self):
+            return "Asset.RGB_LIGHTNING(contract_id={})".format(self.contract_id)
+
+        def __eq__(self, other):
+            if not other.is_RGB_LIGHTNING():
+                return False
+            if self.contract_id != other.contract_id:
+                return False
+            return True
+
+    class SPARK_TOKEN:
+        token_id: "str"
+
+        def __init__(self, token_id: "str"):
+            self.token_id = token_id
+
+        def __str__(self):
+            return "Asset.SPARK_TOKEN(token_id={})".format(self.token_id)
+
+        def __eq__(self, other):
+            if not other.is_SPARK_TOKEN():
+                return False
+            if self.token_id != other.token_id:
+                return False
+            return True
+
+    # For each variant, we have `is_NAME` and `is_name` methods for easily checking
+    # whether an instance is that variant.
+    def is_BTC_ONCHAIN(self) -> bool:
+        return isinstance(self, Asset.BTC_ONCHAIN)
+
+    def is_btc_onchain(self) -> bool:
+        return isinstance(self, Asset.BTC_ONCHAIN)
+
+    def is_BTC_LIGHTNING(self) -> bool:
+        return isinstance(self, Asset.BTC_LIGHTNING)
+
+    def is_btc_lightning(self) -> bool:
+        return isinstance(self, Asset.BTC_LIGHTNING)
+
+    def is_BTC_LIQUID(self) -> bool:
+        return isinstance(self, Asset.BTC_LIQUID)
+
+    def is_btc_liquid(self) -> bool:
+        return isinstance(self, Asset.BTC_LIQUID)
+
+    def is_USDT_LIQUID(self) -> bool:
+        return isinstance(self, Asset.USDT_LIQUID)
+
+    def is_usdt_liquid(self) -> bool:
+        return isinstance(self, Asset.USDT_LIQUID)
+
+    def is_BTC_ARKADE(self) -> bool:
+        return isinstance(self, Asset.BTC_ARKADE)
+
+    def is_btc_arkade(self) -> bool:
+        return isinstance(self, Asset.BTC_ARKADE)
+
+    def is_BTC_SPARK(self) -> bool:
+        return isinstance(self, Asset.BTC_SPARK)
+
+    def is_btc_spark(self) -> bool:
+        return isinstance(self, Asset.BTC_SPARK)
+
+    def is_RGB_ONCHAIN(self) -> bool:
+        return isinstance(self, Asset.RGB_ONCHAIN)
+
+    def is_rgb_onchain(self) -> bool:
+        return isinstance(self, Asset.RGB_ONCHAIN)
+
+    def is_RGB_LIGHTNING(self) -> bool:
+        return isinstance(self, Asset.RGB_LIGHTNING)
+
+    def is_rgb_lightning(self) -> bool:
+        return isinstance(self, Asset.RGB_LIGHTNING)
+
+    def is_SPARK_TOKEN(self) -> bool:
+        return isinstance(self, Asset.SPARK_TOKEN)
+
+    def is_spark_token(self) -> bool:
+        return isinstance(self, Asset.SPARK_TOKEN)
 
 
-class _UniffiConverterTypeAssetId(_UniffiConverterRustBuffer):
+# Now, a little trick - we make each nested variant class be a subclass of the main
+# enum class, so that method calls and instance checks etc will work intuitively.
+# We might be able to do this a little more neatly with a metaclass, but this'll do.
+Asset.BTC_ONCHAIN = type(
+    "Asset.BTC_ONCHAIN",
+    (
+        Asset.BTC_ONCHAIN,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.BTC_LIGHTNING = type(
+    "Asset.BTC_LIGHTNING",
+    (
+        Asset.BTC_LIGHTNING,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.BTC_LIQUID = type(
+    "Asset.BTC_LIQUID",
+    (
+        Asset.BTC_LIQUID,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.USDT_LIQUID = type(
+    "Asset.USDT_LIQUID",
+    (
+        Asset.USDT_LIQUID,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.BTC_ARKADE = type(
+    "Asset.BTC_ARKADE",
+    (
+        Asset.BTC_ARKADE,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.BTC_SPARK = type(
+    "Asset.BTC_SPARK",
+    (
+        Asset.BTC_SPARK,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.RGB_ONCHAIN = type(
+    "Asset.RGB_ONCHAIN",
+    (
+        Asset.RGB_ONCHAIN,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.RGB_LIGHTNING = type(
+    "Asset.RGB_LIGHTNING",
+    (
+        Asset.RGB_LIGHTNING,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+Asset.SPARK_TOKEN = type(
+    "Asset.SPARK_TOKEN",
+    (
+        Asset.SPARK_TOKEN,
+        Asset,
+    ),
+    {},
+)  # type: ignore
+
+
+class _UniffiConverterTypeAsset(_UniffiConverterRustBuffer):
     @staticmethod
     def read(buf):
         variant = buf.read_i32()
         if variant == 1:
-            return AssetId.BITCOIN_BTC
+            return Asset.BTC_ONCHAIN()
         if variant == 2:
-            return AssetId.LIGHTNING_BTC
+            return Asset.BTC_LIGHTNING()
         if variant == 3:
-            return AssetId.LIQUID_BTC
+            return Asset.BTC_LIQUID()
         if variant == 4:
-            return AssetId.LIQUID_USDT
+            return Asset.USDT_LIQUID()
         if variant == 5:
-            return AssetId.ARKADE_BTC
+            return Asset.BTC_ARKADE()
+        if variant == 6:
+            return Asset.BTC_SPARK()
+        if variant == 7:
+            return Asset.RGB_ONCHAIN(
+                _UniffiConverterString.read(buf),
+            )
+        if variant == 8:
+            return Asset.RGB_LIGHTNING(
+                _UniffiConverterString.read(buf),
+            )
+        if variant == 9:
+            return Asset.SPARK_TOKEN(
+                _UniffiConverterString.read(buf),
+            )
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
     def check_lower(value):
-        if value == AssetId.BITCOIN_BTC:
+        if value.is_BTC_ONCHAIN():
             return
-        if value == AssetId.LIGHTNING_BTC:
+        if value.is_BTC_LIGHTNING():
             return
-        if value == AssetId.LIQUID_BTC:
+        if value.is_BTC_LIQUID():
             return
-        if value == AssetId.LIQUID_USDT:
+        if value.is_USDT_LIQUID():
             return
-        if value == AssetId.ARKADE_BTC:
+        if value.is_BTC_ARKADE():
+            return
+        if value.is_BTC_SPARK():
+            return
+        if value.is_RGB_ONCHAIN():
+            _UniffiConverterString.check_lower(value.contract_id)
+            return
+        if value.is_RGB_LIGHTNING():
+            _UniffiConverterString.check_lower(value.contract_id)
+            return
+        if value.is_SPARK_TOKEN():
+            _UniffiConverterString.check_lower(value.token_id)
             return
         raise ValueError(value)
 
     @staticmethod
     def write(value, buf):
-        if value == AssetId.BITCOIN_BTC:
+        if value.is_BTC_ONCHAIN():
             buf.write_i32(1)
-        if value == AssetId.LIGHTNING_BTC:
+        if value.is_BTC_LIGHTNING():
             buf.write_i32(2)
-        if value == AssetId.LIQUID_BTC:
+        if value.is_BTC_LIQUID():
             buf.write_i32(3)
-        if value == AssetId.LIQUID_USDT:
+        if value.is_USDT_LIQUID():
             buf.write_i32(4)
-        if value == AssetId.ARKADE_BTC:
+        if value.is_BTC_ARKADE():
             buf.write_i32(5)
+        if value.is_BTC_SPARK():
+            buf.write_i32(6)
+        if value.is_RGB_ONCHAIN():
+            buf.write_i32(7)
+            _UniffiConverterString.write(value.contract_id, buf)
+        if value.is_RGB_LIGHTNING():
+            buf.write_i32(8)
+            _UniffiConverterString.write(value.contract_id, buf)
+        if value.is_SPARK_TOKEN():
+            buf.write_i32(9)
+            _UniffiConverterString.write(value.token_id, buf)
 
 
 class AtomicAmountDirection(enum.Enum):
@@ -11876,38 +12299,6 @@ class _UniffiConverterTypeQuoteRefusalReason(_UniffiConverterRustBuffer):
             buf.write_i32(4)
         if value == QuoteRefusalReason.MAKER_PAUSED:
             buf.write_i32(5)
-
-
-class QuoteSide(enum.Enum):
-    FROM = 0
-
-    TO = 1
-
-
-class _UniffiConverterTypeQuoteSide(_UniffiConverterRustBuffer):
-    @staticmethod
-    def read(buf):
-        variant = buf.read_i32()
-        if variant == 1:
-            return QuoteSide.FROM
-        if variant == 2:
-            return QuoteSide.TO
-        raise InternalError("Raw enum value doesn't match any cases")
-
-    @staticmethod
-    def check_lower(value):
-        if value == QuoteSide.FROM:
-            return
-        if value == QuoteSide.TO:
-            return
-        raise ValueError(value)
-
-    @staticmethod
-    def write(value, buf):
-        if value == QuoteSide.FROM:
-            buf.write_i32(1)
-        if value == QuoteSide.TO:
-            buf.write_i32(2)
 
 
 class RefusalReason(enum.Enum):
@@ -13404,32 +13795,6 @@ class _UniffiConverterOptionalTypeCurrency(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeCurrency.read(buf)
-        else:
-            raise InternalError("Unexpected flag byte for optional type")
-
-
-class _UniffiConverterOptionalTypeQuoteSide(_UniffiConverterRustBuffer):
-    @classmethod
-    def check_lower(cls, value):
-        if value is not None:
-            _UniffiConverterTypeQuoteSide.check_lower(value)
-
-    @classmethod
-    def write(cls, value, buf):
-        if value is None:
-            buf.write_u8(0)
-            return
-
-        buf.write_u8(1)
-        _UniffiConverterTypeQuoteSide.write(value, buf)
-
-    @classmethod
-    def read(cls, buf):
-        flag = buf.read_u8()
-        if flag == 0:
-            return None
-        elif flag == 1:
-            return _UniffiConverterTypeQuoteSide.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -18840,8 +19205,9 @@ def validate_reverse_timeout_headroom(
 
 __all__ = [
     "InternalError",
+    "Amount",
     "AmountSide",
-    "AssetId",
+    "Asset",
     "AtomicAmountDirection",
     "AtomicSwapState",
     "BitcoinChain",
@@ -18854,7 +19220,6 @@ __all__ = [
     "Network",
     "Protocol",
     "QuoteRefusalReason",
-    "QuoteSide",
     "RefusalReason",
     "RfqState",
     "RgbSpendFunding",

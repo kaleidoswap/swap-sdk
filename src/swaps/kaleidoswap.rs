@@ -36,7 +36,7 @@ use crate::util::{sleep, unix_now};
 // ---------------------------------------------------------------------------
 // Assets and amounts
 
-/// The layer an asset lives on. `Arkade` is Bitcoin on Arkade (`ARKD`).
+/// The layer an asset lives on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Layer {
@@ -44,84 +44,143 @@ pub enum Layer {
     Lightning,
     Liquid,
     Arkade,
+    Spark,
 }
 
-/// `<layer>:<asset>`. Spelling the layer is what makes a wrong-network
-/// destination a local error instead of an unrecoverable payout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AssetId {
-    #[serde(rename = "bitcoin:BTC")]
-    BitcoinBtc,
-    #[serde(rename = "lightning:BTC")]
-    LightningBtc,
-    #[serde(rename = "liquid:BTC")]
-    LiquidBtc,
-    #[serde(rename = "liquid:USDT")]
-    LiquidUsdt,
-    #[serde(rename = "arkade:BTC")]
-    ArkadeBtc,
+/// What a swap pays or receives, and where it lives. Naming the layer is
+/// what makes a wrong-network destination a local error instead of an
+/// unrecoverable payout.
+///
+/// On the wire an asset is `<layer>:<asset>`: `lightning:BTC`, `liquid:USDT`,
+/// `bitcoin:rgb:<contract>`, `spark:<token>`. RGB contracts and Spark tokens
+/// are named by id, so a new asset is data, not a new variant.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Asset {
+    BtcOnchain,
+    BtcLightning,
+    BtcLiquid,
+    UsdtLiquid,
+    BtcArkade,
+    BtcSpark,
+    /// An RGB asset on Bitcoin L1. `contract_id` is the full `rgb:…` id.
+    RgbOnchain {
+        contract_id: String,
+    },
+    /// An RGB asset over RGB Lightning channels.
+    RgbLightning {
+        contract_id: String,
+    },
+    /// A token on Spark, by its `btkn…` identifier.
+    SparkToken {
+        token_id: String,
+    },
 }
 
-impl AssetId {
-    pub const ALL: [AssetId; 5] = [
-        AssetId::BitcoinBtc,
-        AssetId::LightningBtc,
-        AssetId::LiquidBtc,
-        AssetId::LiquidUsdt,
-        AssetId::ArkadeBtc,
-    ];
-
-    pub fn layer(self) -> Layer {
+impl Asset {
+    pub fn layer(&self) -> Layer {
         match self {
-            AssetId::BitcoinBtc => Layer::Bitcoin,
-            AssetId::LightningBtc => Layer::Lightning,
-            AssetId::LiquidBtc | AssetId::LiquidUsdt => Layer::Liquid,
-            AssetId::ArkadeBtc => Layer::Arkade,
+            Asset::BtcOnchain | Asset::RgbOnchain { .. } => Layer::Bitcoin,
+            Asset::BtcLightning | Asset::RgbLightning { .. } => Layer::Lightning,
+            Asset::BtcLiquid | Asset::UsdtLiquid => Layer::Liquid,
+            Asset::BtcArkade => Layer::Arkade,
+            Asset::BtcSpark | Asset::SparkToken { .. } => Layer::Spark,
         }
     }
 
-    /// The maker's catalogue symbol.
-    pub fn symbol(self) -> &'static str {
+    /// The settlement-layer code KaleidoSwap's market API and wallet-engine
+    /// use (`BTC_LN`, `RGB_L1`, …).
+    pub fn code(&self) -> &'static str {
         match self {
-            AssetId::BitcoinBtc | AssetId::LightningBtc => "BTC",
-            AssetId::LiquidBtc => "L-BTC",
-            AssetId::LiquidUsdt => "L-USDT",
-            AssetId::ArkadeBtc => "ARKD",
+            Asset::BtcOnchain => "BTC_L1",
+            Asset::BtcLightning => "BTC_LN",
+            Asset::BtcLiquid => "BTC_LIQUID",
+            Asset::UsdtLiquid => "LIQUID_ASSET",
+            Asset::BtcArkade => "BTC_ARKADE",
+            Asset::BtcSpark => "BTC_SPARK",
+            Asset::RgbOnchain { .. } => "RGB_L1",
+            Asset::RgbLightning { .. } => "RGB_LN",
+            Asset::SparkToken { .. } => "SPARK_SPARK",
         }
     }
 
-    pub fn as_str(self) -> &'static str {
+    /// The maker's Boltz `/v2` catalogue symbol, on the routes this layer
+    /// creates swaps for.
+    fn boltz_symbol(&self) -> Result<&'static str, SwapError> {
         match self {
-            AssetId::BitcoinBtc => "bitcoin:BTC",
-            AssetId::LightningBtc => "lightning:BTC",
-            AssetId::LiquidBtc => "liquid:BTC",
-            AssetId::LiquidUsdt => "liquid:USDT",
-            AssetId::ArkadeBtc => "arkade:BTC",
+            Asset::BtcOnchain | Asset::BtcLightning => Ok("BTC"),
+            Asset::BtcLiquid => Ok("L-BTC"),
+            other => Err(SwapError::new(
+                SwapErrorCode::PairUnavailable,
+                format!("{other} is not started by this layer"),
+            )),
         }
     }
 }
 
-impl fmt::Display for AssetId {
+impl fmt::Display for Asset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
+        match self {
+            Asset::BtcOnchain => f.write_str("bitcoin:BTC"),
+            Asset::BtcLightning => f.write_str("lightning:BTC"),
+            Asset::BtcLiquid => f.write_str("liquid:BTC"),
+            Asset::UsdtLiquid => f.write_str("liquid:USDT"),
+            Asset::BtcArkade => f.write_str("arkade:BTC"),
+            Asset::BtcSpark => f.write_str("spark:BTC"),
+            Asset::RgbOnchain { contract_id } => write!(f, "bitcoin:{contract_id}"),
+            Asset::RgbLightning { contract_id } => write!(f, "lightning:{contract_id}"),
+            Asset::SparkToken { token_id } => write!(f, "spark:{token_id}"),
+        }
     }
 }
 
-impl std::str::FromStr for AssetId {
+impl std::str::FromStr for Asset {
     type Err = SwapError;
     fn from_str(s: &str) -> Result<Self, SwapError> {
-        AssetId::ALL
-            .into_iter()
-            .find(|a| a.as_str() == s)
-            .ok_or_else(|| {
-                SwapError::new(
-                    SwapErrorCode::PairUnavailable,
-                    format!(
-                        "unknown asset {s}; one of {}",
-                        AssetId::ALL.map(|a| a.as_str()).join(", ")
-                    ),
-                )
-            })
+        let unknown = || {
+            SwapError::new(
+                SwapErrorCode::PairUnavailable,
+                format!(
+                    "unknown asset {s}; expected <layer>:<asset>, such as lightning:BTC, \
+                     bitcoin:BTC, liquid:BTC, liquid:USDT, arkade:BTC, spark:BTC, \
+                     bitcoin:rgb:<contract> or spark:<token>"
+                ),
+            )
+        };
+        let (layer, asset) = s.split_once(':').ok_or_else(unknown)?;
+        let id_ok = |id: &str| !id.is_empty() && !id.contains(char::is_whitespace);
+        let rgb = |id: &str| id.strip_prefix("rgb:").is_some_and(id_ok);
+        Ok(match (layer, asset) {
+            ("bitcoin", "BTC") => Asset::BtcOnchain,
+            ("lightning", "BTC") => Asset::BtcLightning,
+            ("liquid", "BTC") => Asset::BtcLiquid,
+            ("liquid", "USDT") => Asset::UsdtLiquid,
+            ("arkade", "BTC") => Asset::BtcArkade,
+            ("spark", "BTC") => Asset::BtcSpark,
+            ("bitcoin", id) if rgb(id) => Asset::RgbOnchain {
+                contract_id: id.to_string(),
+            },
+            ("lightning", id) if rgb(id) => Asset::RgbLightning {
+                contract_id: id.to_string(),
+            },
+            ("spark", id) if id_ok(id) => Asset::SparkToken {
+                token_id: id.to_string(),
+            },
+            _ => return Err(unknown()),
+        })
+    }
+}
+
+impl Serialize for Asset {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Asset {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        s.parse()
+            .map_err(|e: SwapError| serde::de::Error::custom(e.message))
     }
 }
 
@@ -207,27 +266,27 @@ impl std::error::Error for SwapError {}
 // ---------------------------------------------------------------------------
 // Quote
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// What fixes a quote's size. `Pay` and `Receive` are atomic units of that
+/// side's asset; `Invoice` is the BOLT11 a swap to Lightning pays, and its
+/// amount is the `receive` amount.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum QuoteSide {
-    From,
-    To,
+pub enum Amount {
+    Pay(u64),
+    Receive(u64),
+    Invoice(String),
 }
 
+/// Both sides are the caller's to name; the protocol follows from them and
+/// is reported on the [`Quote`], never inferred from an address or invoice.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QuoteRequest {
-    #[serde(rename = "from")]
-    pub from_asset: AssetId,
-    #[serde(rename = "to")]
-    pub to_asset: AssetId,
-    /// Which side `amount` fixes. `From` when absent.
-    pub side: Option<QuoteSide>,
-    /// Atomic units of the side's asset. Omit when `invoice` fixes it.
-    pub amount: Option<u64>,
-    /// Required when `to` is Lightning: the route is priced against the
-    /// invoice the maker will pay, and its amount is the `to` amount.
-    pub invoice: Option<String>,
+    /// What you pay, and where it lives.
+    pub pay: Asset,
+    /// What you receive, and where it lives.
+    pub receive: Asset,
+    pub amount: Amount,
 }
 
 /// The wire a quote rides on. Informational; the caller never picks one.
@@ -268,9 +327,9 @@ pub struct QuoteBinding {
 pub struct Quote {
     pub protocol: Protocol,
     #[serde(rename = "from")]
-    pub from_asset: AssetId,
+    pub from_asset: Asset,
     #[serde(rename = "to")]
-    pub to_asset: AssetId,
+    pub to_asset: Asset,
     pub from_amount: u64,
     pub to_amount: u64,
     pub fees: Fees,
@@ -295,9 +354,9 @@ pub enum QuoteRefusalReason {
 #[serde(rename_all = "camelCase")]
 pub struct Refusal {
     #[serde(rename = "from")]
-    pub from_asset: AssetId,
+    pub from_asset: Asset,
     #[serde(rename = "to")]
-    pub to_asset: AssetId,
+    pub to_asset: Asset,
     pub reason: QuoteRefusalReason,
     pub limits: Option<Limits>,
     pub message: String,
@@ -449,9 +508,9 @@ pub struct SwapRecord {
     pub network: Network,
     pub maker_url: String,
     #[serde(rename = "from")]
-    pub from_asset: AssetId,
+    pub from_asset: Asset,
     #[serde(rename = "to")]
-    pub to_asset: AssetId,
+    pub to_asset: Asset,
     pub phase: SwapPhase,
     /// The protocol's own status string, for logs and support.
     pub raw_status: String,
@@ -826,8 +885,8 @@ impl DefaultFlows {
 
     fn chain_kind(record: &SwapRecord) -> ChainKind {
         let on_chain = match record.protocol {
-            Protocol::BoltzReverse => record.to_asset,
-            _ => record.from_asset,
+            Protocol::BoltzReverse => &record.to_asset,
+            _ => &record.from_asset,
         };
         match on_chain.layer() {
             Layer::Liquid => ChainKind::Liquid(LiquidChain::from(record.network)),
@@ -889,11 +948,11 @@ impl SwapFlows for DefaultFlows {
         let pubkey = bitcoin::PublicKey::new(keys.public_key());
         let chain = Self::chain_kind(record);
         let on_chain = match record.protocol {
-            Protocol::BoltzReverse => record.to_asset,
-            _ => record.from_asset,
+            Protocol::BoltzReverse => &record.to_asset,
+            _ => &record.from_asset,
         };
         let currency = Some(match on_chain {
-            AssetId::LiquidBtc => Currency::LBtc,
+            Asset::BtcLiquid => Currency::LBtc,
             _ => Currency::Btc,
         });
         match &record.state.response {
@@ -987,13 +1046,13 @@ fn miner_fee_total(fees: &PairMinerFees) -> u64 {
 /// A prefix check, not validation — it catches a mainnet address used on signet.
 fn check_address(
     value: &str,
-    asset: AssetId,
+    asset: &Asset,
     network: Network,
     what: &str,
 ) -> Result<(), SwapError> {
     let layer = asset.layer();
     let prefixes: &[&str] = match (layer, network) {
-        (Layer::Arkade, _) => return Ok(()),
+        (Layer::Arkade | Layer::Spark, _) => return Ok(()),
         (Layer::Bitcoin, Network::Mainnet) => &["bc1", "1", "3"],
         (Layer::Bitcoin, Network::Testnet | Network::Signet) => &["tb1", "m", "n", "2"],
         (Layer::Bitcoin, Network::Regtest) => &["bcrt1"],
@@ -1429,72 +1488,83 @@ impl KaleidoSwap {
         self.env.network
     }
 
+    /// Prices `pay → receive`. The two sides decide the protocol; the
+    /// amount has to be the kind that protocol is priced by.
     pub async fn quote(&self, request: QuoteRequest) -> Result<QuoteAnswer, SwapError> {
-        let (from, to) = (request.from_asset, request.to_asset);
-        let refusal = |message: String| {
-            QuoteAnswer::Refusal(Refusal {
-                from_asset: from,
-                to_asset: to,
-                reason: QuoteRefusalReason::PairUnavailable,
-                limits: None,
-                message,
-            })
-        };
-        let on_chain = |a: AssetId| matches!(a, AssetId::BitcoinBtc | AssetId::LiquidBtc);
-        if from == AssetId::LightningBtc && on_chain(to) {
-            return self.quote_reverse(request).await;
+        let QuoteRequest {
+            pay,
+            receive,
+            amount,
+        } = request;
+        let on_chain_btc = |a: &Asset| matches!(a, Asset::BtcOnchain | Asset::BtcLiquid);
+        if pay == Asset::BtcLightning && on_chain_btc(&receive) {
+            let (amount, fixes_receive) = match amount {
+                Amount::Pay(amount) => (amount, false),
+                Amount::Receive(amount) => (amount, true),
+                Amount::Invoice(_) => {
+                    return Err(SwapError::new(
+                        SwapErrorCode::InvalidAmount,
+                        format!("{pay} -> {receive} is priced by an amount: pass Amount::Pay or Amount::Receive, not an invoice"),
+                    ))
+                }
+            };
+            return self
+                .quote_reverse(pay, receive, amount, fixes_receive)
+                .await;
         }
-        if on_chain(from) && to == AssetId::LightningBtc {
-            return self.quote_submarine(request).await;
+        if on_chain_btc(&pay) && receive == Asset::BtcLightning {
+            let Amount::Invoice(invoice) = amount else {
+                return Err(SwapError::new(
+                    SwapErrorCode::InvalidDestination,
+                    format!("{pay} -> {receive} is priced against the invoice it pays: pass Amount::Invoice"),
+                ));
+            };
+            return self.quote_submarine(pay, receive, invoice).await;
         }
-        if from.layer() == Layer::Arkade || to.layer() == Layer::Arkade {
-            return Ok(refusal(format!(
-                "{from} -> {to} rides the Arkade RFQ corridor, which this layer does not route yet; use the corridor module"
-            )));
-        }
-        if from == AssetId::LiquidUsdt || to == AssetId::LiquidUsdt {
-            return Ok(refusal(format!(
-                "{from} -> {to} needs a caller-funded Liquid spend, which this layer does not route yet; use SwapScript::prepare_liquid_claim"
-            )));
-        }
-        Ok(refusal(format!(
-            "{from} -> {to} is not a route the maker serves"
-        )))
+        let message = unrouted(&pay, &receive);
+        Ok(QuoteAnswer::Refusal(Refusal {
+            from_asset: pay,
+            to_asset: receive,
+            reason: QuoteRefusalReason::PairUnavailable,
+            limits: None,
+            message,
+        }))
     }
 
     fn expires_at(&self) -> u64 {
         unix_now() + self.env.quote_ttl.as_secs()
     }
 
-    async fn quote_reverse(&self, request: QuoteRequest) -> Result<QuoteAnswer, SwapError> {
-        let (from, to) = (request.from_asset, request.to_asset);
-        let Some(amount) = request.amount else {
-            return Err(SwapError::new(
-                SwapErrorCode::InvalidAmount,
-                "amount is required for a Lightning-funded swap",
-            ));
-        };
+    async fn quote_reverse(
+        &self,
+        from: Asset,
+        to: Asset,
+        amount: u64,
+        fixes_receive: bool,
+    ) -> Result<QuoteAnswer, SwapError> {
         let pairs = self
             .env
             .maker
             .reverse_pairs()
             .await
             .map_err(|e| SwapError::from_core(e, None))?;
-        let Some(card): Option<ReversePair> = pairs.get(from.symbol(), to.symbol()).cloned() else {
+        let Some(card): Option<ReversePair> =
+            pairs.get(from.boltz_symbol()?, to.boltz_symbol()?).cloned()
+        else {
             return Ok(QuoteAnswer::Refusal(Refusal {
+                message: format!("the maker does not advertise {from} -> {to}"),
                 from_asset: from,
                 to_asset: to,
                 reason: QuoteRefusalReason::PairUnavailable,
                 limits: None,
-                message: format!("the maker does not advertise {from} -> {to}"),
             }));
         };
         let percent = card.fees.percentage;
-        if let Some(refusal) = unusable_percentage(from, to, percent) {
+        if let Some(refusal) = unusable_percentage(&from, &to, percent) {
             return Ok(QuoteAnswer::Refusal(refusal));
         }
         let miner = miner_fee_total(&card.fees.miner_fees);
-        let from_amount = if request.side == Some(QuoteSide::To) {
+        let from_amount = if fixes_receive {
             // Invert `to = from - ceil(from * pct) - miner` closely enough; the
             // maker's response carries the exact payout and the record keeps
             // that one.
@@ -1510,7 +1580,7 @@ impl KaleidoSwap {
             min: card.limits.minimal,
             max: card.limits.maximal,
         };
-        if let Some(refusal) = out_of_limits(from, to, from_amount, limits) {
+        if let Some(refusal) = out_of_limits(&from, &to, from_amount, limits) {
             return Ok(QuoteAnswer::Refusal(refusal));
         }
         Ok(QuoteAnswer::Quote(Quote {
@@ -1533,47 +1603,38 @@ impl KaleidoSwap {
         }))
     }
 
-    async fn quote_submarine(&self, request: QuoteRequest) -> Result<QuoteAnswer, SwapError> {
-        let (from, to) = (request.from_asset, request.to_asset);
-        let Some(invoice) = request.invoice.clone() else {
-            return Err(SwapError::new(
-                SwapErrorCode::InvalidDestination,
-                "a swap to Lightning is priced against the invoice: pass it as `invoice`",
-            ));
-        };
-        check_address(&invoice, to, self.env.network, "invoice")?;
+    async fn quote_submarine(
+        &self,
+        from: Asset,
+        to: Asset,
+        invoice: String,
+    ) -> Result<QuoteAnswer, SwapError> {
+        check_address(&invoice, &to, self.env.network, "invoice")?;
         let Some(to_amount) = decode_invoice(&invoice)? else {
             return Err(SwapError::new(
                 SwapErrorCode::InvalidAmount,
                 "the invoice carries no amount; a submarine swap needs one",
             ));
         };
-        if let Some(amount) = request.amount {
-            if amount != to_amount {
-                return Err(SwapError::new(
-                    SwapErrorCode::InvalidAmount,
-                    format!("amount {amount} does not match the invoice's {to_amount} sat"),
-                ));
-            }
-        }
         let pairs = self
             .env
             .maker
             .submarine_pairs()
             .await
             .map_err(|e| SwapError::from_core(e, None))?;
-        let Some(card): Option<SubmarinePair> = pairs.get(from.symbol(), to.symbol()).cloned()
+        let Some(card): Option<SubmarinePair> =
+            pairs.get(from.boltz_symbol()?, to.boltz_symbol()?).cloned()
         else {
             return Ok(QuoteAnswer::Refusal(Refusal {
+                message: format!("the maker does not advertise {from} -> {to}"),
                 from_asset: from,
                 to_asset: to,
                 reason: QuoteRefusalReason::PairUnavailable,
                 limits: None,
-                message: format!("the maker does not advertise {from} -> {to}"),
             }));
         };
         let percent = card.fees.percentage;
-        if let Some(refusal) = unusable_percentage(from, to, percent) {
+        if let Some(refusal) = unusable_percentage(&from, &to, percent) {
             return Ok(QuoteAnswer::Refusal(refusal));
         }
         let miner = card.fees.miner_fees;
@@ -1583,7 +1644,7 @@ impl KaleidoSwap {
             min: card.limits.minimal,
             max: card.limits.maximal,
         };
-        if let Some(refusal) = out_of_limits(from, to, to_amount, limits) {
+        if let Some(refusal) = out_of_limits(&from, &to, to_amount, limits) {
             return Ok(QuoteAnswer::Refusal(refusal));
         }
         Ok(QuoteAnswer::Quote(Quote {
@@ -1644,7 +1705,7 @@ impl KaleidoSwap {
         };
         check_address(
             &destination,
-            quote.to_asset,
+            &quote.to_asset,
             self.env.network,
             "destination",
         )?;
@@ -1658,8 +1719,18 @@ impl KaleidoSwap {
                     ),
                 ));
             };
-            check_address(refund, quote.from_asset, self.env.network, "refund_address")?;
+            check_address(
+                refund,
+                &quote.from_asset,
+                self.env.network,
+                "refund_address",
+            )?;
         }
+
+        let (from_symbol, to_symbol) = (
+            quote.from_asset.boltz_symbol()?,
+            quote.to_asset.boltz_symbol()?,
+        );
 
         let swap_index = self.env.store.next_index().await?;
         let keys = self.env.signer.derive_key(swap_index).await?;
@@ -1675,7 +1746,7 @@ impl KaleidoSwap {
                 .await
                 .map_err(|e| SwapError::from_core(e, None))?;
             let card = pairs
-                .get(quote.from_asset.symbol(), quote.to_asset.symbol())
+                .get(from_symbol, to_symbol)
                 .filter(|card| card.hash == quote.binding.pair_hash)
                 .cloned()
                 .ok_or_else(|| {
@@ -1685,8 +1756,8 @@ impl KaleidoSwap {
                     )
                 })?;
             let request = CreateReverseRequest {
-                from: quote.from_asset.symbol().to_string(),
-                to: quote.to_asset.symbol().to_string(),
+                from: from_symbol.to_string(),
+                to: to_symbol.to_string(),
                 claim_public_key: pubkey,
                 invoice: None,
                 invoice_amount: Some(quote.from_amount),
@@ -1730,8 +1801,8 @@ impl KaleidoSwap {
                 .env
                 .maker
                 .create_submarine(&CreateSubmarineRequest {
-                    from: quote.from_asset.symbol().to_string(),
-                    to: quote.to_asset.symbol().to_string(),
+                    from: from_symbol.to_string(),
+                    to: to_symbol.to_string(),
                     invoice: destination.clone(),
                     refund_public_key: pubkey,
                     pair_hash: Some(quote.binding.pair_hash.clone()),
@@ -1766,8 +1837,8 @@ impl KaleidoSwap {
             protocol: quote.protocol,
             network: self.env.network,
             maker_url: self.env.maker_url.clone(),
-            from_asset: quote.from_asset,
-            to_asset: quote.to_asset,
+            from_asset: quote.from_asset.clone(),
+            to_asset: quote.to_asset.clone(),
             phase: SwapPhase::Created,
             raw_status: "swap.created".to_string(),
             created_at: now,
@@ -1855,22 +1926,47 @@ impl KaleidoSwap {
     }
 }
 
+/// Why `pay → receive` is not one this layer routes, and where to go
+/// instead. Every route the engine reaches is named, so the refusal is a
+/// pointer rather than a dead end.
+fn unrouted(pay: &Asset, receive: &Asset) -> String {
+    let either = |f: fn(&Asset) -> bool| f(pay) || f(receive);
+    if either(|a| a.layer() == Layer::Spark) {
+        format!("{pay} -> {receive}: this SDK does not settle on Spark; pay or receive the Lightning side from a Spark wallet instead")
+    } else if either(|a| matches!(a, Asset::RgbLightning { .. })) {
+        format!("{pay} -> {receive}: RGB over Lightning is served by the KaleidoSwap market API through an RGB Lightning node, not by this SDK")
+    } else if either(|a| matches!(a, Asset::RgbOnchain { .. })) {
+        format!("{pay} -> {receive} is an RGB swap, which this layer does not route yet; use the rgb or atomic module with an rgb-lib wallet")
+    } else if either(|a| a.layer() == Layer::Arkade) {
+        format!("{pay} -> {receive} rides the Arkade RFQ corridor, which this layer does not route yet; use the corridor module")
+    } else if either(|a| *a == Asset::UsdtLiquid) {
+        format!("{pay} -> {receive} needs a caller-funded Liquid spend, which this layer does not route yet; use SwapScript::prepare_liquid_claim")
+    } else if pay.layer() != Layer::Lightning
+        && receive.layer() != Layer::Lightning
+        && pay.layer() != receive.layer()
+    {
+        format!("{pay} -> {receive} is a chain swap, which this layer does not route yet; use BoltzApiClientV2::post_chain_req")
+    } else {
+        format!("{pay} -> {receive} is not a route the maker serves")
+    }
+}
+
 /// A pair card is the maker's input; a fee percentage outside `0..100`
 /// cannot be priced and must not reach the arithmetic.
-fn unusable_percentage(from: AssetId, to: AssetId, percent: f64) -> Option<Refusal> {
+fn unusable_percentage(from: &Asset, to: &Asset, percent: f64) -> Option<Refusal> {
     if percent.is_finite() && (0.0..100.0).contains(&percent) {
         return None;
     }
     Some(Refusal {
-        from_asset: from,
-        to_asset: to,
+        from_asset: from.clone(),
+        to_asset: to.clone(),
         reason: QuoteRefusalReason::PairUnavailable,
         limits: None,
         message: format!("the pair card for {from} -> {to} carries an unusable fee percentage"),
     })
 }
 
-fn out_of_limits(from: AssetId, to: AssetId, amount: u64, limits: Limits) -> Option<Refusal> {
+fn out_of_limits(from: &Asset, to: &Asset, amount: u64, limits: Limits) -> Option<Refusal> {
     let reason = if amount < limits.min {
         QuoteRefusalReason::AmountBelowMin
     } else if amount > limits.max {
@@ -1879,8 +1975,8 @@ fn out_of_limits(from: AssetId, to: AssetId, amount: u64, limits: Limits) -> Opt
         return None;
     };
     Some(Refusal {
-        from_asset: from,
-        to_asset: to,
+        from_asset: from.clone(),
+        to_asset: to.clone(),
         reason,
         limits: Some(limits),
         message: match reason {
@@ -2144,21 +2240,17 @@ mod tests {
 
     fn reverse_request(amount: u64) -> QuoteRequest {
         QuoteRequest {
-            from_asset: AssetId::LightningBtc,
-            to_asset: AssetId::LiquidBtc,
-            side: None,
-            amount: Some(amount),
-            invoice: None,
+            pay: Asset::BtcLightning,
+            receive: Asset::BtcLiquid,
+            amount: Amount::Pay(amount),
         }
     }
 
     fn submarine_request(invoice: &str) -> QuoteRequest {
         QuoteRequest {
-            from_asset: AssetId::BitcoinBtc,
-            to_asset: AssetId::LightningBtc,
-            side: None,
-            amount: None,
-            invoice: Some(invoice.into()),
+            pay: Asset::BtcOnchain,
+            receive: Asset::BtcLightning,
+            amount: Amount::Invoice(invoice.into()),
         }
     }
 
@@ -2188,13 +2280,12 @@ mod tests {
     }
 
     #[macros::async_test_all]
-    async fn side_to_inverts_the_fee_formula() {
+    async fn a_receive_amount_inverts_the_fee_formula() {
         let h = harness();
         let q = h
             .kaleido
             .quote(QuoteRequest {
-                side: Some(QuoteSide::To),
-                amount: Some(49_450),
+                amount: Amount::Receive(49_450),
                 ..reverse_request(0)
             })
             .await
@@ -2224,30 +2315,74 @@ mod tests {
             })
         );
 
-        let arkade = h
-            .kaleido
-            .quote(QuoteRequest {
-                from_asset: AssetId::ArkadeBtc,
-                ..reverse_request(1)
-            })
-            .await
-            .unwrap()
-            .quote()
-            .unwrap_err();
-        assert_eq!(arkade.reason, QuoteRefusalReason::PairUnavailable);
-        assert!(arkade.message.contains("Arkade"));
+        // Every route the engine reaches but this layer does not is refused
+        // with a pointer to where it lives.
+        let rgb = "rgb:2dkSTbr-jFhznbPmo-TQafzswCN-av4gTsJjX-ttx6CNou5-M98k8Zd".to_string();
+        for (pay, receive, says) in [
+            (Asset::BtcArkade, Asset::BtcLightning, "Arkade"),
+            (Asset::BtcLightning, Asset::UsdtLiquid, "Liquid spend"),
+            (Asset::BtcOnchain, Asset::BtcLiquid, "chain swap"),
+            (
+                Asset::BtcLightning,
+                Asset::RgbOnchain {
+                    contract_id: rgb.clone(),
+                },
+                "RGB swap",
+            ),
+            (
+                Asset::BtcOnchain,
+                Asset::RgbOnchain {
+                    contract_id: rgb.clone(),
+                },
+                "RGB swap",
+            ),
+            (
+                Asset::BtcLightning,
+                Asset::RgbLightning { contract_id: rgb },
+                "RGB over Lightning",
+            ),
+            (Asset::BtcSpark, Asset::BtcLiquid, "Spark"),
+            (Asset::BtcLightning, Asset::BtcLightning, "not a route"),
+        ] {
+            let refusal = h
+                .kaleido
+                .quote(QuoteRequest {
+                    pay: pay.clone(),
+                    receive: receive.clone(),
+                    amount: Amount::Pay(50_000),
+                })
+                .await
+                .unwrap()
+                .quote()
+                .unwrap_err();
+            assert_eq!(refusal.reason, QuoteRefusalReason::PairUnavailable);
+            assert_eq!((refusal.from_asset, refusal.to_asset), (pay, receive));
+            assert!(refusal.message.contains(says), "{}", refusal.message);
+        }
+    }
 
-        let usdt = h
+    #[macros::async_test_all]
+    async fn the_amount_must_be_the_kind_the_route_is_priced_by() {
+        let h = harness();
+        let invoice_from_lightning = h
             .kaleido
             .quote(QuoteRequest {
-                to_asset: AssetId::LiquidUsdt,
-                ..reverse_request(1)
+                amount: Amount::Invoice(INVOICE_SIGNET_50K.into()),
+                ..reverse_request(0)
             })
             .await
-            .unwrap()
-            .quote()
             .unwrap_err();
-        assert_eq!(usdt.reason, QuoteRefusalReason::PairUnavailable);
+        assert_eq!(invoice_from_lightning.code, SwapErrorCode::InvalidAmount);
+
+        let amount_to_lightning = h
+            .kaleido
+            .quote(QuoteRequest {
+                amount: Amount::Receive(50_000),
+                ..submarine_request("")
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(amount_to_lightning.code, SwapErrorCode::InvalidDestination);
     }
 
     #[macros::async_test_all]
@@ -2271,26 +2406,6 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(wrong.code, SwapErrorCode::WrongNetworkAddress);
-
-        let missing = h
-            .kaleido
-            .quote(QuoteRequest {
-                invoice: None,
-                ..submarine_request("")
-            })
-            .await
-            .unwrap_err();
-        assert_eq!(missing.code, SwapErrorCode::InvalidDestination);
-
-        let mismatch = h
-            .kaleido
-            .quote(QuoteRequest {
-                amount: Some(1),
-                ..submarine_request(INVOICE_SIGNET_50K)
-            })
-            .await
-            .unwrap_err();
-        assert_eq!(mismatch.code, SwapErrorCode::InvalidAmount);
     }
 
     #[macros::async_test_all]
@@ -2539,8 +2654,8 @@ mod tests {
             let refusal = h
                 .kaleido
                 .quote(QuoteRequest {
-                    side: Some(QuoteSide::To),
-                    ..reverse_request(50_000)
+                    amount: Amount::Receive(50_000),
+                    ..reverse_request(0)
                 })
                 .await
                 .unwrap()
@@ -2807,12 +2922,50 @@ mod tests {
     }
 
     #[macros::test_all]
-    fn asset_ids_round_trip_and_plain_ids_are_checked() {
-        for asset in AssetId::ALL {
-            assert_eq!(asset.as_str().parse::<AssetId>().unwrap(), asset);
-            assert_eq!(serde_json::to_value(asset).unwrap(), asset.as_str());
+    fn assets_round_trip_and_plain_ids_are_checked() {
+        let rgb = "rgb:2dkSTbr-jFhznbPmo-TQafzswCN-av4gTsJjX-ttx6CNou5-M98k8Zd";
+        for (asset, wire, code) in [
+            (Asset::BtcOnchain, "bitcoin:BTC".to_string(), "BTC_L1"),
+            (Asset::BtcLightning, "lightning:BTC".into(), "BTC_LN"),
+            (Asset::BtcLiquid, "liquid:BTC".into(), "BTC_LIQUID"),
+            (Asset::UsdtLiquid, "liquid:USDT".into(), "LIQUID_ASSET"),
+            (Asset::BtcArkade, "arkade:BTC".into(), "BTC_ARKADE"),
+            (Asset::BtcSpark, "spark:BTC".into(), "BTC_SPARK"),
+            (
+                Asset::RgbOnchain {
+                    contract_id: rgb.into(),
+                },
+                format!("bitcoin:{rgb}"),
+                "RGB_L1",
+            ),
+            (
+                Asset::RgbLightning {
+                    contract_id: rgb.into(),
+                },
+                format!("lightning:{rgb}"),
+                "RGB_LN",
+            ),
+            (
+                Asset::SparkToken {
+                    token_id: "btkn1qtoken".into(),
+                },
+                "spark:btkn1qtoken".into(),
+                "SPARK_SPARK",
+            ),
+        ] {
+            assert_eq!(wire.parse::<Asset>().unwrap(), asset);
+            assert_eq!(serde_json::to_value(&asset).unwrap(), wire.as_str());
+            assert_eq!(asset.code(), code);
         }
-        assert!("nope".parse::<AssetId>().is_err());
+        for bad in [
+            "nope",
+            "bitcoin:ETH",
+            "bitcoin:rgb:",
+            "liquid:rgb:x",
+            "spark:",
+        ] {
+            assert!(bad.parse::<Asset>().is_err(), "{bad}");
+        }
         assert!(is_plain_id("01M64CAVBFK6T58RWS72GK6AHV"));
         for bad in ["../x", "a/b", "", &"x".repeat(200)] {
             assert!(!is_plain_id(bad), "{bad}");

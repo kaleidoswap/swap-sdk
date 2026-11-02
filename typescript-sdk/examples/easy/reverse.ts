@@ -21,9 +21,9 @@ const kaleido = await createKaleidoSwap({
 await kaleido.resume(); // claims or refunds anything a previous run left behind
 
 const answer = await kaleido.quote({
-  from: "lightning:BTC",
-  to: "liquid:BTC",
-  amount: 50_000,
+  pay: "lightning:BTC",
+  receive: "liquid:BTC",
+  amount: { pay: 50_000 },
 });
 if (!isQuote(answer)) throw new Error(`${answer.reason}: ${answer.message}`);
 

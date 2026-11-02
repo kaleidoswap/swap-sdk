@@ -22,9 +22,9 @@ const kaleido = await createKaleidoSwap({
 await kaleido.resume();
 
 const answer = await kaleido.quote({
-  from: "bitcoin:BTC",
-  to: "lightning:BTC",
-  invoice: process.env.BOLT11_INVOICE!,
+  pay: "bitcoin:BTC",
+  receive: "lightning:BTC",
+  amount: { invoice: process.env.BOLT11_INVOICE! },
 });
 if (!isQuote(answer)) throw new Error(`${answer.reason}: ${answer.message}`);
 

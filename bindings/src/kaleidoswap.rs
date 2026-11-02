@@ -12,8 +12,8 @@
 use std::sync::Arc;
 
 use kaleidorg_swap_sdk::kaleidoswap::{
-    self as core, AssetId, Fees, Limits, Protocol, Quote, QuoteBinding, QuoteRefusalReason,
-    QuoteRequest, QuoteSide, Refusal, StartOptions, SwapAction, SwapErrorCode, SwapPhase,
+    self as core, Amount, Asset, Fees, Limits, Protocol, Quote, QuoteBinding, QuoteRefusalReason,
+    QuoteRequest, Refusal, StartOptions, SwapAction, SwapErrorCode, SwapPhase,
 };
 use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
 
@@ -24,18 +24,23 @@ use kaleidorg_swap_sdk::network::Network;
 // Enums and records, declared as the core declares them.
 
 #[uniffi::remote(Enum)]
-pub enum AssetId {
-    BitcoinBtc,
-    LightningBtc,
-    LiquidBtc,
-    LiquidUsdt,
-    ArkadeBtc,
+pub enum Asset {
+    BtcOnchain,
+    BtcLightning,
+    BtcLiquid,
+    UsdtLiquid,
+    BtcArkade,
+    BtcSpark,
+    RgbOnchain { contract_id: String },
+    RgbLightning { contract_id: String },
+    SparkToken { token_id: String },
 }
 
 #[uniffi::remote(Enum)]
-pub enum QuoteSide {
-    From,
-    To,
+pub enum Amount {
+    Pay(u64),
+    Receive(u64),
+    Invoice(String),
 }
 
 #[uniffi::remote(Enum)]
@@ -90,11 +95,9 @@ pub enum SwapErrorCode {
 
 #[uniffi::remote(Record)]
 pub struct QuoteRequest {
-    pub from_asset: AssetId,
-    pub to_asset: AssetId,
-    pub side: Option<QuoteSide>,
-    pub amount: Option<u64>,
-    pub invoice: Option<String>,
+    pub pay: Asset,
+    pub receive: Asset,
+    pub amount: Amount,
 }
 
 #[uniffi::remote(Record)]
@@ -119,8 +122,8 @@ pub struct QuoteBinding {
 #[uniffi::remote(Record)]
 pub struct Quote {
     pub protocol: Protocol,
-    pub from_asset: AssetId,
-    pub to_asset: AssetId,
+    pub from_asset: Asset,
+    pub to_asset: Asset,
     pub from_amount: u64,
     pub to_amount: u64,
     pub fees: Fees,
@@ -131,8 +134,8 @@ pub struct Quote {
 
 #[uniffi::remote(Record)]
 pub struct Refusal {
-    pub from_asset: AssetId,
-    pub to_asset: AssetId,
+    pub from_asset: Asset,
+    pub to_asset: Asset,
     pub reason: QuoteRefusalReason,
     pub limits: Option<Limits>,
     pub message: String,
@@ -182,8 +185,8 @@ pub struct SwapRecord {
     pub protocol: Protocol,
     pub network: Network,
     pub maker_url: String,
-    pub from_asset: AssetId,
-    pub to_asset: AssetId,
+    pub from_asset: Asset,
+    pub to_asset: Asset,
     pub phase: SwapPhase,
     pub raw_status: String,
     pub created_at: u64,

@@ -8,9 +8,12 @@ All notable changes to this project will be documented in this file.
 
 One verb per step — `quote`, `start`, `resume` — for the routes the maker
 serves over Boltz `/v2`: Lightning to on-chain BTC or L-BTC (reverse) and
-on-chain BTC or L-BTC to Lightning (submarine). Assets are named with their
-layer (`lightning:BTC`, `liquid:BTC`), so a destination on the wrong layer or
-network is refused locally. `quote` answers with a `Quote` or a `Refusal`
+on-chain BTC or L-BTC to Lightning (submarine). A quote names both sides,
+`pay` and `receive`, each an `Asset`: what it is and where it lives
+(`lightning:BTC`, `liquid:BTC`, `bitcoin:rgb:<contract>`, `spark:<token>`), so a
+destination on the wrong layer or network is refused locally, and the protocol
+follows from the two sides instead of being inferred. Its `amount` says what
+it fixes: `Pay`, `Receive`, or the `Invoice` a swap to Lightning pays. `quote` answers with a `Quote` or a `Refusal`
 value; `start` creates the swap, verifies the lockup against the caller's own
 key and persists the record, including `swap_auth`, before it returns, and
 never moves funds. Before persisting, it checks the maker's response against
@@ -36,9 +39,9 @@ move with its error — one such swap never stops the others from being resumed.
 Every request to the maker has a timeout (30 s by default, `maker_timeout`), and
 a refund falls back to the script path when the maker will not co-sign.
 
-L-USDT, the Arkade corridor and pay-through are not routed by this layer yet
-and come back as a `pair_unavailable` refusal that names the lower-level entry
-to use. The default Liquid testnet Esplora for this layer is `liquid.network`,
+Chain swaps, L-USDT, RGB, the Arkade corridor, Spark and pay-through are not
+routed by this layer yet and come back as a `pair_unavailable` refusal that
+names where each one lives. The default Liquid testnet Esplora for this layer is `liquid.network`,
 which does not rate-limit UTXO lookups. Status is polled. `BoltzApiClientV2`
 gains `base_url()`, and `Error` in the Python and React Native bindings gains a
 `Swap` variant carrying the code. Three examples under

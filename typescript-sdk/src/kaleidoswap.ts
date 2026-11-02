@@ -8,15 +8,25 @@ import type { DerivedKey, DerivedPreimage, Network } from "./index.js";
 // ---------------------------------------------------------------------------
 // Assets and amounts
 
-/** The layer an asset lives on. `arkade` is Bitcoin on Arkade (`ARKD`). */
-export type Layer = "bitcoin" | "lightning" | "liquid" | "arkade";
+/** The layer an asset lives on. */
+export type Layer = "bitcoin" | "lightning" | "liquid" | "arkade" | "spark";
 
 /**
- * `<layer>:<asset>`. Spelling the layer is what makes a wrong-network
- * destination a local error instead of an unrecoverable payout.
+ * What a swap pays or receives, and where it lives: `<layer>:<asset>`.
+ * Spelling the layer is what makes a wrong-network destination a local error
+ * instead of an unrecoverable payout. RGB contracts and Spark tokens are
+ * named by id (`bitcoin:rgb:…`, `spark:btkn…`).
  */
-export type AssetId =
-  "bitcoin:BTC" | "lightning:BTC" | "liquid:BTC" | "liquid:USDT" | "arkade:BTC";
+export type Asset =
+  | "bitcoin:BTC"
+  | "lightning:BTC"
+  | "liquid:BTC"
+  | "liquid:USDT"
+  | "arkade:BTC"
+  | "spark:BTC"
+  | `bitcoin:rgb:${string}`
+  | `lightning:rgb:${string}`
+  | `spark:${string}`;
 
 /**
  * Atomic units of the asset — sats for BTC on any layer, L-USDT units for
@@ -87,18 +97,23 @@ export interface KaleidoSwapOptions {
 // ---------------------------------------------------------------------------
 // Quote
 
+/**
+ * What fixes a quote's size: what you pay, what you receive, or, on a swap
+ * to Lightning, the invoice the maker pays (its amount is the `receive` side).
+ */
+export type QuoteAmount =
+  { pay: Amount } | { receive: Amount } | { invoice: string };
+
+/**
+ * Both sides are the caller's to name; the protocol follows from them and is
+ * reported on the {@link Quote}, never inferred from an address or invoice.
+ */
 export interface QuoteRequest {
-  from: AssetId;
-  to: AssetId;
-  /** Which side `amount` fixes. Defaults to `"from"`. */
-  side?: "from" | "to";
-  /** Omit when `invoice` fixes it. */
-  amount?: Amount;
-  /**
-   * Required when `to` is Lightning: the route is priced against the invoice
-   * the maker will pay, and its amount is the `to` amount.
-   */
-  invoice?: string;
+  /** What you pay, and where it lives. */
+  pay: Asset;
+  /** What you receive, and where it lives. */
+  receive: Asset;
+  amount: QuoteAmount;
 }
 
 /** The wire a quote rides on. Informational; the caller never picks one. */
@@ -108,8 +123,8 @@ export type Protocol =
 export interface Quote {
   kind: "quote";
   protocol: Protocol;
-  from: AssetId;
-  to: AssetId;
+  from: Asset;
+  to: Asset;
   fromAmount: bigint;
   toAmount: bigint;
   fees: { maker: bigint; miner: bigint };
@@ -126,8 +141,8 @@ export interface Quote {
  */
 export interface Refusal {
   kind: "refusal";
-  from: AssetId;
-  to: AssetId;
+  from: Asset;
+  to: Asset;
   reason:
     | "pair_unavailable"
     | "amount_below_min"
@@ -198,8 +213,8 @@ export interface SwapRecord {
   protocol: Protocol;
   network: Network;
   makerUrl: string;
-  from: AssetId;
-  to: AssetId;
+  from: Asset;
+  to: Asset;
   phase: SwapPhase;
   /** The protocol's own status string, for logs and support. */
   rawStatus: string;
@@ -519,12 +534,20 @@ export function makeCreateKaleidoSwap(
         return options.network;
       },
       async quote(request) {
+        const amount = request.amount as QuoteAmount | undefined;
+        if (typeof amount !== "object" || amount === null)
+          throw swapError(
+            "INVALID_AMOUNT",
+            "amount is required: { pay }, { receive } or { invoice }",
+          );
         const wire = {
           ...request,
           amount:
-            request.amount === undefined
-              ? undefined
-              : amountToBigint(request.amount, "amount"),
+            "pay" in amount
+              ? { pay: amountToBigint(amount.pay, "amount.pay") }
+              : "receive" in amount
+                ? { receive: amountToBigint(amount.receive, "amount.receive") }
+                : amount,
         };
         return (await inner.quote(wire)) as QuoteAnswer;
       },

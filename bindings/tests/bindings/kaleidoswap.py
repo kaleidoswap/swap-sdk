@@ -109,11 +109,9 @@ async def run():
         # A reverse quote prices from the pair card and binds its hash.
         answer = await kaleido.quote(
             sdk.QuoteRequest(
-                from_asset=sdk.AssetId.LIGHTNING_BTC,
-                to_asset=sdk.AssetId.LIQUID_BTC,
-                side=None,
-                amount=50_000,
-                invoice=None,
+                pay=sdk.Asset.BTC_LIGHTNING(),
+                receive=sdk.Asset.BTC_LIQUID(),
+                amount=sdk.Amount.PAY(50_000),
             )
         )
         assert answer.refusal is None
@@ -126,11 +124,9 @@ async def run():
         # A refusal is a value, with the limits it came from.
         below = await kaleido.quote(
             sdk.QuoteRequest(
-                from_asset=sdk.AssetId.LIGHTNING_BTC,
-                to_asset=sdk.AssetId.LIQUID_BTC,
-                side=None,
-                amount=1,
-                invoice=None,
+                pay=sdk.Asset.BTC_LIGHTNING(),
+                receive=sdk.Asset.BTC_LIQUID(),
+                amount=sdk.Amount.PAY(1),
             )
         )
         assert below.quote is None
@@ -143,15 +139,26 @@ async def run():
         # A submarine is priced against its invoice.
         sub = await kaleido.quote(
             sdk.QuoteRequest(
-                from_asset=sdk.AssetId.BITCOIN_BTC,
-                to_asset=sdk.AssetId.LIGHTNING_BTC,
-                side=None,
-                amount=None,
-                invoice=INVOICE_SIGNET_50K,
+                pay=sdk.Asset.BTC_ONCHAIN(),
+                receive=sdk.Asset.BTC_LIGHTNING(),
+                amount=sdk.Amount.INVOICE(INVOICE_SIGNET_50K),
             )
         )
         assert sub.quote.protocol == sdk.Protocol.BOLTZ_SUBMARINE
         assert (sub.quote.to_amount, sub.quote.from_amount) == (50_000, 50_200)
+
+        # A route this layer does not create swaps for is a refusal that says
+        # where it lives; an RGB asset is named by its contract.
+        rgb = await kaleido.quote(
+            sdk.QuoteRequest(
+                pay=sdk.Asset.BTC_LIGHTNING(),
+                receive=sdk.Asset.RGB_ONCHAIN(contract_id="rgb:2dkSTbr-jFhznbPmo"),
+                amount=sdk.Amount.PAY(50_000),
+            )
+        )
+        assert rgb.quote is None
+        assert rgb.refusal.reason == sdk.QuoteRefusalReason.PAIR_UNAVAILABLE
+        assert "RGB swap" in rgb.refusal.message
 
         # Checks made before the maker is contacted come back coded.
         for start, expected in [
@@ -221,11 +228,9 @@ async def run():
         )
         again = await defaults.quote(
             sdk.QuoteRequest(
-                from_asset=sdk.AssetId.LIGHTNING_BTC,
-                to_asset=sdk.AssetId.LIQUID_BTC,
-                side=None,
-                amount=50_000,
-                invoice=None,
+                pay=sdk.Asset.BTC_LIGHTNING(),
+                receive=sdk.Asset.BTC_LIQUID(),
+                amount=sdk.Amount.PAY(50_000),
             )
         )
         assert again.quote.to_amount == 49_450

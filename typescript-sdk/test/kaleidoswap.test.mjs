@@ -81,9 +81,9 @@ test("quote: reverse prices from the pair card and binds its hash", async (t) =>
   stubMaker(t);
   const k = await kaleido();
   const answer = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
+    pay: "lightning:BTC",
+    receive: "liquid:BTC",
+    amount: { pay: 50_000 },
   });
   assert.ok(isQuote(answer));
   assert.equal(answer.protocol, "boltz-reverse");
@@ -98,15 +98,19 @@ test("quote: amounts in any accepted form, bad ones coded", async (t) => {
   const k = await kaleido();
   for (const amount of [50_000n, 50_000, "50000"]) {
     const answer = await k.quote({
-      from: "lightning:BTC",
-      to: "liquid:BTC",
-      amount,
+      pay: "lightning:BTC",
+      receive: "liquid:BTC",
+      amount: { pay: amount },
     });
     assert.ok(isQuote(answer) && answer.fromAmount === 50_000n);
   }
   for (const amount of [1.5, "12abc", Number.MAX_SAFE_INTEGER + 1, -1]) {
     await assert.rejects(
-      k.quote({ from: "lightning:BTC", to: "liquid:BTC", amount }),
+      k.quote({
+        pay: "lightning:BTC",
+        receive: "liquid:BTC",
+        amount: { pay: amount },
+      }),
       (e) => isSwapError(e) && e.code === "INVALID_AMOUNT",
     );
   }
@@ -116,34 +120,44 @@ test("quote: refusals are values, not throws", async (t) => {
   stubMaker(t);
   const k = await kaleido();
   const below = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 1,
+    pay: "lightning:BTC",
+    receive: "liquid:BTC",
+    amount: { pay: 1 },
   });
   assert.equal(below.kind, "refusal");
   assert.equal(below.reason, "amount_below_min");
   assert.deepEqual(below.limits, { min: 10_000n, max: 1_000_000n });
   const arkade = await k.quote({
-    from: "arkade:BTC",
-    to: "lightning:BTC",
-    amount: 1,
+    pay: "arkade:BTC",
+    receive: "lightning:BTC",
+    amount: { pay: 1 },
   });
   assert.equal(arkade.reason, "pair_unavailable");
   const usdt = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:USDT",
-    amount: 1,
+    pay: "lightning:BTC",
+    receive: "liquid:USDT",
+    amount: { pay: 1 },
   });
   assert.equal(usdt.reason, "pair_unavailable");
+  for (const [pay, receive, says] of [
+    ["lightning:BTC", "bitcoin:rgb:2dkSTbr-jFhznbPmo", "RGB swap"],
+    ["spark:BTC", "liquid:BTC", "Spark"],
+    ["bitcoin:BTC", "liquid:BTC", "chain swap"],
+  ]) {
+    const refusal = await k.quote({ pay, receive, amount: { pay: 50_000 } });
+    assert.equal(refusal.kind, "refusal");
+    assert.equal(refusal.from, pay);
+    assert.ok(refusal.message.includes(says), refusal.message);
+  }
 });
 
 test("quote: a submarine is priced against the invoice and checks its network", async (t) => {
   stubMaker(t);
   const k = await kaleido();
   const answer = await k.quote({
-    from: "bitcoin:BTC",
-    to: "lightning:BTC",
-    invoice: INVOICE_SIGNET_50K,
+    pay: "bitcoin:BTC",
+    receive: "lightning:BTC",
+    amount: { invoice: INVOICE_SIGNET_50K },
   });
   assert.ok(isQuote(answer));
   assert.equal(answer.protocol, "boltz-submarine");
@@ -151,15 +165,23 @@ test("quote: a submarine is priced against the invoice and checks its network", 
   assert.equal(answer.fromAmount, 50_200n);
   await assert.rejects(
     k.quote({
-      from: "bitcoin:BTC",
-      to: "lightning:BTC",
-      invoice: INVOICE_REGTEST_100K,
+      pay: "bitcoin:BTC",
+      receive: "lightning:BTC",
+      amount: { invoice: INVOICE_REGTEST_100K },
     }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   await assert.rejects(
-    k.quote({ from: "bitcoin:BTC", to: "lightning:BTC" }),
+    k.quote({
+      pay: "bitcoin:BTC",
+      receive: "lightning:BTC",
+      amount: { pay: 50_000 },
+    }),
     (e) => e.code === "INVALID_DESTINATION",
+  );
+  await assert.rejects(
+    k.quote({ pay: "bitcoin:BTC", receive: "lightning:BTC" }),
+    (e) => isSwapError(e) && e.code === "INVALID_AMOUNT",
   );
 });
 
@@ -167,9 +189,9 @@ test("start: destination and refund address are checked before the maker is cont
   const requests = stubMaker(t);
   const k = await kaleido();
   const reverse = await k.quote({
-    from: "lightning:BTC",
-    to: "liquid:BTC",
-    amount: 50_000,
+    pay: "lightning:BTC",
+    receive: "liquid:BTC",
+    amount: { pay: 50_000 },
   });
   await assert.rejects(
     k.start(reverse, { destination: "lq1mainnet" }),
@@ -185,9 +207,9 @@ test("start: destination and refund address are checked before the maker is cont
   );
 
   const submarine = await k.quote({
-    from: "bitcoin:BTC",
-    to: "lightning:BTC",
-    invoice: INVOICE_SIGNET_50K,
+    pay: "bitcoin:BTC",
+    receive: "lightning:BTC",
+    amount: { invoice: INVOICE_SIGNET_50K },
   });
   await assert.rejects(
     k.start(submarine, {}),
