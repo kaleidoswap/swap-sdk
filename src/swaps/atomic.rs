@@ -48,9 +48,24 @@ use crate::error::Error;
 use crate::swaps::boltz::BoltzApiClientV2;
 
 /// The pair that sends BTC and receives USDT-RGB.
-pub const ATOMIC_BTC_TO_USDT_RGB: &str = "BTC/USDT-RGB";
+pub const ATOMIC_BTC_TO_USDT_RGB: &str = "BTC＠L1/USDT-RGB＠L1";
 /// The pair that sends USDT-RGB and receives BTC.
-pub const ATOMIC_USDT_RGB_TO_BTC: &str = "USDT-RGB/BTC";
+pub const ATOMIC_USDT_RGB_TO_BTC: &str = "USDT-RGB＠L1/BTC＠L1";
+
+/// The pair ids from before the maker moved to
+/// `FROM_ASSET＠FROM_NETWORK/TO_ASSET＠TO_NETWORK`.
+const LEGACY_BTC_TO_USDT_RGB: &str = "BTC/USDT-RGB";
+const LEGACY_USDT_RGB_TO_BTC: &str = "USDT-RGB/BTC";
+
+/// Which way an atomic pair id goes, in either id form: `Some(true)` when the
+/// taker sends BTC, `Some(false)` when the taker sends USDT-RGB.
+fn atomic_pair_sends_btc(pair: &str) -> Option<bool> {
+    match pair {
+        ATOMIC_BTC_TO_USDT_RGB | LEGACY_BTC_TO_USDT_RGB => Some(true),
+        ATOMIC_USDT_RGB_TO_BTC | LEGACY_USDT_RGB_TO_BTC => Some(false),
+        _ => None,
+    }
+}
 
 /// Which amount of a quote request is fixed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -249,16 +264,21 @@ impl AtomicQuote {
         expect: &AtomicQuoteExpectations,
         now: u64,
     ) -> Result<(), Error> {
-        if self.pair != request.pair {
+        // The maker answers with its canonical id even when the request used
+        // the older one, so the two forms of a pair are the same pair.
+        let same_pair = self.pair == request.pair
+            || matches!(
+                (atomic_pair_sends_btc(&self.pair), atomic_pair_sends_btc(&request.pair)),
+                (Some(a), Some(b)) if a == b
+            );
+        if !same_pair {
             return Err(mismatch(
                 self,
                 format!("is for pair {}, not {}", self.pair, request.pair),
             ));
         }
-        let taker_sends_btc = match self.pair.as_str() {
-            ATOMIC_BTC_TO_USDT_RGB => true,
-            ATOMIC_USDT_RGB_TO_BTC => false,
-            other => return Err(mismatch(self, format!("unknown atomic pair {other}"))),
+        let Some(taker_sends_btc) = atomic_pair_sends_btc(&self.pair) else {
+            return Err(mismatch(self, format!("unknown atomic pair {}", self.pair)));
         };
         if self.direction != request.direction {
             return Err(mismatch(
@@ -851,12 +871,12 @@ mod tests {
         }
     }
 
-    /// A `BTC/USDT-RGB` quote as the maker sends it: the maker gives
+    /// A `BTC＠L1/USDT-RGB＠L1` quote as the maker sends it: the maker gives
     /// 95,000,000 RGB units and receives 100,000 sat.
     fn quote() -> AtomicQuote {
         serde_json::from_value(json!({
             "id": "01JATOMICSWAP",
-            "pair": "BTC/USDT-RGB",
+            "pair": "BTC＠L1/USDT-RGB＠L1",
             "direction": "from",
             "fromAmount": 100_000,
             "toAmount": 95_000_000,
@@ -917,6 +937,22 @@ mod tests {
         swapped.offer["maker_gives"] = q.offer["maker_gives"].clone();
         swapped.offer["maker_receives"] = q.offer["maker_receives"].clone();
         assert!(refused(&swapped, &expect()).contains("offer gives"));
+    }
+
+    #[test]
+    fn either_pair_id_form_is_accepted_in_a_response() {
+        // A request in the older form answered in the canonical one, and back.
+        let mut req = request();
+        req.pair = LEGACY_BTC_TO_USDT_RGB.to_string();
+        quote().verify(&req, &expect(), NOW).unwrap();
+
+        let mut q = quote();
+        q.pair = LEGACY_BTC_TO_USDT_RGB.to_string();
+        q.verify(&request(), &expect(), NOW).unwrap();
+
+        // The two directions stay distinct across forms.
+        q.pair = LEGACY_USDT_RGB_TO_BTC.to_string();
+        assert!(refused(&q, &expect()).contains("is for pair"));
     }
 
     #[test]
@@ -1232,7 +1268,7 @@ mod tests {
     #[test]
     fn status_and_pairs_parse_the_maker_shapes() {
         let status: AtomicSwapStatus = serde_json::from_value(json!({
-            "id": "01JATOMICSWAP", "pair": "BTC/USDT-RGB",
+            "id": "01JATOMICSWAP", "pair": "BTC＠L1/USDT-RGB＠L1",
             "status": "transaction.confirmed", "state": "confirmed",
             "fromAmount": 100_000, "toAmount": 95_000_000, "assetId": ASSET,
             "networkFeeSat": 1_200, "txid": "aa".repeat(32), "confirmations": 1,
@@ -1248,7 +1284,7 @@ mod tests {
 
         let pairs: GetAtomicPairsResponse = serde_json::from_value(json!({
             "BTC": { "USDT-RGB": {
-                "pairId": "BTC/USDT-RGB", "hash": "ab", "rate": 95_000.0,
+                "pairId": "BTC＠L1/USDT-RGB＠L1", "hash": "ab", "rate": 95_000.0,
                 "limits": { "minimal": 10_000, "maximal": 1_000_000 },
                 "fees": { "percentage": 0.5, "minerFees": 0 }
             } }
@@ -1365,7 +1401,7 @@ mod tests {
         let seen = server.join().unwrap();
         assert_eq!(
             seen[0],
-            r#"POST /v2/swap/atomic/quote {"pair":"BTC/USDT-RGB","amount":100000,"direction":"from"}"#
+            r#"POST /v2/swap/atomic/quote {"pair":"BTC＠L1/USDT-RGB＠L1","amount":100000,"direction":"from"}"#
         );
         assert!(seen[1].starts_with(&format!(
             "POST /v2/swap/atomic/{}/request {{\"request\":",

@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The atomic pair constants use the maker's canonical pair ids
+  (`BTC＠L1/USDT-RGB＠L1`, `USDT-RGB＠L1/BTC＠L1`). A quote whose `pair` is in
+  either the canonical or the older `BTC/USDT-RGB` form is accepted when it
+  names the same pair as the request.
+
 ## [0.13.0] - 2026-10-28
 
 This release hardens the swap flows following the security review of
