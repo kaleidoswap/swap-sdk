@@ -43,6 +43,13 @@ settled, refunded, failed or is still following, and lists any swap it could not
 move with its error — one such swap never stops the others from being resumed.
 Every request to the maker has a timeout (30 s by default, `maker_timeout`), and
 a refund falls back to the script path when the maker will not co-sign.
+A refund this layer broadcast ends the swap as `refunded` once the chain client
+sees it confirmed, since a submarine maker reports no refund status of its own.
+An expired or failed submarine swap is `refundable` when an unspent output pays
+its lockup address, read from the chain client rather than from whether a status
+poll saw the funding; an unreadable chain leaves the swap in flight. `watch` and
+`settled` keep polling through a maker or chain they cannot reach and keep
+retrying a refund that cannot be spent yet, and end on any other error.
 
 Chain swaps, L-USDT, RGB, the Arkade corridor, Spark and pay-through are not
 routed by this layer yet and come back as a `pair_unavailable` refusal that

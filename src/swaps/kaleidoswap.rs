@@ -641,6 +641,12 @@ pub trait SwapFlows: Send + Sync {
     /// The tip of the chain the swap's lockup lives on, from the trusted
     /// chain client, never the maker's `/chain/heights`.
     async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error>;
+    /// Whether `txid`, a claim or refund this layer broadcast, is in a block.
+    async fn tx_confirmed(&self, record: &SwapRecord, txid: &str) -> Result<bool, Error>;
+    /// Whether an unspent output pays the swap's lockup address. This, not
+    /// whether a status poll happened to see the funding, decides that an
+    /// expired submarine swap has something to refund.
+    async fn lockup_unspent(&self, record: &SwapRecord) -> Result<bool, Error>;
 }
 
 /// A [`SwapSigner`] over a [`SwapMasterKey`].
@@ -1051,6 +1057,79 @@ impl SwapFlows for DefaultFlows {
             }
         }
     }
+
+    async fn tx_confirmed(&self, record: &SwapRecord, txid: &str) -> Result<bool, Error> {
+        let missing = |chain: &str| Error::Generic(format!("no {chain} chain client configured"));
+        let bad_txid = |e: &dyn fmt::Display| Error::Generic(format!("txid {txid}: {e}"));
+        // The transaction's first output is in a block exactly when the
+        // transaction is.
+        let status = match Self::chain_kind(record) {
+            ChainKind::Bitcoin(_) => {
+                let client = self
+                    .chain
+                    .bitcoin_client()
+                    .ok_or_else(|| missing("Bitcoin"))?;
+                let txid: bitcoin::Txid = txid.parse().map_err(|e| bad_txid(&e))?;
+                let tx = client.get_tx(txid).await?;
+                let out = tx
+                    .output
+                    .first()
+                    .ok_or_else(|| Error::Generic(format!("{txid} has no outputs")))?;
+                client
+                    .get_output_status(&bitcoin::OutPoint::new(txid, 0), &out.script_pubkey)
+                    .await?
+            }
+            ChainKind::Liquid(_) => {
+                let client = self
+                    .chain
+                    .liquid_client()
+                    .ok_or_else(|| missing("Liquid"))?;
+                let txid: elements::Txid = txid.parse().map_err(|e| bad_txid(&e))?;
+                let tx = client.get_tx(txid).await?;
+                let out = tx
+                    .output
+                    .first()
+                    .ok_or_else(|| Error::Generic(format!("{txid} has no outputs")))?;
+                client
+                    .get_output_status(&elements::OutPoint::new(txid, 0), &out.script_pubkey)
+                    .await?
+            }
+        };
+        Ok(status.is_some_and(|s| s.block_height.is_some()))
+    }
+
+    async fn lockup_unspent(&self, record: &SwapRecord) -> Result<bool, Error> {
+        let missing = |chain: &str| Error::Generic(format!("no {chain} chain client configured"));
+        let address = match &record.state.response {
+            CreateResponse::BoltzReverse(r) => r.lockup_address.as_str(),
+            CreateResponse::BoltzSubmarine(r) => r.address.as_str(),
+        };
+        let bad_address =
+            |e: &dyn fmt::Display| Error::Generic(format!("lockup address {address}: {e}"));
+        match Self::chain_kind(record) {
+            ChainKind::Bitcoin(_) => {
+                // `verify_lockup` rebuilt this address from our own key
+                // before the record was persisted.
+                let address = address
+                    .parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
+                    .map_err(|e| bad_address(&e))?
+                    .assume_checked();
+                let client = self
+                    .chain
+                    .bitcoin_client()
+                    .ok_or_else(|| missing("Bitcoin"))?;
+                Ok(!client.get_address_utxos(&address).await?.is_empty())
+            }
+            ChainKind::Liquid(_) => {
+                let address: elements::Address = address.parse().map_err(|e| bad_address(&e))?;
+                let client = self
+                    .chain
+                    .liquid_client()
+                    .ok_or_else(|| missing("Liquid"))?;
+                Ok(!client.get_address_utxos(&address).await?.is_empty())
+            }
+        }
+    }
 }
 
 /// Blocks a reverse swap's lockup must have left before its timeout when
@@ -1288,7 +1367,55 @@ impl Swap {
             .swap_status(&before.id)
             .await
             .map_err(|e| SwapError::from_core(e, Some(&before.id)))?;
-        let Transition { phase, funded_seen } = map_status(before.protocol, &status, &before.state);
+        let Transition {
+            mut phase,
+            mut funded_seen,
+        } = map_status(before.protocol, &status, &before.state);
+        let chain_err = |e: Error| {
+            SwapError::for_swap(
+                SwapErrorCode::ChainUnreachable,
+                format!("could not read the chain: {e:?}"),
+                &before.id,
+            )
+        };
+
+        // A refund we broadcast ends the swap once it confirms. The maker's
+        // status never says so for a submarine swap: it stays at whatever
+        // made the swap refundable.
+        if let Some(txid) = &before.state.refund_txid {
+            if !matches!(phase, SwapPhase::Settled | SwapPhase::Refunded)
+                && self
+                    .env
+                    .flows
+                    .tx_confirmed(&before, txid)
+                    .await
+                    .map_err(chain_err)?
+            {
+                return self
+                    .persist(|r| {
+                        r.raw_status = status.clone();
+                        r.phase = SwapPhase::Refunded;
+                    })
+                    .await;
+            }
+        }
+
+        // An expired or failed submarine swap has something to refund when
+        // its lockup holds funds, whether or not a poll saw them arrive. The
+        // chain decides; an unreadable chain decides nothing yet.
+        if before.protocol == Protocol::BoltzSubmarine
+            && phase == SwapPhase::Failed
+            && before.state.refund_txid.is_none()
+            && self
+                .env
+                .flows
+                .lockup_unspent(&before)
+                .await
+                .map_err(chain_err)?
+        {
+            phase = SwapPhase::Refundable;
+            funded_seen = true;
+        }
 
         // A claim or refund we already broadcast is not undone by the maker
         // still reporting the phase that triggered it.
@@ -1389,17 +1516,29 @@ impl Swap {
 
     /// Follows the swap to a terminal phase, calling `on_phase` on every
     /// transition. Resolves with the record on `Settled`; any other end is
-    /// an error.
+    /// an error. A maker or chain it cannot reach, or a refund that cannot
+    /// be spent yet (its timelock has not matured and the maker will not
+    /// co-sign), is waited out rather than ending the watch.
     pub async fn watch<F>(&self, mut on_phase: F) -> Result<SwapRecord, SwapError>
     where
         F: FnMut(SwapPhase) + Send,
     {
         self.drain_transitions();
         loop {
-            let record = self.tick().await?;
+            let ticked = self.tick().await;
+            // A tick can move the phase and then fail, as a refund that
+            // cannot be spent yet does: report the move either way.
             for phase in self.drain_transitions() {
                 on_phase(phase);
             }
+            let record = match ticked {
+                Ok(record) => record,
+                Err(error) if self.keeps_watching(&error) => {
+                    sleep(self.env.poll_interval).await;
+                    continue;
+                }
+                Err(error) => return Err(error),
+            };
             match record.phase {
                 SwapPhase::Settled => return Ok(record),
                 SwapPhase::Refunded => {
@@ -1424,6 +1563,14 @@ impl Swap {
                 _ => sleep(self.env.poll_interval).await,
             }
         }
+    }
+
+    /// Whether `error` is one more poll can get past.
+    fn keeps_watching(&self, error: &SwapError) -> bool {
+        matches!(
+            error.code,
+            SwapErrorCode::MakerUnreachable | SwapErrorCode::ChainUnreachable
+        ) || (self.phase() == SwapPhase::Refundable && error.code == SwapErrorCode::SwapFailed)
     }
 
     /// [`Swap::watch`] without a listener.
@@ -2196,11 +2343,19 @@ mod tests {
             if statuses.is_empty() {
                 return Err(Error::Generic("script exhausted".into()));
             }
-            Ok(if statuses.len() > 1 {
+            let status = if statuses.len() > 1 {
                 statuses.remove(0)
             } else {
                 statuses[0].clone()
-            })
+            };
+            // `!down` scripts one poll the maker does not answer.
+            if status == "!down" {
+                return Err(Error::HTTPStatusNotSuccess(
+                    reqwest::StatusCode::SERVICE_UNAVAILABLE,
+                    serde_json::json!({}),
+                ));
+            }
+            Ok(status)
         }
     }
 
@@ -2213,6 +2368,15 @@ mod tests {
         /// The lockup chain's tip. The fake lockups time out at block 200.
         tip: u32,
         chain_down: bool,
+        /// The refund reads as confirmed from this check on (1-based);
+        /// `None` never.
+        refund_confirms_on: Option<u32>,
+        confirm_checks: Mutex<u32>,
+        /// Whether an unspent output pays the lockup address.
+        lockup_funded: bool,
+        /// Refund attempts that fail, as an immature timelock does, before
+        /// one goes through.
+        refund_failures: Mutex<u32>,
     }
 
     fn pubkey_hex(keys: &Keypair) -> String {
@@ -2249,6 +2413,15 @@ mod tests {
             Ok("claim-txid".into())
         }
         async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error> {
+            {
+                let mut failures = self.refund_failures.lock().unwrap();
+                if *failures > 0 {
+                    *failures -= 1;
+                    return Err(Error::Generic(
+                        "non-final: the timelock has not matured".into(),
+                    ));
+                }
+            }
             self.refund
                 .lock()
                 .unwrap()
@@ -2260,6 +2433,20 @@ mod tests {
                 return Err(Error::Generic("connection refused".into()));
             }
             Ok(self.tip)
+        }
+        async fn tx_confirmed(&self, _record: &SwapRecord, _txid: &str) -> Result<bool, Error> {
+            if self.chain_down {
+                return Err(Error::Generic("connection refused".into()));
+            }
+            let mut checks = self.confirm_checks.lock().unwrap();
+            *checks += 1;
+            Ok(self.refund_confirms_on.is_some_and(|n| *checks >= n))
+        }
+        async fn lockup_unspent(&self, _record: &SwapRecord) -> Result<bool, Error> {
+            if self.chain_down {
+                return Err(Error::Generic("connection refused".into()));
+            }
+            Ok(self.lockup_funded)
         }
     }
 
@@ -2920,7 +3107,13 @@ mod tests {
 
     #[macros::async_test_all]
     async fn submarine_funding_then_a_failed_payment_refunds_on_its_own() {
-        let h = harness();
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                refund_confirms_on: Some(2),
+                ..Default::default()
+            },
+        );
         let q = h
             .kaleido
             .quote(submarine_request(INVOICE_SIGNET_50K))
@@ -2973,12 +3166,11 @@ mod tests {
             INVOICE_SIGNET_50K
         );
 
-        h.maker.script(&[
-            "transaction.mempool",
-            "invoice.failedToPay",
-            "invoice.failedToPay",
-            "transaction.refunded",
-        ]);
+        // A submarine maker never reports a refund: it stays at the status
+        // that made the swap refundable. The refund ends the swap once the
+        // chain client sees it confirmed.
+        h.maker
+            .script(&["transaction.mempool", "invoice.failedToPay"]);
         let mut seen = vec![];
         let err = swap.watch(|p| seen.push(p)).await.unwrap_err();
         assert_eq!(err.code, SwapErrorCode::SwapFailed);
@@ -2992,6 +3184,111 @@ mod tests {
             ]
         );
         assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
+        assert_eq!(swap.record().raw_status, "invoice.failedToPay");
+        assert_eq!(
+            h.kaleido.swap(&swap.id()).await.unwrap().phase(),
+            SwapPhase::Refunded
+        );
+    }
+
+    async fn started_submarine(h: &Harness) -> Swap {
+        let q = h
+            .kaleido
+            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        h.kaleido
+            .start(
+                &q,
+                StartOptions {
+                    refund_address: Some("tb1qrefund".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    #[macros::async_test_all]
+    async fn watch_waits_out_an_unreachable_maker_and_an_immature_refund() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                refund_confirms_on: Some(1),
+                refund_failures: Mutex::new(1),
+                ..Default::default()
+            },
+        );
+        let swap = started_submarine(&h).await;
+        h.maker.script(&[
+            "!down",
+            "transaction.mempool",
+            "!down",
+            "invoice.failedToPay",
+        ]);
+        let mut seen = vec![];
+        let err = swap.watch(|p| seen.push(p)).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed, "{}", err.message);
+        assert_eq!(
+            seen,
+            vec![
+                SwapPhase::Funded,
+                SwapPhase::Refundable,
+                SwapPhase::Refunding,
+                SwapPhase::Refunded
+            ]
+        );
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
+
+        // Anything else still ends the watch.
+        let other = started_submarine(&h).await;
+        h.maker.unknown_ids.lock().unwrap().push(other.id());
+        let err = other.watch(|_| {}).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed);
+    }
+
+    #[macros::async_test_all]
+    async fn an_expired_submarine_whose_lockup_holds_funds_is_refunded() {
+        // No poll ever saw the funding: the app was not running between
+        // funding and expiry. The chain says the lockup holds funds.
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                lockup_funded: true,
+                refund_confirms_on: Some(1),
+                ..Default::default()
+            },
+        );
+        let swap = started_submarine(&h).await;
+        h.maker.script(&["swap.expired"]);
+        let mut seen = vec![];
+        swap.watch(|p| seen.push(p)).await.unwrap_err();
+        assert_eq!(
+            seen,
+            vec![
+                SwapPhase::Refundable,
+                SwapPhase::Refunding,
+                SwapPhase::Refunded
+            ]
+        );
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
+
+        // A chain it cannot read decides nothing: the swap is not failed.
+        let blind = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                chain_down: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_submarine(&blind).await;
+        blind.maker.script(&["swap.expired"]);
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::ChainUnreachable);
+        assert_eq!(swap.phase(), SwapPhase::AwaitingFunding);
+        assert!(blind.flows.refund.lock().unwrap().is_empty());
     }
 
     #[macros::async_test_all]
