@@ -139,8 +139,7 @@ Public wire currencies only — never internal pair IDs.
 |---|---|---|
 | Submarine | `L-USDT/BTC@LN` | `L-USDT/BTC` |
 | Reverse | `BTC@LN/L-USDT` | `BTC/L-USDT` |
-| Chain | `BTC/L-USDT-ATOMIC` | `BTC/L-USDT` |
-| Legacy plain send | `BTC/L-USDT` | Hidden from SDK |
+| Chain | `BTC/L-USDT` | `BTC/L-USDT` |
 
 Pair cards include optional `fromAssetId`, `toAssetId`, `feeAssetId`. Existing
 fee structures must match the SDK exactly:
