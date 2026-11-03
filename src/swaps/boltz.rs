@@ -398,6 +398,76 @@ pub struct GetReversePairsResponse {
     pub pairs: HashMap<String, HashMap<String, ReversePair>>,
 }
 
+/// Resolve the pair card a caller accepted. `None` when no `pair_hash` was
+/// pinned (the response is then a fresh quote); otherwise the served pair has
+/// to carry exactly that hash.
+fn accepted_pair<'a, P>(
+    pair: Option<&'a P>,
+    hash_of: impl Fn(&P) -> &str,
+    pair_hash: Option<&str>,
+    kind: &str,
+) -> Result<Option<&'a P>, Error> {
+    let Some(pair_hash) = pair_hash else {
+        return Ok(None);
+    };
+    match pair {
+        Some(pair) if hash_of(pair) == pair_hash => Ok(Some(pair)),
+        Some(_) => Err(Error::Protocol(format!(
+            "The served {kind} pair no longer matches the accepted pairHash; fetch the pair card again"
+        ))),
+        None => Err(Error::Protocol(format!(
+            "The maker serves no {kind} pair for the accepted pairHash"
+        ))),
+    }
+}
+
+impl GetReversePairsResponse {
+    /// The pair behind `pair_hash`, or `None` when no hash was pinned. Errors
+    /// when the served pair carries a different hash.
+    pub fn accepted(
+        &self,
+        from: &str,
+        to: &str,
+        pair_hash: Option<&str>,
+    ) -> Result<Option<&ReversePair>, Error> {
+        accepted_pair(
+            self.get(from, to),
+            |p| p.hash.as_str(),
+            pair_hash,
+            "reverse",
+        )
+    }
+}
+
+impl GetChainPairsResponse {
+    /// See [`GetReversePairsResponse::accepted`].
+    pub fn accepted(
+        &self,
+        from: &str,
+        to: &str,
+        pair_hash: Option<&str>,
+    ) -> Result<Option<&ChainPair>, Error> {
+        accepted_pair(self.get(from, to), |p| p.hash.as_str(), pair_hash, "chain")
+    }
+}
+
+impl GetSubmarinePairsResponse {
+    /// See [`GetReversePairsResponse::accepted`].
+    pub fn accepted(
+        &self,
+        from: &str,
+        to: &str,
+        pair_hash: Option<&str>,
+    ) -> Result<Option<&SubmarinePair>, Error> {
+        accepted_pair(
+            self.get(from, to),
+            |p| p.hash.as_str(),
+            pair_hash,
+            "submarine",
+        )
+    }
+}
+
 impl GetReversePairsResponse {
     /// The pair for one `from`/`to` currency pair, if the server serves it.
     ///
@@ -2681,6 +2751,94 @@ impl CreateSubmarineResponse {
             )
     }
 
+    /// Check the funding instructions against the caller's invoice and the
+    /// pair card they accepted: the amount to lock may not exceed what the
+    /// invoice plus the card's rate and fees imply, and a non-empty `bip21`
+    /// has to agree with `address`, `expectedAmount` and `assetId`. Without a
+    /// pair only the `bip21` is checked.
+    pub fn validate_amounts(
+        &self,
+        invoice: &str,
+        pair: Option<&SubmarinePair>,
+    ) -> Result<(), Error> {
+        if self.expected_amount == 0 {
+            return Err(Error::Protocol(
+                "Submarine swap response asks for a zero expectedAmount".to_string(),
+            ));
+        }
+        if let Some(pair) = pair {
+            let invoice = Bolt11Invoice::from_str(invoice)?;
+            let amount_msat = invoice.amount_milli_satoshis().ok_or_else(|| {
+                Error::Protocol(
+                    "Submarine swap invoice carries no amount to check the accepted pair against"
+                        .to_string(),
+                )
+            })?;
+            let invoice_amount = amount_msat.div_ceil(1_000);
+            let maximum =
+                maximum_funding(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+            if self.expected_amount > maximum {
+                return Err(Error::Protocol(format!(
+                    "Submarine swap expectedAmount {} is above the {maximum} the accepted pair card implies for the invoice",
+                    self.expected_amount
+                )));
+            }
+        }
+        self.validate_bip21()
+    }
+
+    fn validate_bip21(&self) -> Result<(), Error> {
+        if self.bip21.is_empty() {
+            return Ok(());
+        }
+        let mismatch = |what: &str| {
+            Error::Protocol(format!(
+                "Submarine swap bip21 {what} disagrees with the validated response"
+            ))
+        };
+        let (scheme, rest) = self
+            .bip21
+            .split_once(':')
+            .ok_or_else(|| mismatch("scheme"))?;
+        if !matches!(
+            scheme.to_ascii_lowercase().as_str(),
+            "bitcoin" | "liquidnetwork" | "liquidtestnet"
+        ) {
+            return Err(mismatch("scheme"));
+        }
+        let (address, query) = rest.split_once('?').unwrap_or((rest, ""));
+        if address != self.address {
+            return Err(mismatch("address"));
+        }
+        let mut amount_seen = false;
+        for (key, value) in query
+            .split('&')
+            .filter(|kv| !kv.is_empty())
+            .filter_map(|kv| kv.split_once('='))
+        {
+            match key {
+                "amount" => {
+                    let parsed =
+                        bitcoin::Amount::from_str_in(value, bitcoin::Denomination::Bitcoin)
+                            .map_err(|_| mismatch("amount"))?;
+                    if amount_seen || parsed.to_sat() != self.expected_amount {
+                        return Err(mismatch("amount"));
+                    }
+                    amount_seen = true;
+                }
+                "assetid" | "asset" => {
+                    if let Some(asset_id) = &self.asset_id {
+                        if !value.eq_ignore_ascii_case(asset_id) {
+                            return Err(mismatch("asset"));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
     /// Ensure submarine swap redeem script uses the preimage hash used in the invoice
     pub fn validate(
         &self,
@@ -3253,6 +3411,18 @@ impl CreateReverseResponse {
         pair: Option<&ReversePair>,
     ) -> Result<(), Error> {
         let Some(invoice_amount) = request.invoice_amount else {
+            // A caller-supplied invoice fixes the amount itself; the accepted
+            // pair still bounds what the maker may promise on-chain for it.
+            if let (Some(pair), Some(invoice)) = (pair, request.invoice.as_deref()) {
+                let invoice = Bolt11Invoice::from_str(invoice)?;
+                let amount_msat = invoice.amount_milli_satoshis().ok_or_else(|| {
+                    Error::Protocol(
+                        "Reverse swap invoice carries no amount to check the accepted pair against"
+                            .to_string(),
+                    )
+                })?;
+                self.check_payout_floor(amount_msat.div_ceil(1_000), pair)?;
+            }
             return Ok(());
         };
         if invoice_amount == 0 {
@@ -3285,14 +3455,18 @@ impl CreateReverseResponse {
             }
         }
         if let Some(pair) = pair {
-            let minimum =
-                minimum_payout(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
-            if self.onchain_amount < minimum {
-                return Err(Error::Protocol(format!(
-                    "Reverse swap onchainAmount {} is below the {minimum} the accepted pair card implies for invoiceAmount {invoice_amount}",
-                    self.onchain_amount
-                )));
-            }
+            self.check_payout_floor(invoice_amount, pair)?;
+        }
+        Ok(())
+    }
+
+    fn check_payout_floor(&self, invoice_amount: u64, pair: &ReversePair) -> Result<(), Error> {
+        let minimum = minimum_payout(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+        if self.onchain_amount < minimum {
+            return Err(Error::Protocol(format!(
+                "Reverse swap onchainAmount {} is below the {minimum} the accepted pair card implies for invoiceAmount {invoice_amount}",
+                self.onchain_amount
+            )));
         }
         Ok(())
     }
@@ -4758,6 +4932,116 @@ mod tests {
             .validate_amounts(&request, Some(&pair))
             .unwrap_err();
         assert!(err.to_string().contains("below"), "{err}");
+    }
+
+    #[test]
+    fn accepted_pair_requires_the_pinned_hash() {
+        let pairs: GetReversePairsResponse = serde_json::from_value(serde_json::json!({
+            "BTC": { "BTC": {
+                "hash": "h1",
+                "rate": 1.0,
+                "limits": { "maximal": 25_000_000, "minimal": 10_000 },
+                "fees": { "percentage": 0.5, "minerFees": { "lockup": 300, "claim": 200 } },
+            }},
+        }))
+        .unwrap();
+        assert!(pairs.accepted("BTC", "BTC", None).unwrap().is_none());
+        assert_eq!(
+            pairs
+                .accepted("BTC", "BTC", Some("h1"))
+                .unwrap()
+                .unwrap()
+                .hash,
+            "h1"
+        );
+        assert!(pairs.accepted("BTC", "BTC", Some("h2")).is_err());
+        assert!(pairs.accepted("BTC", "L-BTC", Some("h1")).is_err());
+    }
+
+    #[test]
+    fn reverse_supplied_invoice_is_bounded_by_the_accepted_pair_card() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice = signed_invoice(LnCurrency::Regtest, Some(100_000_000), hash);
+        let pair: ReversePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.0,
+            "limits": { "maximal": 25_000_000, "minimal": 10_000 },
+            "fees": { "percentage": 0.5, "minerFees": { "lockup": 300, "claim": 200 } },
+        }))
+        .unwrap();
+        let mut request = reverse_create_request(None);
+        request.invoice = Some(invoice.clone());
+        reverse_create_response(Some(invoice.clone()), 99_000)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = reverse_create_response(Some(invoice.clone()), 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+        // Without an accepted pair the response is a fresh quote.
+        reverse_create_response(Some(invoice), 1)
+            .validate_amounts(&request, None)
+            .unwrap();
+    }
+
+    fn submarine_response(expected_amount: u64, bip21: &str) -> CreateSubmarineResponse {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/lusdt-v1/wire-contract.json"
+        ))
+        .unwrap();
+        let mut wire = fixture["create"]["submarine"]["response"].clone();
+        wire["expectedAmount"] = serde_json::json!(expected_amount);
+        wire["bip21"] = serde_json::json!(bip21);
+        serde_json::from_value(wire).unwrap()
+    }
+
+    #[test]
+    fn submarine_amount_is_bounded_by_the_invoice_and_accepted_pair() {
+        use lightning_invoice::Currency as LnCurrency;
+        let invoice = signed_invoice(
+            LnCurrency::Regtest,
+            Some(100_000_000),
+            sha256::Hash::hash(&[3u8; 32]),
+        );
+        let pair: SubmarinePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.0,
+            "limits": { "maximal": 25_000_000, "minimal": 1_000, "maximalZeroConf": 0 },
+            "fees": { "percentage": 0.1, "minerFees": 500 },
+        }))
+        .unwrap();
+        // 100_000 + 100 (0.1%) + 500.
+        let address = submarine_response(0, "").address;
+        submarine_response(100_600, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        let err = submarine_response(100_601, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
+        assert!(submarine_response(0, "")
+            .validate_amounts(&invoice, None)
+            .is_err());
+        // The same inflated amount is a fresh quote without an accepted pair.
+        submarine_response(100_601, "")
+            .validate_amounts(&invoice, None)
+            .unwrap();
+
+        let agreeing = format!("bitcoin:{address}?amount=0.001006");
+        submarine_response(100_600, &agreeing)
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        for bad in [
+            format!("bitcoin:{address}?amount=0.002"),
+            "bitcoin:bcrt1qother?amount=0.001006".to_string(),
+            format!("https:{address}?amount=0.001006"),
+        ] {
+            let err = submarine_response(100_600, &bad)
+                .validate_amounts(&invoice, Some(&pair))
+                .unwrap_err();
+            assert!(err.to_string().contains("bip21"), "{err}");
+        }
     }
 
     /// A maker-issued invoice for another network is refused before anything

@@ -97,7 +97,7 @@ async fn main() -> Result<(), Error> {
             // OUR hash for exactly `from_amount`, and a payment at the deadline
             // must still leave 30 minutes to claim before the maker's refund
             // opens. Both gates are on the quote.
-            let facts = quote.verify_receive_invoice(&payment_hash)?;
+            let facts = quote.verify_receive_invoice(&payment_hash, bitcoin::Network::Signet)?;
             quote.assert_receivable(&facts, now(), Some(quote.from_amount))?;
             println!(
                 "  pay {} sats by {} via {}…",

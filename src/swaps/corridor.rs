@@ -542,10 +542,13 @@ impl RfqQuote {
     /// maker for a swap the trader cannot claim, and one for another amount
     /// changes the price after the quote.
     ///
-    /// `expected_payment_hash` is `sha256(P)` hex, any case.
+    /// `expected_payment_hash` is `sha256(P)` hex, any case. `expected_network`
+    /// is the Lightning network the trader's own configuration pays on; it is
+    /// never taken from the maker's invoice or quote.
     pub fn verify_receive_invoice(
         &self,
         expected_payment_hash: &str,
+        expected_network: bitcoin::Network,
     ) -> Result<ReceiveInvoiceFacts, Error> {
         let raw = self.profile.invoice.as_deref().ok_or_else(|| {
             Error::Protocol(format!(
@@ -556,6 +559,13 @@ impl RfqQuote {
         })?;
         let invoice = Bolt11Invoice::from_str(raw.trim())
             .map_err(|e| Error::Protocol(format!("the maker's invoice does not decode: {e}")))?;
+
+        if invoice.network() != expected_network {
+            return Err(Error::Protocol(format!(
+                "the maker's invoice is for network {}, this client pays on {expected_network}",
+                invoice.network()
+            )));
+        }
 
         let paid_hash = invoice.payment_hash().to_string();
         if !paid_hash.eq_ignore_ascii_case(expected_payment_hash) {
@@ -920,13 +930,32 @@ mod tests {
     }
 
     #[test]
+    fn the_receive_invoice_must_be_for_the_expected_network() {
+        let hash = sha256::Hash::hash(b"P");
+        let issued = 1_800_000_000;
+        let quote = receive_quote_with(
+            &invoice(hash, 12121, issued, 600),
+            issued + 120,
+            issued + 9_000,
+        );
+        for network in [bitcoin::Network::Bitcoin, bitcoin::Network::Signet] {
+            let err = quote
+                .verify_receive_invoice(&hash.to_string(), network)
+                .unwrap_err();
+            assert!(err.message().contains("network"), "{err:?}");
+        }
+    }
+
+    #[test]
     fn the_receive_invoice_must_pay_our_hash_for_the_quoted_amount() {
         let hash = sha256::Hash::hash(b"P");
         let issued = 1_800_000_000;
         let good = invoice(hash, 12121, issued, 600);
         let quote = receive_quote_with(&good, issued + 120, issued + 9_000);
 
-        let facts = quote.verify_receive_invoice(&hash.to_string()).unwrap();
+        let facts = quote
+            .verify_receive_invoice(&hash.to_string(), bitcoin::Network::Regtest)
+            .unwrap();
         assert_eq!(facts.amount_sats, 12121);
         assert_eq!(facts.invoice_expires_at, issued + 600);
         // The quote expires first, so that is the deadline.
@@ -934,18 +963,20 @@ mod tests {
 
         // Upper-case hex is the same hash.
         quote
-            .verify_receive_invoice(&hash.to_string().to_uppercase())
+            .verify_receive_invoice(&hash.to_string().to_uppercase(), bitcoin::Network::Regtest)
             .unwrap();
 
         let other = sha256::Hash::hash(b"Q");
         let err = quote
-            .verify_receive_invoice(&other.to_string())
+            .verify_receive_invoice(&other.to_string(), bitcoin::Network::Regtest)
             .unwrap_err();
         assert!(err.message().contains("cannot claim"), "{err:?}");
 
         let wrong_amount = invoice(hash, 12000, issued, 600);
         let quote = receive_quote_with(&wrong_amount, issued + 120, issued + 9_000);
-        let err = quote.verify_receive_invoice(&hash.to_string()).unwrap_err();
+        let err = quote
+            .verify_receive_invoice(&hash.to_string(), bitcoin::Network::Regtest)
+            .unwrap_err();
         assert!(err.message().contains("12000"), "{err:?}");
     }
 
@@ -960,7 +991,9 @@ mod tests {
             issued + 7_200,
             issued + 3_600 + MIN_CLAIM_WINDOW_SECONDS,
         );
-        let facts = quote.verify_receive_invoice(&hash.to_string()).unwrap();
+        let facts = quote
+            .verify_receive_invoice(&hash.to_string(), bitcoin::Network::Regtest)
+            .unwrap();
         assert_eq!(facts.pay_deadline, issued + 3_600);
 
         quote
@@ -984,7 +1017,9 @@ mod tests {
             issued + 7_200,
             issued + 3_600 + MIN_CLAIM_WINDOW_SECONDS - 1,
         );
-        let facts = tight.verify_receive_invoice(&hash.to_string()).unwrap();
+        let facts = tight
+            .verify_receive_invoice(&hash.to_string(), bitcoin::Network::Regtest)
+            .unwrap();
         assert!(tight.assert_receivable(&facts, issued, None).is_err());
     }
 
