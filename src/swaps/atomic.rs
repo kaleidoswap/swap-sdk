@@ -48,9 +48,9 @@ use crate::error::Error;
 use crate::swaps::boltz::BoltzApiClientV2;
 
 /// The pair that sends BTC and receives USDT-RGB.
-pub const ATOMIC_BTC_TO_USDT_RGB: &str = "BTC/USDT-RGB";
+pub const ATOMIC_BTC_TO_USDT_RGB: &str = "BTC@L1/USDT-RGB@L1";
 /// The pair that sends USDT-RGB and receives BTC.
-pub const ATOMIC_USDT_RGB_TO_BTC: &str = "USDT-RGB/BTC";
+pub const ATOMIC_USDT_RGB_TO_BTC: &str = "USDT-RGB@L1/BTC@L1";
 
 /// Which amount of a quote request is fixed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -851,12 +851,12 @@ mod tests {
         }
     }
 
-    /// A `BTC/USDT-RGB` quote as the maker sends it: the maker gives
+    /// A `BTC@L1/USDT-RGB@L1` quote as the maker sends it: the maker gives
     /// 95,000,000 RGB units and receives 100,000 sat.
     fn quote() -> AtomicQuote {
         serde_json::from_value(json!({
             "id": "01JATOMICSWAP",
-            "pair": "BTC/USDT-RGB",
+            "pair": "BTC@L1/USDT-RGB@L1",
             "direction": "from",
             "fromAmount": 100_000,
             "toAmount": 95_000_000,
@@ -1232,7 +1232,7 @@ mod tests {
     #[test]
     fn status_and_pairs_parse_the_maker_shapes() {
         let status: AtomicSwapStatus = serde_json::from_value(json!({
-            "id": "01JATOMICSWAP", "pair": "BTC/USDT-RGB",
+            "id": "01JATOMICSWAP", "pair": "BTC@L1/USDT-RGB@L1",
             "status": "transaction.confirmed", "state": "confirmed",
             "fromAmount": 100_000, "toAmount": 95_000_000, "assetId": ASSET,
             "networkFeeSat": 1_200, "txid": "aa".repeat(32), "confirmations": 1,
@@ -1248,7 +1248,7 @@ mod tests {
 
         let pairs: GetAtomicPairsResponse = serde_json::from_value(json!({
             "BTC": { "USDT-RGB": {
-                "pairId": "BTC/USDT-RGB", "hash": "ab", "rate": 95_000.0,
+                "pairId": "BTC@L1/USDT-RGB@L1", "hash": "ab", "rate": 95_000.0,
                 "limits": { "minimal": 10_000, "maximal": 1_000_000 },
                 "fees": { "percentage": 0.5, "minerFees": 0 }
             } }
@@ -1365,7 +1365,7 @@ mod tests {
         let seen = server.join().unwrap();
         assert_eq!(
             seen[0],
-            r#"POST /v2/swap/atomic/quote {"pair":"BTC/USDT-RGB","amount":100000,"direction":"from"}"#
+            r#"POST /v2/swap/atomic/quote {"pair":"BTC@L1/USDT-RGB@L1","amount":100000,"direction":"from"}"#
         );
         assert!(seen[1].starts_with(&format!(
             "POST /v2/swap/atomic/{}/request {{\"request\":",

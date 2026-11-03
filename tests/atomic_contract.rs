@@ -14,7 +14,7 @@ use kaleidorg_swap_sdk::error::Error;
 use serde_json::Value;
 
 const CAPTURE: &str = include_str!("fixtures/atomic-v1/wire-capture.json");
-const PAIRS: [&str; 2] = ["BTC/USDT-RGB", "USDT-RGB/BTC"];
+const PAIRS: [&str; 2] = ["BTC@L1/USDT-RGB@L1", "USDT-RGB@L1/BTC@L1"];
 
 fn capture(pair: &str) -> Value {
     let all: Value = serde_json::from_str(CAPTURE).unwrap();

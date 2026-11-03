@@ -30,7 +30,7 @@ fn reverse_request(preimage_seed: &str, run: u64, amount: u64) -> CreateReverseR
     CreateReverseRequest {
         // BTC@LN -> L-BTC: one of the reverse routes this maker actually
         // publishes for SDK callers (`GET /v2/swap/reverse`). The internal
-        // `pairId: "BTC/BTC"` form curl can use is not an SDK route.
+        // `pairId: "BTC@LN/BTC@L1"` form curl can use is not an SDK route.
         from: "BTC".to_string(),
         to: "L-BTC".to_string(),
         claim_public_key: PublicKey::from_str(

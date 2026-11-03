@@ -60,6 +60,11 @@ gains `base_url()`, and `Error` in the Python and React Native bindings gains a
 `typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts` in
 a fraction of the lines, plus a `resume.ts`.
 
+### Changed
+
+- The atomic pair constants use the maker's canonical pair ids
+  (`BTC@L1/USDT-RGB@L1`, `USDT-RGB@L1/BTC@L1`).
+
 ## [0.13.0] - 2026-10-28
 
 This release hardens the swap flows following the security review of
