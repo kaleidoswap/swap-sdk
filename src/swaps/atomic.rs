@@ -52,21 +52,6 @@ pub const ATOMIC_BTC_TO_USDT_RGB: &str = "BTC＠L1/USDT-RGB＠L1";
 /// The pair that sends USDT-RGB and receives BTC.
 pub const ATOMIC_USDT_RGB_TO_BTC: &str = "USDT-RGB＠L1/BTC＠L1";
 
-/// The pair ids from before the maker moved to
-/// `FROM_ASSET＠FROM_NETWORK/TO_ASSET＠TO_NETWORK`.
-const LEGACY_BTC_TO_USDT_RGB: &str = "BTC/USDT-RGB";
-const LEGACY_USDT_RGB_TO_BTC: &str = "USDT-RGB/BTC";
-
-/// Which way an atomic pair id goes, in either id form: `Some(true)` when the
-/// taker sends BTC, `Some(false)` when the taker sends USDT-RGB.
-fn atomic_pair_sends_btc(pair: &str) -> Option<bool> {
-    match pair {
-        ATOMIC_BTC_TO_USDT_RGB | LEGACY_BTC_TO_USDT_RGB => Some(true),
-        ATOMIC_USDT_RGB_TO_BTC | LEGACY_USDT_RGB_TO_BTC => Some(false),
-        _ => None,
-    }
-}
-
 /// Which amount of a quote request is fixed.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -264,21 +249,16 @@ impl AtomicQuote {
         expect: &AtomicQuoteExpectations,
         now: u64,
     ) -> Result<(), Error> {
-        // The maker answers with its canonical id even when the request used
-        // the older one, so the two forms of a pair are the same pair.
-        let same_pair = self.pair == request.pair
-            || matches!(
-                (atomic_pair_sends_btc(&self.pair), atomic_pair_sends_btc(&request.pair)),
-                (Some(a), Some(b)) if a == b
-            );
-        if !same_pair {
+        if self.pair != request.pair {
             return Err(mismatch(
                 self,
                 format!("is for pair {}, not {}", self.pair, request.pair),
             ));
         }
-        let Some(taker_sends_btc) = atomic_pair_sends_btc(&self.pair) else {
-            return Err(mismatch(self, format!("unknown atomic pair {}", self.pair)));
+        let taker_sends_btc = match self.pair.as_str() {
+            ATOMIC_BTC_TO_USDT_RGB => true,
+            ATOMIC_USDT_RGB_TO_BTC => false,
+            other => return Err(mismatch(self, format!("unknown atomic pair {other}"))),
         };
         if self.direction != request.direction {
             return Err(mismatch(
@@ -937,22 +917,6 @@ mod tests {
         swapped.offer["maker_gives"] = q.offer["maker_gives"].clone();
         swapped.offer["maker_receives"] = q.offer["maker_receives"].clone();
         assert!(refused(&swapped, &expect()).contains("offer gives"));
-    }
-
-    #[test]
-    fn either_pair_id_form_is_accepted_in_a_response() {
-        // A request in the older form answered in the canonical one, and back.
-        let mut req = request();
-        req.pair = LEGACY_BTC_TO_USDT_RGB.to_string();
-        quote().verify(&req, &expect(), NOW).unwrap();
-
-        let mut q = quote();
-        q.pair = LEGACY_BTC_TO_USDT_RGB.to_string();
-        q.verify(&request(), &expect(), NOW).unwrap();
-
-        // The two directions stay distinct across forms.
-        q.pair = LEGACY_USDT_RGB_TO_BTC.to_string();
-        assert!(refused(&q, &expect()).contains("is for pair"));
     }
 
     #[test]
