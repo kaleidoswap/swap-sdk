@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-11-03
+
+Patch release. Rust, Python, TypeScript and React Native packages share version
+**0.13.1**.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids
