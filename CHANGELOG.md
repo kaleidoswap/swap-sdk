@@ -60,6 +60,11 @@ gains `base_url()`, and `Error` in the Python and React Native bindings gains a
 `typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts` in
 a fraction of the lines, plus a `resume.ts`.
 
+`start` parses the destination and the refund address, and checks them against
+the configured network, before it contacts the maker. `watch` and `settled`
+keep retrying a refund only while the failure is one waiting can fix, and end
+on one that will fail the same way again.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids

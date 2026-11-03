@@ -194,7 +194,7 @@ test("start: destination and refund address are checked before the maker is cont
     amount: { pay: 50_000 },
   });
   await assert.rejects(
-    k.start(reverse, { destination: "lq1mainnet" }),
+    k.start(reverse, { destination: "ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5" }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   await assert.rejects(
@@ -202,7 +202,7 @@ test("start: destination and refund address are checked before the maker is cont
     (e) => e.code === "INVALID_DESTINATION",
   );
   await assert.rejects(
-    k.start({ ...reverse, expiresAt: 0n }, { destination: "tlq1dest" }),
+    k.start({ ...reverse, expiresAt: 0n }, { destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl" }),
     (e) => e.code === "QUOTE_EXPIRED",
   );
 
@@ -216,7 +216,7 @@ test("start: destination and refund address are checked before the maker is cont
     (e) => e.code === "REFUND_ADDRESS_REQUIRED",
   );
   await assert.rejects(
-    k.start(submarine, { refundAddress: "bc1mainnet" }),
+    k.start(submarine, { refundAddress: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   assert.equal(
@@ -269,7 +269,7 @@ function seededRecord(overrides = {}) {
         onchainAmount: 49_450,
         swapAuth: "secret-auth",
       },
-      destination: "tlq1dest",
+      destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl",
     },
     ...overrides,
   };
@@ -417,7 +417,7 @@ test("FileStore: records round-trip as JSON and the index never repeats", async 
       state: {
         swapIndex: "0",
         response: { onchainAmount: "1" },
-        destination: "tlq1",
+        destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl",
       },
     };
     await store.put(record);
