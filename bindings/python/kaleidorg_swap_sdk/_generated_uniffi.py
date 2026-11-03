@@ -5599,7 +5599,7 @@ class CreateChainResponse:
 
     def __str__(self):
         return "CreateChainResponse(id={}, claim_details={}, lockup_details={}, swap_auth={})".format(
-            self.id, self.claim_details, self.lockup_details, self.swap_auth
+            self.id, self.claim_details, self.lockup_details, _redact_secret(self.swap_auth)
         )
 
     def __eq__(self, other):

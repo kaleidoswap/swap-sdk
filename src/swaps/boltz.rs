@@ -2811,12 +2811,15 @@ impl CreateSubmarineResponse {
             return Err(mismatch("address"));
         }
         let mut amount_seen = false;
-        for (key, value) in query
-            .split('&')
-            .filter(|kv| !kv.is_empty())
-            .filter_map(|kv| kv.split_once('='))
-        {
-            match key {
+        let mut asset_seen = false;
+        for pair in query.split('&').filter(|pair| !pair.is_empty()) {
+            let (key, value) = pair.split_once('=').ok_or_else(|| mismatch("parameter"))?;
+            // A wallet may percent-decode what this check reads literally, so
+            // an encoded key or a value it interprets is refused outright.
+            if key.contains('%') {
+                return Err(mismatch("parameter"));
+            }
+            match key.to_ascii_lowercase().as_str() {
                 "amount" => {
                     let parsed =
                         bitcoin::Amount::from_str_in(value, bitcoin::Denomination::Bitcoin)
@@ -2827,14 +2830,25 @@ impl CreateSubmarineResponse {
                     amount_seen = true;
                 }
                 "assetid" | "asset" => {
-                    if let Some(asset_id) = &self.asset_id {
-                        if !value.eq_ignore_ascii_case(asset_id) {
-                            return Err(mismatch("asset"));
-                        }
+                    let matches = !value.contains('%')
+                        && self
+                            .asset_id
+                            .as_deref()
+                            .is_some_and(|asset_id| value.eq_ignore_ascii_case(asset_id));
+                    if asset_seen || !matches {
+                        return Err(mismatch("asset"));
                     }
+                    asset_seen = true;
                 }
-                _ => {}
+                "label" | "message" => {}
+                _ => return Err(mismatch("parameter")),
             }
+        }
+        if !amount_seen {
+            return Err(mismatch("amount"));
+        }
+        if self.asset_id.is_some() && !asset_seen {
+            return Err(mismatch("asset"));
         }
         Ok(())
     }
@@ -5028,7 +5042,10 @@ mod tests {
             .validate_amounts(&invoice, None)
             .unwrap();
 
-        let agreeing = format!("bitcoin:{address}?amount=0.001006");
+        let asset_id = submarine_response(0, "")
+            .asset_id
+            .expect("the fixture swaps a Liquid asset");
+        let agreeing = format!("bitcoin:{address}?amount=0.001006&assetid={asset_id}");
         submarine_response(100_600, &agreeing)
             .validate_amounts(&invoice, Some(&pair))
             .unwrap();
@@ -5036,6 +5053,16 @@ mod tests {
             format!("bitcoin:{address}?amount=0.002"),
             "bitcoin:bcrt1qother?amount=0.001006".to_string(),
             format!("https:{address}?amount=0.001006"),
+            format!("bitcoin:{address}?amount=0.001006&amount=0.001006"),
+            format!(
+                "bitcoin:{address}?amount=0.001006&assetid={}",
+                "ab".repeat(32)
+            ),
+            format!("bitcoin:{address}?amount=0.001006&req-extra=1"),
+            format!("bitcoin:{address}?amount=0.001006&req%2Dextra=1"),
+            format!("bitcoin:{address}?amount=0.001006&lightning=lnbcrt1"),
+            format!("bitcoin:{address}?amoun%74=0.002&amount=0.001006"),
+            format!("bitcoin:{address}"),
         ] {
             let err = submarine_response(100_600, &bad)
                 .validate_amounts(&invoice, Some(&pair))
