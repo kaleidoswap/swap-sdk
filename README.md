@@ -433,7 +433,7 @@ wallet adapter boundary. Live rgb-lib regtest validation is recorded in [the nat
 ## Atomic BTC <-> USDT-RGB swaps on L1
 
 The maker also serves single-transaction atomic swaps between on-chain BTC and
-USDT-RGB (`BTC/USDT-RGB`, `USDT-RGB/BTC`) over `/v2/swap/atomic/*`. These are
+USDT-RGB (`BTC@L1/USDT-RGB@L1`, `USDT-RGB@L1/BTC@L1`) over `/v2/swap/atomic/*`. These are
 not Boltz chain swaps: one transaction moves both legs, with no HTLC, no
 timelock and no refund. Either it confirms and both sides are paid, or it never
 reaches the chain.

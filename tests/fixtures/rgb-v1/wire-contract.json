@@ -26,7 +26,7 @@
       "ARKD": {},
       "USDT-RGB": {
         "BTC": {
-          "pairId": "USDT-RGB＠L1/BTC＠LN",
+          "pairId": "USDT-RGB@L1/BTC@LN",
           "hash": "8de43622c150d7e0b0bed2c7a99ad13352dce2851dfc127f3ce7a33803ae95e8",
           "rate": 100.0,
           "limits": {
@@ -44,7 +44,7 @@
     "reverse": {
       "BTC": {
         "USDT-RGB": {
-          "pairId": "BTC＠LN/USDT-RGB＠L1",
+          "pairId": "BTC@LN/USDT-RGB@L1",
           "hash": "8de43622c150d7e0b0bed2c7a99ad13352dce2851dfc127f3ce7a33803ae95e8",
           "rate": 0.01,
           "limits": {
@@ -70,7 +70,7 @@
       "request": {
         "from": "USDT-RGB",
         "to": "BTC",
-        "pairId": "USDT-RGB＠L1/BTC＠LN",
+        "pairId": "USDT-RGB@L1/BTC@LN",
         "refundPublicKey": "02d4e4d88e467ce9e1991d5d0125b39ba5ca6ca53e45c69135d7d862e689daea02",
         "invoice": "lnbcrt1m1p4vfmrldq8d4hkx6cpp5vj92t3telvc08zhhgnvh6mkggrr6jynh5jv6p4uq70nnznk2py9ssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzys9zmv38345s4fygpmhwyjcvnvcppfdnddzs07g8l25r9ermd7gv6ydykgs9rgecxmemduuc6rg4gvhndfx729h92500hmeh0xke25auspm8zmsu"
       },
@@ -112,7 +112,7 @@
       "request": {
         "from": "BTC",
         "to": "USDT-RGB",
-        "pairId": "BTC＠LN/USDT-RGB＠L1",
+        "pairId": "BTC@LN/USDT-RGB@L1",
         "claimPublicKey": "03b0f78f9879c37d49c96f12c73b6601d362862c8c8dddd530addc661e19fbe141",
         "preimageHash": "648aa5c579fb30f38af744d97d6ec840c7a91277a499a0d780f3e7314eca090b",
         "invoiceAmount": 100000

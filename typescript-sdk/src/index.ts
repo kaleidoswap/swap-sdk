@@ -956,9 +956,9 @@ export class IntentsCorridor {
 // ---------------------------------------------------------------------------
 
 /** Send BTC, receive USDT-RGB. */
-export const ATOMIC_BTC_TO_USDT_RGB = "BTC/USDT-RGB";
+export const ATOMIC_BTC_TO_USDT_RGB = "BTC@L1/USDT-RGB@L1";
 /** Send USDT-RGB, receive BTC. */
-export const ATOMIC_USDT_RGB_TO_BTC = "USDT-RGB/BTC";
+export const ATOMIC_USDT_RGB_TO_BTC = "USDT-RGB@L1/BTC@L1";
 
 export type AtomicPairName =
   typeof ATOMIC_BTC_TO_USDT_RGB | typeof ATOMIC_USDT_RGB_TO_BTC;
