@@ -24,10 +24,10 @@ const REQUEST_JSON = `{"offer":${OFFER_JSON},"taker_inputs":[],"taker_rgb_blindi
 const PROPOSAL_JSON = `{"request":${REQUEST_JSON},"maker_inputs":[],"txid":"${TXID}","psbt":"cHNidP8="}`;
 const COMPLETION_JSON = `{"proposal":${PROPOSAL_JSON},"txid":"${TXID}","psbt":"cHNidP8="}`;
 
-const QUOTE_BODY = `{"id":"01JATOMICSWAP","pair":"BTC/USDT-RGB","direction":"from","fromAmount":100000,"toAmount":95000000,"assetId":"${ASSET}","networkFeeSat":1200,"serviceFee":500000,"expiresAt":${NOW + 60n},"offerExpiresAt":${NOW + 300n},"offer":${OFFER_JSON}}`;
+const QUOTE_BODY = `{"id":"01JATOMICSWAP","pair":"BTC@L1/USDT-RGB@L1","direction":"from","fromAmount":100000,"toAmount":95000000,"assetId":"${ASSET}","networkFeeSat":1200,"serviceFee":500000,"expiresAt":${NOW + 60n},"offerExpiresAt":${NOW + 300n},"offer":${OFFER_JSON}}`;
 
 function statusBody(status) {
-  return `{"id":"01JATOMICSWAP","pair":"BTC/USDT-RGB","status":"${status}","state":"x","fromAmount":100000,"toAmount":95000000,"assetId":"${ASSET}","networkFeeSat":1200,"txid":"${TXID}","confirmations":0,"expiresAt":${NOW + 60n},"offerExpiresAt":${NOW + 300n},"createdAt":${NOW}}`;
+  return `{"id":"01JATOMICSWAP","pair":"BTC@L1/USDT-RGB@L1","status":"${status}","state":"x","fromAmount":100000,"toAmount":95000000,"assetId":"${ASSET}","networkFeeSat":1200,"txid":"${TXID}","confirmations":0,"expiresAt":${NOW + 60n},"offerExpiresAt":${NOW + 300n},"createdAt":${NOW}}`;
 }
 
 const EXPECT = { assetId: ASSET, bitcoinNetwork: "Regtest" };
@@ -84,7 +84,7 @@ test("an atomic swap runs quote, request, complete and track, with rgb-lib JSON 
     assert.equal(typeof quote.offer, "string");
     assert.deepEqual(JSON.parse(quote.offer), JSON.parse(OFFER_JSON));
     assert.deepEqual(JSON.parse(maker.seen[0].body), {
-      pair: "BTC/USDT-RGB",
+      pair: "BTC@L1/USDT-RGB@L1",
       amount: 100000,
       direction: "from",
     });
