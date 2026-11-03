@@ -163,7 +163,10 @@ async def run():
         # Checks made before the maker is contacted come back coded.
         for start, expected in [
             (
-                sdk.StartOptions(destination="ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5", refund_address=None),
+                sdk.StartOptions(
+                    destination="ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5",
+                    refund_address=None,
+                ),
                 sdk.SwapErrorCode.WRONG_NETWORK_ADDRESS,
             ),
             (

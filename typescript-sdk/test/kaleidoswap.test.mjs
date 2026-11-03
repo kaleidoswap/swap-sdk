@@ -194,7 +194,9 @@ test("start: destination and refund address are checked before the maker is cont
     amount: { pay: 50_000 },
   });
   await assert.rejects(
-    k.start(reverse, { destination: "ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5" }),
+    k.start(reverse, {
+      destination: "ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5",
+    }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   await assert.rejects(
@@ -202,7 +204,10 @@ test("start: destination and refund address are checked before the maker is cont
     (e) => e.code === "INVALID_DESTINATION",
   );
   await assert.rejects(
-    k.start({ ...reverse, expiresAt: 0n }, { destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl" }),
+    k.start(
+      { ...reverse, expiresAt: 0n },
+      { destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl" },
+    ),
     (e) => e.code === "QUOTE_EXPIRED",
   );
 
@@ -216,7 +221,9 @@ test("start: destination and refund address are checked before the maker is cont
     (e) => e.code === "REFUND_ADDRESS_REQUIRED",
   );
   await assert.rejects(
-    k.start(submarine, { refundAddress: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4" }),
+    k.start(submarine, {
+      refundAddress: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   assert.equal(
