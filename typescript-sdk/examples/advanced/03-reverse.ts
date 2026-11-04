@@ -4,7 +4,7 @@
  * manual step is paying the printed invoice.
  *
  *   KALEIDO_SWAP_MNEMONIC="…12 words…" LIQUID_CLAIM_ADDRESS="tlq1…" \
- *     node examples/03-reverse.ts
+ *     node examples/advanced/03-reverse.ts
  */
 import { mkdir, writeFile } from "node:fs/promises";
 
@@ -30,7 +30,7 @@ import {
   waitForStatus,
 } from "./common.ts";
 
-const STATE_DIR = new URL("./swaps/", import.meta.url);
+const STATE_DIR = new URL("../swaps/advanced/", import.meta.url);
 
 try {
   await init();
@@ -115,7 +115,7 @@ try {
 
   console.log(`swap id:    ${response.id}`);
   console.log(`swap index: ${index}  (never reuse it)`);
-  console.log(`saved to:   examples/swaps/${response.id}.json`);
+  console.log(`saved to:   examples/swaps/advanced/${response.id}.json`);
   console.log(`\nPay this invoice (${amount} sat):\n\n${response.invoice}\n`);
   console.log("Waiting for the maker's Liquid lockup to confirm.\n");
 

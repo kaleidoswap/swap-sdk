@@ -2,7 +2,7 @@
  * What the maker will trade right now, and on what terms.
  * No keys, no funds, no configuration — run it first.
  *
- *   node examples/01-pairs.ts
+ *   node examples/advanced/01-pairs.ts
  */
 import { SwapClient, init } from "@kaleidorg/swap-sdk";
 

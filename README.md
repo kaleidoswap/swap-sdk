@@ -151,7 +151,11 @@ are a `Refusal` whose message names where they live.
 
 The same surface is `KaleidoSwap` in Python and React Native (the store and
 signer are classes you subclass) and `createKaleidoSwap` in TypeScript (plain
-objects); see `typescript-sdk/examples/easy/`. In Python:
+objects). Every binding's examples come in two folders: `simple/` for this
+surface and `advanced/` for the engine underneath, each with a submarine and a
+reverse swap: [`examples/`](examples/README.md) (Rust),
+[`bindings/python/examples/`](bindings/python/README.md#examples) and
+[`typescript-sdk/examples/`](typescript-sdk/examples/README.md). In Python:
 
 ```python
 answer = await kaleido.quote(sdk.QuoteRequest(
@@ -385,7 +389,7 @@ Native bindings expose the same core constructor as
 ## Bindings
 
 - **Python (UniFFI):** see [`bindings/`](bindings/README.md). Build with
-  `cd bindings && make build-debug`; examples in `bindings/python/examples/`.
+  `cd bindings && make build-debug`; examples in `bindings/python/examples/simple/` and `advanced/`.
 - **Browser/TypeScript (wasm):** `make wasm-pack-build` builds the wasm package
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
   the typed surface (`SwapClient`, `SwapScript`, `SwapMasterKey`,
@@ -491,8 +495,8 @@ colors the PSBT and completes its wallet operation after broadcast.
 See [the RGB design and integration status](docs/rgb-swaps-plan.md),
 [Python bindings](bindings/python/README.md#usdt-rgb-swaps) and
 [TypeScript bindings](typescript-sdk/README.md#usdt-rgb-swaps). The
-[Python](bindings/python/examples/rgb_spend.py) and
-[TypeScript](typescript-sdk/examples/05-rgb-spend.ts) examples demonstrate the
+[Python](bindings/python/examples/advanced/rgb_spend.py) and
+[TypeScript](typescript-sdk/examples/advanced/05-rgb-spend.ts) examples demonstrate the
 wallet adapter boundary. Live rgb-lib regtest validation is recorded in [the native example](examples/rgb-regtest/README.md).
 
 ## Atomic BTC <-> USDT-RGB swaps on L1
@@ -546,7 +550,7 @@ The same flow is `kaleidorg_swap_sdk::atomic` with
 `atomic_complete` / `atomic_swap` in Rust, and `SwapClient.get_atomic_pairs` /
 `atomic_quote` / `atomic_request` / `atomic_complete` / `get_atomic_swap` in
 Python. The full walkthrough is
-[`typescript-sdk/examples/06-atomic.ts`](typescript-sdk/examples/06-atomic.ts).
+[`typescript-sdk/examples/advanced/06-atomic.ts`](typescript-sdk/examples/advanced/06-atomic.ts).
 Wallets need an rgb-lib with kaleidoswap/rgb-lib#18. The live signet maker
 ships atomic pairs disabled; use a regtest maker.
 

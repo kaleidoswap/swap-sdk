@@ -1,10 +1,10 @@
 /**
  * Submarine swap with the high-level surface: on-chain BTC -> a Lightning
- * invoice. The same flow as ../02-submarine.ts, refund included: a swap that
+ * invoice. The same flow as ../advanced/02-submarine.ts, refund included: a swap that
  * unwinds after funding is refunded by the driver, or by `resume()` next run.
  *
  *   KALEIDO_SWAP_MNEMONIC="…12 words…" BOLT11_INVOICE="lntbs…" REFUND_ADDRESS="tb1…" \
- *     node examples/easy/submarine.ts
+ *     node examples/simple/submarine.ts
  */
 import {
   createKaleidoSwap,
@@ -15,7 +15,7 @@ import {
 
 const kaleido = await createKaleidoSwap({
   network: "signet",
-  store: new FileStore(new URL("../swaps/", import.meta.url)),
+  store: new FileStore(new URL("../swaps/simple/", import.meta.url)),
   signer: mnemonicSigner(process.env.KALEIDO_SWAP_MNEMONIC!, "signet"),
 });
 

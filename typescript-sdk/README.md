@@ -599,7 +599,7 @@ and rgb-lib before claiming. Refunds wait for the timeout; claims must confirm
 before it. Insufficient HTLC sats produce `rgb_fee_input_required`; prepare with
 caller inputs instead.
 
-See [the wallet adapter example](examples/05-rgb-spend.ts) and
+See [the wallet adapter example](examples/advanced/05-rgb-spend.ts) and
 [the RGB design](../docs/rgb-swaps-plan.md). The adapter is a coordination example;
 the [native regtest example](../examples/rgb-regtest/README.md) records actual RGB wallet validation.
 

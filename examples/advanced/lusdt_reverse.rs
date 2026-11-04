@@ -3,7 +3,7 @@
 //! Run instructions and the wallet-funded PSET contract are documented in
 //! `examples/README.md`.
 
-mod lusdt_common;
+mod common;
 
 use std::fs;
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ use kaleidorg_swap_sdk::swaps::{
 use kaleidorg_swap_sdk::util::secrets::Preimage;
 use kaleidorg_swap_sdk::{LiquidAssetContext, PublicKey};
 
-use lusdt_common::{
+use common::{
     api_client, network, optional_env, optional_u64, required_env, sdk, swap_key, wait_for_file,
     wait_for_status,
 };

@@ -1,9 +1,9 @@
 /**
  * Reverse swap with the high-level surface: a Lightning payment -> L-BTC.
- * The same flow as ../03-reverse.ts, which is what this layer replaces.
+ * The same flow as ../advanced/03-reverse.ts, which is what this layer replaces.
  *
  *   KALEIDO_SWAP_MNEMONIC="…12 words…" LIQUID_CLAIM_ADDRESS="tlq1…" \
- *     node examples/easy/reverse.ts
+ *     node examples/simple/reverse.ts
  */
 import {
   createKaleidoSwap,
@@ -14,7 +14,7 @@ import {
 
 const kaleido = await createKaleidoSwap({
   network: "signet",
-  store: new FileStore(new URL("../swaps/", import.meta.url)),
+  store: new FileStore(new URL("../swaps/simple/", import.meta.url)),
   signer: mnemonicSigner(process.env.KALEIDO_SWAP_MNEMONIC!, "signet"),
 });
 

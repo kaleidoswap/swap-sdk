@@ -3,7 +3,7 @@
  * what is refundable, then follow the rest to the end. Run it after a crash,
  * or at startup before anything else.
  *
- *   KALEIDO_SWAP_MNEMONIC="…12 words…" node examples/easy/resume.ts
+ *   KALEIDO_SWAP_MNEMONIC="…12 words…" node examples/simple/resume.ts
  */
 import {
   createKaleidoSwap,
@@ -13,7 +13,7 @@ import {
 
 const kaleido = await createKaleidoSwap({
   network: "signet",
-  store: new FileStore(new URL("../swaps/", import.meta.url)),
+  store: new FileStore(new URL("../swaps/simple/", import.meta.url)),
   signer: mnemonicSigner(process.env.KALEIDO_SWAP_MNEMONIC!, "signet"),
 });
 

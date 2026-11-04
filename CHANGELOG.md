@@ -64,6 +64,17 @@ a fraction of the lines, plus a `resume.ts`.
 
 - The atomic pair constants use the maker's canonical pair ids
   (`BTC@L1/USDT-RGB@L1`, `USDT-RGB@L1/BTC@L1`).
+- The examples of every binding are split into `simple/`, on the high-level
+  `KaleidoSwap` surface, and `advanced/`, on the swap engine, each with a
+  submarine and a reverse swap. TypeScript's `examples/easy/` is now
+  `examples/simple/` and the numbered examples are under `examples/advanced/`;
+  `npm run typecheck` in `typescript-sdk/examples` now checks both folders. The
+  Python examples move to `bindings/python/examples/advanced/` beside new
+  `simple/submarine.py` and `simple/reverse.py`. The Rust examples move to
+  `examples/advanced/` under their existing `cargo run --example` names, beside
+  new `simple_submarine`, `simple_reverse`, `advanced_submarine` and
+  `advanced_reverse`. Each folder keeps its swap state in its own gitignored
+  `swaps/` subdirectory.
 
 ## [0.13.0] - 2026-10-28
 

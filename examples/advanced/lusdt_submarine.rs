@@ -3,7 +3,7 @@
 //! Run instructions and required environment variables are documented in
 //! `examples/README.md`.
 
-mod lusdt_common;
+mod common;
 
 use anyhow::{Context, Result};
 use kaleidorg_swap_sdk::network::{Chain, Currency};
@@ -11,7 +11,7 @@ use kaleidorg_swap_sdk::swaps::boltz::CreateSubmarineRequest;
 use kaleidorg_swap_sdk::swaps::SwapScript;
 use kaleidorg_swap_sdk::{LiquidAssetContext, PublicKey};
 
-use lusdt_common::{api_client, network, required_env, sdk, swap_key, wait_for_status};
+use common::{api_client, network, required_env, sdk, swap_key, wait_for_status};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {

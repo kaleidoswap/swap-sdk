@@ -14,7 +14,7 @@ distribution and need a Rust 1.88+ toolchain.
 
 ## Quick Start
 
-> **⚠️ WARNING: All examples are only to be used in REGTEST.**
+> **⚠️ WARNING: The engine-level examples are only to be used in REGTEST.**
 
 ```python
 import kaleidorg_swap_sdk
@@ -116,17 +116,32 @@ never ship it inside a mobile or desktop application, where every user holds it.
 
 ## Swap Types
 
-- **Submarine swaps** - Lightning → On-chain Bitcoin/Liquid
-- **Reverse swaps** - On-chain Bitcoin/Liquid → Lightning
+- **Submarine swaps** - On-chain Bitcoin/Liquid → Lightning
+- **Reverse swaps** - Lightning → On-chain Bitcoin/Liquid
 - **Chain swaps** - Bitcoin ↔ Liquid atomic swaps
 
 ## Examples
 
-Complete working examples are available in the `examples/` directory:
+Complete working examples are in the `examples/` directory, in two folders.
 
-- [`reverse.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/reverse.py) - Lightning to Bitcoin
-- [`submarine.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/submarine.py) - Bitcoin to Lightning
-- [`chain.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/chain.py) - Bitcoin to Liquid (and vice versa)
+**`examples/simple/`** uses the high-level `KaleidoSwap` surface: you name what
+you pay and what you receive, and the SDK prices the route, checks the maker's
+response, persists the swap, and claims or refunds on its own. They run against
+the signet maker. Start here.
+
+- [`simple/submarine.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/simple/submarine.py) - on-chain Bitcoin to a Lightning invoice
+- [`simple/reverse.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/simple/reverse.py) - a Lightning payment to L-BTC on Liquid
+
+**`examples/advanced/`** drives the swap engine step by step: create requests,
+scripts, claim and refund transactions, the status WebSocket. Use it when you
+own those steps yourself, or for a route the high-level surface does not serve
+yet. These run against regtest.
+
+- [`advanced/submarine.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/advanced/submarine.py) - Bitcoin to Lightning
+- [`advanced/reverse.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/advanced/reverse.py) - Lightning to Bitcoin
+- [`advanced/chain.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/advanced/chain.py) - Bitcoin to Liquid (and vice versa)
+- [`advanced/corridor_quote.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/advanced/corridor_quote.py) - the Arkade Intents corridor
+- [`advanced/rgb_spend.py`](https://github.com/kaleidoswap/swap-sdk/blob/trunk/bindings/python/examples/advanced/rgb_spend.py) - claim and refund helpers for an rgb-lib wallet
 
 ## USDT-RGB swaps
 
@@ -179,6 +194,6 @@ use a higher spend rate and wallet BTC inputs when needed. A maker fee quote
 does not guarantee confirmation before the timeout. Contract-id chunk dashes
 are cosmetic; pin a valid id from your trusted wallet or asset registry.
 
-[The adapter example](examples/rgb_spend.py) demonstrates both spend directions.
+[The adapter example](examples/advanced/rgb_spend.py) demonstrates both spend directions.
 It requires an application-provided RGB wallet adapter. Actual RGB wallet validation
 is recorded in the [native regtest example](../../examples/rgb-regtest/README.md).
