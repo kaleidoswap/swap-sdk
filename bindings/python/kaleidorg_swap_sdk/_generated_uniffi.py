@@ -10101,8 +10101,9 @@ class _UniffiConverterTypeSwapPayoutStatus(_UniffiConverterRustBuffer):
 
 class SwapRecord:
     """
-    The persisted record: the fields worth showing, plus the whole record as
-    JSON — which is what a store keeps and what rebuilds the swap later.
+    The persisted record's fields worth showing. The record itself, which carries
+    the maker's per-swap credential, reaches a store only through
+    `SwapStore::put`, never through this type.
     """
 
     id: "str"
@@ -10115,7 +10116,6 @@ class SwapRecord:
     raw_status: "str"
     created_at: "int"
     updated_at: "int"
-    json: "str"
 
     def __init__(
         self,
@@ -10130,7 +10130,6 @@ class SwapRecord:
         raw_status: "str",
         created_at: "int",
         updated_at: "int",
-        json: "str",
     ):
         self.id = id
         self.protocol = protocol
@@ -10142,10 +10141,9 @@ class SwapRecord:
         self.raw_status = raw_status
         self.created_at = created_at
         self.updated_at = updated_at
-        self.json = json
 
     def __str__(self):
-        return "SwapRecord(id={}, protocol={}, network={}, maker_url={}, from_asset={}, to_asset={}, phase={}, raw_status={}, created_at={}, updated_at={}, json={})".format(
+        return "SwapRecord(id={}, protocol={}, network={}, maker_url={}, from_asset={}, to_asset={}, phase={}, raw_status={}, created_at={}, updated_at={})".format(
             self.id,
             self.protocol,
             self.network,
@@ -10156,7 +10154,6 @@ class SwapRecord:
             self.raw_status,
             self.created_at,
             self.updated_at,
-            self.json,
         )
 
     def __eq__(self, other):
@@ -10180,8 +10177,6 @@ class SwapRecord:
             return False
         if self.updated_at != other.updated_at:
             return False
-        if self.json != other.json:
-            return False
         return True
 
 
@@ -10199,7 +10194,6 @@ class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
             raw_status=_UniffiConverterString.read(buf),
             created_at=_UniffiConverterUInt64.read(buf),
             updated_at=_UniffiConverterUInt64.read(buf),
-            json=_UniffiConverterString.read(buf),
         )
 
     @staticmethod
@@ -10214,7 +10208,6 @@ class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
         _UniffiConverterString.check_lower(value.raw_status)
         _UniffiConverterUInt64.check_lower(value.created_at)
         _UniffiConverterUInt64.check_lower(value.updated_at)
-        _UniffiConverterString.check_lower(value.json)
 
     @staticmethod
     def write(value, buf):
@@ -10228,7 +10221,6 @@ class _UniffiConverterTypeSwapRecord(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.raw_status, buf)
         _UniffiConverterUInt64.write(value.created_at, buf)
         _UniffiConverterUInt64.write(value.updated_at, buf)
-        _UniffiConverterString.write(value.json, buf)
 
 
 class SwapRestoreIndexResponse:

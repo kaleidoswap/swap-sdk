@@ -190,6 +190,14 @@ async def run():
             raise AssertionError("a submarine without a refund address was accepted")
         assert posts == [], "nothing reached the maker"
 
+        # A record's string form must not be able to carry the maker's
+        # per-swap credential: the whole document reaches a store through
+        # `SwapStore.put`, never through the record type.
+        import inspect
+
+        record_fields = set(inspect.signature(sdk.SwapRecord.__init__).parameters)
+        assert "json" not in record_fields, record_fields
+
         # Unknown ids, and an empty store, behave.
         try:
             await kaleido.swap("nope")

@@ -2720,7 +2720,9 @@ impl hl::SwapStore for JsStore {
             .await
             .map_err(hl_store_err)?;
         if let Some(n) = out.as_f64() {
-            if n >= 0.0 && n.fract() == 0.0 {
+            // 2^53 - 1: above it a number no longer names one integer, so an
+            // index that large must come as a bigint.
+            if n >= 0.0 && n.fract() == 0.0 && n <= 9_007_199_254_740_991.0 {
                 return Ok(n as u64);
             }
         }

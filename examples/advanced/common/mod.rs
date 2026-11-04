@@ -13,6 +13,21 @@ use kaleidorg_swap_sdk::network::{LiquidChain, Network};
 use kaleidorg_swap_sdk::util::secrets::SwapMasterKey;
 use kaleidorg_swap_sdk::Keypair;
 
+/// Writes `bytes` readable by the owner only. The state files the examples
+/// keep carry the swap's `swap_auth`, which is issued once and authorizes the
+/// maker's calls for that swap.
+pub fn write_secret(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(bytes))
+        .with_context(|| format!("write {}", path.display()))
+}
+
 pub fn sdk<T>(result: std::result::Result<T, SdkError>, operation: &str) -> Result<T> {
     result.map_err(|error| anyhow!("{operation}: {error}"))
 }

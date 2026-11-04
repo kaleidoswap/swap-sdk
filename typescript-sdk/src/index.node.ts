@@ -8,6 +8,7 @@
 // consumer hand-wiring `init(await readFile(wasmUrl))` — this entry reads the
 // packaged binary itself so `await init()` is correct in both runtimes.
 
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 
 import {
@@ -60,8 +61,10 @@ export class FileStore implements SwapStore {
   private async write(name: string, body: string): Promise<void> {
     // Records carry swapAuth: owner-only, directory and files alike.
     await mkdir(this.dir, { recursive: true, mode: 0o700 });
-    const tmp = this.file(`${name}.${process.pid}.${Date.now()}.tmp`);
-    await writeFile(tmp, body, { mode: 0o600 });
+    // Unique per call and created exclusively: two writes of one record can
+    // never share a temporary file and interleave into a torn one.
+    const tmp = this.file(`${name}.${randomUUID()}.tmp`);
+    await writeFile(tmp, body, { mode: 0o600, flag: "wx" });
     await rename(tmp, this.file(name));
   }
 

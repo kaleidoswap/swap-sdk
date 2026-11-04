@@ -28,7 +28,9 @@ use kaleidorg_swap_sdk::swaps::{
 };
 use kaleidorg_swap_sdk::PublicKey;
 
-use common::{api_client, network, optional_env, required_env, sdk, swap_key, wait_for_any};
+use common::{
+    api_client, network, optional_env, required_env, sdk, swap_key, wait_for_any, write_secret,
+};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -82,9 +84,9 @@ async fn main() -> Result<()> {
     let state = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/swaps/advanced");
     fs::create_dir_all(&state)?;
     let saved = state.join(format!("{}.json", response.id));
-    fs::write(
+    write_secret(
         &saved,
-        serde_json::to_vec_pretty(&serde_json::json!({
+        &serde_json::to_vec_pretty(&serde_json::json!({
             "swapIndex": swap_index,
             "response": response,
         }))?,
@@ -126,26 +128,34 @@ async fn main() -> Result<()> {
         SwapScript::submarine_from_swap_resp(Chain::Bitcoin(chain), &response, refund_public_key),
         "rebuild the submarine script",
     )?;
-    let mut options = TransactionOptions::default().with_cooperative(true);
-    if let Some(auth) = response.swap_auth.clone() {
-        options = options.with_swap_auth(auth);
-    }
-    let refund = sdk(
-        script
-            .construct_refund(SwapTransactionParams {
-                keys: refund_key,
-                output_address: refund_address.clone(),
-                fee: Fee::Relative(2.0),
-                swap_id: response.id.clone(),
-                chain_client: &chain_client,
-                boltz_api: &api,
-                options: Some(options),
-            })
-            .await,
-        // Without the maker's signature the script path opens at the
-        // lockup's timeout: retry then with `with_cooperative(false)`.
-        "build the cooperative refund",
-    )?;
+    let build_refund = |cooperative: bool| {
+        let mut options = TransactionOptions::default().with_cooperative(cooperative);
+        if let Some(auth) = response.swap_auth.clone() {
+            options = options.with_swap_auth(auth);
+        }
+        script.construct_refund(SwapTransactionParams {
+            keys: refund_key,
+            output_address: refund_address.clone(),
+            fee: Fee::Relative(2.0),
+            swap_id: response.id.clone(),
+            chain_client: &chain_client,
+            boltz_api: &api,
+            options: Some(options),
+        })
+    };
+    let refund = match build_refund(true).await {
+        Ok(refund) => refund,
+        // The maker did not co-sign: the script path is always available, and
+        // opens at the lockup's timeout. Before that the broadcast is refused;
+        // run the example again once the timeout block has passed.
+        Err(error) => {
+            eprintln!(
+                "cooperative refund unavailable ({error}); using the script path, which \
+                 opens at the lockup's timeout"
+            );
+            sdk(build_refund(false).await, "build the script-path refund")?
+        }
+    };
     let txid = sdk(chain_client.broadcast_tx(&refund).await, "broadcast refund")?;
     println!("\nrefund broadcast: {txid} -> {refund_address}");
     Ok(())

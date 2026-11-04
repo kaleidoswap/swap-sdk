@@ -33,6 +33,7 @@ use kaleidorg_swap_sdk::PublicKey;
 
 use common::{
     api_client, network, optional_env, optional_u64, required_env, sdk, swap_key, wait_for_status,
+    write_secret,
 };
 
 /// Blocks the lockup must have left before its timeout when we pay: room to
@@ -122,9 +123,9 @@ async fn main() -> Result<()> {
     let state = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/swaps/advanced");
     fs::create_dir_all(&state)?;
     let saved = state.join(format!("{}.json", response.id));
-    fs::write(
+    write_secret(
         &saved,
-        serde_json::to_vec_pretty(&serde_json::json!({
+        &serde_json::to_vec_pretty(&serde_json::json!({
             "swapIndex": swap_index,
             "response": response,
         }))?,

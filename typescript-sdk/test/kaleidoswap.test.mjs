@@ -6,7 +6,7 @@
 // before it contacts the maker), the adapters, and the Node stores.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -371,6 +371,95 @@ test("settled() with an already aborted signal rejects ABORTED and leaves no unh
     resumed[0].settled(AbortSignal.abort()),
     (e) => e.code === "ABORTED",
   );
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(unhandled, []);
+});
+
+test("FileStore: concurrent writes of one record never leave a torn file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "kaleidoswap-store-"));
+  try {
+    const store = new FileStore(dir);
+    const record = seededRecord();
+    await Promise.all(
+      Array.from({ length: 64 }, (_, i) =>
+        store.put({ ...record, rawStatus: `status-${i}` }),
+      ),
+    );
+    const back = await store.get("seed-1");
+    assert.equal(back.id, "seed-1");
+    assert.match(back.rawStatus, /^status-\d+$/);
+    const names = await readdir(dir);
+    assert.deepEqual(
+      names.filter((n) => n.endsWith(".tmp")),
+      [],
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("start: an index that is not a safe integer is refused, not rounded", async (t) => {
+  stubMaker(t);
+  const store = new MemoryStore();
+  store.nextIndex = () => Number.MAX_SAFE_INTEGER + 2;
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store,
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+    pollIntervalMs: 1,
+  });
+  const reverse = await k.quote({
+    pay: "lightning:BTC",
+    receive: "liquid:BTC",
+    amount: { pay: 50_000 },
+  });
+  await assert.rejects(
+    k.start(reverse, {
+      destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl",
+    }),
+    (e) => e.code === "STORE_FAILED",
+  );
+});
+
+test("phases(): abandoning the iterator leaves no unhandled rejection", async (t) => {
+  const real = globalThis.fetch;
+  let status = "swap.created";
+  globalThis.fetch = async (input) => {
+    const url = String(input?.url ?? input);
+    if (url.endsWith("/v2/swap/seed-1")) return Response.json({ status });
+    return new Response("not found", { status: 404 });
+  };
+  const unhandled = [];
+  const onUnhandled = (reason) => unhandled.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  t.after(() => {
+    globalThis.fetch = real;
+    process.off("unhandledRejection", onUnhandled);
+  });
+  const store = {
+    records: [seededRecord()],
+    get: () => undefined,
+    put() {},
+    list() {
+      return this.records;
+    },
+    nextIndex: () => 1n,
+  };
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store,
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+    pollIntervalMs: 1,
+  });
+  const { resumed } = await k.resume();
+  status = "transaction.claim.pending"; // the first transition the iterator sees
+  for await (const phase of resumed[0].phases()) {
+    assert.equal(phase, "claiming");
+    break; // the consumer walks away…
+  }
+  status = "swap.expired"; // …and the swap then ends in `failed`
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.deepEqual(unhandled, []);
 });

@@ -178,8 +178,9 @@ pub struct SwapAction {
     pub zero_conf_limit: Option<u64>,
 }
 
-/// The persisted record: the fields worth showing, plus the whole record as
-/// JSON — which is what a store keeps and what rebuilds the swap later.
+/// The persisted record's fields worth showing. The record itself, which carries
+/// the maker's per-swap credential, reaches a store only through
+/// `SwapStore::put`, never through this type.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct SwapRecord {
     pub id: String,
@@ -192,12 +193,10 @@ pub struct SwapRecord {
     pub raw_status: String,
     pub created_at: u64,
     pub updated_at: u64,
-    pub json: String,
 }
 
 impl From<core::SwapRecord> for SwapRecord {
     fn from(r: core::SwapRecord) -> Self {
-        let json = serde_json::to_string(&r).unwrap_or_default();
         Self {
             id: r.id,
             protocol: r.protocol,
@@ -209,7 +208,6 @@ impl From<core::SwapRecord> for SwapRecord {
             raw_status: r.raw_status,
             created_at: r.created_at,
             updated_at: r.updated_at,
-            json,
         }
     }
 }

@@ -761,9 +761,15 @@ impl FileStore {
             let _ = std::fs::set_permissions(&self.dir, std::fs::Permissions::from_mode(0o700));
         }
         let target = self.file(name)?;
-        let tmp = self.dir.join(format!("{name}.{}.tmp", std::process::id()));
+        // Unique per call and created exclusively, so two writes of one record
+        // never share a temporary file.
+        static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let tmp = self
+            .dir
+            .join(format!("{name}.{}.{seq}.tmp", std::process::id()));
         let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
+        options.write(true).create_new(true);
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -3570,6 +3576,43 @@ mod tests {
                 .mode();
             assert_eq!(mode & 0o777, 0o600);
         }
+        // Concurrent writes of one record never share a temporary file, so the
+        // record on disk is always a whole one.
+        let store = Arc::new(store);
+        let writers: Vec<_> = (0..16)
+            .map(|_| {
+                let (store, record) = (store.clone(), record.clone());
+                std::thread::spawn(move || {
+                    for _ in 0..20 {
+                        store
+                            .write(
+                                "rev-1.json",
+                                &serde_json::to_string_pretty(&record).unwrap(),
+                            )
+                            .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+        assert!(
+            store.get("rev-1").await.unwrap().is_some(),
+            "the record is still whole"
+        );
+        let leftovers = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0, "no temporary file is left behind");
+
         // A second instance on the same directory continues the counter.
         assert_eq!(FileStore::new(&dir).next_index().await.unwrap(), 2);
         let _ = std::fs::remove_dir_all(&dir);
