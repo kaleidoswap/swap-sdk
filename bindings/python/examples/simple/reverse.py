@@ -64,13 +64,15 @@ async def main():
     )
     print(f"\nPay this invoice ({quote.from_amount} sat):\n\n{swap.action().invoice}\n")
 
+    # watch() also ends on refunded and failed, as an error; only settled is a
+    # success.
     try:
         await swap.watch(PrintPhases())
-        print(
-            f"Done: ~{quote.to_amount} sat of L-BTC reached the claim address ({swap.id()})"
-        )
     except sdk.Error.Swap as error:
-        print(f"Ended without settling: {error}")
+        raise SystemExit(f"swap {swap.id()} ended without settling: {error}")
+    print(
+        f"Done: ~{quote.to_amount} sat of L-BTC reached the claim address ({swap.id()})"
+    )
 
 
 if __name__ == "__main__":

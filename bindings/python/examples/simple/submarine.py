@@ -63,11 +63,13 @@ async def main():
         f"\nFund exactly {action.funding_amount} sat to:\n  {action.funding_address}\n"
     )
 
+    # watch() also ends on refunded and failed, as an error; only settled is a
+    # success.
     try:
         await swap.watch(PrintPhases())
-        print(f"Done: the invoice was paid ({swap.id()})")
     except sdk.Error.Swap as error:
-        print(f"Ended without paying the invoice: {error}")
+        raise SystemExit(f"swap {swap.id()} ended without paying the invoice: {error}")
+    print(f"Done: the invoice was paid ({swap.id()})")
 
 
 if __name__ == "__main__":

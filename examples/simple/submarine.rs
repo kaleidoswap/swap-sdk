@@ -78,9 +78,11 @@ async fn main() -> Result<()> {
         action.funding_address.unwrap_or_default()
     );
 
-    match swap.watch(|phase| println!("  {}", phase.as_str())).await {
-        Ok(_) => println!("Done: the invoice was paid ({})", swap.id()),
-        Err(error) => println!("Ended without paying the invoice: {error}"),
-    }
+    // `watch` also ends on `refunded` and `failed`, as an error; only
+    // `settled` is a success.
+    swap.watch(|phase| println!("  {}", phase.as_str()))
+        .await
+        .with_context(|| format!("swap {} ended without paying the invoice", swap.id()))?;
+    println!("Done: the invoice was paid ({})", swap.id());
     Ok(())
 }
