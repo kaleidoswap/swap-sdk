@@ -35,7 +35,10 @@ The phase machine, the pricing and every check live in the Rust core
 Keys and persistence are injected: a `SwapSigner` (`MnemonicSigner` wraps
 `SwapMasterKey`) and a `SwapStore` that also owns the BIP85 index counter. The
 application implements both — foreign traits in Python and React Native, plain
-objects in TypeScript — and records cross the store as JSON. `MemoryStore`
+objects in TypeScript — and records cross the store as JSON. The
+`SwapRecord` the bindings return carries the fields worth showing and not the
+whole document, so the maker's credential reaches a store only through
+`SwapStore.put`. `MemoryStore`
 ships everywhere; `FileStore` keeps one JSON file per swap, owner-readable
 only, refuses ids that are not plain tokens, and never hands out an index
 twice. `resume()` makes one pass over the store at startup and reports what it
