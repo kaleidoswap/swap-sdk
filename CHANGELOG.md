@@ -58,7 +58,10 @@ which does not rate-limit UTXO lookups. Status is polled. `BoltzApiClientV2`
 gains `base_url()`, and `Error` in the Python and React Native bindings gains a
 `Swap` variant carrying the code. Three examples under
 `typescript-sdk/examples/simple/` mirror `advanced/02-submarine.ts` and
-`advanced/03-reverse.ts` in a fraction of the lines, plus a `resume.ts`.
+`advanced/03-reverse.ts` in a fraction of the lines, plus a `resume.ts`; the
+same three are in `packages/react-native/examples/simple/`. `resume.ts` exits
+non-zero when a swap ends anywhere but `settled`, and the submarine and reverse
+examples stop when `resume()` could not move a swap.
 
 `start` parses the destination and the refund address, and checks them against
 the configured network, before it contacts the maker. `watch` and `settled`

@@ -20,12 +20,22 @@ const kaleido = await createKaleidoSwap({
 const report = await kaleido.resume();
 for (const r of report.settled) console.log(`${r.id}: settled`);
 for (const r of report.refunded) console.log(`${r.id}: refunded`);
-for (const r of report.failed) console.log(`${r.id}: failed (${r.rawStatus})`);
+for (const r of report.failed)
+  console.error(`${r.id}: failed (${r.rawStatus})`);
+for (const e of report.errors)
+  console.error(`${e.id}: ${e.code}: ${e.message}`);
 
-await Promise.all(
-  report.resumed.map(async (swap) => {
-    console.log(`${swap.id}: ${swap.phase}, following`);
-    for await (const phase of swap.phases())
-      console.log(`${swap.id}: ${phase}`);
-  }),
+const followed = await Promise.allSettled(
+  report.resumed.map((swap) => swap.settled()),
 );
+for (const result of followed) {
+  if (result.status === "fulfilled") console.log(`${result.value.id}: settled`);
+  else console.error(`${result.reason.swapId}: ${result.reason.message}`);
+}
+
+if (
+  report.failed.length ||
+  report.errors.length ||
+  followed.some((result) => result.status === "rejected")
+)
+  process.exitCode = 1;

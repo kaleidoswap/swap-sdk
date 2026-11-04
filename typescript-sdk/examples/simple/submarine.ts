@@ -1,15 +1,17 @@
 /**
  * Submarine swap with the high-level surface: on-chain BTC -> a Lightning
- * invoice. The same flow as ../advanced/02-submarine.ts, refund included: a swap that
- * unwinds after funding is refunded by the driver, or by `resume()` next run.
+ * invoice. The same flow as ../advanced/02-submarine.ts, refund included: a
+ * swap that unwinds after funding is refunded by the driver, or by `resume()`
+ * next run.
  *
- *   KALEIDO_SWAP_MNEMONIC="…12 words…" BOLT11_INVOICE="lntbs…" REFUND_ADDRESS="tb1…" \
- *     node examples/simple/submarine.ts
+ *   KALEIDO_SWAP_MNEMONIC="…12 words…" BOLT11_INVOICE="lntbs…" \
+ *     REFUND_ADDRESS="tb1…" node examples/simple/submarine.ts
  */
 import {
   createKaleidoSwap,
   FileStore,
   isQuote,
+  isSwapError,
   mnemonicSigner,
 } from "@kaleidorg/swap-sdk";
 
@@ -19,25 +21,31 @@ const kaleido = await createKaleidoSwap({
   signer: mnemonicSigner(process.env.KALEIDO_SWAP_MNEMONIC!, "signet"),
 });
 
-await kaleido.resume();
+try {
+  const report = await kaleido.resume();
+  if (report.errors.length)
+    throw new Error(`resume could not move ${report.errors.map((e) => e.id)}`);
 
-const answer = await kaleido.quote({
-  pay: "bitcoin:BTC",
-  receive: "lightning:BTC",
-  amount: { invoice: process.env.BOLT11_INVOICE! },
-});
-if (!isQuote(answer)) throw new Error(`${answer.reason}: ${answer.message}`);
+  const answer = await kaleido.quote({
+    pay: "bitcoin:BTC",
+    receive: "lightning:BTC",
+    amount: { invoice: process.env.BOLT11_INVOICE! },
+  });
+  if (!isQuote(answer)) throw new Error(`${answer.reason}: ${answer.message}`);
 
-const swap = await kaleido.start(answer, {
-  refundAddress: process.env.REFUND_ADDRESS!,
-});
+  const swap = await kaleido.start(answer, {
+    refundAddress: process.env.REFUND_ADDRESS!,
+  });
 
-const { fundingAddress, fundingAmount } = swap.action;
-console.log(`Fund exactly ${fundingAmount} sat to:\n  ${fundingAddress}\n`);
-for await (const phase of swap.phases()) console.log(`  ${phase}`);
+  const { fundingAddress, fundingAmount } = swap.action;
+  console.log(`Fund exactly ${fundingAmount} sat to:\n  ${fundingAddress}\n`);
+  for await (const phase of swap.phases()) console.log(`  ${phase}`);
 
-// `phases()` also ends on `refunded` and `failed`; only `settled` is a success.
-if (swap.phase !== "settled") {
-  throw new Error(`swap ${swap.id} ended ${swap.phase}, not settled`);
+  if (swap.phase !== "settled") {
+    throw new Error(`swap ${swap.id} ended ${swap.phase}, not settled`);
+  }
+  console.log(`Done: the invoice was paid (${swap.id})`);
+} catch (error) {
+  console.error(isSwapError(error) ? `${error.code}: ${error.message}` : error);
+  process.exitCode = 1;
 }
-console.log(`Done: the invoice was paid (${swap.id})`);

@@ -1,0 +1,37 @@
+# `@kaleidorg/swap-sdk-react-native` examples
+
+The high-level `KaleidoSwap` surface in a React Native app. You name what you
+pay and what you receive; the SDK prices the route, checks the maker's
+response, persists the swap, and claims or refunds on its own.
+
+| Example               | What it does                                                          | Needs                                               |
+| --------------------- | --------------------------------------------------------------------- | --------------------------------------------------- |
+| `simple/submarine.ts` | On-chain BTC → a Lightning invoice; refunds on its own if it unwinds. | a swap mnemonic, a BOLT11 invoice, a refund address |
+| `simple/reverse.ts`   | A Lightning payment → L-BTC on Liquid.                                | a swap mnemonic, a Liquid address, 50k signet sats  |
+| `simple/resume.ts`    | Finishes or refunds whatever the store still holds.                   | a swap mnemonic                                     |
+| `simple/kaleido.ts`   | Builds the `KaleidoSwap` the three above share, and resumes it.       |                                                     |
+
+These are functions, not scripts: call them from a screen or a startup hook,
+and pass what they need.
+
+```ts
+import { reverse } from "./examples/simple/reverse";
+
+await reverse(
+  `${RNFS.DocumentDirectoryPath}/swaps`,
+  swapMnemonic,
+  liquidAddress,
+  (invoice) => setInvoice(invoice),
+  (phase) => setPhase(SwapPhase[phase]),
+);
+```
+
+- **The store directory** must be inside the app's private storage. Every record
+  carries the maker's `swapAuth` and the material a refund needs. `FileStore`
+  creates the directory, keeps files owner-readable only and never hands out a
+  swap index twice.
+- **The swap mnemonic** belongs in the Keychain or Keystore, not in app state.
+- **Call `resume` at launch.** A swap has a deadline and a phone does not stay
+  awake. A function that rejects (a refusal, a swap that ends `refunded` or
+  `failed`) leaves the swap in the store for the next `resume`.
+- The module is native code, so none of this runs in Expo Go.

@@ -93,6 +93,14 @@ server-side configuration. The browser SDK offers `createKaleidoOrgClient` for
 the same purpose. Its secret-key factory, `forKaleidoMaker`, requires an explicit
 `allowBrowser: true` override in a page, worker or extension.
 
+## Swaps in three calls
+
+`KaleidoSwap` is the high-level surface: `quote`, `start`, `resume`. It prices
+the route, checks the maker's response, persists the swap and claims or refunds
+on its own, with a `FileStore` or your own `SwapStore` and a `MnemonicSigner`
+or your own `SwapSigner`. See [`examples/`](examples/) for a submarine swap, a
+reverse swap and a resume at launch.
+
 ## Mobile-specific notes
 
 A swap has a deadline and a phone does not stay awake. Two consequences worth

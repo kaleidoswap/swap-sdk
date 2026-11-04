@@ -27,7 +27,7 @@ is exactly what these files use. `npm run typecheck` here checks both folders.
 | -------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | `simple/submarine.ts`      | On-chain BTC → a Lightning invoice; refunds on its own if it unwinds.             | a swap mnemonic, a BOLT11 invoice, a refund address  |
 | `simple/reverse.ts`        | A Lightning payment → L-BTC on Liquid: `quote`, `start`, `phases`.                | a swap mnemonic, a Liquid address, 50k signet sats   |
-| `simple/resume.ts`         | Finishes or refunds whatever the store still holds; run it at startup.            | a swap mnemonic                                      |
+| `simple/resume.ts`         | Finishes or refunds whatever the store still holds; exits 1 unless all settle.    | a swap mnemonic                                      |
 | `advanced/01-pairs.ts`     | Prints every route the maker will trade and on what terms.                        | nothing                                              |
 | `advanced/02-submarine.ts` | On-chain BTC → a Lightning invoice. Prints what to fund; refunds with `--refund`. | a swap mnemonic, a BOLT11 invoice, signet bitcoin    |
 | `advanced/03-reverse.ts`   | A Lightning payment → L-BTC on Liquid. Claims and broadcasts by itself.           | a swap mnemonic, a Liquid address, 50k signet sats   |
