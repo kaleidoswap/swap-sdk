@@ -35,6 +35,13 @@ jobs:
         with:
           submodules: true
           fetch-depth: 0
+      - name: Free disk space
+        # This job stacks the regtest images, a native build, a wasm build and the
+        # bindings build on one runner; the preinstalled toolchains below are the
+        # largest things on it that nothing here uses.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
       - name: Set up Docker
         uses: docker/setup-buildx-action@v2
       - name: Set up Docker Compose
@@ -60,6 +67,11 @@ jobs:
         run: make cargo-regtest-test
       - name: Run WASM regtest tests
         run: make wasm-regtest-test
+      - name: Drop the wasm build output
+        # The bindings below are native; the wasm output is the biggest thing left.
+        run: |
+          rm -rf target/wasm32-unknown-unknown
+          df -h /
       - name: Build bindings
         working-directory: bindings
         run: make build-debug
