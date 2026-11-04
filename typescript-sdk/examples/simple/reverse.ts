@@ -36,6 +36,10 @@ console.log(
 );
 for await (const phase of swap.phases()) console.log(`  ${phase}`);
 
+// `phases()` also ends on `refunded` and `failed`; only `settled` is a success.
+if (swap.phase !== "settled") {
+  throw new Error(`swap ${swap.id} ended ${swap.phase}, not settled`);
+}
 console.log(
   `Done: ~${answer.toAmount} sat of L-BTC reached the claim address (${swap.id})`,
 );

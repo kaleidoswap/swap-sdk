@@ -57,8 +57,13 @@ names where each one lives. The default Liquid testnet Esplora for this layer is
 which does not rate-limit UTXO lookups. Status is polled. `BoltzApiClientV2`
 gains `base_url()`, and `Error` in the Python and React Native bindings gains a
 `Swap` variant carrying the code. Three examples under
-`typescript-sdk/examples/easy/` mirror `02-submarine.ts` and `03-reverse.ts` in
-a fraction of the lines, plus a `resume.ts`.
+`typescript-sdk/examples/simple/` mirror `advanced/02-submarine.ts` and
+`advanced/03-reverse.ts` in a fraction of the lines, plus a `resume.ts`.
+
+`start` parses the destination and the refund address, and checks them against
+the configured network, before it contacts the maker. `watch` and `settled`
+keep retrying a refund only while the failure is one waiting can fix, and end
+on one that will fail the same way again.
 
 ### Changed
 

@@ -23,7 +23,7 @@ import {
 const INVOICE_SIGNET_50K =
   "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e";
 const INVOICE_REGTEST_100K =
-  "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
+  "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
 
 const REVERSE_CARD = {
   hash: "rev-hash",
@@ -194,7 +194,9 @@ test("start: destination and refund address are checked before the maker is cont
     amount: { pay: 50_000 },
   });
   await assert.rejects(
-    k.start(reverse, { destination: "lq1mainnet" }),
+    k.start(reverse, {
+      destination: "ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5",
+    }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   await assert.rejects(
@@ -202,7 +204,10 @@ test("start: destination and refund address are checked before the maker is cont
     (e) => e.code === "INVALID_DESTINATION",
   );
   await assert.rejects(
-    k.start({ ...reverse, expiresAt: 0n }, { destination: "tlq1dest" }),
+    k.start(
+      { ...reverse, expiresAt: 0n },
+      { destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl" },
+    ),
     (e) => e.code === "QUOTE_EXPIRED",
   );
 
@@ -216,7 +221,9 @@ test("start: destination and refund address are checked before the maker is cont
     (e) => e.code === "REFUND_ADDRESS_REQUIRED",
   );
   await assert.rejects(
-    k.start(submarine, { refundAddress: "bc1mainnet" }),
+    k.start(submarine, {
+      refundAddress: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+    }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
   );
   assert.equal(
@@ -269,7 +276,7 @@ function seededRecord(overrides = {}) {
         onchainAmount: 49_450,
         swapAuth: "secret-auth",
       },
-      destination: "tlq1dest",
+      destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl",
     },
     ...overrides,
   };
@@ -417,7 +424,7 @@ test("FileStore: records round-trip as JSON and the index never repeats", async 
       state: {
         swapIndex: "0",
         response: { onchainAmount: "1" },
-        destination: "tlq1",
+        destination: "tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl",
       },
     };
     await store.put(record);

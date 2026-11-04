@@ -1160,7 +1160,9 @@ fn miner_fee_total(fees: &PairMinerFees) -> u64 {
     fees.lockup + fees.claim
 }
 
-/// A prefix check, not validation — it catches a mainnet address used on signet.
+/// Parses `value` as an address (or BOLT11 invoice) of `asset`'s layer and
+/// checks it belongs to `network`, so a malformed or wrong-network value is a
+/// local error before the maker is contacted.
 fn check_address(
     value: &str,
     asset: &Asset,
@@ -1168,38 +1170,48 @@ fn check_address(
     what: &str,
 ) -> Result<(), SwapError> {
     let layer = asset.layer();
-    let prefixes: &[&str] = match (layer, network) {
-        (Layer::Arkade | Layer::Spark, _) => return Ok(()),
-        (Layer::Bitcoin, Network::Mainnet) => &["bc1", "1", "3"],
-        (Layer::Bitcoin, Network::Testnet | Network::Signet) => &["tb1", "m", "n", "2"],
-        (Layer::Bitcoin, Network::Regtest) => &["bcrt1"],
-        (Layer::Liquid, Network::Mainnet) => &["lq1", "ex1", "VJL", "VTp"],
-        (Layer::Liquid, Network::Testnet | Network::Signet) => &["tlq1", "tex1", "vjT", "vjU"],
-        (Layer::Liquid, Network::Regtest) => &["el1", "ert1", "CTE", "AzP"],
-        (Layer::Lightning, Network::Mainnet) => &["lnbc"],
-        (Layer::Lightning, Network::Testnet) => &["lntb"],
-        (Layer::Lightning, Network::Signet) => &["lntbs"],
-        (Layer::Lightning, Network::Regtest) => &["lnbcrt"],
+    let invalid = |e: &dyn fmt::Display| {
+        SwapError::new(
+            SwapErrorCode::InvalidDestination,
+            format!("{what} {value} is not a valid {layer:?} address: {e}"),
+        )
     };
-    let matches = prefixes.iter().any(|prefix| match layer {
-        Layer::Lightning => {
-            let lower = value.to_lowercase();
-            // `lntb` is testnet3; `lntbs` is signet. Keep them apart.
-            lower.starts_with(prefix) && (*prefix != "lntb" || !lower.starts_with("lntbs"))
+    let wrong_network = || {
+        SwapError::new(
+            SwapErrorCode::WrongNetworkAddress,
+            format!("{what} {value} is not a {network:?} {layer:?} address"),
+        )
+    };
+    let on_network = match layer {
+        Layer::Arkade | Layer::Spark => return Ok(()),
+        Layer::Bitcoin => value
+            .parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
+            .map_err(|e| invalid(&e))?
+            .is_valid_for_network(network.into()),
+        Layer::Liquid => {
+            let address: elements::Address = value.parse().map_err(|e| invalid(&e))?;
+            let expected: &'static elements::AddressParams = LiquidChain::from(network).into();
+            *address.params == *expected
         }
-        _ => value.starts_with(prefix),
-    });
-    if matches {
+        Layer::Lightning => {
+            let invoice: lightning_invoice::Bolt11Invoice =
+                value.trim().parse().map_err(|e| invalid(&e))?;
+            invoice.currency() == lightning_currency(network)
+        }
+    };
+    if on_network {
         Ok(())
     } else {
-        Err(SwapError::new(
-            SwapErrorCode::WrongNetworkAddress,
-            format!(
-                "{what} {value} does not look like a {network:?} {layer:?} {} (expected a prefix among {})",
-                if layer == Layer::Lightning { "invoice" } else { "address" },
-                prefixes.join(", ")
-            ),
-        ))
+        Err(wrong_network())
+    }
+}
+
+fn lightning_currency(network: Network) -> lightning_invoice::Currency {
+    match network {
+        Network::Mainnet => lightning_invoice::Currency::Bitcoin,
+        Network::Testnet => lightning_invoice::Currency::BitcoinTestnet,
+        Network::Signet => lightning_invoice::Currency::Signet,
+        Network::Regtest => lightning_invoice::Currency::Regtest,
     }
 }
 
@@ -1270,6 +1282,20 @@ fn map_status(protocol: Protocol, status: &str, state: &SwapState) -> Transition
     }
 }
 
+/// Whether a failed refund attempt is one that waiting can fix: the timelock
+/// has not matured yet, or the chain or the maker could not be reached. A
+/// malformed address, a signing error or a rejected spend will fail the same
+/// way every time, so retrying it only hides it.
+fn refund_error_is_transient(error: &Error) -> bool {
+    match error {
+        Error::Locktime(_) | Error::IO(_) | Error::HTTP(_) => true,
+        Error::HTTPStatusNotSuccess(status, _) => !status.is_client_error(),
+        #[cfg(feature = "esplora")]
+        Error::Esplora(_) => true,
+        _ => false,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // A swap in flight
 
@@ -1281,6 +1307,10 @@ pub struct Swap {
     /// Phase changes since the last drain, so a watcher sees every step a
     /// single `tick` took, not only where it ended.
     transitions: std::sync::Mutex<Vec<SwapPhase>>,
+    /// Whether the last refund attempt failed in a way another attempt can
+    /// get past (an immature timelock, a chain or maker outage), as opposed
+    /// to one that will fail the same way again.
+    refund_retryable: std::sync::atomic::AtomicBool,
 }
 
 impl fmt::Debug for Swap {
@@ -1300,6 +1330,7 @@ impl Swap {
             env,
             current: std::sync::Mutex::new(record),
             transitions: std::sync::Mutex::new(vec![]),
+            refund_retryable: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -1480,12 +1511,16 @@ impl Swap {
                 &record.id,
             ));
         }
-        let txid = self
-            .env
-            .flows
-            .refund(&record, &keys)
-            .await
-            .map_err(|e| SwapError::from_core(e, Some(&record.id)))?;
+        let txid = match self.env.flows.refund(&record, &keys).await {
+            Ok(txid) => txid,
+            Err(e) => {
+                self.refund_retryable.store(
+                    refund_error_is_transient(&e),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                return Err(SwapError::from_core(e, Some(&record.id)));
+            }
+        };
         self.persist(|r| {
             r.phase = SwapPhase::Refunding;
             r.state.refund_txid = Some(txid.clone());
@@ -1570,7 +1605,11 @@ impl Swap {
         matches!(
             error.code,
             SwapErrorCode::MakerUnreachable | SwapErrorCode::ChainUnreachable
-        ) || (self.phase() == SwapPhase::Refundable && error.code == SwapErrorCode::SwapFailed)
+        ) || (self.phase() == SwapPhase::Refundable
+            && error.code == SwapErrorCode::SwapFailed
+            && self
+                .refund_retryable
+                .load(std::sync::atomic::Ordering::Relaxed))
     }
 
     /// [`Swap::watch`] without a listener.
@@ -2377,6 +2416,9 @@ mod tests {
         /// Refund attempts that fail, as an immature timelock does, before
         /// one goes through.
         refund_failures: Mutex<u32>,
+        /// Make those failures permanent: a refund that fails the same way
+        /// every time.
+        refund_failures_permanent: bool,
     }
 
     fn pubkey_hex(keys: &Keypair) -> String {
@@ -2417,9 +2459,11 @@ mod tests {
                 let mut failures = self.refund_failures.lock().unwrap();
                 if *failures > 0 {
                     *failures -= 1;
-                    return Err(Error::Generic(
-                        "non-final: the timelock has not matured".into(),
-                    ));
+                    return Err(if self.refund_failures_permanent {
+                        Error::Address("the refund address cannot be spent to".into())
+                    } else {
+                        Error::Locktime("non-final: the timelock has not matured".into())
+                    });
                 }
             }
             self.refund
@@ -2687,13 +2731,26 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("lq1mainnet".into()),
+                    destination: Some("ex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j20sf6s5".into()),
                     ..Default::default()
                 },
             )
             .await
             .unwrap_err();
         assert_eq!(wrong.code, SwapErrorCode::WrongNetworkAddress);
+        // A right-looking prefix is not an address.
+        let malformed = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1qnotanaddress".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(malformed.code, SwapErrorCode::InvalidDestination);
         let none = h
             .kaleido
             .start(&q, StartOptions::default())
@@ -2710,7 +2767,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -2758,7 +2815,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -2795,7 +2852,7 @@ mod tests {
                 .start(
                     &q,
                     StartOptions {
-                        destination: Some("tlq1dest".into()),
+                        destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                         ..Default::default()
                     },
                 )
@@ -2820,7 +2877,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -2840,7 +2897,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -2853,7 +2910,7 @@ mod tests {
         let h = harness();
         let q = reverse_quote(&h).await;
         let dest = || StartOptions {
-            destination: Some("tlq1a".into()),
+            destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
             ..Default::default()
         };
         h.kaleido.start(&q, dest()).await.unwrap();
@@ -2877,7 +2934,7 @@ mod tests {
     #[macros::async_test_all]
     async fn start_checks_the_create_response_against_the_quote() {
         let dest = || StartOptions {
-            destination: Some("tlq1dest".into()),
+            destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
             ..Default::default()
         };
 
@@ -2925,7 +2982,7 @@ mod tests {
             .unwrap();
         *h.maker.submarine_expected.lock().unwrap() = Some(q.from_amount + 1);
         let refund = StartOptions {
-            refund_address: Some("tb1qrefund".into()),
+            refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
             ..Default::default()
         };
         let err = h.kaleido.start(&q, refund).await.unwrap_err();
@@ -2942,7 +2999,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -2963,7 +3020,7 @@ mod tests {
         let first = harness_with(store.clone(), FakeFlows::default());
         let q = reverse_quote(&first).await;
         let dest = || StartOptions {
-            destination: Some("tlq1dest".into()),
+            destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
             ..Default::default()
         };
         *first.maker.reverse_id.lock().unwrap() = "a-pruned".into();
@@ -3028,7 +3085,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -3047,7 +3104,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -3089,7 +3146,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -3133,20 +3190,32 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    refund_address: Some("bc1mainnet".into()),
+                    refund_address: Some("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4".into()),
                     ..Default::default()
                 },
             )
             .await
             .unwrap_err();
         assert_eq!(wrong.code, SwapErrorCode::WrongNetworkAddress);
+        let malformed = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    refund_address: Some("tb1qnotanaddress".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(malformed.code, SwapErrorCode::InvalidDestination);
 
         let swap = h
             .kaleido
             .start(
                 &q,
                 StartOptions {
-                    refund_address: Some("tb1qrefund".into()),
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
                     ..Default::default()
                 },
             )
@@ -3203,7 +3272,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    refund_address: Some("tb1qrefund".into()),
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
                     ..Default::default()
                 },
             )
@@ -3247,6 +3316,25 @@ mod tests {
         h.maker.unknown_ids.lock().unwrap().push(other.id());
         let err = other.watch(|_| {}).await.unwrap_err();
         assert_eq!(err.code, SwapErrorCode::SwapFailed);
+    }
+
+    #[macros::async_test_all]
+    async fn watch_ends_on_a_refund_that_will_fail_every_time() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                refund_failures: Mutex::new(u32::MAX),
+                refund_failures_permanent: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_submarine(&h).await;
+        h.maker
+            .script(&["transaction.mempool", "invoice.failedToPay"]);
+        let err = swap.watch(|_| {}).await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed, "{}", err.message);
+        assert_eq!(swap.phase(), SwapPhase::Refundable);
+        assert_eq!(*h.flows.refund_failures.lock().unwrap(), u32::MAX - 1);
     }
 
     #[macros::async_test_all]
@@ -3306,7 +3394,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    refund_address: Some("tb1qrefund".into()),
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
                     ..Default::default()
                 },
             )
@@ -3329,7 +3417,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
@@ -3452,7 +3540,7 @@ mod tests {
             .start(
                 &q,
                 StartOptions {
-                    destination: Some("tlq1dest".into()),
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
                     ..Default::default()
                 },
             )
