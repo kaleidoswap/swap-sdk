@@ -10,17 +10,24 @@
 //!   cargo run --example simple_reverse
 //! ```
 
-use std::env;
-use std::path::PathBuf;
-use std::sync::Arc;
-
-use anyhow::{Context, Result};
-use kaleidorg_swap_sdk::kaleidoswap::{
-    Amount, Asset, FileStore, KaleidoSwap, KaleidoSwapOptions, MnemonicSigner, QuoteRequest,
-    StartOptions,
+// `FileStore` keeps the swaps on disk, so this is a native program. The wasm
+// build only compiles it, as `cargo test` does for every example; in a browser
+// an application gives `KaleidoSwap` a store of its own.
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+use {
+    anyhow::{Context, Result},
+    kaleidorg_swap_sdk::kaleidoswap::{
+        Amount, Asset, FileStore, KaleidoSwap, KaleidoSwapOptions, MnemonicSigner, QuoteRequest,
+        StartOptions,
+    },
+    kaleidorg_swap_sdk::network::Network,
+    std::{env, path::PathBuf, sync::Arc},
 };
-use kaleidorg_swap_sdk::network::Network;
 
+#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+fn main() {}
+
+#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let network = Network::Signet;
