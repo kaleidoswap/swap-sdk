@@ -27,6 +27,7 @@ pub const DEFAULT_LIQUID_REGTEST_NODE: &str = "http://localhost:4003/api";
 
 pub const DEFAULT_ESPLORA_TIMEOUT_SECS: u64 = 30;
 
+#[derive(Clone)]
 pub struct EsploraBitcoinClient {
     client: reqwest::Client,
     base_url: String,
@@ -70,6 +71,32 @@ impl EsploraBitcoinClient {
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
             ),
         }
+    }
+
+    /// Whether this Esplora has `txid`, in its mempool or in a block.
+    pub async fn has_tx(&self, txid: &bitcoin::Txid) -> Result<bool, Error> {
+        fetch_has_tx(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &txid.to_string(),
+        )
+        .await
+    }
+
+    /// The transactions that spend an output paying `address`.
+    pub async fn spends_of_address(
+        &self,
+        address: &bitcoin::Address,
+    ) -> Result<Vec<AddressSpend>, Error> {
+        fetch_address_spends(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &address.to_string(),
+            &address.script_pubkey().to_hex_string(),
+        )
+        .await
     }
 
     fn extract_address_utxos(
@@ -211,6 +238,7 @@ impl BitcoinClient for EsploraBitcoinClient {
     }
 }
 
+#[derive(Clone)]
 pub struct EsploraLiquidClient {
     client: reqwest::Client,
     base_url: String,
@@ -235,6 +263,32 @@ impl EsploraLiquidClient {
             timeout: Duration::from_secs(timeout),
             network,
         }
+    }
+
+    /// Whether this Esplora has `txid`, in its mempool or in a block.
+    pub async fn has_tx(&self, txid: &elements::Txid) -> Result<bool, Error> {
+        fetch_has_tx(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &txid.to_string(),
+        )
+        .await
+    }
+
+    /// The transactions that spend an output paying `address`.
+    pub async fn spends_of_address(
+        &self,
+        address: &elements::Address,
+    ) -> Result<Vec<AddressSpend>, Error> {
+        fetch_address_spends(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &address.to_string(),
+            &address.script_pubkey().to_hex(),
+        )
+        .await
     }
 
     pub fn default(network: LiquidChain, regtest_url: Option<&str>) -> Self {
@@ -372,6 +426,74 @@ fn parse_tip_height(body: &str) -> Result<u32, Error> {
 /// one [`OutputStatus`]. A 404 on the status call means the source has never
 /// seen the transaction; a 404 on the outspend call (the output index does
 /// not exist) is an error, since the caller named a specific output.
+/// `GET /tx/:txid`, which answers 404 for a transaction the server has
+/// neither in its mempool nor in a block. `/tx/:txid/status` cannot tell:
+/// it answers an unknown txid as unconfirmed.
+async fn fetch_has_tx(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+    txid: &str,
+) -> Result<bool, Error> {
+    let response = get_with_retry(client, &format!("{base_url}/tx/{txid}"), timeout).await?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Transaction lookup failed ({status}): {}",
+            response.text().await?.trim()
+        )));
+    }
+    Ok(true)
+}
+
+/// A transaction that spends an output paying a given address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressSpend {
+    pub txid: String,
+    /// The hex scripts its outputs pay, in output order.
+    pub output_scripts: Vec<String>,
+}
+
+/// The transactions among `GET /address/:address/txs` with an input whose
+/// previous output pays `script_hex`.
+async fn fetch_address_spends(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+    address: &str,
+    script_hex: &str,
+) -> Result<Vec<AddressSpend>, Error> {
+    let url = format!("{base_url}/address/{address}/txs");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Address history request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    let txs: Vec<AddressTx> = serde_json::from_str(&body)?;
+    Ok(txs
+        .into_iter()
+        .filter(|tx| {
+            tx.vin.iter().any(|input| {
+                input
+                    .prevout
+                    .as_ref()
+                    .is_some_and(|prevout| prevout.scriptpubkey.eq_ignore_ascii_case(script_hex))
+            })
+        })
+        .map(|tx| AddressSpend {
+            txid: tx.txid,
+            output_scripts: tx.vout.into_iter().map(|out| out.scriptpubkey).collect(),
+        })
+        .collect())
+}
+
 async fn fetch_output_status(
     client: &reqwest::Client,
     base_url: &str,
@@ -543,6 +665,27 @@ pub struct Status {
 pub struct Utxo {
     pub txid: String,
     pub vout: u32,
+}
+
+/// A transaction as `GET /address/:address/txs` lists it, reduced to what
+/// [`fetch_address_spends`] reads.
+#[derive(Debug, Deserialize)]
+struct AddressTx {
+    txid: String,
+    vin: Vec<AddressTxIn>,
+    vout: Vec<AddressTxOut>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddressTxIn {
+    #[serde(default)]
+    prevout: Option<AddressTxOut>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddressTxOut {
+    #[serde(default)]
+    scriptpubkey: String,
 }
 
 /// `GET /tx/:txid/status`.
