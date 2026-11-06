@@ -2804,10 +2804,12 @@ struct KaleidoSwapJsOptions {
     fee_sat_per_vb: Option<f64>,
     quote_ttl_ms: Option<u64>,
     maker_timeout_ms: Option<u64>,
+    reverse_timeout_headroom: Option<hl::ReverseTimeoutHeadroom>,
 }
 
 /// `new KaleidoSwap({ network, store, signer, makerUrl?, bitcoinEsploraUrl?,
-/// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, quoteTtlMs? })`.
+/// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, quoteTtlMs?,
+/// makerTimeoutMs?, reverseTimeoutHeadroom?: { bitcoinBlocks?, liquidBlocks? } })`.
 #[wasm_bindgen]
 pub struct KaleidoSwap {
     inner: Arc<hl::KaleidoSwap>,
@@ -2831,6 +2833,21 @@ impl KaleidoSwap {
                 "options.signer must be an object with deriveKey/derivePreimage",
             ));
         }
+        // serde-wasm-bindgen reads only a struct's declared fields, so a
+        // misspelled chain would otherwise pass as "keep the default".
+        let headroom = js_sys::Reflect::get(&options, &JsValue::from_str("reverseTimeoutHeadroom"))
+            .unwrap_or(JsValue::UNDEFINED);
+        if headroom.is_object() {
+            for key in js_sys::Object::keys(headroom.unchecked_ref::<js_sys::Object>()).iter() {
+                let key = key.as_string().unwrap_or_default();
+                if !["bitcoinBlocks", "liquidBlocks"].contains(&key.as_str()) {
+                    return Err(arg_err(format!(
+                        "reverseTimeoutHeadroom.{key} is not an option; \
+                         expected bitcoinBlocks or liquidBlocks"
+                    )));
+                }
+            }
+        }
         let parsed: KaleidoSwapJsOptions = from_js(options)?;
         let inner = hl::KaleidoSwap::new(hl::KaleidoSwapOptions {
             network: parse_network(&parsed.network)?,
@@ -2847,6 +2864,7 @@ impl KaleidoSwap {
             maker_timeout: parsed
                 .maker_timeout_ms
                 .map(std::time::Duration::from_millis),
+            reverse_timeout_headroom: parsed.reverse_timeout_headroom,
         })
         .map_err(hl_err)?;
         Ok(KaleidoSwap {

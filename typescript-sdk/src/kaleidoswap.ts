@@ -92,6 +92,14 @@ export interface KaleidoSwapOptions {
    * bound by hash, so this guards staleness, not price. Default 10 minutes.
    */
   quoteTtlMs?: number;
+  /**
+   * Blocks a reverse swap's lockup must have left before its timeout for
+   * `start` to hand out the invoice: room to confirm, then claim. Defaults
+   * to 12 on Bitcoin and 120 on Liquid, twice the claim path's safety margin;
+   * a smaller value is raised to that margin, since a claim any closer to the
+   * timeout is refused anyway.
+   */
+  reverseTimeoutHeadroom?: { bitcoinBlocks?: number; liquidBlocks?: number };
 }
 
 // ---------------------------------------------------------------------------

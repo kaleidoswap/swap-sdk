@@ -95,6 +95,12 @@ dropped and signed afresh. `SwapFlows` splits `claim` and `refund` into
 `sign_claim` and `sign_refund`, which return a `SignedTx`, plus `broadcast` and
 `tx_seen`.
 
+The headroom a reverse swap's lockup timeout must leave for `start` to hand
+out the invoice can be set per chain with `reverse_timeout_headroom`
+(`reverseTimeoutHeadroom: { bitcoinBlocks?, liquidBlocks? }` in TypeScript) in
+every binding. Each chain defaults to 12 and 120 blocks as before, and a value
+below the claim safety margin (6 and 60) is raised to it.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids

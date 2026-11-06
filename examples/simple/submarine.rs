@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
         fee_sat_per_vb: None,
         quote_ttl: None,
         maker_timeout: None,
+        reverse_timeout_headroom: None,
     })?;
     kaleido.resume().await?; // claims or refunds anything a previous run left behind
 

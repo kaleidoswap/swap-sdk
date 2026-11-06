@@ -13,7 +13,8 @@ use std::sync::Arc;
 
 use kaleidorg_swap_sdk::kaleidoswap::{
     self as core, Amount, Asset, Fees, Limits, Protocol, Quote, QuoteBinding, QuoteRefusalReason,
-    QuoteRequest, Refusal, StartOptions, SwapAction, SwapErrorCode, SwapPhase,
+    QuoteRequest, Refusal, ReverseTimeoutHeadroom, StartOptions, SwapAction, SwapErrorCode,
+    SwapPhase,
 };
 use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
 
@@ -169,6 +170,18 @@ impl From<core::QuoteAnswer> for QuoteAnswer {
 pub struct StartOptions {
     pub destination: Option<String>,
     pub refund_address: Option<String>,
+}
+
+/// Per-chain overrides, in blocks, of the headroom `start` requires of a
+/// reverse swap's lockup timeout. A chain left unset keeps its default (12
+/// on Bitcoin, 120 on Liquid); a value below the claim safety margin (6, 60)
+/// is raised to it.
+#[uniffi::remote(Record)]
+pub struct ReverseTimeoutHeadroom {
+    #[uniffi(default = None)]
+    pub bitcoin_blocks: Option<u32>,
+    #[uniffi(default = None)]
+    pub liquid_blocks: Option<u32>,
 }
 
 #[uniffi::remote(Record)]
@@ -467,6 +480,10 @@ pub struct KaleidoSwapOptions {
     /// Timeout of every request to the maker. Default 30 s.
     #[uniffi(default = None)]
     pub maker_timeout_ms: Option<u64>,
+    /// Blocks a reverse swap's lockup must have left before its timeout for
+    /// `start` to hand out the invoice. Default 12 on Bitcoin, 120 on Liquid.
+    #[uniffi(default = None)]
+    pub reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
 }
 
 #[derive(uniffi::Object)]
@@ -511,6 +528,7 @@ impl KaleidoSwap {
             maker_timeout: options
                 .maker_timeout_ms
                 .map(std::time::Duration::from_millis),
+            reverse_timeout_headroom: options.reverse_timeout_headroom,
         })?;
         Ok(Self { inner })
     }

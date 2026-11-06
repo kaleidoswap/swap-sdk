@@ -7006,6 +7006,12 @@ class KaleidoSwapOptions:
     Timeout of every request to the maker. Default 30 s.
     """
 
+    reverse_timeout_headroom: "typing.Optional[ReverseTimeoutHeadroom]"
+    """
+    Blocks a reverse swap's lockup must have left before its timeout for
+    `start` to hand out the invoice. Default 12 on Bitcoin, 120 on Liquid.
+    """
+
     def __init__(
         self,
         *,
@@ -7019,6 +7025,7 @@ class KaleidoSwapOptions:
         fee_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
         quote_ttl_secs: "typing.Optional[int]" = _DEFAULT,
         maker_timeout_ms: "typing.Optional[int]" = _DEFAULT,
+        reverse_timeout_headroom: "typing.Optional[ReverseTimeoutHeadroom]" = _DEFAULT,
     ):
         self.network = network
         self.store = store
@@ -7051,9 +7058,13 @@ class KaleidoSwapOptions:
             self.maker_timeout_ms = None
         else:
             self.maker_timeout_ms = maker_timeout_ms
+        if reverse_timeout_headroom is _DEFAULT:
+            self.reverse_timeout_headroom = None
+        else:
+            self.reverse_timeout_headroom = reverse_timeout_headroom
 
     def __str__(self):
-        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={}, maker_timeout_ms={})".format(
+        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={}, maker_timeout_ms={}, reverse_timeout_headroom={})".format(
             self.network,
             self.store,
             self.signer,
@@ -7064,6 +7075,7 @@ class KaleidoSwapOptions:
             self.fee_sat_per_vb,
             self.quote_ttl_secs,
             self.maker_timeout_ms,
+            self.reverse_timeout_headroom,
         )
 
     def __eq__(self, other):
@@ -7087,6 +7099,8 @@ class KaleidoSwapOptions:
             return False
         if self.maker_timeout_ms != other.maker_timeout_ms:
             return False
+        if self.reverse_timeout_headroom != other.reverse_timeout_headroom:
+            return False
         return True
 
 
@@ -7104,6 +7118,9 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
             fee_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
             quote_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
             maker_timeout_ms=_UniffiConverterOptionalUInt64.read(buf),
+            reverse_timeout_headroom=_UniffiConverterOptionalTypeReverseTimeoutHeadroom.read(
+                buf
+            ),
         )
 
     @staticmethod
@@ -7118,6 +7135,9 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalDouble.check_lower(value.fee_sat_per_vb)
         _UniffiConverterOptionalUInt64.check_lower(value.quote_ttl_secs)
         _UniffiConverterOptionalUInt64.check_lower(value.maker_timeout_ms)
+        _UniffiConverterOptionalTypeReverseTimeoutHeadroom.check_lower(
+            value.reverse_timeout_headroom
+        )
 
     @staticmethod
     def write(value, buf):
@@ -7131,6 +7151,9 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalDouble.write(value.fee_sat_per_vb, buf)
         _UniffiConverterOptionalUInt64.write(value.quote_ttl_secs, buf)
         _UniffiConverterOptionalUInt64.write(value.maker_timeout_ms, buf)
+        _UniffiConverterOptionalTypeReverseTimeoutHeadroom.write(
+            value.reverse_timeout_headroom, buf
+        )
 
 
 class Leaf:
@@ -8737,6 +8760,64 @@ class _UniffiConverterTypeReverseSwapTxResp(_UniffiConverterRustBuffer):
         _UniffiConverterString.write(value.id, buf)
         _UniffiConverterOptionalString.write(value.hex, buf)
         _UniffiConverterUInt32.write(value.timeout_block_height, buf)
+
+
+class ReverseTimeoutHeadroom:
+    """
+    Per-chain overrides, in blocks, of the headroom `start` requires of a
+    reverse swap's lockup timeout. A chain left unset keeps its default (12
+    on Bitcoin, 120 on Liquid); a value below the claim safety margin (6, 60)
+    is raised to it.
+    """
+
+    bitcoin_blocks: "typing.Optional[int]"
+    liquid_blocks: "typing.Optional[int]"
+
+    def __init__(
+        self,
+        *,
+        bitcoin_blocks: "typing.Optional[int]" = _DEFAULT,
+        liquid_blocks: "typing.Optional[int]" = _DEFAULT,
+    ):
+        if bitcoin_blocks is _DEFAULT:
+            self.bitcoin_blocks = None
+        else:
+            self.bitcoin_blocks = bitcoin_blocks
+        if liquid_blocks is _DEFAULT:
+            self.liquid_blocks = None
+        else:
+            self.liquid_blocks = liquid_blocks
+
+    def __str__(self):
+        return "ReverseTimeoutHeadroom(bitcoin_blocks={}, liquid_blocks={})".format(
+            self.bitcoin_blocks, self.liquid_blocks
+        )
+
+    def __eq__(self, other):
+        if self.bitcoin_blocks != other.bitcoin_blocks:
+            return False
+        if self.liquid_blocks != other.liquid_blocks:
+            return False
+        return True
+
+
+class _UniffiConverterTypeReverseTimeoutHeadroom(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return ReverseTimeoutHeadroom(
+            bitcoin_blocks=_UniffiConverterOptionalUInt32.read(buf),
+            liquid_blocks=_UniffiConverterOptionalUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalUInt32.check_lower(value.bitcoin_blocks)
+        _UniffiConverterOptionalUInt32.check_lower(value.liquid_blocks)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalUInt32.write(value.bitcoin_blocks, buf)
+        _UniffiConverterOptionalUInt32.write(value.liquid_blocks, buf)
 
 
 class RfqAnswer:
@@ -13526,6 +13607,32 @@ class _UniffiConverterOptionalTypeRefusal(_UniffiConverterRustBuffer):
             return None
         elif flag == 1:
             return _UniffiConverterTypeRefusal.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeReverseTimeoutHeadroom(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeReverseTimeoutHeadroom.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeReverseTimeoutHeadroom.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeReverseTimeoutHeadroom.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -19322,6 +19429,7 @@ __all__ = [
     "ReverseLimits",
     "ReversePair",
     "ReverseSwapTxResp",
+    "ReverseTimeoutHeadroom",
     "RfqAnswer",
     "RfqQuote",
     "RfqRefusal",

@@ -344,6 +344,24 @@ test("start: destination and refund address are checked before the maker is cont
   );
 });
 
+test("options: reverseTimeoutHeadroom reaches the core and its keys are checked", async () => {
+  const options = {
+    network: "signet",
+    store: new MemoryStore(),
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+  };
+  const k = await createKaleidoSwap({
+    ...options,
+    reverseTimeoutHeadroom: { bitcoinBlocks: 20, liquidBlocks: 200 },
+  });
+  assert.equal(k.network, "signet");
+  // A misspelled chain is refused rather than silently left at the default.
+  await assert.rejects(
+    createKaleidoSwap({ ...options, reverseTimeoutHeadroom: { liquid: 200 } }),
+  );
+});
+
 test("swap() and resume() on an empty store", async (t) => {
   stubMaker(t);
   const k = await kaleido();

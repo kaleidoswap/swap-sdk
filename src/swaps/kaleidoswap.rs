@@ -967,6 +967,22 @@ pub struct KaleidoSwapOptions {
     pub quote_ttl: Option<Duration>,
     /// Timeout of every request to the maker. Default 30 s.
     pub maker_timeout: Option<Duration>,
+    /// Blocks a reverse swap's lockup must have left before its timeout for
+    /// `start` to hand out the invoice. Default: twice the claim path's
+    /// safety margin, 12 on Bitcoin and 120 on Liquid.
+    pub reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
+}
+
+/// Per-chain overrides of the headroom `start` requires of a reverse swap's
+/// lockup timeout, in blocks. A chain left `None` keeps its default. A value
+/// below the claim path's safety margin ([`crate::swaps::ClaimPolicy`]: 6 on
+/// Bitcoin, 60 on Liquid) is raised to it, since a claim any closer to the
+/// timeout is refused anyway.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReverseTimeoutHeadroom {
+    pub bitcoin_blocks: Option<u32>,
+    pub liquid_blocks: Option<u32>,
 }
 
 pub(crate) struct Env {
@@ -978,6 +994,7 @@ pub(crate) struct Env {
     flows: Arc<dyn SwapFlows>,
     poll_interval: Duration,
     quote_ttl: Duration,
+    reverse_timeout_headroom: ReverseTimeoutHeadroom,
     /// One lock per swap id, shared by every handle this instance gives out
     /// on that id. Held only by live handles: an entry whose handles are all
     /// gone is dropped the next time a lock is handed out.
@@ -1320,13 +1337,21 @@ impl SwapFlows for DefaultFlows {
 /// the claim path's own safety margin, which refuses a claim this close to
 /// the maker's refund ([`crate::swaps::ClaimPolicy`]: 6 on Bitcoin, 60 on
 /// Liquid, roughly an hour each). An invoice whose lockup could not be
-/// claimed in time is never one to pay.
-fn reverse_timeout_headroom(chain: ChainKind) -> u32 {
+/// claimed in time is never one to pay. Twice the margin unless overridden,
+/// and never below the margin itself.
+fn reverse_timeout_headroom(chain: ChainKind, overrides: ReverseTimeoutHeadroom) -> u32 {
     use crate::swaps::ClaimPolicy;
-    match chain {
-        ChainKind::Bitcoin(_) => 2 * ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS,
-        ChainKind::Liquid(_) => 2 * ClaimPolicy::LIQUID_SAFETY_MARGIN_BLOCKS,
-    }
+    let (margin, given) = match chain {
+        ChainKind::Bitcoin(_) => (
+            ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS,
+            overrides.bitcoin_blocks,
+        ),
+        ChainKind::Liquid(_) => (
+            ClaimPolicy::LIQUID_SAFETY_MARGIN_BLOCKS,
+            overrides.liquid_blocks,
+        ),
+    };
+    given.map_or(2 * margin, |blocks| blocks.max(margin))
 }
 
 // ---------------------------------------------------------------------------
@@ -2037,6 +2062,7 @@ impl KaleidoSwap {
                 flows,
                 poll_interval: options.poll_interval.unwrap_or(Duration::from_secs(2)),
                 quote_ttl: options.quote_ttl.unwrap_or(Duration::from_secs(600)),
+                reverse_timeout_headroom: options.reverse_timeout_headroom.unwrap_or_default(),
                 swap_locks: std::sync::Mutex::new(HashMap::new()),
             }),
         }
@@ -2455,7 +2481,7 @@ impl KaleidoSwap {
                         &id,
                     )
                 })?;
-            let headroom = reverse_timeout_headroom(chain);
+            let headroom = reverse_timeout_headroom(chain, self.env.reverse_timeout_headroom);
             r.validate_timeout_headroom(tip, headroom).map_err(|_| {
                 SwapError::for_swap(
                     SwapErrorCode::SwapExpired,
@@ -2965,6 +2991,14 @@ mod tests {
     }
 
     fn harness_with(store: Arc<MemoryStore>, flows: FakeFlows) -> Harness {
+        harness_with_headroom(store, flows, None)
+    }
+
+    fn harness_with_headroom(
+        store: Arc<MemoryStore>,
+        flows: FakeFlows,
+        reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
+    ) -> Harness {
         let maker = Arc::new(FakeMaker::default());
         let flows = Arc::new(flows);
         let kaleido = KaleidoSwap::with_seams(
@@ -2979,6 +3013,7 @@ mod tests {
                 fee_sat_per_vb: None,
                 quote_ttl: None,
                 maker_timeout: None,
+                reverse_timeout_headroom,
             },
             "https://maker.example/v2".into(),
             maker.clone(),
@@ -3399,6 +3434,75 @@ mod tests {
             )
             .await
             .unwrap();
+    }
+
+    #[macros::async_test_all]
+    async fn the_reverse_timeout_headroom_can_be_overridden_down_to_the_claim_margin() {
+        // The fake L-BTC lockup times out at block 200; the default needs 120
+        // blocks left, so a tip of 100 is refused by default.
+        let start_at = |tip: u32, headroom: Option<ReverseTimeoutHeadroom>| async move {
+            let h = harness_with_headroom(
+                Arc::new(MemoryStore::new()),
+                FakeFlows {
+                    tip,
+                    ..Default::default()
+                },
+                headroom,
+            );
+            let q = reverse_quote(&h).await;
+            h.kaleido
+                .start(
+                    &q,
+                    StartOptions {
+                        destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map(|_| ())
+                .map_err(|e| e.code)
+        };
+        assert_eq!(start_at(100, None).await, Err(SwapErrorCode::SwapExpired));
+        let liquid = |blocks| {
+            Some(ReverseTimeoutHeadroom {
+                liquid_blocks: Some(blocks),
+                ..Default::default()
+            })
+        };
+        assert_eq!(start_at(100, liquid(90)).await, Ok(()));
+        assert_eq!(
+            start_at(110, liquid(90)).await,
+            Err(SwapErrorCode::SwapExpired)
+        );
+        // An override for the other chain leaves this one at its default.
+        let bitcoin = Some(ReverseTimeoutHeadroom {
+            bitcoin_blocks: Some(1),
+            ..Default::default()
+        });
+        assert_eq!(
+            start_at(100, bitcoin).await,
+            Err(SwapErrorCode::SwapExpired)
+        );
+        // Below the claim margin (60 on Liquid) is raised to it.
+        assert_eq!(start_at(139, liquid(1)).await, Ok(()));
+        assert_eq!(
+            start_at(140, liquid(1)).await,
+            Err(SwapErrorCode::SwapExpired)
+        );
+
+        use crate::swaps::ClaimPolicy;
+        let bitcoin_chain = ChainKind::Bitcoin(BitcoinChain::BitcoinSignet);
+        assert_eq!(
+            reverse_timeout_headroom(bitcoin_chain, ReverseTimeoutHeadroom::default()),
+            2 * ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS
+        );
+        let wire: ReverseTimeoutHeadroom =
+            serde_json::from_value(serde_json::json!({"liquidBlocks": 90})).unwrap();
+        assert_eq!(wire.liquid_blocks, Some(90));
+        assert!(serde_json::from_value::<ReverseTimeoutHeadroom>(
+            serde_json::json!({"liquid": 90})
+        )
+        .is_err());
     }
 
     #[macros::async_test_all]
