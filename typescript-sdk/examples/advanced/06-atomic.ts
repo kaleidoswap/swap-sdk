@@ -3,17 +3,17 @@
  * HTLC and no refund. The SDK quotes, verifies and tracks; the two signing
  * steps belong to an rgb-lib wallet, so this example hands them over in files:
  *
- *   node examples/06-atomic.ts
+ *   node examples/advanced/06-atomic.ts
  *     Quote and verify. Writes the offer to $ATOMIC_DIR/offer.json and stops.
  *     Feed it to the wallet's accept_swap_offer; save the request.
  *
- *   ATOMIC_SWAP_ID=... node examples/06-atomic.ts request
+ *   ATOMIC_SWAP_ID=... node examples/advanced/06-atomic.ts request
  *     Posts $ATOMIC_DIR/request.json, writes proposal.json. Needs the
  *     wallet's list_unspents output in unspents.json: a proposal that lists
  *     any of those coins as the maker's is refused. Feed proposal.json to
  *     complete_swap_proposal; save the completion.
  *
- *   ATOMIC_SWAP_ID=... node examples/06-atomic.ts complete
+ *   ATOMIC_SWAP_ID=... node examples/advanced/06-atomic.ts complete
  *     Posts $ATOMIC_DIR/completion.json; the maker signs last and broadcasts.
  *     Writes the finalized completion for accept_swap_transfers, then tracks
  *     the swap to a terminal state.

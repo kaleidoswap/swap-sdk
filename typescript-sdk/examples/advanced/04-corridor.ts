@@ -6,7 +6,7 @@
  * Funds nothing. Without ARK_PAYOUT_ADDRESS / ARK_PAYOUT_PUBKEY the maker
  * cannot decode the payout address and refuses, which is the path worth seeing.
  *
- *   node examples/04-corridor.ts
+ *   node examples/advanced/04-corridor.ts
  */
 import { randomBytes } from "node:crypto";
 

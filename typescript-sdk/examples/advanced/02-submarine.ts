@@ -4,7 +4,7 @@
  * prints what to fund and stops.
  *
  *   KALEIDO_SWAP_MNEMONIC="…12 words…" BOLT11_INVOICE="lntbs…" \
- *     node examples/02-submarine.ts [--refund]
+ *     node examples/advanced/02-submarine.ts [--refund]
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
@@ -26,7 +26,7 @@ import {
   waitForStatus,
 } from "./common.ts";
 
-const STATE_DIR = new URL("./swaps/", import.meta.url);
+const STATE_DIR = new URL("../swaps/advanced/", import.meta.url);
 
 async function persist(id: string, record: unknown): Promise<void> {
   await mkdir(STATE_DIR, { recursive: true });
@@ -113,7 +113,7 @@ try {
 
   console.log(`swap id:      ${response.id}`);
   console.log(`swap index:   ${index}  (never reuse it)`);
-  console.log(`saved to:     examples/swaps/${response.id}.json`);
+  console.log(`saved to:     examples/swaps/advanced/${response.id}.json`);
   console.log(
     `\nFund exactly ${response.expectedAmount} sat to:\n  ${response.address}\n`,
   );

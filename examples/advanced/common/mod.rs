@@ -1,3 +1,7 @@
+//! Support shared by the engine-level examples. Each example compiles its own
+//! copy and calls only part of it.
+#![allow(dead_code)]
+
 use std::env;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -8,6 +12,21 @@ use kaleidorg_swap_sdk::error::Error as SdkError;
 use kaleidorg_swap_sdk::network::{LiquidChain, Network};
 use kaleidorg_swap_sdk::util::secrets::SwapMasterKey;
 use kaleidorg_swap_sdk::Keypair;
+
+/// Writes `bytes` readable by the owner only. The state files the examples
+/// keep carry the swap's `swap_auth`, which is issued once and authorizes the
+/// maker's calls for that swap.
+pub fn write_secret(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(bytes))
+        .with_context(|| format!("write {}", path.display()))
+}
 
 pub fn sdk<T>(result: std::result::Result<T, SdkError>, operation: &str) -> Result<T> {
     result.map_err(|error| anyhow!("{operation}: {error}"))
@@ -91,7 +110,6 @@ pub async fn wait_for_status(api: &BoltzApiClientV2, swap_id: &str, target: &str
     }
 }
 
-#[allow(dead_code)] // Shared support is compiled independently for each example.
 pub async fn wait_for_file(path: &Path) -> Result<()> {
     let timeout = Duration::from_secs(optional_u64("KALEIDO_WAIT_TIMEOUT_SECS", 3_600)?);
     let deadline = Instant::now() + timeout;
@@ -102,6 +120,33 @@ pub async fn wait_for_file(path: &Path) -> Result<()> {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
     Ok(())
+}
+
+/// Polls until the swap reaches one of `targets` and returns it, printing each
+/// status change. Unlike [`wait_for_status`], a failure status is an answer
+/// here: a submarine swap that cannot be paid is one to refund.
+pub async fn wait_for_any(
+    api: &BoltzApiClientV2,
+    swap_id: &str,
+    targets: &[&str],
+) -> Result<String> {
+    let timeout = Duration::from_secs(optional_u64("KALEIDO_WAIT_TIMEOUT_SECS", 3_600)?);
+    let deadline = Instant::now() + timeout;
+    let mut previous = String::new();
+    loop {
+        let response = sdk(api.get_swap(swap_id).await, "query swap status")?;
+        if response.status != previous {
+            println!("status: {}", response.status);
+            previous.clone_from(&response.status);
+        }
+        if targets.contains(&response.status.as_str()) {
+            return Ok(response.status);
+        }
+        if Instant::now() >= deadline {
+            bail!("timed out waiting for one of {targets:?}; last status was {previous}");
+        }
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
 }
 
 /// The union of the terminal non-success states of `SubSwapStates` and

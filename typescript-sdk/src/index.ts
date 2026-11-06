@@ -12,7 +12,13 @@ import initWasm, {
   RgbCooperativeRefund as WasmRgbCooperativeRefund,
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
+  KaleidoSwap as WasmKaleidoSwap,
 } from "../vendor/bindings_wasm.js";
+import {
+  makeCreateKaleidoSwap,
+  type SwapSigner,
+  type WasmKaleidoSwapCore,
+} from "./kaleidoswap.js";
 
 /** URL of the packaged WebAssembly binary. */
 export const wasmUrl = new URL(
@@ -1212,6 +1218,44 @@ export class AtomicSwaps {
       });
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// KaleidoSwap — the high-level surface. The state machine is the Rust core's
+// (`kaleidorg_swap_sdk::kaleidoswap`); see ./kaleidoswap.ts for the types.
+// ---------------------------------------------------------------------------
+
+export * from "./kaleidoswap.js";
+
+/**
+ * The high-level entry: `quote`, `start`, `resume` over an injected store and
+ * signer. Runs `init()` itself.
+ */
+export const createKaleidoSwap = makeCreateKaleidoSwap({
+  init: () => init(),
+  KaleidoSwap: WasmKaleidoSwap as unknown as WasmKaleidoSwapCore["KaleidoSwap"],
+});
+
+/** The wasm class behind {@link createKaleidoSwap}, for the Node entry to bind to its own `init`. */
+export const wasmKaleidoSwapClass =
+  WasmKaleidoSwap as unknown as WasmKaleidoSwapCore["KaleidoSwap"];
+
+/**
+ * A {@link SwapSigner} over a swap mnemonic (`SwapMasterKey.fromSwapMnemonic`).
+ * The master key is built on first use, after `init()` has run.
+ */
+export function mnemonicSigner(
+  mnemonic: string,
+  network: Network,
+  passphrase?: string,
+): SwapSigner {
+  let master: SwapMasterKey | undefined;
+  const get = () =>
+    (master ??= SwapMasterKey.fromSwapMnemonic(mnemonic, network, passphrase));
+  return {
+    deriveKey: (index) => get().deriveSwapKey(BigInt(index)),
+    derivePreimage: (index) => get().derivePreimage(BigInt(index)),
+  };
 }
 
 export function toJson(value: unknown, space?: string | number): string {

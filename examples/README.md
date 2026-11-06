@@ -1,22 +1,61 @@
-# L-USDT/BTC swap examples
+# Rust examples
+
+Two folders:
+
+- **`simple/`** uses the high-level `kaleidoswap::KaleidoSwap` surface: you name
+  what you pay and what you receive, and the SDK prices the route, checks the
+  maker's response, persists the swap, and claims or refunds on its own. They
+  run against the signet maker. Start here.
+- **`advanced/`** drives the swap engine step by step: pair cards, create
+  requests, response validation, scripts, claim and refund transactions. Use it
+  when you own those steps yourself, or for a route the high-level surface does
+  not serve yet (L-USDT, the Arkade corridor).
+
+Cargo only discovers top-level examples, so each one is named in `Cargo.toml`
+and run by that name.
+
+## `simple/`
+
+| `cargo run --example` | What it does                                                        | Needs                                                      |
+| --------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `simple_submarine`    | On-chain BTC → a Lightning invoice; refunds on its own if it fails. | `KALEIDO_SWAP_MNEMONIC`, `BOLT11_INVOICE`, `REFUND_ADDRESS` |
+| `simple_reverse`      | A Lightning payment → L-BTC on Liquid; claims on its own.           | `KALEIDO_SWAP_MNEMONIC`, `LIQUID_CLAIM_ADDRESS`             |
+
+Their store, which holds every swap until it ends, is `examples/swaps/simple/`.
+It is gitignored; treat it as secret. It hands out each swap index exactly once,
+so there is no `KALEIDO_SWAP_INDEX` to manage.
+
+## `advanced/`
+
+| `cargo run --example`       | What it does                                                                                 |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| `advanced_submarine`        | On-chain BTC → a Lightning invoice: create, validate, persist, print what to fund, refund if the maker cannot pay. |
+| `advanced_reverse`          | A Lightning payment → on-chain BTC: create, validate, check the timeout, persist, claim on confirmation. |
+| `lusdt_submarine`           | L-USDT on Liquid → a BTC Lightning invoice.                                                  |
+| `lusdt_reverse`             | A BTC Lightning payment → L-USDT on Liquid.                                                  |
+| `corridor_quote`            | The Arkade Intents corridor in both directions: quote, pre-commit gates, track. Funds nothing. |
+| `signet_smoke`              | Live checks against the signet maker: defaults, pairs, chain tip, a validated unfunded create. |
+| `kaleido_attribution_probe` | Checks that a swap created through `KaleidoMakerClient` arrives attributed at the maker.     |
+| `multiout_battletest`       | Reverse-swap claims that pay two outputs. Creates real swaps.                                |
+
+They take the network and maker from `KALEIDO_NETWORK` (default `regtest`) and
+`KALEIDO_MAKER_URL` (default `http://localhost:9001/v2`), and chain access from
+`BITCOIN_ESPLORA_URL` or `LIQUID_ESPLORA_URL`. `advanced_submarine` and
+`advanced_reverse` write each create response to
+`examples/swaps/advanced/<id>.json` before any money moves: it carries the
+`swap_auth` credential, issued once, that a cooperative refund or claim needs.
+
+`corridor_quote` is safe to run as-is against signet: its default inputs are
+undecodable on purpose, so the maker refuses before reserving anything.
+
+## L-USDT/BTC swaps
 
 These examples use the public Rust SDK against a Boltz-compatible KaleidoSwap
 Maker. They validate the server-provided invoice binding, script, address, and
 asset identifiers before asking the user to move funds. Exact amounts are then
 enforced at the funding and claim boundaries.
 
-The directions are:
-
-- `lusdt_submarine`: L-USDT on Liquid to a BTC Lightning invoice.
-- `lusdt_reverse`: a BTC Lightning payment to L-USDT on Liquid.
-- `corridor_quote`: the Arkade Intents corridor (`arkade:BTC <-> lightning:BTC`)
-  in both directions — quote, run the pre-commit gates, track. It funds
-  nothing: finishing a corridor swap needs an Ark wallet, which is the
-  TypeScript `@kaleidorg/swap-sdk/arkade` venue's job. Safe to run as-is
-  against signet (`cargo run --example corridor_quote`): its default inputs are
-  undecodable on purpose, so the maker refuses before reserving anything.
-
-Both examples derive their per-swap key from `SwapMasterKey`. Set
+The engine-level examples derive their per-swap key from `SwapMasterKey`. Set
 `KALEIDO_SWAP_MNEMONIC` to the persisted 12-word **swap mnemonic**, not a
 disposable value. Increment `KALEIDO_SWAP_INDEX` for every new swap. Reusing an
 index reuses claim/refund material and is unsafe.

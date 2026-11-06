@@ -255,6 +255,7 @@ dependencies = [
  "async-trait",
  "bitcoin",
  "elements",
+ "hex",
  "kaleidorg-swap-sdk",
  "serde_json",
  "serial_test",
@@ -267,6 +268,7 @@ dependencies = [
 name = "bindings-wasm"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "js-sys",
  "kaleidorg-swap-sdk",
  "serde",

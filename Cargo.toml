@@ -45,6 +45,50 @@ name = "generate-typescript"
 path = "src/bin/generate_typescript.rs"
 required-features = ["typescript"]
 
+# Examples live in two folders: `simple/` drives the high-level `KaleidoSwap`
+# surface, `advanced/` the swap engine step by step. Cargo only discovers
+# top-level examples, so each is named here.
+
+[[example]]
+name = "simple_submarine"
+path = "examples/simple/submarine.rs"
+
+[[example]]
+name = "simple_reverse"
+path = "examples/simple/reverse.rs"
+
+[[example]]
+name = "advanced_submarine"
+path = "examples/advanced/submarine.rs"
+
+[[example]]
+name = "advanced_reverse"
+path = "examples/advanced/reverse.rs"
+
+[[example]]
+name = "lusdt_submarine"
+path = "examples/advanced/lusdt_submarine.rs"
+
+[[example]]
+name = "lusdt_reverse"
+path = "examples/advanced/lusdt_reverse.rs"
+
+[[example]]
+name = "corridor_quote"
+path = "examples/advanced/corridor_quote.rs"
+
+[[example]]
+name = "signet_smoke"
+path = "examples/advanced/signet_smoke.rs"
+
+[[example]]
+name = "kaleido_attribution_probe"
+path = "examples/advanced/kaleido_attribution_probe.rs"
+
+[[example]]
+name = "multiout_battletest"
+path = "examples/advanced/multiout_battletest.rs"
+
 [workspace]
 members = [
     "bindings",

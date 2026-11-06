@@ -96,6 +96,75 @@ claiming a receive lockup needs an Ark wallet, which is the
 Build that venue's transport from the same maker URL with
 `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
+## High-level API: `KaleidoSwap`
+
+For a swap rather than a protocol. `quote` prices a route, `start` creates the
+swap and returns what to pay or fund, and the swap follows itself to the end;
+`resume` finishes or refunds whatever a previous run left in the store. The
+store and the signer are yours: the SDK holds no key material and never
+funds anything on your behalf.
+
+```rust
+use std::sync::Arc;
+use kaleidorg_swap_sdk::kaleidoswap::*;
+use kaleidorg_swap_sdk::network::Network;
+
+let kaleido = KaleidoSwap::new(KaleidoSwapOptions {
+    network: Network::Signet,
+    store: Arc::new(FileStore::new("swaps")),
+    signer: Arc::new(MnemonicSigner::from_swap_mnemonic(&mnemonic, None, Network::Signet)?),
+    maker_url: None,
+    bitcoin_esplora_url: None,
+    liquid_esplora_url: None,
+    poll_interval: None,
+    fee_sat_per_vb: None,
+    quote_ttl: None,
+    maker_timeout: None,
+})?;
+kaleido.resume().await?;
+
+let quote = kaleido
+    .quote(QuoteRequest {
+        pay: Asset::BtcLightning,
+        receive: Asset::BtcLiquid,
+        amount: Amount::Pay(50_000),
+    })
+    .await?
+    .quote()
+    .map_err(|refusal| refusal.message)?;
+let swap = kaleido
+    .start(&quote, StartOptions { destination: Some(address), refund_address: None })
+    .await?;
+println!("pay {}", swap.action().invoice.unwrap());
+swap.settled().await?;
+```
+
+Both sides are yours to name, each an `Asset`: what it is and where it lives
+(`BtcLightning`, `BtcOnchain`, `BtcLiquid`, `UsdtLiquid`, `BtcArkade`,
+`BtcSpark`, `RgbOnchain { contract_id }`, `RgbLightning { contract_id }`,
+`SparkToken { token_id }`; on the wire `lightning:BTC`, `bitcoin:rgb:…`). The
+protocol follows from the two sides and is reported on the quote, never
+inferred from an address. The amount says what it fixes: `Amount::Pay`,
+`Amount::Receive`, or `Amount::Invoice` for a swap to Lightning. Routes this
+layer does not create swaps for yet (chain swaps, L-USDT, RGB, Arkade, Spark)
+are a `Refusal` whose message names where they live.
+
+The same surface is `KaleidoSwap` in Python and React Native (the store and
+signer are classes you subclass) and `createKaleidoSwap` in TypeScript (plain
+objects). Every binding's examples come in two folders: `simple/` for this
+surface and `advanced/` for the engine underneath, each with a submarine and a
+reverse swap: [`examples/`](examples/README.md) (Rust),
+[`bindings/python/examples/`](bindings/python/README.md#examples) and
+[`typescript-sdk/examples/`](typescript-sdk/examples/README.md). In Python:
+
+```python
+answer = await kaleido.quote(sdk.QuoteRequest(
+    pay=sdk.Asset.BTC_ONCHAIN(),
+    receive=sdk.Asset.BTC_LIGHTNING(),
+    amount=sdk.Amount.INVOICE(invoice),
+))
+```
+
 ## Partner attribution
 
 A partner organization can have the swaps it originates attributed to it, so the
@@ -320,7 +389,7 @@ Native bindings expose the same core constructor as
 ## Bindings
 
 - **Python (UniFFI):** see [`bindings/`](bindings/README.md). Build with
-  `cd bindings && make build-debug`; examples in `bindings/python/examples/`.
+  `cd bindings && make build-debug`; examples in `bindings/python/examples/simple/` and `advanced/`.
 - **Browser/TypeScript (wasm):** `make wasm-pack-build` builds the wasm package
   and vendors it into `typescript-sdk/`. See `typescript-sdk/src/index.ts` for
   the typed surface (`SwapClient`, `SwapScript`, `SwapMasterKey`,
@@ -426,8 +495,8 @@ colors the PSBT and completes its wallet operation after broadcast.
 See [the RGB design and integration status](docs/rgb-swaps-plan.md),
 [Python bindings](bindings/python/README.md#usdt-rgb-swaps) and
 [TypeScript bindings](typescript-sdk/README.md#usdt-rgb-swaps). The
-[Python](bindings/python/examples/rgb_spend.py) and
-[TypeScript](typescript-sdk/examples/05-rgb-spend.ts) examples demonstrate the
+[Python](bindings/python/examples/advanced/rgb_spend.py) and
+[TypeScript](typescript-sdk/examples/advanced/05-rgb-spend.ts) examples demonstrate the
 wallet adapter boundary. Live rgb-lib regtest validation is recorded in [the native example](examples/rgb-regtest/README.md).
 
 ## Atomic BTC <-> USDT-RGB swaps on L1
@@ -481,7 +550,7 @@ The same flow is `kaleidorg_swap_sdk::atomic` with
 `atomic_complete` / `atomic_swap` in Rust, and `SwapClient.get_atomic_pairs` /
 `atomic_quote` / `atomic_request` / `atomic_complete` / `get_atomic_swap` in
 Python. The full walkthrough is
-[`typescript-sdk/examples/06-atomic.ts`](typescript-sdk/examples/06-atomic.ts).
+[`typescript-sdk/examples/advanced/06-atomic.ts`](typescript-sdk/examples/advanced/06-atomic.ts).
 Wallets need an rgb-lib with kaleidoswap/rgb-lib#18. The live signet maker
 ships atomic pairs disabled; use a regtest maker.
 

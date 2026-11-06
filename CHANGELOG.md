@@ -4,10 +4,88 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — `kaleidoswap`, a high-level surface in the Rust core, with Python, React Native and TypeScript bindings
+
+One verb per step — `quote`, `start`, `resume` — for the routes the maker
+serves over Boltz `/v2`: Lightning to on-chain BTC or L-BTC (reverse) and
+on-chain BTC or L-BTC to Lightning (submarine). A quote names both sides,
+`pay` and `receive`, each an `Asset`: what it is and where it lives
+(`lightning:BTC`, `liquid:BTC`, `bitcoin:rgb:<contract>`, `spark:<token>`), so a
+destination on the wrong layer or network is refused locally, and the protocol
+follows from the two sides instead of being inferred. Its `amount` says what
+it fixes: `Pay`, `Receive`, or the `Invoice` a swap to Lightning pays. `quote` answers with a `Quote` or a `Refusal`
+value; `start` creates the swap, verifies the lockup against the caller's own
+key and persists the record, including `swap_auth`, before it returns, and
+never moves funds. Before persisting, it checks the maker's response against
+the quote: the hashlock and invoice against the swap's own preimage, the
+invoice amount against the request, the payout and the lockup amount against
+the quoted terms, and that the pair terms are still the ones quoted. A reverse
+swap's invoice is handed out only when its lockup timeout leaves room to
+confirm and claim (12 blocks on Bitcoin, 120 on Liquid, twice the claim
+safety margin), measured against the configured chain client rather than the
+maker; otherwise `start` fails with `SWAP_EXPIRED`, or `CHAIN_UNREACHABLE` when
+the tip cannot be read. A `Swap` follows one phase machine over every protocol
+(`awaiting_funding → funded → locked → claiming → settled`, with
+`refundable → refunding → refunded` and `failed`), claims or refunds on its
+own as the maker's status moves, and reports every failure as a `SwapError`
+with a code.
+
+The phase machine, the pricing and every check live in the Rust core
+(`kaleidorg_swap_sdk::kaleidoswap`), so each binding inherits the same one.
+Keys and persistence are injected: a `SwapSigner` (`MnemonicSigner` wraps
+`SwapMasterKey`) and a `SwapStore` that also owns the BIP85 index counter. The
+application implements both — foreign traits in Python and React Native, plain
+objects in TypeScript — and records cross the store as JSON. The
+`SwapRecord` the bindings return carries the fields worth showing and not the
+whole document, so the maker's credential reaches a store only through
+`SwapStore.put`. `MemoryStore`
+ships everywhere; `FileStore` keeps one JSON file per swap, owner-readable
+only, refuses ids that are not plain tokens, and never hands out an index
+twice. `resume()` makes one pass over the store at startup and reports what it
+settled, refunded, failed or is still following, and lists any swap it could not
+move with its error — one such swap never stops the others from being resumed.
+Every request to the maker has a timeout (30 s by default, `maker_timeout`), and
+a refund falls back to the script path when the maker will not co-sign.
+A refund this layer broadcast ends the swap as `refunded` once the chain client
+sees it confirmed, since a submarine maker reports no refund status of its own.
+An expired or failed submarine swap is `refundable` when an unspent output pays
+its lockup address, read from the chain client rather than from whether a status
+poll saw the funding; an unreadable chain leaves the swap in flight. `watch` and
+`settled` keep polling through a maker or chain they cannot reach and keep
+retrying a refund that cannot be spent yet, and end on any other error.
+
+Chain swaps, L-USDT, RGB, the Arkade corridor, Spark and pay-through are not
+routed by this layer yet and come back as a `pair_unavailable` refusal that
+names where each one lives. The default Liquid testnet Esplora for this layer is `liquid.network`,
+which does not rate-limit UTXO lookups. Status is polled. `BoltzApiClientV2`
+gains `base_url()`, and `Error` in the Python and React Native bindings gains a
+`Swap` variant carrying the code. Three examples under
+`typescript-sdk/examples/simple/` mirror `advanced/02-submarine.ts` and
+`advanced/03-reverse.ts` in a fraction of the lines, plus a `resume.ts`; the
+same three are in `packages/react-native/examples/simple/`. `resume.ts` exits
+non-zero when a swap ends anywhere but `settled`, and the submarine and reverse
+examples stop when `resume()` could not move a swap.
+
+`start` parses the destination and the refund address, and checks them against
+the configured network, before it contacts the maker. `watch` and `settled`
+keep retrying a refund only while the failure is one waiting can fix, and end
+on one that will fail the same way again.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids
   (`BTC@L1/USDT-RGB@L1`, `USDT-RGB@L1/BTC@L1`).
+- The examples of every binding are split into `simple/`, on the high-level
+  `KaleidoSwap` surface, and `advanced/`, on the swap engine, each with a
+  submarine and a reverse swap. TypeScript's `examples/easy/` is now
+  `examples/simple/` and the numbered examples are under `examples/advanced/`;
+  `npm run typecheck` in `typescript-sdk/examples` now checks both folders. The
+  Python examples move to `bindings/python/examples/advanced/` beside new
+  `simple/submarine.py` and `simple/reverse.py`. The Rust examples move to
+  `examples/advanced/` under their existing `cargo run --example` names, beside
+  new `simple_submarine`, `simple_reverse`, `advanced_submarine` and
+  `advanced_reverse`. Each folder keeps its swap state in its own gitignored
+  `swaps/` subdirectory.
 
 ## [0.13.0] - 2026-10-28
 
