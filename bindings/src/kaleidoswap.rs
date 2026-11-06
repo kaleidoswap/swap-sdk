@@ -175,6 +175,7 @@ pub struct SwapAction {
     pub invoice: Option<String>,
     pub funding_address: Option<String>,
     pub funding_amount: Option<u64>,
+    pub bip21: Option<String>,
     pub zero_conf_limit: Option<u64>,
 }
 

@@ -234,7 +234,16 @@ export interface SwapAction {
   /** Send exactly `fundingAmount` here to fund a swap from an on-chain asset. */
   fundingAddress?: string;
   fundingAmount?: bigint;
-  /** Zero means the maker waits for a confirmation before acting. */
+  /**
+   * The maker's BIP21 URI for the same funding, set only when it names
+   * exactly `fundingAddress` and `fundingAmount` and nothing a wallet could
+   * pay instead.
+   */
+  bip21?: string;
+  /**
+   * The largest lockup the maker accepts unconfirmed. Zero means the maker
+   * waits for a confirmation before acting; absent, that it is not known.
+   */
   zeroConfLimit?: bigint;
 }
 

@@ -2968,7 +2968,7 @@ impl Swap {
         to_js(&self.inner.phase())
     }
 
-    /// `{ invoice?, fundingAddress?, fundingAmount?, zeroConfLimit? }`.
+    /// `{ invoice?, fundingAddress?, fundingAmount?, bip21?, zeroConfLimit? }`.
     #[wasm_bindgen(getter)]
     pub fn action(&self) -> Result<JsValue, JsValue> {
         to_js(&self.inner.action())

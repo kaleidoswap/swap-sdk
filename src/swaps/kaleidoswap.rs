@@ -469,6 +469,11 @@ pub struct SwapState {
     /// `refundable` on expiry.
     #[serde(default)]
     pub funded_seen: bool,
+    /// The largest lockup the maker accepts unconfirmed, as the quote this
+    /// swap was started from carried it. `None` on records written before
+    /// the limit was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zero_conf_limit: Option<u64>,
 }
 
 /// `Network` as the lowercase names every binding uses (`"signet"`), read
@@ -531,7 +536,14 @@ pub struct SwapAction {
     /// Send exactly `funding_amount` here to fund a swap from an on-chain asset.
     pub funding_address: Option<String>,
     pub funding_amount: Option<u64>,
-    /// Zero means the maker waits for a confirmation before acting.
+    /// The maker's BIP21 URI for the same funding: set only when it names
+    /// exactly `funding_address` and `funding_amount` and nothing a wallet
+    /// could pay instead, such as a `lightning` parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bip21: Option<String>,
+    /// The largest lockup the maker accepts unconfirmed. Zero means the
+    /// maker waits for a confirmation before acting; `None` that the limit
+    /// is not known.
     pub zero_conf_limit: Option<u64>,
 }
 
@@ -545,11 +557,75 @@ impl SwapRecord {
             CreateResponse::BoltzSubmarine(r) => SwapAction {
                 funding_address: Some(r.address.clone()),
                 funding_amount: Some(r.expected_amount),
-                zero_conf_limit: if r.accept_zero_conf { None } else { Some(0) },
+                bip21: checked_bip21(&self.from_asset, self.network, r),
+                zero_conf_limit: if r.accept_zero_conf {
+                    self.state.zero_conf_limit
+                } else {
+                    Some(0)
+                },
                 ..Default::default()
             },
         }
     }
+}
+
+/// `value`, a BIP21 `amount` in BTC, in satoshis. More than eight decimals,
+/// a sign or an exponent is not an amount.
+fn btc_decimal_to_sat(value: &str) -> Option<u64> {
+    let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    if (whole.is_empty() && fraction.is_empty())
+        || !digits(whole)
+        || !digits(fraction)
+        || fraction.len() > 8
+    {
+        return None;
+    }
+    let whole: u64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let fraction: u64 = format!("{fraction:0<8}").parse().ok()?;
+    whole.checked_mul(100_000_000)?.checked_add(fraction)
+}
+
+/// The maker's BIP21 for a submarine lockup, when every part of it is one
+/// this layer verified: the scheme of the funding chain, the lockup address
+/// `verify_lockup` rebuilt, the exact lockup amount and, on Liquid, L-BTC.
+/// Labels and messages pass; any other parameter withholds the URI, since a
+/// wallet may act on it instead of the address.
+fn checked_bip21(from: &Asset, network: Network, r: &CreateSubmarineResponse) -> Option<String> {
+    let uri = r.bip21.trim();
+    let (scheme, rest) = uri.split_once(':')?;
+    let scheme_ok = match from {
+        Asset::BtcOnchain => scheme.eq_ignore_ascii_case("bitcoin"),
+        Asset::BtcLiquid => {
+            scheme.eq_ignore_ascii_case("liquidnetwork")
+                || scheme.eq_ignore_ascii_case("liquidtestnet")
+        }
+        _ => false,
+    };
+    let (address, query) = rest.split_once('?').unwrap_or((rest, ""));
+    if !scheme_ok || address != r.address {
+        return None;
+    }
+    let mut amount_ok = false;
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        match key.to_ascii_lowercase().as_str() {
+            "amount" => amount_ok = btc_decimal_to_sat(value) == Some(r.expected_amount),
+            "assetid" if *from == Asset::BtcLiquid => {
+                let lbtc = LiquidChain::from(network).bitcoin().to_string();
+                if !value.eq_ignore_ascii_case(&lbtc) {
+                    return None;
+                }
+            }
+            "label" | "message" => {}
+            _ => return None,
+        }
+    }
+    amount_ok.then(|| uri.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -2082,6 +2158,7 @@ impl KaleidoSwap {
                 claim_txid: None,
                 refund_txid: None,
                 funded_seen: false,
+                zero_conf_limit: (!reverse).then_some(quote.binding.zero_conf_limit),
             },
         };
 
@@ -2280,7 +2357,7 @@ mod tests {
     fn submarine_card() -> SubmarinePair {
         serde_json::from_value(serde_json::json!({
             "hash": "sub-hash", "rate": 1.0,
-            "limits": {"minimal": 10_000, "maximal": 1_000_000, "maximalZeroConf": 0},
+            "limits": {"minimal": 10_000, "maximal": 1_000_000, "maximalZeroConf": 100_000},
             "fees": {"percentage": 0.1, "minerFees": 150},
         }))
         .unwrap()
@@ -2301,6 +2378,10 @@ mod tests {
         reverse_percentage: Mutex<Option<f64>>,
         /// Swap ids whose status the maker cannot give.
         unknown_ids: Mutex<Vec<String>>,
+        /// Whether the submarine create response accepts zero-conf.
+        submarine_zero_conf: Mutex<bool>,
+        /// Overrides the BIP21 the submarine create response carries.
+        submarine_bip21: Mutex<Option<String>>,
     }
 
     impl FakeMaker {
@@ -2363,10 +2444,16 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(serde_json::to_value(req).unwrap());
+            let bip21 = self
+                .submarine_bip21
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| "bitcoin:tb1qlockup?amount=0.000502".into());
             Ok(serde_json::from_value(serde_json::json!({
-                "acceptZeroConf": false,
+                "acceptZeroConf": *self.submarine_zero_conf.lock().unwrap(),
                 "address": "tb1qlockup",
-                "bip21": "bitcoin:tb1qlockup?amount=0.000502",
+                "bip21": bip21,
                 "claimPublicKey":
                     "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
                 "expectedAmount": self.submarine_expected.lock().unwrap().unwrap_or(50_200),
@@ -3232,6 +3319,7 @@ mod tests {
             SwapAction {
                 funding_address: Some("tb1qlockup".into()),
                 funding_amount: Some(50_200),
+                bip21: Some("bitcoin:tb1qlockup?amount=0.000502".into()),
                 zero_conf_limit: Some(0),
                 invoice: None,
             }
@@ -3383,6 +3471,75 @@ mod tests {
         assert_eq!(err.code, SwapErrorCode::ChainUnreachable);
         assert_eq!(swap.phase(), SwapPhase::AwaitingFunding);
         assert!(blind.flows.refund.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn action_carries_the_quoted_zero_conf_limit_when_the_maker_accepts_zero_conf() {
+        let h = harness();
+        *h.maker.submarine_zero_conf.lock().unwrap() = true;
+        let swap = started_submarine(&h).await;
+        assert_eq!(swap.action().zero_conf_limit, Some(100_000));
+        // The limit is part of the stored record, so a resumed handle has it.
+        assert_eq!(
+            h.kaleido
+                .swap(&swap.id())
+                .await
+                .unwrap()
+                .action()
+                .zero_conf_limit,
+            Some(100_000)
+        );
+
+        // A record written before the limit was kept still reads.
+        let mut json = serde_json::to_value(swap.record()).unwrap();
+        json["state"]
+            .as_object_mut()
+            .unwrap()
+            .remove("zeroConfLimit");
+        let old: SwapRecord = serde_json::from_value(json).unwrap();
+        assert_eq!(old.action().zero_conf_limit, None);
+    }
+
+    #[macros::async_test_all]
+    async fn action_passes_on_a_bip21_only_when_it_names_the_verified_funding() {
+        for (bip21, passed) in [
+            ("bitcoin:tb1qlockup?amount=0.000502", true),
+            ("bitcoin:tb1qlockup?amount=0.000502&label=swap", true),
+            ("BITCOIN:tb1qlockup?amount=.000502", true),
+            ("bitcoin:tb1qlockup?amount=0.0005021", false),
+            ("bitcoin:tb1qlockup?amount=0.000503", false),
+            ("bitcoin:tb1qlockup", false),
+            ("bitcoin:tb1qother?amount=0.000502", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&lightning=lntbs1", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&req-x=1", false),
+            ("liquidtestnet:tb1qlockup?amount=0.000502", false),
+            ("bitcoin:tb1qlockup?amount=5.02e-4", false),
+            ("", false),
+        ] {
+            let h = harness();
+            *h.maker.submarine_bip21.lock().unwrap() = Some(bip21.into());
+            let swap = started_submarine(&h).await;
+            assert_eq!(swap.action().bip21.is_some(), passed, "{bip21}");
+        }
+        // On Liquid the asset, when named, has to be L-BTC.
+        let CreateResponse::BoltzSubmarine(mut r) =
+            started_submarine(&harness()).await.record().state.response
+        else {
+            unreachable!()
+        };
+        let lbtc = LiquidChain::from(Network::Signet).bitcoin().to_string();
+        r.bip21 = format!("liquidtestnet:tb1qlockup?amount=0.000502&assetid={lbtc}");
+        assert!(checked_bip21(&Asset::BtcLiquid, Network::Signet, &r).is_some());
+        r.bip21 = format!(
+            "liquidtestnet:tb1qlockup?amount=0.000502&assetid={}",
+            "ab".repeat(32)
+        );
+        assert!(checked_bip21(&Asset::BtcLiquid, Network::Signet, &r).is_none());
+
+        assert_eq!(btc_decimal_to_sat("1"), Some(100_000_000));
+        assert_eq!(btc_decimal_to_sat("0.00000001"), Some(1));
+        assert_eq!(btc_decimal_to_sat("."), None);
+        assert_eq!(btc_decimal_to_sat("-1"), None);
     }
 
     #[macros::async_test_all]

@@ -71,6 +71,12 @@ the configured network, before it contacts the maker. `watch` and `settled`
 keep retrying a refund only while the failure is one waiting can fix, and end
 on one that will fail the same way again.
 
+`Swap::action()` keeps the zero-conf limit the quote carried when the maker
+accepts unconfirmed funding, and offers the maker's BIP21 URI as `bip21` only
+when it names exactly the verified lockup address and amount (and L-BTC on
+Liquid) with no other parameter, such as `lightning`, that a wallet could act
+on instead.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids
