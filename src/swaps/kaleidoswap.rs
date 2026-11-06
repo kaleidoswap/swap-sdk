@@ -13,9 +13,12 @@
 //! [`SwapFlows`], so the phase machine is tested without a network and every
 //! binding inherits the same one.
 
+use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
+
+use futures_util::lock::Mutex as AsyncMutex;
 
 use bitcoin::secp256k1::Keypair;
 use serde::{Deserialize, Serialize};
@@ -945,6 +948,25 @@ pub(crate) struct Env {
     flows: Arc<dyn SwapFlows>,
     poll_interval: Duration,
     quote_ttl: Duration,
+    /// One lock per swap id, shared by every handle this instance gives out
+    /// on that id. Held only by live handles: an entry whose handles are all
+    /// gone is dropped the next time a lock is handed out.
+    swap_locks: std::sync::Mutex<HashMap<String, Weak<AsyncMutex<()>>>>,
+}
+
+impl Env {
+    /// The lock every handle on swap `id` shares, so a tick or a refund on
+    /// one waits for any other in flight on the same swap.
+    fn swap_lock(&self, id: &str) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.swap_locks.lock().unwrap();
+        if let Some(lock) = locks.get(id).and_then(Weak::upgrade) {
+            return lock;
+        }
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        let lock = Arc::new(AsyncMutex::new(()));
+        locks.insert(id.to_string(), Arc::downgrade(&lock));
+        lock
+    }
 }
 
 /// The default chain endpoints per network. Signet settles on Mutinynet, so
@@ -1412,8 +1434,15 @@ fn refund_error_is_transient(error: &Error) -> bool {
 
 /// A handle over one record. Drive it with [`Swap::tick`] for one observation,
 /// [`Swap::watch`] to follow it to the end, or [`Swap::settled`] to wait.
+///
+/// Every handle one [`KaleidoSwap`] gives out on the same id — from `start`,
+/// `swap` or `resume` — shares one lock: a tick or refund waits for any other
+/// in flight on that swap, then reloads the record from the store before it
+/// acts, so it sees a claim or refund another handle already recorded.
+/// Separate instances over one store do not share it.
 pub struct Swap {
     env: Arc<Env>,
+    lock: Arc<AsyncMutex<()>>,
     current: std::sync::Mutex<SwapRecord>,
     /// Phase changes since the last drain, so a watcher sees every step a
     /// single `tick` took, not only where it ended.
@@ -1438,6 +1467,7 @@ impl fmt::Debug for Swap {
 impl Swap {
     fn new(env: Arc<Env>, record: SwapRecord) -> Self {
         Self {
+            lock: env.swap_lock(&record.id),
             env,
             current: std::sync::Mutex::new(record),
             transitions: std::sync::Mutex::new(vec![]),
@@ -1488,6 +1518,22 @@ impl Swap {
         Ok(next)
     }
 
+    /// Takes up what another handle on this swap persisted since this one
+    /// last looked. Called with the swap's lock held; the store is the
+    /// record of truth, since every change lands there first.
+    async fn reload(&self) -> Result<(), SwapError> {
+        let id = self.id();
+        let Some(stored) = self.env.store.get(&id).await? else {
+            return Ok(());
+        };
+        let mut current = self.current.lock().unwrap();
+        if stored.phase != current.phase {
+            self.transitions.lock().unwrap().push(stored.phase);
+        }
+        *current = stored;
+        Ok(())
+    }
+
     async fn keys(&self) -> Result<(Keypair, Preimage), SwapError> {
         let index = self.record().state.swap_index;
         let keys = self.env.signer.derive_key(index).await?;
@@ -1499,6 +1545,12 @@ impl Swap {
     /// Returns once that action's broadcast is recorded; the maker's own
     /// progress past it shows up on the next tick.
     pub async fn tick(&self) -> Result<SwapRecord, SwapError> {
+        let _held = self.lock.lock().await;
+        self.reload().await?;
+        self.tick_locked().await
+    }
+
+    async fn tick_locked(&self) -> Result<SwapRecord, SwapError> {
         let before = self.record();
         if before.phase.is_terminal() {
             return Ok(before);
@@ -1642,6 +1694,8 @@ impl Swap {
     /// Unwinds a `Refundable` swap. The driver does this on its own; it is
     /// here for a caller who wants to decide.
     pub async fn refund(&self) -> Result<SwapRecord, SwapError> {
+        let _held = self.lock.lock().await;
+        self.reload().await?;
         let record = self.record();
         if record.state.refund_txid.is_some() {
             return Ok(record);
@@ -1815,6 +1869,7 @@ impl KaleidoSwap {
                 flows,
                 poll_interval: options.poll_interval.unwrap_or(Duration::from_secs(2)),
                 quote_ttl: options.quote_ttl.unwrap_or(Duration::from_secs(600)),
+                swap_locks: std::sync::Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -2579,6 +2634,25 @@ mod tests {
         keys.public_key().to_string()
     }
 
+    /// Pending once, then ready: lets two futures polled together
+    /// interleave at the chain step, as a real broadcast would.
+    struct YieldOnce(bool);
+
+    impl std::future::Future for YieldOnce {
+        type Output = ();
+        fn poll(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<()> {
+            if self.0 {
+                return std::task::Poll::Ready(());
+            }
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        }
+    }
+
     #[macros::async_trait]
     impl SwapFlows for FakeFlows {
         fn verify_lockup(
@@ -2602,6 +2676,7 @@ mod tests {
             keys: &Keypair,
             _preimage: &Preimage,
         ) -> Result<String, Error> {
+            YieldOnce(false).await;
             self.claim
                 .lock()
                 .unwrap()
@@ -2609,6 +2684,7 @@ mod tests {
             Ok("claim-txid".into())
         }
         async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error> {
+            YieldOnce(false).await;
             {
                 let mut failures = self.refund_failures.lock().unwrap();
                 if *failures > 0 {
@@ -3735,6 +3811,70 @@ mod tests {
 
         let quiet = third.kaleido.resume().await.unwrap();
         assert!(quiet.resumed.is_empty() && quiet.settled.is_empty() && quiet.errors.is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn handles_on_one_swap_take_turns_and_claim_once() {
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        let first = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let second = h.kaleido.swap(&first.id()).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        let (a, b) = futures_util::future::join(first.tick(), second.tick()).await;
+        a.unwrap();
+        b.unwrap();
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1, "claimed once");
+        assert_eq!(first.phase(), SwapPhase::Claiming);
+        assert_eq!(second.phase(), SwapPhase::Claiming);
+        assert_eq!(
+            second.record().state.claim_txid.as_deref(),
+            Some("claim-txid")
+        );
+
+        // A handle that sat out the claim takes it up on its next tick and
+        // reports the move to its own watcher.
+        let third = h.kaleido.swap(&first.id()).await.unwrap();
+        first.tick().await.unwrap();
+        third.tick().await.unwrap();
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1);
+    }
+
+    #[macros::async_test_all]
+    async fn handles_on_one_swap_refund_once() {
+        let h = harness();
+        let first = started_submarine(&h).await;
+        let second = h.kaleido.swap(&first.id()).await.unwrap();
+        h.maker.script(&["invoice.failedToPay"]);
+        let (a, b) = futures_util::future::join(first.tick(), second.tick()).await;
+        a.unwrap();
+        b.unwrap();
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1, "refunded once");
+        assert_eq!(second.phase(), SwapPhase::Refunding);
+        // An explicit refund on a handle that has not ticked since does not
+        // sign another.
+        let stale = h.kaleido.swap(&first.id()).await.unwrap();
+        let (c, d) = futures_util::future::join(first.refund(), stale.refund()).await;
+        c.unwrap();
+        d.unwrap();
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
+
+        // A lock lives as long as the last handle on its swap.
+        drop((first, second, stale));
+        let held = |id: &str| h.kaleido.env.swap_locks.lock().unwrap()[id].strong_count();
+        assert_eq!(held("sub-1"), 0);
+        let again = h.kaleido.swap("sub-1").await.unwrap();
+        assert_eq!(held("sub-1"), 1);
+        drop(again);
     }
 
     #[macros::async_test_all]

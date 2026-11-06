@@ -82,6 +82,11 @@ and `start` refuse an expired invoice with the new `INVOICE_EXPIRED` code
 before the maker is contacted, and a quote priced against an invoice expires no
 later than the invoice does.
 
+Every `Swap` handle one `KaleidoSwap` gives out on the same id — from `start`,
+`swap` or `resume` — shares a lock: `tick` and `refund` wait for any other in
+flight on that swap and reload the record from the store before acting, so two
+handles never both claim or both refund.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids
