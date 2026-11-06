@@ -71,6 +71,7 @@
     "prepack": "node scripts/validate-package.mjs",
     "prepare": "bob build",
     "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc --noEmit -p tsconfig.examples.json",
     "test": "node --test test/*.test.mjs",
     "clean": "del-cli android/generated ios/generated lib",
     "ubrn:clean": "rm -rf cpp/ android/CMakeLists.txt android/src/main/java android/*.cpp ios/ src/Native* src/index.ts src/index.tsx src/generated/",

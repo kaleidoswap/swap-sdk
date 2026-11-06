@@ -86,6 +86,16 @@ on one that will fail the same way again.
   new `simple_submarine`, `simple_reverse`, `advanced_submarine` and
   `advanced_reverse`. Each folder keeps its swap state in its own gitignored
   `swaps/` subdirectory.
+- The Python, TypeScript and React Native READMEs document the high-level
+  surface in each binding's own syntax: constructing it with a store and a
+  signer, `resume()`, `quote` with the `Asset` values and which `Amount` kind
+  prices which route, handling a refusal, `start`, the swap's action, following
+  it to the end, and the phases. The React Native README notes that a
+  JavaScript `SwapStore`, `SwapSigner` or phase listener is a foreign-trait
+  callback that has not been run on a device yet.
+- `npm run typecheck:examples` in `packages/react-native` type-checks the React
+  Native examples against the generated module, and the React Native build in
+  CI runs it after generating the module.
 
 ## [0.13.0] - 2026-10-28
 

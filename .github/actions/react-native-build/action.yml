@@ -86,6 +86,11 @@ runs:
       working-directory: packages/react-native
       run: npm run typecheck
 
+    - name: Type-check the examples against the generated module
+      shell: bash
+      working-directory: packages/react-native
+      run: npm run typecheck:examples
+
     - name: Compress the native archives
       shell: bash
       working-directory: packages/react-native

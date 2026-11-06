@@ -25,15 +25,151 @@ const pairs = await client.submarinePairs();
 ```
 
 `"signet"` reaches the live KaleidoSwap maker, so the snippet above runs as
-written. [`examples/`](examples/README.md) carries that further: four runnable
-programs, two of which need nothing but Node.
+written. [`examples/`](examples/README.md) carries that further: runnable
+programs for the high-level surface below (`simple/`) and for the engine
+(`advanced/`).
 
 ```sh
-cd examples && npm install && node 01-pairs.ts
+npm install && npm run build   # the examples import this build
+cd examples && npm install && node advanced/01-pairs.ts
 ```
 
 `"regtest"` resolves to `http://localhost:9001/v2` and needs this
 repository's local harness.
+
+## High-level API: `createKaleidoSwap`
+
+For a swap rather than a protocol. `quote` prices a route, `start` creates the
+swap and returns what to pay or fund, and the swap handle follows it to the
+end, claiming or refunding on its own; `resume` finishes or refunds whatever a
+previous run left in the store. The store and the signer are yours: the SDK
+holds no key material and never funds anything on your behalf.
+[`examples/simple/`](examples/README.md) has a submarine swap, a reverse swap
+and a resume.
+
+```ts
+import {
+  createKaleidoSwap,
+  FileStore,
+  mnemonicSigner,
+} from "@kaleidorg/swap-sdk";
+
+const kaleido = await createKaleidoSwap({
+  network: "signet",
+  store: new FileStore("./swaps/"),
+  signer: mnemonicSigner(swapMnemonic, "signet"),
+});
+const report = await kaleido.resume();
+```
+
+`createKaleidoSwap` runs `init()` itself. `FileStore` (Node entry only) keeps
+one JSON file per swap and hands out each swap index exactly once;
+`MemoryStore` keeps nothing past the process. In a browser, or to keep swaps
+in your own database, pass any object with `get`, `put`, `list` and
+`nextIndex`: the `SwapStore` interface, whose methods may return a value or a
+promise. Records are plain JSON-compatible objects; persist them verbatim.
+They carry the maker's `swapAuth` and the material a refund needs, so treat
+the store as secret. A wallet that keeps its seed elsewhere implements
+`SwapSigner` (`deriveKey`, `derivePreimage`) instead of `mnemonicSigner`.
+
+**Resume at startup.** `resume()` claims or refunds every swap the store still
+holds and returns a `ResumeReport`: `resumed` (the `Swap`s still in flight),
+`settled`, `refunded`, `failed`, and `errors`, the swaps it could not move this
+pass, each with an `id`, a `code` and a `message`. Those stay in the store for
+the next `resume()`.
+
+### Quote
+
+Both sides are yours to name, each an `Asset` string: `<layer>:<asset>`.
+`"bitcoin:BTC"`, `"lightning:BTC"`, `"liquid:BTC"`, `"liquid:USDT"`,
+`"arkade:BTC"`, `"spark:BTC"`, and RGB contracts and Spark tokens by id
+(`"bitcoin:rgb:…"`, `"lightning:rgb:…"`, `"spark:btkn…"`). The protocol follows
+from the two sides and is reported on the quote, never inferred from an
+address. The amount says what it fixes, and each route is priced by one kind:
+
+| Route                                           | Protocol          | `amount`                                                           |
+| ----------------------------------------------- | ----------------- | ------------------------------------------------------------------ |
+| `lightning:BTC` → `bitcoin:BTC` or `liquid:BTC` | reverse (Boltz)   | `{ pay: sats }` (what you pay) or `{ receive: sats }` (what lands) |
+| `bitcoin:BTC` or `liquid:BTC` → `lightning:BTC` | submarine (Boltz) | `{ invoice: bolt11 }`: the invoice the maker pays                  |
+
+Sats are a `bigint`, a safe-integer `number`, or a decimal string. The wrong
+kind for a route rejects with a `SwapError` (`INVALID_AMOUNT` or
+`INVALID_DESTINATION`) before anything is sent.
+
+```ts
+import { isQuote } from "@kaleidorg/swap-sdk";
+
+const answer = await kaleido.quote({
+  pay: "lightning:BTC",
+  receive: "liquid:BTC",
+  amount: { pay: 50_000 },
+});
+if (!isQuote(answer)) throw new Error(`${answer.reason}: ${answer.message}`);
+console.log(answer.protocol, answer.fromAmount, answer.toAmount, answer.fees);
+```
+
+`quote()` resolves to a `Quote` or a `Refusal`, told apart by `kind` or
+`isQuote`. A refusal is a value, not an error: the maker will not trade this
+pair or this amount. `reason` is one of `"pair_unavailable"`,
+`"amount_below_min"`, `"amount_above_max"`, `"no_liquidity"` and
+`"maker_paused"`, `limits` carries the bounds when the amount was the problem,
+and `message` says why. Routes this layer does not create swaps for yet (chain
+swaps, L-USDT, RGB, Arkade, Spark) are a `"pair_unavailable"` refusal whose
+message names where they live.
+
+### Start, act, watch
+
+```ts
+import { isSwapError } from "@kaleidorg/swap-sdk";
+
+const swap = await kaleido.start(answer, { destination: liquidAddress });
+console.log(`pay ${swap.action.invoice}`);
+
+try {
+  for await (const phase of swap.phases()) console.log(phase);
+  if (swap.phase !== "settled")
+    throw new Error(`swap ${swap.id} ended ${swap.phase}`);
+} catch (error) {
+  if (isSwapError(error)) console.error(error.code, error.message);
+  else throw error;
+}
+```
+
+- `start(quote, { destination, refundAddress })` creates the swap and persists
+  it before resolving. `destination` is the address the received asset lands
+  on, checked against the asset and the network first; leave it out for a swap
+  priced by an invoice, which is its own destination. `refundAddress` is
+  required when you pay from chain and ignored when you pay over Lightning.
+- `swap.action` (a property) is what you do: pay `invoice` for a swap from
+  Lightning, or send exactly `fundingAmount` sats to `fundingAddress` for a
+  swap from chain. That is the only step that is yours; the claim and the
+  refund are the SDK's.
+- `swap.phases(signal?)` follows the swap to the end, claiming or refunding as
+  the maker and the chain move, and yields every phase change. It ends on any
+  terminal phase, so check `swap.phase` afterwards. `swap.settled(signal?)`
+  resolves with the `SwapRecord` on `settled` and rejects with a `SwapError`
+  on `refunded` or `failed`. Aborting either rejects with `ABORTED`; the swap
+  stays in the store and is resumable. A swap moves only while something
+  follows it (or `resume()` runs), so keep following it until it ends, and
+  resume at the next start if the process stops first.
+- `swap.id`, `swap.phase`, `swap.record()` and `kaleido.swap(id)` read state
+  without waiting.
+
+### Phases
+
+Every protocol moves through one `SwapPhase` machine. The protocol's own status
+stays readable as `swap.record().rawStatus`.
+
+```
+created ─▶ awaiting_funding ─▶ funded ─▶ locked ─▶ claiming ─▶ settled
+                                           │
+                                           ├─▶ refundable ─▶ refunding ─▶ refunded
+                                           └─▶ failed
+```
+
+`settled`, `refunded` and `failed` are terminal (`TERMINAL_PHASES`). A swap
+that becomes `refundable` is refunded by the SDK on its own, cooperatively or
+after the timeout; `swap.refund()` is there for a caller who wants to decide.
 
 ## Lightning addresses and LNURL-pay
 

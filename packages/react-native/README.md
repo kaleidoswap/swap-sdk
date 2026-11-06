@@ -93,13 +93,179 @@ server-side configuration. The browser SDK offers `createKaleidoOrgClient` for
 the same purpose. Its secret-key factory, `forKaleidoMaker`, requires an explicit
 `allowBrowser: true` override in a page, worker or extension.
 
-## Swaps in three calls
+## High-level API: `KaleidoSwap`
 
-`KaleidoSwap` is the high-level surface: `quote`, `start`, `resume`. It prices
-the route, checks the maker's response, persists the swap and claims or refunds
-on its own, with a `FileStore` or your own `SwapStore` and a `MnemonicSigner`
-or your own `SwapSigner`. See [`examples/`](examples/) for a submarine swap, a
-reverse swap and a resume at launch.
+For a swap rather than a protocol. `quote` prices a route, `start` creates the
+swap and returns what to pay or fund, and `watch` follows the swap to the end,
+claiming or refunding on its own; `resume` finishes or refunds whatever a
+previous run left in the store. The store and the signer are yours: the SDK
+holds no key material and never funds anything on your behalf.
+[`examples/`](examples/) has a submarine swap, a reverse swap and a resume at
+launch.
+
+```ts
+import {
+  FileStore,
+  KaleidoSwap,
+  KaleidoSwapOptions,
+  MnemonicSigner,
+  Network,
+} from "@kaleidorg/swap-sdk-react-native";
+
+const kaleido = new KaleidoSwap(
+  KaleidoSwapOptions.create({
+    network: Network.Signet,
+    store: new FileStore(`${RNFS.DocumentDirectoryPath}/swaps`),
+    signer: new MnemonicSigner(swapMnemonic, undefined, Network.Signet),
+  }),
+);
+const report = await kaleido.resume();
+```
+
+`FileStore` keeps one JSON file per swap, owner-readable only, and hands out
+each swap index exactly once; `MemoryStore` keeps nothing past the process.
+Keep the directory inside the app's private storage and the swap mnemonic in
+the Keychain or Keystore: records carry the maker's `swapAuth` and the material
+a refund needs.
+
+To keep swaps in your own storage or derive keys from your own wallet, pass any
+object that implements the `SwapStore` interface (`get`, `put`, `list`,
+`nextIndex`, records as JSON strings persisted verbatim) or `SwapSigner`
+(`deriveKey`, `derivePreimage`, hex out). These are **synchronous**: the native
+side calls them and waits for the return value, so they cannot return a
+promise.
+
+> **Not yet run on a device.** A JavaScript `SwapStore`, `SwapSigner` and the
+> `PhaseListener` passed to `watch` are UniFFI foreign-trait callbacks: native
+> code calls back into Hermes. The examples type-check against the generated
+> module, and the bindings tests drive a foreign store and signer from Python,
+> but the JavaScript callbacks have not been run on an iOS or Android device
+> yet. `FileStore` and `MnemonicSigner`
+> are Rust and do not cross back into JavaScript. Test your app's swap flow on
+> signet on real hardware before you ship it.
+
+**Resume at launch.** A swap has a deadline and a phone does not stay awake.
+`resume()` claims or refunds every swap the store still holds and returns a
+`ResumeReport`: `resumed` (the `Swap`s still in flight), `settled`, `refunded`,
+`failed`, and `errors`, the swaps it could not move this pass, each with an
+`id`, a `code` and a `message`. Those stay in the store for the next `resume()`.
+
+### Quote
+
+Both sides are yours to name, each an `Asset`: what it is and where it lives.
+
+| `Asset`                                  | On the wire       |
+| ---------------------------------------- | ----------------- |
+| `new Asset.BtcOnchain()`                 | `bitcoin:BTC`     |
+| `new Asset.BtcLightning()`               | `lightning:BTC`   |
+| `new Asset.BtcLiquid()`                  | `liquid:BTC`      |
+| `new Asset.UsdtLiquid()`                 | `liquid:USDT`     |
+| `new Asset.BtcArkade()`                  | `arkade:BTC`      |
+| `new Asset.BtcSpark()`                   | `spark:BTC`       |
+| `new Asset.RgbOnchain({ contractId })`   | `bitcoin:rgb:…`   |
+| `new Asset.RgbLightning({ contractId })` | `lightning:rgb:…` |
+| `new Asset.SparkToken({ tokenId })`      | `spark:btkn…`     |
+
+The protocol follows from the two sides and is reported on the quote, never
+inferred from an address. The amount says what it fixes, in sats as a
+`bigint`, and each route is priced by one kind:
+
+| Route                                        | Protocol          | `Amount`                                                                         |
+| -------------------------------------------- | ----------------- | -------------------------------------------------------------------------------- |
+| `BtcLightning` → `BtcOnchain` or `BtcLiquid` | reverse (Boltz)   | `new Amount.Pay(sats)` (what you pay) or `new Amount.Receive(sats)` (what lands) |
+| `BtcOnchain` or `BtcLiquid` → `BtcLightning` | submarine (Boltz) | `new Amount.Invoice(bolt11)`: the invoice the maker pays                         |
+
+The wrong kind for a route rejects with `Exception.Swap` (`InvalidAmount` or
+`InvalidDestination`) before anything is sent.
+
+```ts
+import {
+  Amount,
+  Asset,
+  QuoteRefusalReason,
+} from "@kaleidorg/swap-sdk-react-native";
+
+const { quote, refusal } = await kaleido.quote({
+  pay: new Asset.BtcLightning(),
+  receive: new Asset.BtcLiquid(),
+  amount: new Amount.Pay(50_000n),
+});
+if (!quote) {
+  throw new Error(
+    `${QuoteRefusalReason[refusal!.reason]}: ${refusal!.message}`,
+  );
+}
+console.log(
+  quote.fromAmount,
+  quote.toAmount,
+  quote.fees.maker,
+  quote.fees.miner,
+);
+```
+
+`quote()` resolves to a `QuoteAnswer` with exactly one of `quote` and `refusal`
+set. A refusal is a value, not an error: the maker will not trade this pair or
+this amount. `reason` is a `QuoteRefusalReason` (`PairUnavailable`,
+`AmountBelowMin`, `AmountAboveMax`, `NoLiquidity`, `MakerPaused`), `limits`
+carries the bounds when the amount was the problem, and `message` says why.
+Routes this layer does not create swaps for yet (chain swaps, L-USDT, RGB,
+Arkade, Spark) are a `PairUnavailable` refusal whose message names where they
+live.
+
+### Start, act, watch
+
+```ts
+import { Exception, SwapPhase } from "@kaleidorg/swap-sdk-react-native";
+
+const swap = await kaleido.start(quote, {
+  destination: liquidAddress,
+  refundAddress: undefined,
+});
+const { invoice, fundingAddress, fundingAmount } = swap.action();
+
+try {
+  await swap.watch({ onPhase: (phase) => setPhase(SwapPhase[phase]) });
+} catch (e) {
+  if (Exception.Swap.instanceOf(e)) showError(e.inner.code, e.inner.message);
+  else throw e;
+}
+```
+
+- `start(quote, { destination, refundAddress })` creates the swap and persists
+  it before resolving. `destination` is the address the received asset lands
+  on, checked against the asset and the network first; leave it `undefined`
+  for a swap priced by an invoice, which is its own destination.
+  `refundAddress` is required when you pay from chain and ignored when you pay
+  over Lightning.
+- `swap.action()` is what the user does: pay `invoice` for a swap from
+  Lightning, or send exactly `fundingAmount` sats to `fundingAddress` for a
+  swap from chain. That is the only step that is theirs; the claim and the
+  refund are the SDK's.
+- `swap.watch({ onPhase })` follows the swap to the end, claiming or refunding
+  as the maker and the chain move, calls `onPhase` on every change, and
+  resolves with the `SwapRecord` on `Settled`. On `Refunded` or `Failed` it
+  rejects with `Exception.Swap`. `swap.settled()` is the same without a
+  listener. A swap moves only while something watches it (or `resume()`
+  runs), which on a phone means while the app is in the foreground: call
+  `resume()` at every launch.
+- `swap.phase()`, `swap.record()` and `kaleido.swap(id)` read state without
+  waiting; `swap.tick()` makes one observation and acts on it.
+
+### Phases
+
+Every protocol moves through one `SwapPhase` machine. The protocol's own status
+stays readable as `swap.record().rawStatus`.
+
+```
+Created ─▶ AwaitingFunding ─▶ Funded ─▶ Locked ─▶ Claiming ─▶ Settled
+                                          │
+                                          ├─▶ Refundable ─▶ Refunding ─▶ Refunded
+                                          └─▶ Failed
+```
+
+`Settled`, `Refunded` and `Failed` are terminal. A swap that becomes
+`Refundable` is refunded by the SDK on its own, cooperatively or after the
+timeout; `swap.refund()` is there for a caller who wants to decide.
 
 ## Mobile-specific notes
 
