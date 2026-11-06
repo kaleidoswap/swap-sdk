@@ -12,6 +12,167 @@ Python 3.10+ is supported. Prebuilt wheels cover Linux x86_64/aarch64, macOS
 x86_64/arm64, and Windows x86_64; other platforms build the published source
 distribution and need a Rust 1.88+ toolchain.
 
+## High-level API: `KaleidoSwap`
+
+For a swap rather than a protocol. `quote` prices a route, `start` creates the
+swap and returns what to pay or fund, and `watch` follows the swap to the end,
+claiming or refunding on its own; `resume` finishes or refunds whatever a
+previous run left in the store. The store and the signer are yours: the SDK
+holds no key material and never funds anything on your behalf.
+
+```python
+import kaleidorg_swap_sdk as sdk
+
+network = sdk.Network.SIGNET
+# One FileStore and one KaleidoSwap per store directory per process.
+kaleido = sdk.KaleidoSwap(sdk.KaleidoSwapOptions(
+    network=network,
+    store=sdk.FileStore(store_dir),
+    signer=sdk.MnemonicSigner(swap_mnemonic, None, network),
+))
+report = await kaleido.resume()
+```
+
+`FileStore` keeps one JSON file per swap, owner-readable only. Give it a
+directory under your application's data directory, outside any source tree and
+out of version control. `MemoryStore` keeps nothing past the process: use it in
+tests only, never for a swap you fund. Both implement `sdk.SwapStore`, and
+`MnemonicSigner` implements `sdk.SwapSigner`: subclass either to keep swaps in
+your own database or derive keys from your own wallet. Records cross
+`SwapStore` as JSON strings; persist them verbatim. They carry the maker's
+`swap_auth` and the material a refund needs, so treat the store as secret and
+do not log records or send them to telemetry.
+
+**Store rules.**
+
+- A store belongs to exactly one swap mnemonic.
+- Use one `FileStore` and one `KaleidoSwap` per store directory per process.
+- Never reset, copy or restore a store from an older backup while its swap
+  mnemonic is in use.
+- If a store is lost, start a new swap mnemonic.
+
+A `SwapStore` subclass follows the same rules, and:
+
+- `put` does not return until the record is durably stored.
+- `next_index` persists the advanced counter before it returns, is atomic
+  across callers, and never goes backwards.
+
+**Resume at startup.** `resume()` moves every swap the store still holds one
+step (claiming what is claimable, refunding what is refundable) and returns a
+`ResumeReport`: `resumed` (the `Swap`s still in flight), `settled`, `refunded`,
+`failed`, and `errors`, the swaps it could not move this pass, each with an
+`id`, a `code` and a `message`. Those stay in the store for the next
+`resume()`. Follow each swap in `resumed` to the end with `watch()` or
+`settled()`; `resume()` does not wait for funding or confirmations.
+
+### Quote
+
+Both sides are yours to name, each an `sdk.Asset`: what it is and where it lives.
+
+| `sdk.Asset`                  | On the wire       |
+| ---------------------------- | ----------------- |
+| `BTC_ONCHAIN()`              | `bitcoin:BTC`     |
+| `BTC_LIGHTNING()`            | `lightning:BTC`   |
+| `BTC_LIQUID()`               | `liquid:BTC`      |
+| `USDT_LIQUID()`              | `liquid:USDT`     |
+| `BTC_ARKADE()`               | `arkade:BTC`      |
+| `BTC_SPARK()`                | `spark:BTC`       |
+| `RGB_ONCHAIN(contract_id)`   | `bitcoin:rgb:…`   |
+| `RGB_LIGHTNING(contract_id)` | `lightning:rgb:…` |
+| `SPARK_TOKEN(token_id)`      | `spark:btkn…`     |
+
+`contract_id` is the full RGB contract id, `rgb:` prefix included.
+
+The protocol follows from the two sides and is reported on the quote, never
+inferred from an address. The amount says what it fixes, and each route is
+priced by one kind:
+
+| Route                                                 | Protocol          | `sdk.Amount`                                               |
+| ----------------------------------------------------- | ----------------- | ---------------------------------------------------------- |
+| `BTC_LIGHTNING()` → `BTC_ONCHAIN()` or `BTC_LIQUID()` | reverse (Boltz)   | `PAY(sats)` (what you pay) or `RECEIVE(sats)` (what lands) |
+| `BTC_ONCHAIN()` or `BTC_LIQUID()` → `BTC_LIGHTNING()` | submarine (Boltz) | `INVOICE(bolt11)`: the invoice the maker pays              |
+
+The wrong kind for a route raises `sdk.Error.Swap` (`INVALID_AMOUNT` or
+`INVALID_DESTINATION`) before anything is sent.
+
+```python
+answer = await kaleido.quote(sdk.QuoteRequest(
+    pay=sdk.Asset.BTC_LIGHTNING(),
+    receive=sdk.Asset.BTC_LIQUID(),
+    amount=sdk.Amount.PAY(50_000),
+))
+if answer.refusal:
+    raise SystemExit(f"{answer.refusal.reason}: {answer.refusal.message}")
+quote = answer.quote
+print(quote.protocol, quote.from_amount, quote.to_amount, quote.fees.maker, quote.fees.miner)
+```
+
+`quote()` returns a `QuoteAnswer` with exactly one of `quote` and `refusal`
+set. A refusal is a value, not an error: the maker will not trade this pair or
+this amount. `reason` is a `sdk.QuoteRefusalReason` (`PAIR_UNAVAILABLE`,
+`AMOUNT_BELOW_MIN`, `AMOUNT_ABOVE_MAX`, `NO_LIQUIDITY`, `MAKER_PAUSED`),
+`limits` carries the bounds when the amount was the problem, and `message`
+says why. Routes this layer does not create swaps for yet (chain swaps,
+L-USDT, RGB, Arkade, Spark) are a `PAIR_UNAVAILABLE` refusal whose message
+names where they live.
+
+### Start, act, watch
+
+```python
+class PrintPhases(sdk.PhaseListener):
+    def on_phase(self, phase):
+        print(phase.name.lower())
+
+swap = await kaleido.start(
+    quote, sdk.StartOptions(destination=liquid_address, refund_address=None)
+)
+action = swap.action()
+print(f"pay {action.invoice}")  # a swap from Lightning
+# print(f"send {action.funding_amount} sat to {action.funding_address}")  # a swap from chain
+
+try:
+    record = await swap.watch(PrintPhases())
+except sdk.Error.Swap as error:
+    print(f"swap {swap.id()} ended without settling: {error.code} {error.message}")
+```
+
+- `start(quote, StartOptions(destination, refund_address))` creates the swap
+  and persists it before returning. `destination` is the address the received
+  asset lands on, checked against the asset and the network first; leave it
+  `None` for a swap priced by an invoice, which is its own destination.
+  `refund_address` is required when you pay from chain and ignored when you pay
+  over Lightning.
+- `swap.action()` is what you do: pay `invoice` for a swap from Lightning, or
+  send exactly `funding_amount` sats to `funding_address` for a swap from
+  chain. That is the only step that is yours; the claim and the refund are the
+  SDK's.
+- `swap.watch(listener)` follows the swap to the end, claiming or refunding as
+  the maker and the chain move, calls `listener.on_phase` on every change, and
+  returns the `SwapRecord` on `SETTLED`. On `REFUNDED` or `FAILED` it raises
+  `sdk.Error.Swap`. `swap.settled()` is the same without a listener. A swap
+  moves only while something watches it (or `resume()` runs), so keep watching
+  until it ends, and resume at the next start if the process stops first.
+- `swap.phase()`, `swap.record()` and `kaleido.swap(id)` read state without
+  waiting; `swap.tick()` makes one observation and acts on it.
+
+### Phases
+
+Every protocol moves through one `sdk.SwapPhase` machine. The protocol's own
+status stays readable as `swap.record().raw_status`.
+
+```
+CREATED ─▶ AWAITING_FUNDING ─▶ FUNDED ─▶ LOCKED ─▶ CLAIMING ─▶ SETTLED
+                                           │
+                                           ├─▶ REFUNDABLE ─▶ REFUNDING ─▶ REFUNDED
+                                           └─▶ FAILED
+```
+
+`SETTLED`, `REFUNDED` and `FAILED` are terminal. A swap that becomes
+`REFUNDABLE` is refunded by the SDK on its own, cooperatively or after the
+timeout; `swap.refund()` is there for a caller who wants to decide.
+
+Runnable versions are in [`examples/simple/`](#examples).
+
 ## Quick Start
 
 > **⚠️ WARNING: The engine-level examples are only to be used in REGTEST.**

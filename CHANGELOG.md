@@ -113,6 +113,26 @@ out the invoice can be set per chain with `reverse_timeout_headroom`
 every binding. Each chain defaults to 12 and 120 blocks as before, and a value
 below one and a half times the claim safety margin (9 and 90) is raised to it.
 
+### Added — the high-level surface documented in each binding
+
+The Python, TypeScript and React Native READMEs document `KaleidoSwap` in each
+binding's own syntax: constructing it with a store and a signer, `resume()` and
+following the swaps it reports, `quote` with the `Asset` values and which
+`Amount` kind prices which route, handling a refusal, `start`, the swap's
+action, following it to the end, and the phases. Each states the store rules:
+a store belongs to one swap mnemonic, one `FileStore` and one `KaleidoSwap`
+per directory per process, no resetting or restoring a store from an older
+backup while its mnemonic is in use, and a new swap mnemonic when a store is
+lost; and what a store of your own guarantees for `put` and `nextIndex`. The
+React Native README notes that a JavaScript `SwapStore`, `SwapSigner` or phase
+listener is a foreign-trait callback that has not been run on a device yet.
+
+The React Native examples build one `KaleidoSwap` at app scope and share it,
+and `resume` follows every swap still in flight before reporting the ones it
+could not move. `npm run typecheck:examples` in `packages/react-native`
+type-checks them against the generated module, and the React Native build in
+CI runs it.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids
@@ -128,6 +148,12 @@ below one and a half times the claim safety margin (9 and 90) is raised to it.
   new `simple_submarine`, `simple_reverse`, `advanced_submarine` and
   `advanced_reverse`. Each folder keeps its swap state in its own gitignored
   `swaps/` subdirectory.
+- The TypeScript live suite authenticates to ldk-server with macaroons. Its
+  helper takes the node's hex `admin.macaroon` in
+  `KALEIDO_LIVE_LDK_MACAROON`, which replaces `KALEIDO_LIVE_LDK_API_KEY`, and
+  sends each call a copy bound to that call's method, body and time, as
+  current ldk-server requires. `npm test` checks the binding against
+  ldk-server's reference vector.
 
 ## [0.13.0] - 2026-10-28
 

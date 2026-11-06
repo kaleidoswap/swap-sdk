@@ -1,21 +1,17 @@
 import {
   Amount,
   Asset,
+  type KaleidoSwap,
   type SwapPhase,
 } from "@kaleidorg/swap-sdk-react-native";
 
-import { openKaleidoSwap } from "./kaleido";
-
 export async function submarine(
-  storeDir: string,
-  swapMnemonic: string,
+  kaleido: KaleidoSwap,
   bolt11Invoice: string,
   refundAddress: string,
   onFunding: (address: string, sats: bigint) => void,
   onPhase: (phase: SwapPhase) => void,
 ): Promise<void> {
-  const { kaleido } = await openKaleidoSwap(storeDir, swapMnemonic);
-
   const { quote, refusal } = await kaleido.quote({
     pay: new Asset.BtcOnchain(),
     receive: new Asset.BtcLightning(),
