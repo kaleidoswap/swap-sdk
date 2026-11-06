@@ -36,7 +36,7 @@ export async function live() {
     liquid: new Node(env("KALEIDO_LIVE_ELEMENTSD_RPC"), "liquid"),
     ln: new LdkServer(
       env("KALEIDO_LIVE_LDK_GRPC"),
-      env("KALEIDO_LIVE_LDK_API_KEY"),
+      env("KALEIDO_LIVE_LDK_MACAROON"),
       readFileSync(env("KALEIDO_LIVE_LDK_CERT")),
     ),
   };

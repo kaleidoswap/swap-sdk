@@ -1,7 +1,7 @@
 // A few ldk-server gRPC calls, enough to mint and pay BOLT11 invoices from
 // the live suite: HTTP/2 from node:http2, the protobuf messages by hand, and
-// ldk-server's `x-auth: HMAC <ts>:<hmac(api key, ts || body)>` header.
-import { createHmac } from "node:crypto";
+// ldk-server's `macaroon` header, a request-bound copy of the node's macaroon.
+import { createHash, createHmac } from "node:crypto";
 import { connect } from "node:http2";
 
 const SERVICE = "/api.LightningNode/";
@@ -65,34 +65,146 @@ function decode(buf) {
   return fields;
 }
 
+// Macaroons, v2 binary format with first-party caveats only, as ldk-server
+// reads them. Each request sends a copy of the reusable macaroon with one more
+// caveat, `request = <unix seconds> <Method> <sha256(gRPC body)>`, which binds
+// it to that method, the exact framed body and the current time (ldk-server's
+// docs/request-binding.md). The reusable macaroon itself is never sent.
+const REQUEST_CAVEAT_PREFIX = "request = ";
+const MAX_MACAROON_BYTES = 4096;
+
+function packet(kind, value) {
+  return Buffer.concat([varint(kind), varint(value.length), value]);
+}
+
+/** `{ location, identifier, caveats, signature }` from a hex v2 macaroon. */
+export function parseMacaroon(hex) {
+  const token = hex.trim();
+  if (
+    !/^(?:[0-9a-fA-F]{2})+$/.test(token) ||
+    token.length > MAX_MACAROON_BYTES * 2
+  )
+    throw new Error("ldk: the macaroon is not a hex-encoded v2 macaroon");
+  const buf = Buffer.from(token, "hex");
+  let at = 1;
+  const read = () => {
+    let value = 0;
+    for (let shift = 0; ; shift += 7) {
+      if (at >= buf.length || shift > 28)
+        throw new Error("ldk: truncated or malformed macaroon");
+      const byte = buf[at++];
+      value += (byte & 0x7f) * 2 ** shift;
+      if (!(byte & 0x80)) return value;
+    }
+  };
+  const field = () => {
+    const kind = read();
+    if (kind === 0) return [0, null];
+    const len = read();
+    if (at + len > buf.length) throw new Error("ldk: truncated macaroon");
+    const value = buf.subarray(at, at + len);
+    at += len;
+    return [kind, value];
+  };
+  if (buf[0] !== 2) throw new Error("ldk: only v2 macaroons are supported");
+  let location = null;
+  let [kind, value] = field();
+  if (kind === 1) {
+    location = value;
+    [kind, value] = field();
+  }
+  if (kind !== 2 || !value.length || field()[0] !== 0)
+    throw new Error("ldk: malformed macaroon identifier");
+  const identifier = value;
+  const caveats = [];
+  for (;;) {
+    [kind, value] = field();
+    if (kind === 0) break;
+    if (kind !== 2 || field()[0] !== 0)
+      throw new Error("ldk: only first-party macaroon caveats are supported");
+    caveats.push(value);
+  }
+  [kind, value] = field();
+  if (kind !== 6 || value.length !== 32 || at !== buf.length)
+    throw new Error("ldk: malformed macaroon signature");
+  return { location, identifier, caveats, signature: value };
+}
+
+function serializeMacaroon({ location, identifier, caveats, signature }) {
+  const zero = Buffer.from([0]);
+  return Buffer.concat([
+    Buffer.from([2]),
+    ...(location ? [packet(1, location)] : []),
+    packet(2, identifier),
+    zero,
+    ...caveats.flatMap((caveat) => [packet(2, caveat), zero]),
+    zero,
+    packet(6, signature),
+  ]);
+}
+
+/**
+ * The hex macaroon to send with one request: `macaroonHex` plus a caveat that
+ * binds it to `method` (the short RPC name), the exact gRPC `body` including
+ * its five-byte frame header, and `timestamp` (Unix seconds).
+ */
+export function bindMacaroonToRequest(
+  macaroonHex,
+  method,
+  body,
+  timestamp = Math.floor(Date.now() / 1000),
+) {
+  if (!/^[A-Za-z0-9]{1,128}$/.test(method))
+    throw new Error(`ldk: invalid RPC method name ${JSON.stringify(method)}`);
+  const macaroon = parseMacaroon(macaroonHex);
+  if (
+    macaroon.caveats.some((c) =>
+      c.toString("latin1").startsWith(REQUEST_CAVEAT_PREFIX),
+    )
+  )
+    throw new Error("ldk: pass the reusable macaroon, not a request-bound one");
+  const digest = createHash("sha256").update(body).digest("hex");
+  const caveat = Buffer.from(
+    `${REQUEST_CAVEAT_PREFIX}${BigInt(timestamp)} ${method} ${digest}`,
+    "latin1",
+  );
+  const bound = serializeMacaroon({
+    ...macaroon,
+    caveats: [...macaroon.caveats, caveat],
+    signature: createHmac("sha256", macaroon.signature).update(caveat).digest(),
+  });
+  if (bound.length > MAX_MACAROON_BYTES)
+    throw new Error("ldk: the macaroon has no room for a request caveat");
+  return bound.toString("hex");
+}
+
 const str = (fields, n) => fields[n]?.[0]?.toString("utf8") ?? "";
 const num = (fields, n) => fields[n]?.[0] ?? 0n;
 
 export const PAYMENT_STATUS = ["pending", "succeeded", "failed"];
 
 export class LdkServer {
+  #macaroon;
+
   /**
    * @param {string} address `host:port` of the gRPC listener.
-   * @param {string} apiKeyHex the node's `api_key` file, hex-encoded.
+   * @param {string} macaroonHex a reusable macaroon, hex-encoded, such as the
+   *   node's `<storage dir>/<network>/macaroons/admin.macaroon`.
    * @param {string | Buffer} certPem the node's TLS certificate.
    */
-  constructor(address, apiKeyHex, certPem) {
+  constructor(address, macaroonHex, certPem) {
+    parseMacaroon(macaroonHex);
     this.address = address;
-    this.apiKey = apiKeyHex;
     this.certPem = certPem;
+    // Not a public field, so the credential stays out of logs and inspection.
+    this.#macaroon = macaroonHex.trim();
   }
 
   async #call(method, message) {
     const frame = Buffer.alloc(5 + message.length);
     frame.writeUInt32BE(message.length, 1);
     message.copy(frame, 5);
-    const timestamp = BigInt(Math.floor(Date.now() / 1000));
-    const ts = Buffer.alloc(8);
-    ts.writeBigUInt64BE(timestamp);
-    const mac = createHmac("sha256", this.apiKey)
-      .update(ts)
-      .update(frame)
-      .digest("hex");
+    const macaroon = bindMacaroonToRequest(this.#macaroon, method, frame);
 
     const session = connect(`https://${this.address}`, {
       ca: this.certPem,
@@ -107,7 +219,7 @@ export class LdkServer {
           ":path": SERVICE + method,
           "content-type": "application/grpc+proto",
           te: "trailers",
-          "x-auth": `HMAC ${timestamp}:${mac}`,
+          macaroon,
         });
         const chunks = [];
         let headers = {};
