@@ -71,6 +71,26 @@ the configured network, before it contacts the maker. `watch` and `settled`
 keep retrying a refund only while the failure is one waiting can fix, and end
 on one that will fail the same way again.
 
+### Added — the high-level surface documented in each binding
+
+The Python, TypeScript and React Native READMEs document `KaleidoSwap` in each
+binding's own syntax: constructing it with a store and a signer, `resume()` and
+following the swaps it reports, `quote` with the `Asset` values and which
+`Amount` kind prices which route, handling a refusal, `start`, the swap's
+action, following it to the end, and the phases. Each states the store rules:
+a store belongs to one swap mnemonic, one `FileStore` and one `KaleidoSwap`
+per directory per process, no resetting or restoring a store from an older
+backup while its mnemonic is in use, and a new swap mnemonic when a store is
+lost; and what a store of your own guarantees for `put` and `nextIndex`. The
+React Native README notes that a JavaScript `SwapStore`, `SwapSigner` or phase
+listener is a foreign-trait callback that has not been run on a device yet.
+
+The React Native examples build one `KaleidoSwap` at app scope and share it,
+and `resume` follows every swap still in flight before reporting the ones it
+could not move. `npm run typecheck:examples` in `packages/react-native`
+type-checks them against the generated module, and the React Native build in
+CI runs it.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids

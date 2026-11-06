@@ -155,7 +155,13 @@ objects). Every binding's examples come in two folders: `simple/` for this
 surface and `advanced/` for the engine underneath, each with a submarine and a
 reverse swap: [`examples/`](examples/README.md) (Rust),
 [`bindings/python/examples/`](bindings/python/README.md#examples) and
-[`typescript-sdk/examples/`](typescript-sdk/examples/README.md). In Python:
+[`typescript-sdk/examples/`](typescript-sdk/examples/README.md). React Native
+has the `simple/` ones in
+[`packages/react-native/examples/`](packages/react-native/examples/README.md).
+Each binding's README documents this surface in its own syntax:
+[Python](bindings/python/README.md#high-level-api-kaleidoswap),
+[TypeScript](typescript-sdk/README.md#high-level-api-createkaleidoswap) and
+[React Native](packages/react-native/README.md#high-level-api-kaleidoswap). In Python:
 
 ```python
 answer = await kaleido.quote(sdk.QuoteRequest(
