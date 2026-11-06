@@ -286,7 +286,8 @@ export type SwapErrorCode =
   | "SWAP_NOT_FOUND"
   | "STORE_FAILED"
   | "ABORTED"
-  | "CHAIN_UNREACHABLE";
+  | "CHAIN_UNREACHABLE"
+  | "INVOICE_EXPIRED";
 
 /** Every failure crosses this boundary coded; the engine's errors are mapped in Rust. */
 export interface SwapError extends Error {
@@ -311,6 +312,7 @@ const SWAP_ERROR_CODES: ReadonlySet<string> = new Set<SwapErrorCode>([
   "STORE_FAILED",
   "ABORTED",
   "CHAIN_UNREACHABLE",
+  "INVOICE_EXPIRED",
 ]);
 
 export function isSwapError(error: unknown): error is SwapError {

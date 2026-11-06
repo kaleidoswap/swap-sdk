@@ -77,6 +77,11 @@ when it names exactly the verified lockup address and amount (and L-BTC on
 Liquid) with no other parameter, such as `lightning`, that a wallet could act
 on instead.
 
+A swap to Lightning checks the invoice's own expiry by the local clock: `quote`
+and `start` refuse an expired invoice with the new `INVOICE_EXPIRED` code
+before the maker is contacted, and a quote priced against an invoice expires no
+later than the invoice does.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids

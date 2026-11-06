@@ -206,6 +206,8 @@ pub enum SwapErrorCode {
     StoreFailed,
     Aborted,
     ChainUnreachable,
+    /// The BOLT11 a swap to Lightning would pay has expired.
+    InvoiceExpired,
 }
 
 /// Every failure crosses this boundary coded; the engine's errors are mapped here.
@@ -1297,15 +1299,42 @@ fn lightning_currency(network: Network) -> lightning_invoice::Currency {
     }
 }
 
-/// The amount and payment hash a BOLT11 invoice carries.
-fn decode_invoice(invoice: &str) -> Result<Option<u64>, SwapError> {
+/// What this layer reads off a BOLT11 invoice.
+struct InvoiceTerms {
+    /// Satoshis, when the invoice names an amount.
+    amount_sat: Option<u64>,
+    /// Unix seconds after which the invoice can no longer be paid.
+    expires_at: u64,
+}
+
+fn decode_invoice(invoice: &str) -> Result<InvoiceTerms, SwapError> {
     let parsed: lightning_invoice::Bolt11Invoice = invoice.trim().parse().map_err(|e| {
         SwapError::new(
             SwapErrorCode::InvalidDestination,
             format!("invalid BOLT11: {e}"),
         )
     })?;
-    Ok(parsed.amount_milli_satoshis().map(|msat| msat / 1000))
+    Ok(InvoiceTerms {
+        amount_sat: parsed.amount_milli_satoshis().map(|msat| msat / 1000),
+        // `None` only when timestamp plus expiry overflows: never, in practice.
+        expires_at: parsed.expires_at().map_or(u64::MAX, |at| at.as_secs()),
+    })
+}
+
+/// Refuses an invoice whose expiry has passed, by the local clock: the maker
+/// could not pay it, so a swap funded against it could only be refunded.
+fn check_invoice_unexpired(terms: &InvoiceTerms) -> Result<(), SwapError> {
+    let now = unix_now();
+    if now >= terms.expires_at {
+        return Err(SwapError::new(
+            SwapErrorCode::InvoiceExpired,
+            format!(
+                "the invoice expired {} s ago; ask the payee for a new one",
+                now - terms.expires_at
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// A swap id names a store entry — a file, for a file store — so a maker
@@ -1916,7 +1945,9 @@ impl KaleidoSwap {
         invoice: String,
     ) -> Result<QuoteAnswer, SwapError> {
         check_address(&invoice, &to, self.env.network, "invoice")?;
-        let Some(to_amount) = decode_invoice(&invoice)? else {
+        let terms = decode_invoice(&invoice)?;
+        check_invoice_unexpired(&terms)?;
+        let Some(to_amount) = terms.amount_sat else {
             return Err(SwapError::new(
                 SwapErrorCode::InvalidAmount,
                 "the invoice carries no amount; a submarine swap needs one",
@@ -1964,7 +1995,8 @@ impl KaleidoSwap {
                 miner,
             },
             limits,
-            expires_at: self.expires_at(),
+            // A quote never outlives the invoice it was priced against.
+            expires_at: self.expires_at().min(terms.expires_at),
             binding: QuoteBinding {
                 pair_hash: card.hash,
                 invoice: Some(invoice),
@@ -2017,6 +2049,9 @@ impl KaleidoSwap {
             "destination",
         )?;
         if !reverse {
+            // The quote is the caller's value: the invoice it carries is
+            // checked again here rather than trusted to its `expires_at`.
+            check_invoice_unexpired(&decode_invoice(&destination)?)?;
             let Some(refund) = &options.refund_address else {
                 return Err(SwapError::new(
                     SwapErrorCode::RefundAddressRequired,
@@ -2344,6 +2379,32 @@ mod tests {
     // from lightning-invoice; only amount and prefix matter here.
     const INVOICE_SIGNET_50K: &str = "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e";
     const INVOICE_REGTEST_100K: &str = "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
+
+    /// A signet invoice for 50 000 sat, signed now, that expires
+    /// `expires_in` seconds from now (in the past when negative).
+    fn invoice_expiring_in(expires_in: i64) -> String {
+        use bitcoin::hashes::{sha256, Hash};
+        let now = unix_now() as i64;
+        // Backdate the timestamp rather than shorten the expiry, so an
+        // expired invoice still carries a real one.
+        let issued = (now + expires_in - 3600).max(0) as u64;
+        let key = SecretKey::from_slice(&[0x11; 32]).unwrap();
+        lightning_invoice::InvoiceBuilder::new(lightning_invoice::Currency::Signet)
+            .description("test".into())
+            .payment_hash(sha256::Hash::hash(&issued.to_be_bytes()))
+            .payment_secret(lightning_invoice::PaymentSecret([7; 32]))
+            .duration_since_epoch(Duration::from_secs(issued))
+            .min_final_cltv_expiry_delta(144)
+            .amount_milli_satoshis(50_000_000)
+            .expiry_time(Duration::from_secs(3600))
+            .build_signed(|hash| Secp256k1::new().sign_ecdsa_recoverable(hash, &key))
+            .unwrap()
+            .to_string()
+    }
+
+    fn fresh_invoice() -> String {
+        invoice_expiring_in(3600)
+    }
 
     fn reverse_card() -> ReversePair {
         serde_json::from_value(serde_json::json!({
@@ -2792,11 +2853,62 @@ mod tests {
     }
 
     #[macros::async_test_all]
-    async fn submarine_is_priced_against_the_invoice_and_checks_its_network() {
+    async fn an_expired_invoice_is_refused_locally_and_bounds_the_quote() {
         let h = harness();
+        let err = h
+            .kaleido
+            .quote(submarine_request(&invoice_expiring_in(-60)))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::InvoiceExpired, "{}", err.message);
+
+        // A quote lasts no longer than its invoice.
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&invoice_expiring_in(120)))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        assert!(q.expires_at <= unix_now() + 120, "{}", q.expires_at);
+
+        // `start` reads the invoice itself, not only the quote's expiry.
+        let stale = Quote {
+            binding: QuoteBinding {
+                invoice: Some(invoice_expiring_in(-60)),
+                ..q.binding.clone()
+            },
+            ..q
+        };
+        let err = h
+            .kaleido
+            .start(
+                &stale,
+                StartOptions {
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::InvoiceExpired, "{}", err.message);
+        assert!(
+            h.maker.created.lock().unwrap().is_empty(),
+            "nothing reached the maker"
+        );
+        assert_eq!(
+            serde_json::to_value(SwapErrorCode::InvoiceExpired).unwrap(),
+            "INVOICE_EXPIRED"
+        );
+    }
+
+    #[macros::async_test_all]
+    async fn submarine_is_priced_against_the_invoice_and_checks_its_network() {
+        let h = harness();
+        let invoice = fresh_invoice();
+        let q = h
+            .kaleido
+            .quote(submarine_request(&invoice))
             .await
             .unwrap()
             .quote()
@@ -2804,7 +2916,7 @@ mod tests {
         assert_eq!(q.protocol, Protocol::BoltzSubmarine);
         assert_eq!(q.to_amount, 50_000);
         assert_eq!(q.from_amount, 50_000 + 50 + 150);
-        assert_eq!(q.binding.invoice.as_deref(), Some(INVOICE_SIGNET_50K));
+        assert_eq!(q.binding.invoice.as_deref(), Some(invoice.as_str()));
 
         let wrong = h
             .kaleido
@@ -3068,7 +3180,7 @@ mod tests {
         let h = harness();
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3266,7 +3378,7 @@ mod tests {
         );
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3326,7 +3438,7 @@ mod tests {
         );
         assert_eq!(
             h.maker.created.lock().unwrap()[0]["invoice"],
-            INVOICE_SIGNET_50K
+            q.binding.invoice.clone().unwrap()
         );
 
         // A submarine maker never reports a refund: it stays at the status
@@ -3357,7 +3469,7 @@ mod tests {
     async fn started_submarine(h: &Harness) -> Swap {
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3547,7 +3659,7 @@ mod tests {
         let h = harness();
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()

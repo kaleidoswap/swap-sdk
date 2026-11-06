@@ -6,6 +6,7 @@
 // before it contacts the maker), the adapters, and the Node stores.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,11 +20,113 @@ import {
   mnemonicSigner,
 } from "../dist/index.node.js";
 
-// A hold invoice the signet maker issued (50 000 sat), and a regtest one.
+// A hold invoice the signet maker issued (50 000 sat, long expired), and a
+// regtest one.
 const INVOICE_SIGNET_50K =
   "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e";
 const INVOICE_REGTEST_100K =
   "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
+
+// BOLT11 by hand, for signet invoices whose expiry a test chooses. The payee
+// key rides in an `n` field, so the signature is checked against it and
+// needs no recovery id.
+const BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+
+function bech32Polymod(values) {
+  const gen = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let chk = 1;
+  for (const v of values) {
+    const top = chk >>> 25;
+    chk = ((chk & 0x1ffffff) << 5) ^ v;
+    for (let i = 0; i < 5; i++) if ((top >>> i) & 1) chk ^= gen[i];
+  }
+  return chk >>> 0;
+}
+
+/** Regroups bits, padding the last group with zeros. */
+function regroup(values, from, to) {
+  let acc = 0;
+  let bits = 0;
+  const out = [];
+  for (const v of values) {
+    acc = (acc << from) | v;
+    bits += from;
+    while (bits >= to) {
+      bits -= to;
+      out.push((acc >> bits) & ((1 << to) - 1));
+    }
+    acc &= (1 << bits) - 1;
+  }
+  if (bits > 0) out.push((acc << (to - bits)) & ((1 << to) - 1));
+  return out;
+}
+
+function intWords(n, length) {
+  const out = [];
+  for (let i = 0; i < length || n > 0; i++) {
+    out.unshift(n % 32);
+    n = Math.floor(n / 32);
+    if (length === undefined && n === 0) break;
+  }
+  return out;
+}
+
+function taggedField(tag, words) {
+  return [BECH32.indexOf(tag), words.length >> 5, words.length & 31, ...words];
+}
+
+/** A signet invoice for 50 000 sat that expires `expiresIn` seconds from now. */
+function signetInvoice(expiresIn = 3600) {
+  const issued = Math.floor(Date.now() / 1000) + expiresIn - 3600;
+  const { privateKey, publicKey } = generateKeyPairSync("ec", {
+    namedCurve: "secp256k1",
+  });
+  const jwk = publicKey.export({ format: "jwk" });
+  const y = Buffer.from(jwk.y, "base64url");
+  const payee = Buffer.concat([
+    Buffer.from([y[31] & 1 ? 3 : 2]),
+    Buffer.from(jwk.x, "base64url"),
+  ]);
+  const hrp = "lntbs500u";
+  const data = [
+    ...intWords(issued, 7),
+    ...taggedField(
+      "p",
+      regroup(createHash("sha256").update(String(issued)).digest(), 8, 5),
+    ),
+    ...taggedField("s", regroup(Buffer.alloc(32, 7), 8, 5)),
+    ...taggedField("d", regroup(Buffer.from("test"), 8, 5)),
+    ...taggedField("n", regroup(payee, 8, 5)),
+    ...taggedField("x", intWords(3600)),
+    ...taggedField("c", intWords(144)),
+    // var_onion_optin and payment_secret, both required.
+    ...taggedField("9", intWords(2 ** 8 + 2 ** 14)),
+  ];
+  const der = sign(
+    "sha256",
+    Buffer.concat([Buffer.from(hrp), Buffer.from(regroup(data, 5, 8))]),
+    { key: privateKey, dsaEncoding: "ieee-p1363" },
+  );
+  // secp256k1 verification takes low-S signatures only.
+  const order =
+    0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+  let s = BigInt(`0x${der.subarray(32).toString("hex")}`);
+  if (s > order / 2n) s = order - s;
+  const signature = Buffer.concat([
+    der.subarray(0, 32),
+    Buffer.from(s.toString(16).padStart(64, "0"), "hex"),
+    Buffer.from([0]),
+  ]);
+  const words = [...data, ...regroup(signature, 8, 5)];
+  const expanded = [
+    ...[...hrp].map((c) => c.charCodeAt(0) >> 5),
+    0,
+    ...[...hrp].map((c) => c.charCodeAt(0) & 31),
+  ];
+  const chk = bech32Polymod([...expanded, ...words, 0, 0, 0, 0, 0, 0]) ^ 1;
+  const checksum = [0, 1, 2, 3, 4, 5].map((i) => (chk >>> (5 * (5 - i))) & 31);
+  return `${hrp}1${[...words, ...checksum].map((w) => BECH32[w]).join("")}`;
+}
 
 const REVERSE_CARD = {
   hash: "rev-hash",
@@ -157,7 +260,7 @@ test("quote: a submarine is priced against the invoice and checks its network", 
   const answer = await k.quote({
     pay: "bitcoin:BTC",
     receive: "lightning:BTC",
-    amount: { invoice: INVOICE_SIGNET_50K },
+    amount: { invoice: signetInvoice() },
   });
   assert.ok(isQuote(answer));
   assert.equal(answer.protocol, "boltz-submarine");
@@ -170,6 +273,14 @@ test("quote: a submarine is priced against the invoice and checks its network", 
       amount: { invoice: INVOICE_REGTEST_100K },
     }),
     (e) => e.code === "WRONG_NETWORK_ADDRESS",
+  );
+  await assert.rejects(
+    k.quote({
+      pay: "bitcoin:BTC",
+      receive: "lightning:BTC",
+      amount: { invoice: signetInvoice(-60) },
+    }),
+    (e) => isSwapError(e) && e.code === "INVOICE_EXPIRED",
   );
   await assert.rejects(
     k.quote({
@@ -214,7 +325,7 @@ test("start: destination and refund address are checked before the maker is cont
   const submarine = await k.quote({
     pay: "bitcoin:BTC",
     receive: "lightning:BTC",
-    amount: { invoice: INVOICE_SIGNET_50K },
+    amount: { invoice: signetInvoice() },
   });
   await assert.rejects(
     k.start(submarine, {}),

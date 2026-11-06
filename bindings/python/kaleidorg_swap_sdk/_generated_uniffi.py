@@ -9906,6 +9906,7 @@ class SwapAction:
     invoice: "typing.Optional[str]"
     funding_address: "typing.Optional[str]"
     funding_amount: "typing.Optional[int]"
+    bip21: "typing.Optional[str]"
     zero_conf_limit: "typing.Optional[int]"
 
     def __init__(
@@ -9914,18 +9915,21 @@ class SwapAction:
         invoice: "typing.Optional[str]",
         funding_address: "typing.Optional[str]",
         funding_amount: "typing.Optional[int]",
+        bip21: "typing.Optional[str]",
         zero_conf_limit: "typing.Optional[int]",
     ):
         self.invoice = invoice
         self.funding_address = funding_address
         self.funding_amount = funding_amount
+        self.bip21 = bip21
         self.zero_conf_limit = zero_conf_limit
 
     def __str__(self):
-        return "SwapAction(invoice={}, funding_address={}, funding_amount={}, zero_conf_limit={})".format(
+        return "SwapAction(invoice={}, funding_address={}, funding_amount={}, bip21={}, zero_conf_limit={})".format(
             self.invoice,
             self.funding_address,
             self.funding_amount,
+            self.bip21,
             self.zero_conf_limit,
         )
 
@@ -9935,6 +9939,8 @@ class SwapAction:
         if self.funding_address != other.funding_address:
             return False
         if self.funding_amount != other.funding_amount:
+            return False
+        if self.bip21 != other.bip21:
             return False
         if self.zero_conf_limit != other.zero_conf_limit:
             return False
@@ -9948,6 +9954,7 @@ class _UniffiConverterTypeSwapAction(_UniffiConverterRustBuffer):
             invoice=_UniffiConverterOptionalString.read(buf),
             funding_address=_UniffiConverterOptionalString.read(buf),
             funding_amount=_UniffiConverterOptionalUInt64.read(buf),
+            bip21=_UniffiConverterOptionalString.read(buf),
             zero_conf_limit=_UniffiConverterOptionalUInt64.read(buf),
         )
 
@@ -9956,6 +9963,7 @@ class _UniffiConverterTypeSwapAction(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.invoice)
         _UniffiConverterOptionalString.check_lower(value.funding_address)
         _UniffiConverterOptionalUInt64.check_lower(value.funding_amount)
+        _UniffiConverterOptionalString.check_lower(value.bip21)
         _UniffiConverterOptionalUInt64.check_lower(value.zero_conf_limit)
 
     @staticmethod
@@ -9963,6 +9971,7 @@ class _UniffiConverterTypeSwapAction(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.invoice, buf)
         _UniffiConverterOptionalString.write(value.funding_address, buf)
         _UniffiConverterOptionalUInt64.write(value.funding_amount, buf)
+        _UniffiConverterOptionalString.write(value.bip21, buf)
         _UniffiConverterOptionalUInt64.write(value.zero_conf_limit, buf)
 
 
@@ -12733,6 +12742,8 @@ class SwapErrorCode(enum.Enum):
 
     CHAIN_UNREACHABLE = 15
 
+    INVOICE_EXPIRED = 16
+
 
 class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
     @staticmethod
@@ -12770,6 +12781,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             return SwapErrorCode.ABORTED
         if variant == 16:
             return SwapErrorCode.CHAIN_UNREACHABLE
+        if variant == 17:
+            return SwapErrorCode.INVOICE_EXPIRED
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -12805,6 +12818,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
         if value == SwapErrorCode.ABORTED:
             return
         if value == SwapErrorCode.CHAIN_UNREACHABLE:
+            return
+        if value == SwapErrorCode.INVOICE_EXPIRED:
             return
         raise ValueError(value)
 
@@ -12842,6 +12857,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             buf.write_i32(15)
         if value == SwapErrorCode.CHAIN_UNREACHABLE:
             buf.write_i32(16)
+        if value == SwapErrorCode.INVOICE_EXPIRED:
+            buf.write_i32(17)
 
 
 class SwapPhase(enum.Enum):
