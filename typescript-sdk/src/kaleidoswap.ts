@@ -92,6 +92,13 @@ export interface KaleidoSwapOptions {
    * bound by hash, so this guards staleness, not price. Default 10 minutes.
    */
   quoteTtlMs?: number;
+  /**
+   * Blocks a reverse swap's lockup must have left before its timeout for
+   * `start` to hand out the invoice: room to confirm, then claim. Defaults
+   * to 12 on Bitcoin and 120 on Liquid, twice the claim path's safety margin;
+   * a smaller value is raised to one and a half times that margin (9 and 90).
+   */
+  reverseTimeoutHeadroom?: { bitcoinBlocks?: number; liquidBlocks?: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -234,7 +241,16 @@ export interface SwapAction {
   /** Send exactly `fundingAmount` here to fund a swap from an on-chain asset. */
   fundingAddress?: string;
   fundingAmount?: bigint;
-  /** Zero means the maker waits for a confirmation before acting. */
+  /**
+   * The maker's BIP21 URI for the same funding, set only when it names
+   * exactly `fundingAddress` and `fundingAmount` and nothing a wallet could
+   * pay instead.
+   */
+  bip21?: string;
+  /**
+   * The largest lockup the maker accepts unconfirmed. Zero means the maker
+   * waits for a confirmation before acting; absent, that it is not known.
+   */
   zeroConfLimit?: bigint;
 }
 
@@ -277,7 +293,8 @@ export type SwapErrorCode =
   | "SWAP_NOT_FOUND"
   | "STORE_FAILED"
   | "ABORTED"
-  | "CHAIN_UNREACHABLE";
+  | "CHAIN_UNREACHABLE"
+  | "INVOICE_EXPIRED";
 
 /** Every failure crosses this boundary coded; the engine's errors are mapped in Rust. */
 export interface SwapError extends Error {
@@ -302,6 +319,7 @@ const SWAP_ERROR_CODES: ReadonlySet<string> = new Set<SwapErrorCode>([
   "STORE_FAILED",
   "ABORTED",
   "CHAIN_UNREACHABLE",
+  "INVOICE_EXPIRED",
 ]);
 
 export function isSwapError(error: unknown): error is SwapError {

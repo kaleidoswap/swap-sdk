@@ -13,9 +13,12 @@
 //! [`SwapFlows`], so the phase machine is tested without a network and every
 //! binding inherits the same one.
 
+use std::collections::HashMap;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
+
+use futures_util::lock::Mutex as AsyncMutex;
 
 use bitcoin::secp256k1::Keypair;
 use serde::{Deserialize, Serialize};
@@ -28,7 +31,9 @@ use crate::swaps::boltz::{
     CreateSubmarineResponse, GetReversePairsResponse, GetSubmarinePairsResponse, PairMinerFees,
     ReversePair, SubmarinePair,
 };
-use crate::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
+use crate::swaps::{
+    BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
+};
 use crate::util::fees::Fee;
 use crate::util::secrets::{Preimage, SwapMasterKey};
 use crate::util::{sleep, unix_now};
@@ -206,6 +211,8 @@ pub enum SwapErrorCode {
     StoreFailed,
     Aborted,
     ChainUnreachable,
+    /// The BOLT11 a swap to Lightning would pay has expired.
+    InvoiceExpired,
 }
 
 /// Every failure crosses this boundary coded; the engine's errors are mapped here.
@@ -463,12 +470,46 @@ pub struct SwapState {
     pub response: CreateResponse,
     pub destination: String,
     pub refund_address: Option<String>,
+    /// Set once the claim's broadcast is known to have reached the chain.
     pub claim_txid: Option<String>,
+    /// Set once the refund's broadcast is known to have reached the chain.
     pub refund_txid: Option<String>,
+    /// A claim signed and saved before its broadcast. A broadcast that the
+    /// process does not live to record is finished from this on the next
+    /// tick instead of signing a second spend of the same lockup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_claim: Option<SignedTx>,
+    /// A refund signed and saved before its broadcast, as `pending_claim`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_refund: Option<SignedTx>,
     /// Whether a lockup from us was ever seen — decides `failed` vs
     /// `refundable` on expiry.
     #[serde(default)]
     pub funded_seen: bool,
+    /// The largest lockup the maker accepts unconfirmed, read from the
+    /// maker's pair terms when `start` created the swap. `None` on records
+    /// written before the limit was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zero_conf_limit: Option<u64>,
+}
+
+/// A claim or refund this layer signed: what it broadcasts, and what it
+/// rebroadcasts or looks up if it cannot tell whether the broadcast landed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedTx {
+    pub txid: String,
+    /// The consensus-encoded transaction.
+    pub hex: String,
+}
+
+/// What [`SwapFlows::lockup_spender`] finds spending a swap's lockup.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LockupSpender {
+    pub txid: String,
+    /// Whether it pays the swap's destination (reverse) or refund address
+    /// (submarine).
+    pub pays_swap: bool,
 }
 
 /// `Network` as the lowercase names every binding uses (`"signet"`), read
@@ -531,7 +572,14 @@ pub struct SwapAction {
     /// Send exactly `funding_amount` here to fund a swap from an on-chain asset.
     pub funding_address: Option<String>,
     pub funding_amount: Option<u64>,
-    /// Zero means the maker waits for a confirmation before acting.
+    /// The maker's BIP21 URI for the same funding: set only when it names
+    /// exactly `funding_address` and `funding_amount` and nothing a wallet
+    /// could pay instead, such as a `lightning` parameter.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bip21: Option<String>,
+    /// The largest lockup the maker accepts unconfirmed. Zero means the
+    /// maker waits for a confirmation before acting; `None` that the limit
+    /// is not known.
     pub zero_conf_limit: Option<u64>,
 }
 
@@ -545,11 +593,83 @@ impl SwapRecord {
             CreateResponse::BoltzSubmarine(r) => SwapAction {
                 funding_address: Some(r.address.clone()),
                 funding_amount: Some(r.expected_amount),
-                zero_conf_limit: if r.accept_zero_conf { None } else { Some(0) },
+                bip21: checked_bip21(&self.from_asset, self.network, r),
+                zero_conf_limit: if r.accept_zero_conf {
+                    self.state.zero_conf_limit
+                } else {
+                    Some(0)
+                },
                 ..Default::default()
             },
         }
     }
+}
+
+/// `value`, a BIP21 `amount` in BTC, in satoshis. More than eight decimals,
+/// a sign or an exponent is not an amount.
+fn btc_decimal_to_sat(value: &str) -> Option<u64> {
+    let (whole, fraction) = value.split_once('.').unwrap_or((value, ""));
+    let digits = |s: &str| s.bytes().all(|b| b.is_ascii_digit());
+    if (whole.is_empty() && fraction.is_empty())
+        || !digits(whole)
+        || !digits(fraction)
+        || fraction.len() > 8
+    {
+        return None;
+    }
+    let whole: u64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let fraction: u64 = format!("{fraction:0<8}").parse().ok()?;
+    whole.checked_mul(100_000_000)?.checked_add(fraction)
+}
+
+/// The maker's BIP21 for a submarine lockup, when every part of it is one
+/// this layer verified: the scheme of the funding chain, the lockup address
+/// `verify_lockup` rebuilt, the exact lockup amount and, on Liquid, L-BTC.
+/// Labels and messages pass; any other parameter, or any parameter given
+/// twice, withholds the URI, since a wallet may act on it instead of the
+/// address.
+fn checked_bip21(from: &Asset, network: Network, r: &CreateSubmarineResponse) -> Option<String> {
+    let uri = r.bip21.trim();
+    let (scheme, rest) = uri.split_once(':')?;
+    let scheme_ok = match from {
+        Asset::BtcOnchain => scheme.eq_ignore_ascii_case("bitcoin"),
+        Asset::BtcLiquid => {
+            scheme.eq_ignore_ascii_case("liquidnetwork")
+                || scheme.eq_ignore_ascii_case("liquidtestnet")
+        }
+        _ => false,
+    };
+    let (address, query) = rest.split_once('?').unwrap_or((rest, ""));
+    if !scheme_ok || address != r.address {
+        return None;
+    }
+    let mut amount_ok = false;
+    let mut seen: Vec<String> = vec![];
+    for pair in query.split('&').filter(|p| !p.is_empty()) {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let key = key.to_ascii_lowercase();
+        // A parameter given twice is read differently by different wallets.
+        if seen.contains(&key) {
+            return None;
+        }
+        seen.push(key.clone());
+        match key.as_str() {
+            "amount" => amount_ok = btc_decimal_to_sat(value) == Some(r.expected_amount),
+            "assetid" if *from == Asset::BtcLiquid => {
+                let lbtc = LiquidChain::from(network).bitcoin().to_string();
+                if !value.eq_ignore_ascii_case(&lbtc) {
+                    return None;
+                }
+            }
+            "label" | "message" => {}
+            _ => return None,
+        }
+    }
+    amount_ok.then(|| uri.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -631,13 +751,25 @@ pub trait SwapFlows: Send + Sync {
         keys: &Keypair,
         preimage: &Preimage,
     ) -> Result<(), Error>;
-    async fn claim(
+    /// Builds and signs the claim of a reverse swap's lockup to its
+    /// destination. Broadcasts nothing: the caller saves it first.
+    async fn sign_claim(
         &self,
         record: &SwapRecord,
         keys: &Keypair,
         preimage: &Preimage,
-    ) -> Result<String, Error>;
-    async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error>;
+    ) -> Result<SignedTx, Error>;
+    /// Builds and signs the refund of a submarine swap's lockup to its
+    /// refund address. Broadcasts nothing: the caller saves it first.
+    async fn sign_refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<SignedTx, Error>;
+    /// Broadcasts a transaction `sign_claim` or `sign_refund` produced.
+    async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error>;
+    /// Whether the chain client has `tx`, in the mempool or in a block.
+    async fn tx_seen(&self, record: &SwapRecord, tx: &SignedTx) -> Result<bool, Error>;
+    /// The transaction that spends the swap's lockup, when the chain has
+    /// one, and whether it pays this swap's own output: the destination of a
+    /// claim, the refund address of a refund.
+    async fn lockup_spender(&self, record: &SwapRecord) -> Result<Option<LockupSpender>, Error>;
     /// The tip of the chain the swap's lockup lives on, from the trusted
     /// chain client, never the maker's `/chain/heights`.
     async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error>;
@@ -856,6 +988,23 @@ pub struct KaleidoSwapOptions {
     pub quote_ttl: Option<Duration>,
     /// Timeout of every request to the maker. Default 30 s.
     pub maker_timeout: Option<Duration>,
+    /// Blocks a reverse swap's lockup must have left before its timeout for
+    /// `start` to hand out the invoice. Default: twice the claim path's
+    /// safety margin, 12 on Bitcoin and 120 on Liquid.
+    pub reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
+}
+
+/// Per-chain overrides of the headroom `start` requires of a reverse swap's
+/// lockup timeout, in blocks. A chain left `None` keeps its default. A value
+/// below one and a half times the claim path's safety margin
+/// ([`crate::swaps::ClaimPolicy`]: 6 on Bitcoin, 60 on Liquid), so 9 and 90, is
+/// raised to it: the claim path refuses a claim within the margin of the
+/// timeout, and the lockup needs time to confirm before that.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReverseTimeoutHeadroom {
+    pub bitcoin_blocks: Option<u32>,
+    pub liquid_blocks: Option<u32>,
 }
 
 pub(crate) struct Env {
@@ -867,6 +1016,26 @@ pub(crate) struct Env {
     flows: Arc<dyn SwapFlows>,
     poll_interval: Duration,
     quote_ttl: Duration,
+    reverse_timeout_headroom: ReverseTimeoutHeadroom,
+    /// One lock per swap id, shared by every handle this instance gives out
+    /// on that id. Held only by live handles: an entry whose handles are all
+    /// gone is dropped the next time a lock is handed out.
+    swap_locks: std::sync::Mutex<HashMap<String, Weak<AsyncMutex<()>>>>,
+}
+
+impl Env {
+    /// The lock every handle on swap `id` shares, so a tick or a refund on
+    /// one waits for any other in flight on the same swap.
+    fn swap_lock(&self, id: &str) -> Arc<AsyncMutex<()>> {
+        let mut locks = self.swap_locks.lock().unwrap();
+        if let Some(lock) = locks.get(id).and_then(Weak::upgrade) {
+            return lock;
+        }
+        locks.retain(|_, lock| lock.strong_count() > 0);
+        let lock = Arc::new(AsyncMutex::new(()));
+        locks.insert(id.to_string(), Arc::downgrade(&lock));
+        lock
+    }
 }
 
 /// The default chain endpoints per network. Signet settles on Mutinynet, so
@@ -887,14 +1056,25 @@ fn default_chain_urls(network: Network) -> Option<(&'static str, &'static str)> 
 pub struct DefaultFlows {
     api: Arc<BoltzApiClientV2>,
     chain: ChainClient,
+    bitcoin: EsploraBitcoinClient,
+    liquid: EsploraLiquidClient,
     fee: Fee,
 }
 
 impl DefaultFlows {
-    pub fn new(api: Arc<BoltzApiClientV2>, chain: ChainClient, fee_sat_per_vb: f64) -> Self {
+    pub fn new(
+        api: Arc<BoltzApiClientV2>,
+        bitcoin: EsploraBitcoinClient,
+        liquid: EsploraLiquidClient,
+        fee_sat_per_vb: f64,
+    ) -> Self {
         Self {
             api,
-            chain,
+            chain: ChainClient::new()
+                .with_bitcoin(bitcoin.clone())
+                .with_liquid(liquid.clone()),
+            bitcoin,
+            liquid,
             fee: Fee::Relative(fee_sat_per_vb),
         }
     }
@@ -919,6 +1099,19 @@ impl DefaultFlows {
             CreateResponse::BoltzSubmarine(r) => {
                 SwapScript::submarine_from_swap_resp(Self::chain_kind(record), r, pubkey)
             }
+        }
+    }
+
+    fn signed(tx: &BtcLikeTransaction) -> SignedTx {
+        match tx {
+            BtcLikeTransaction::Bitcoin(tx) => SignedTx {
+                txid: tx.compute_txid().to_string(),
+                hex: bitcoin::consensus::encode::serialize_hex(tx),
+            },
+            BtcLikeTransaction::Liquid(tx) => SignedTx {
+                txid: tx.txid().to_string(),
+                hex: elements::encode::serialize_hex(tx),
+            },
         }
     }
 
@@ -990,12 +1183,12 @@ impl SwapFlows for DefaultFlows {
         }
     }
 
-    async fn claim(
+    async fn sign_claim(
         &self,
         record: &SwapRecord,
         keys: &Keypair,
         preimage: &Preimage,
-    ) -> Result<String, Error> {
+    ) -> Result<SignedTx, Error> {
         let script = Self::script(record, keys)?;
         let destination = record.state.destination.clone();
         // The maker co-signs Bitcoin claims but not every Liquid lockup; the
@@ -1016,10 +1209,10 @@ impl SwapFlows for DefaultFlows {
             }
             Err(e) => return Err(e),
         };
-        self.chain.broadcast_tx(&tx).await
+        Ok(Self::signed(&tx))
     }
 
-    async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error> {
+    async fn sign_refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<SignedTx, Error> {
         let Some(address) = record.state.refund_address.clone() else {
             return Err(Error::Generic(
                 "no refund address was recorded for this swap".into(),
@@ -1041,7 +1234,83 @@ impl SwapFlows for DefaultFlows {
                     .await?
             }
         };
-        self.chain.broadcast_tx(&tx).await
+        Ok(Self::signed(&tx))
+    }
+
+    async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error> {
+        let tx = BtcLikeTransaction::from_hex(Self::chain_kind(record), &tx.hex)?;
+        self.chain.broadcast_tx(&tx).await.map(|_| ())
+    }
+
+    async fn tx_seen(&self, record: &SwapRecord, tx: &SignedTx) -> Result<bool, Error> {
+        let bad_txid = |e: &dyn fmt::Display| Error::Generic(format!("txid {}: {e}", tx.txid));
+        match Self::chain_kind(record) {
+            ChainKind::Bitcoin(_) => {
+                let txid: bitcoin::Txid = tx.txid.parse().map_err(|e| bad_txid(&e))?;
+                self.bitcoin.has_tx(&txid).await
+            }
+            ChainKind::Liquid(_) => {
+                let txid: elements::Txid = tx.txid.parse().map_err(|e| bad_txid(&e))?;
+                self.liquid.has_tx(&txid).await
+            }
+        }
+    }
+
+    async fn lockup_spender(&self, record: &SwapRecord) -> Result<Option<LockupSpender>, Error> {
+        let lockup = match &record.state.response {
+            CreateResponse::BoltzReverse(r) => r.lockup_address.as_str(),
+            CreateResponse::BoltzSubmarine(r) => r.address.as_str(),
+        };
+        let payout = match record.protocol {
+            Protocol::BoltzReverse => Some(record.state.destination.as_str()),
+            _ => record.state.refund_address.as_deref(),
+        };
+        let bad = |what: &str, e: &dyn fmt::Display| Error::Generic(format!("{what}: {e}"));
+        let (spends, payout_script) = match Self::chain_kind(record) {
+            ChainKind::Bitcoin(_) => {
+                let parse = |a: &str| {
+                    a.parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
+                        .map(|a| a.assume_checked())
+                        .map_err(|e| bad(a, &e))
+                };
+                let script = payout
+                    .map(|a| parse(a).map(|a| a.script_pubkey().to_hex_string()))
+                    .transpose()?;
+                (
+                    self.bitcoin.spends_of_address(&parse(lockup)?).await?,
+                    script,
+                )
+            }
+            ChainKind::Liquid(_) => {
+                use elements::hex::ToHex;
+                let parse = |a: &str| a.parse::<elements::Address>().map_err(|e| bad(a, &e));
+                let script = payout
+                    .map(|a| parse(a).map(|a| a.script_pubkey().to_hex()))
+                    .transpose()?;
+                (
+                    self.liquid.spends_of_address(&parse(lockup)?).await?,
+                    script,
+                )
+            }
+        };
+        let pays = |spend: &crate::network::esplora::AddressSpend| {
+            payout_script.as_ref().is_some_and(|script| {
+                spend
+                    .output_scripts
+                    .iter()
+                    .any(|out| out.eq_ignore_ascii_case(script))
+            })
+        };
+        // Two spends can both be listed while one is still in the mempool;
+        // one that pays this swap is the one to report.
+        let spender = spends
+            .iter()
+            .find(|spend| pays(spend))
+            .or_else(|| spends.first());
+        Ok(spender.map(|spend| LockupSpender {
+            txid: spend.txid.clone(),
+            pays_swap: pays(spend),
+        }))
     }
 
     async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error> {
@@ -1143,13 +1412,21 @@ impl SwapFlows for DefaultFlows {
 /// the claim path's own safety margin, which refuses a claim this close to
 /// the maker's refund ([`crate::swaps::ClaimPolicy`]: 6 on Bitcoin, 60 on
 /// Liquid, roughly an hour each). An invoice whose lockup could not be
-/// claimed in time is never one to pay.
-fn reverse_timeout_headroom(chain: ChainKind) -> u32 {
+/// claimed in time is never one to pay. Twice the margin unless overridden,
+/// and never below one and a half times the margin.
+fn reverse_timeout_headroom(chain: ChainKind, overrides: ReverseTimeoutHeadroom) -> u32 {
     use crate::swaps::ClaimPolicy;
-    match chain {
-        ChainKind::Bitcoin(_) => 2 * ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS,
-        ChainKind::Liquid(_) => 2 * ClaimPolicy::LIQUID_SAFETY_MARGIN_BLOCKS,
-    }
+    let (margin, given) = match chain {
+        ChainKind::Bitcoin(_) => (
+            ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS,
+            overrides.bitcoin_blocks,
+        ),
+        ChainKind::Liquid(_) => (
+            ClaimPolicy::LIQUID_SAFETY_MARGIN_BLOCKS,
+            overrides.liquid_blocks,
+        ),
+    };
+    given.map_or(2 * margin, |blocks| blocks.max(margin + margin / 2))
 }
 
 // ---------------------------------------------------------------------------
@@ -1221,15 +1498,45 @@ fn lightning_currency(network: Network) -> lightning_invoice::Currency {
     }
 }
 
-/// The amount and payment hash a BOLT11 invoice carries.
-fn decode_invoice(invoice: &str) -> Result<Option<u64>, SwapError> {
+/// What this layer reads off a BOLT11 invoice.
+struct InvoiceTerms {
+    /// Satoshis, when the invoice names an amount.
+    amount_sat: Option<u64>,
+    /// Unix seconds after which the invoice can no longer be paid.
+    expires_at: u64,
+}
+
+fn decode_invoice(invoice: &str) -> Result<InvoiceTerms, SwapError> {
     let parsed: lightning_invoice::Bolt11Invoice = invoice.trim().parse().map_err(|e| {
         SwapError::new(
             SwapErrorCode::InvalidDestination,
             format!("invalid BOLT11: {e}"),
         )
     })?;
-    Ok(parsed.amount_milli_satoshis().map(|msat| msat / 1000))
+    Ok(InvoiceTerms {
+        amount_sat: parsed.amount_milli_satoshis().map(|msat| msat / 1000),
+        // `None` only when timestamp plus expiry overflows: never, in practice.
+        expires_at: parsed.expires_at().map_or(u64::MAX, |at| at.as_secs()),
+    })
+}
+
+/// Refuses an invoice with less than [`MIN_INVOICE_VALIDITY`] left, by the
+/// local clock: the maker could not pay it in time, so a swap funded against
+/// it could only be refunded.
+fn check_invoice_unexpired(terms: &InvoiceTerms) -> Result<(), SwapError> {
+    let now = unix_now();
+    let needed = MIN_INVOICE_VALIDITY.as_secs();
+    if now.saturating_add(needed) >= terms.expires_at {
+        let left = terms.expires_at.saturating_sub(now);
+        return Err(SwapError::new(
+            SwapErrorCode::InvoiceExpired,
+            format!(
+                "the invoice has {left} s of validity left and a swap needs more than {needed}; \
+                 ask the payee for a new one"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// A swap id names a store entry — a file, for a file store — so a maker
@@ -1290,33 +1597,79 @@ fn map_status(protocol: Protocol, status: &str, state: &SwapState) -> Transition
 
 /// Whether a failed refund attempt is one that waiting can fix: the timelock
 /// has not matured yet, or the chain or the maker could not be reached. A
-/// malformed address, a signing error or a rejected spend will fail the same
-/// way every time, so retrying it only hides it.
-fn refund_error_is_transient(error: &Error) -> bool {
+/// malformed address, a signing error or a spend the chain refused will fail
+/// the same way every time, so retrying it only hides it. A 4xx answer to a
+/// broadcast is a refusal, except one that names a timelock not yet final.
+fn spend_error_is_transient(error: &Error) -> bool {
     match error {
         Error::Locktime(_) | Error::IO(_) | Error::HTTP(_) => true,
         Error::HTTPStatusNotSuccess(status, _) => !status.is_client_error(),
         #[cfg(feature = "esplora")]
-        Error::Esplora(_) => true,
+        Error::Esplora(message) => {
+            !message.starts_with("Broadcast rejected (4") || message.contains("non-final")
+        }
         _ => false,
     }
 }
 
+/// Whether a broadcast was refused because an input is missing or already
+/// spent: the one answer that says the saved transaction can never confirm
+/// as it stands.
+fn inputs_missing_or_spent(error: &Error) -> bool {
+    let message = error.message().to_lowercase();
+    [
+        "missingorspent",
+        "missing-inputs",
+        "missing inputs",
+        "txn-mempool-conflict",
+    ]
+    .iter()
+    .any(|answer| message.contains(answer))
+}
+
+/// The least validity an invoice must have left for a swap to be started
+/// against it: room for the lockup to be funded and the maker to pay.
+pub const MIN_INVOICE_VALIDITY: Duration = Duration::from_secs(600);
+
 // ---------------------------------------------------------------------------
 // A swap in flight
 
+/// The two spends this layer signs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Spend {
+    Claim,
+    Refund,
+}
+
+impl Spend {
+    fn pending(self, record: &mut SwapRecord) -> &mut Option<SignedTx> {
+        match self {
+            Spend::Claim => &mut record.state.pending_claim,
+            Spend::Refund => &mut record.state.pending_refund,
+        }
+    }
+}
+
 /// A handle over one record. Drive it with [`Swap::tick`] for one observation,
 /// [`Swap::watch`] to follow it to the end, or [`Swap::settled`] to wait.
+///
+/// Every handle one [`KaleidoSwap`] gives out on the same id — from `start`,
+/// `swap` or `resume` — shares one lock: a tick or refund waits for any other
+/// in flight on that swap, then reloads the record from the store before it
+/// acts, so it sees a claim or refund another handle already recorded.
+/// Separate instances over one store do not share it.
 pub struct Swap {
     env: Arc<Env>,
+    lock: Arc<AsyncMutex<()>>,
     current: std::sync::Mutex<SwapRecord>,
     /// Phase changes since the last drain, so a watcher sees every step a
     /// single `tick` took, not only where it ended.
     transitions: std::sync::Mutex<Vec<SwapPhase>>,
-    /// Whether the last refund attempt failed in a way another attempt can
-    /// get past (an immature timelock, a chain or maker outage), as opposed
-    /// to one that will fail the same way again.
-    refund_retryable: std::sync::atomic::AtomicBool,
+    /// Whether the last tick or refund failed in a way another attempt can
+    /// get past (an immature timelock, a chain or maker outage, a claim
+    /// broadcast with time left before the timeout), as opposed to one that
+    /// will fail the same way again. Cleared as each attempt starts.
+    retryable: std::sync::atomic::AtomicBool,
 }
 
 impl fmt::Debug for Swap {
@@ -1333,10 +1686,11 @@ impl fmt::Debug for Swap {
 impl Swap {
     fn new(env: Arc<Env>, record: SwapRecord) -> Self {
         Self {
+            lock: env.swap_lock(&record.id),
             env,
             current: std::sync::Mutex::new(record),
             transitions: std::sync::Mutex::new(vec![]),
-            refund_retryable: std::sync::atomic::AtomicBool::new(false),
+            retryable: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -1369,6 +1723,11 @@ impl Swap {
     async fn persist(&self, update: impl FnOnce(&mut SwapRecord)) -> Result<SwapRecord, SwapError> {
         let mut next = self.record();
         update(&mut next);
+        // A swap that has ended leaves nothing saved to broadcast.
+        if matches!(next.phase, SwapPhase::Settled | SwapPhase::Refunded) {
+            next.state.pending_claim = None;
+            next.state.pending_refund = None;
+        }
         next.updated_at = unix_now();
         self.env.store.put(&next).await.map_err(|e| SwapError {
             code: SwapErrorCode::StoreFailed,
@@ -1383,6 +1742,22 @@ impl Swap {
         Ok(next)
     }
 
+    /// Takes up what another handle on this swap persisted since this one
+    /// last looked. Called with the swap's lock held; the store is the
+    /// record of truth, since every change lands there first.
+    async fn reload(&self) -> Result<(), SwapError> {
+        let id = self.id();
+        let Some(stored) = self.env.store.get(&id).await? else {
+            return Ok(());
+        };
+        let mut current = self.current.lock().unwrap();
+        if stored.phase != current.phase {
+            self.transitions.lock().unwrap().push(stored.phase);
+        }
+        *current = stored;
+        Ok(())
+    }
+
     async fn keys(&self) -> Result<(Keypair, Preimage), SwapError> {
         let index = self.record().state.swap_index;
         let keys = self.env.signer.derive_key(index).await?;
@@ -1394,6 +1769,18 @@ impl Swap {
     /// Returns once that action's broadcast is recorded; the maker's own
     /// progress past it shows up on the next tick.
     pub async fn tick(&self) -> Result<SwapRecord, SwapError> {
+        let _held = self.lock.lock().await;
+        self.set_retryable(false);
+        self.reload().await?;
+        self.tick_locked().await
+    }
+
+    fn set_retryable(&self, retryable: bool) {
+        self.retryable
+            .store(retryable, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    async fn tick_locked(&self) -> Result<SwapRecord, SwapError> {
         let before = self.record();
         if before.phase.is_terminal() {
             return Ok(before);
@@ -1454,6 +1841,19 @@ impl Swap {
             funded_seen = true;
         }
 
+        // A claim or refund saved before a broadcast whose outcome was never
+        // recorded — the process stopped in between — is finished before
+        // anything else is decided: the chain may already have it, and a
+        // second one signed now would spend the same lockup.
+        if !matches!(phase, SwapPhase::Settled | SwapPhase::Refunded) {
+            if let Some(tx) = before.state.pending_refund.clone() {
+                return self.broadcast_saved(Spend::Refund, tx, Some(&status)).await;
+            }
+            if let Some(tx) = before.state.pending_claim.clone() {
+                return self.broadcast_saved(Spend::Claim, tx, Some(&status)).await;
+            }
+        }
+
         // A claim or refund we already broadcast is not undone by the maker
         // still reporting the phase that triggered it.
         if before.state.claim_txid.is_some()
@@ -1494,17 +1894,13 @@ impl Swap {
     async fn claim_now(&self) -> Result<SwapRecord, SwapError> {
         let (keys, preimage) = self.keys().await?;
         let record = self.record();
-        let txid = self
+        let tx = self
             .env
             .flows
-            .claim(&record, &keys, &preimage)
+            .sign_claim(&record, &keys, &preimage)
             .await
             .map_err(|e| SwapError::from_core(e, Some(&record.id)))?;
-        self.persist(|r| {
-            r.phase = SwapPhase::Claiming;
-            r.state.claim_txid = Some(txid.clone());
-        })
-        .await
+        self.save_and_broadcast(Spend::Claim, tx).await
     }
 
     async fn refund_now(&self) -> Result<SwapRecord, SwapError> {
@@ -1517,19 +1913,151 @@ impl Swap {
                 &record.id,
             ));
         }
-        let txid = match self.env.flows.refund(&record, &keys).await {
-            Ok(txid) => txid,
+        let tx = match self.env.flows.sign_refund(&record, &keys).await {
+            Ok(tx) => tx,
             Err(e) => {
-                self.refund_retryable.store(
-                    refund_error_is_transient(&e),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
+                self.set_retryable(spend_error_is_transient(&e));
                 return Err(SwapError::from_core(e, Some(&record.id)));
             }
         };
+        self.save_and_broadcast(Spend::Refund, tx).await
+    }
+
+    /// Saves a signed claim or refund, then broadcasts it: a broadcast that
+    /// reaches the chain is never one the record has no trace of.
+    async fn save_and_broadcast(&self, kind: Spend, tx: SignedTx) -> Result<SwapRecord, SwapError> {
+        self.persist(|r| *kind.pending(r) = Some(tx.clone()))
+            .await?;
+        self.broadcast_saved(kind, tx, None).await
+    }
+
+    /// Broadcasts a saved claim or refund and records its txid once the
+    /// chain has it: accepted now, or already there from a broadcast whose
+    /// answer was lost.
+    ///
+    /// The saved transaction is dropped only on a definite answer that its
+    /// inputs are missing or spent, and only after a fresh look at what spends
+    /// the lockup: a spend paying this swap is recorded as its claim or
+    /// refund, whatever its txid; any other spend ends the attempt; no spend
+    /// leaves the next attempt to sign afresh. Every other failure keeps the
+    /// saved transaction for the next attempt.
+    async fn broadcast_saved(
+        &self,
+        kind: Spend,
+        tx: SignedTx,
+        status: Option<&str>,
+    ) -> Result<SwapRecord, SwapError> {
+        let record = self.record();
+        let chain_err = |e: Error| {
+            SwapError::for_swap(
+                SwapErrorCode::ChainUnreachable,
+                format!("could not read the chain: {e:?}"),
+                &record.id,
+            )
+        };
+        let error = match self.env.flows.broadcast(&record, &tx).await {
+            Ok(()) => return self.record_sent(kind, &tx.txid, status).await,
+            Err(error) => error,
+        };
+        if self
+            .env
+            .flows
+            .tx_seen(&record, &tx)
+            .await
+            .map_err(chain_err)?
+        {
+            return self.record_sent(kind, &tx.txid, status).await;
+        }
+        let with_status = |r: &mut SwapRecord| {
+            if let Some(status) = status {
+                r.raw_status = status.to_string();
+            }
+        };
+        if inputs_missing_or_spent(&error) {
+            let spender = self
+                .env
+                .flows
+                .lockup_spender(&record)
+                .await
+                .map_err(chain_err)?;
+            match spender {
+                Some(spender) if spender.pays_swap => {
+                    return self.record_sent(kind, &spender.txid, status).await;
+                }
+                Some(spender) => {
+                    self.persist(|r| {
+                        with_status(r);
+                        *kind.pending(r) = None;
+                    })
+                    .await?;
+                    return Err(SwapError::for_swap(
+                        SwapErrorCode::SwapFailed,
+                        format!(
+                            "the lockup is spent by {}, which does not pay this swap",
+                            spender.txid
+                        ),
+                        &record.id,
+                    ));
+                }
+                None => {
+                    self.persist(|r| {
+                        with_status(r);
+                        *kind.pending(r) = None;
+                    })
+                    .await?;
+                    self.set_retryable(true);
+                    return Err(SwapError::from_core(error, Some(&record.id)));
+                }
+            }
+        }
+        let retryable = match kind {
+            Spend::Refund => spend_error_is_transient(&error),
+            Spend::Claim => self.claim_has_time(&record).await.map_err(chain_err)?,
+        };
+        self.set_retryable(retryable);
+        if status.is_some() {
+            self.persist(with_status).await?;
+        }
+        Err(SwapError::from_core(error, Some(&record.id)))
+    }
+
+    /// Whether a reverse swap's lockup is still further from its timeout
+    /// than the claim path's safety margin, by our own chain client.
+    async fn claim_has_time(&self, record: &SwapRecord) -> Result<bool, Error> {
+        use crate::swaps::ClaimPolicy;
+        let CreateResponse::BoltzReverse(r) = &record.state.response else {
+            return Ok(false);
+        };
+        let margin = match DefaultFlows::chain_kind(record) {
+            ChainKind::Bitcoin(_) => ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS,
+            ChainKind::Liquid(_) => ClaimPolicy::LIQUID_SAFETY_MARGIN_BLOCKS,
+        };
+        let tip = self.env.flows.lockup_tip_height(record).await?;
+        Ok(tip.saturating_add(margin) < r.timeout_block_height)
+    }
+
+    /// Records a claim or refund the chain has, and clears what was saved.
+    async fn record_sent(
+        &self,
+        kind: Spend,
+        txid: &str,
+        status: Option<&str>,
+    ) -> Result<SwapRecord, SwapError> {
         self.persist(|r| {
-            r.phase = SwapPhase::Refunding;
-            r.state.refund_txid = Some(txid.clone());
+            if let Some(status) = status {
+                r.raw_status = status.to_string();
+            }
+            *kind.pending(r) = None;
+            match kind {
+                Spend::Claim => {
+                    r.phase = SwapPhase::Claiming;
+                    r.state.claim_txid = Some(txid.to_string());
+                }
+                Spend::Refund => {
+                    r.phase = SwapPhase::Refunding;
+                    r.state.refund_txid = Some(txid.to_string());
+                }
+            }
         })
         .await
     }
@@ -1537,9 +2065,26 @@ impl Swap {
     /// Unwinds a `Refundable` swap. The driver does this on its own; it is
     /// here for a caller who wants to decide.
     pub async fn refund(&self) -> Result<SwapRecord, SwapError> {
+        let _held = self.lock.lock().await;
+        self.set_retryable(false);
+        self.reload().await?;
         let record = self.record();
-        if record.state.refund_txid.is_some() {
+        if record.state.refund_txid.is_some() || record.phase == SwapPhase::Refunded {
             return Ok(record);
+        }
+        if record.phase.is_terminal() {
+            return Err(SwapError::for_swap(
+                SwapErrorCode::SwapFailed,
+                format!(
+                    "swap {} is {}, not refundable",
+                    record.id,
+                    record.phase.as_str()
+                ),
+                &record.id,
+            ));
+        }
+        if let Some(tx) = record.state.pending_refund.clone() {
+            return self.broadcast_saved(Spend::Refund, tx, None).await;
         }
         if record.phase != SwapPhase::Refundable {
             return Err(SwapError::for_swap(
@@ -1557,9 +2102,10 @@ impl Swap {
 
     /// Follows the swap to a terminal phase, calling `on_phase` on every
     /// transition. Resolves with the record on `Settled`; any other end is
-    /// an error. A maker or chain it cannot reach, or a refund that cannot
-    /// be spent yet (its timelock has not matured and the maker will not
-    /// co-sign), is waited out rather than ending the watch.
+    /// an error. A maker, chain or store it cannot reach, a refund that
+    /// cannot be spent yet (its timelock has not matured and the maker will
+    /// not co-sign), or a claim broadcast that failed while the lockup is
+    /// still clear of its timeout, is waited out rather than ending the watch.
     pub async fn watch<F>(&self, mut on_phase: F) -> Result<SwapRecord, SwapError>
     where
         F: FnMut(SwapPhase) + Send,
@@ -1606,16 +2152,17 @@ impl Swap {
         }
     }
 
-    /// Whether `error` is one more poll can get past.
+    /// Whether `error` is one more poll can get past: a maker, chain or
+    /// store that could not be reached, or a spend that failed in a way
+    /// another attempt can get past.
     fn keeps_watching(&self, error: &SwapError) -> bool {
         matches!(
             error.code,
-            SwapErrorCode::MakerUnreachable | SwapErrorCode::ChainUnreachable
-        ) || (self.phase() == SwapPhase::Refundable
-            && error.code == SwapErrorCode::SwapFailed
-            && self
-                .refund_retryable
-                .load(std::sync::atomic::Ordering::Relaxed))
+            SwapErrorCode::MakerUnreachable
+                | SwapErrorCode::ChainUnreachable
+                | SwapErrorCode::StoreFailed
+        ) || (error.code == SwapErrorCode::SwapFailed
+            && self.retryable.load(std::sync::atomic::Ordering::Relaxed))
     }
 
     /// [`Swap::watch`] without a listener.
@@ -1684,11 +2231,13 @@ impl KaleidoSwap {
                 format!("no default chain access on {network:?}; pass bitcoin_esplora_url and liquid_esplora_url"),
             ));
         };
-        let chain = ChainClient::new()
-            .with_bitcoin(EsploraBitcoinClient::new(network.into(), &bitcoin_url, 30))
-            .with_liquid(EsploraLiquidClient::new(network.into(), &liquid_url, 30));
         let api = Arc::new(api);
-        let flows = DefaultFlows::new(api.clone(), chain, options.fee_sat_per_vb.unwrap_or(2.0));
+        let flows = DefaultFlows::new(
+            api.clone(),
+            EsploraBitcoinClient::new(network.into(), &bitcoin_url, 30),
+            EsploraLiquidClient::new(network.into(), &liquid_url, 30),
+            options.fee_sat_per_vb.unwrap_or(2.0),
+        );
         Ok(Self::with_seams(options, maker_url, api, Arc::new(flows)))
     }
 
@@ -1710,6 +2259,8 @@ impl KaleidoSwap {
                 flows,
                 poll_interval: options.poll_interval.unwrap_or(Duration::from_secs(2)),
                 quote_ttl: options.quote_ttl.unwrap_or(Duration::from_secs(600)),
+                reverse_timeout_headroom: options.reverse_timeout_headroom.unwrap_or_default(),
+                swap_locks: std::sync::Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -1840,7 +2391,9 @@ impl KaleidoSwap {
         invoice: String,
     ) -> Result<QuoteAnswer, SwapError> {
         check_address(&invoice, &to, self.env.network, "invoice")?;
-        let Some(to_amount) = decode_invoice(&invoice)? else {
+        let terms = decode_invoice(&invoice)?;
+        check_invoice_unexpired(&terms)?;
+        let Some(to_amount) = terms.amount_sat else {
             return Err(SwapError::new(
                 SwapErrorCode::InvalidAmount,
                 "the invoice carries no amount; a submarine swap needs one",
@@ -1888,7 +2441,13 @@ impl KaleidoSwap {
                 miner,
             },
             limits,
-            expires_at: self.expires_at(),
+            // A quote lasts no longer than the invoice it was priced against
+            // stays usable.
+            expires_at: self.expires_at().min(
+                terms
+                    .expires_at
+                    .saturating_sub(MIN_INVOICE_VALIDITY.as_secs()),
+            ),
             binding: QuoteBinding {
                 pair_hash: card.hash,
                 invoice: Some(invoice),
@@ -1941,6 +2500,9 @@ impl KaleidoSwap {
             "destination",
         )?;
         if !reverse {
+            // The quote is the caller's value: the invoice it carries is
+            // checked again here rather than trusted to its `expires_at`.
+            check_invoice_unexpired(&decode_invoice(&destination)?)?;
             let Some(refund) = &options.refund_address else {
                 return Err(SwapError::new(
                     SwapErrorCode::RefundAddressRequired,
@@ -1968,7 +2530,7 @@ impl KaleidoSwap {
         let preimage = self.env.signer.derive_preimage(swap_index).await?;
         let pubkey = bitcoin::PublicKey::new(keys.public_key());
 
-        let (id, response) = if reverse {
+        let (id, response, zero_conf_limit) = if reverse {
             // The terms the quote was priced on must still be the maker's.
             let pairs = self
                 .env
@@ -2026,8 +2588,29 @@ impl KaleidoSwap {
                     &r.id,
                 ));
             }
-            (r.id.clone(), CreateResponse::BoltzReverse(r))
+            (r.id.clone(), CreateResponse::BoltzReverse(r), None)
         } else {
+            // The zero-conf limit kept on the record is the maker's, read from
+            // the pair terms the quote was priced on, not the caller's copy.
+            let pairs = self
+                .env
+                .maker
+                .submarine_pairs()
+                .await
+                .map_err(|e| SwapError::from_core(e, None))?;
+            let card = pairs
+                .get(
+                    quote.from_asset.boltz_symbol()?,
+                    quote.to_asset.boltz_symbol()?,
+                )
+                .filter(|card| card.hash == quote.binding.pair_hash)
+                .cloned()
+                .ok_or_else(|| {
+                    SwapError::new(
+                        SwapErrorCode::QuoteExpired,
+                        "the pair terms changed since the quote; ask for a new one",
+                    )
+                })?;
             let r = self
                 .env
                 .maker
@@ -2053,7 +2636,11 @@ impl KaleidoSwap {
                     &r.id,
                 ));
             }
-            (r.id.clone(), CreateResponse::BoltzSubmarine(r))
+            (
+                r.id.clone(),
+                CreateResponse::BoltzSubmarine(r),
+                Some(card.limits.maximal_zero_conf),
+            )
         };
         if !is_plain_id(&id) {
             return Err(SwapError::new(
@@ -2081,7 +2668,10 @@ impl KaleidoSwap {
                 refund_address: options.refund_address,
                 claim_txid: None,
                 refund_txid: None,
+                pending_claim: None,
+                pending_refund: None,
                 funded_seen: false,
+                zero_conf_limit,
             },
         };
 
@@ -2118,7 +2708,7 @@ impl KaleidoSwap {
                         &id,
                     )
                 })?;
-            let headroom = reverse_timeout_headroom(chain);
+            let headroom = reverse_timeout_headroom(chain, self.env.reverse_timeout_headroom);
             r.validate_timeout_headroom(tip, headroom).map_err(|_| {
                 SwapError::for_swap(
                     SwapErrorCode::SwapExpired,
@@ -2268,6 +2858,32 @@ mod tests {
     const INVOICE_SIGNET_50K: &str = "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e";
     const INVOICE_REGTEST_100K: &str = "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
 
+    /// A signet invoice for 50 000 sat, signed now, that expires
+    /// `expires_in` seconds from now (in the past when negative).
+    fn invoice_expiring_in(expires_in: i64) -> String {
+        use bitcoin::hashes::{sha256, Hash};
+        let now = unix_now() as i64;
+        // Backdate the timestamp rather than shorten the expiry, so an
+        // expired invoice still carries a real one.
+        let issued = (now + expires_in - 3600).max(0) as u64;
+        let key = SecretKey::from_slice(&[0x11; 32]).unwrap();
+        lightning_invoice::InvoiceBuilder::new(lightning_invoice::Currency::Signet)
+            .description("test".into())
+            .payment_hash(sha256::Hash::hash(&issued.to_be_bytes()))
+            .payment_secret(lightning_invoice::PaymentSecret([7; 32]))
+            .duration_since_epoch(Duration::from_secs(issued))
+            .min_final_cltv_expiry_delta(144)
+            .amount_milli_satoshis(50_000_000)
+            .expiry_time(Duration::from_secs(3600))
+            .build_signed(|hash| Secp256k1::new().sign_ecdsa_recoverable(hash, &key))
+            .unwrap()
+            .to_string()
+    }
+
+    fn fresh_invoice() -> String {
+        invoice_expiring_in(3600)
+    }
+
     fn reverse_card() -> ReversePair {
         serde_json::from_value(serde_json::json!({
             "hash": "rev-hash", "rate": 1.0,
@@ -2280,7 +2896,7 @@ mod tests {
     fn submarine_card() -> SubmarinePair {
         serde_json::from_value(serde_json::json!({
             "hash": "sub-hash", "rate": 1.0,
-            "limits": {"minimal": 10_000, "maximal": 1_000_000, "maximalZeroConf": 0},
+            "limits": {"minimal": 10_000, "maximal": 1_000_000, "maximalZeroConf": 100_000},
             "fees": {"percentage": 0.1, "minerFees": 150},
         }))
         .unwrap()
@@ -2301,6 +2917,10 @@ mod tests {
         reverse_percentage: Mutex<Option<f64>>,
         /// Swap ids whose status the maker cannot give.
         unknown_ids: Mutex<Vec<String>>,
+        /// Whether the submarine create response accepts zero-conf.
+        submarine_zero_conf: Mutex<bool>,
+        /// Overrides the BIP21 the submarine create response carries.
+        submarine_bip21: Mutex<Option<String>>,
     }
 
     impl FakeMaker {
@@ -2363,10 +2983,16 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(serde_json::to_value(req).unwrap());
+            let bip21 = self
+                .submarine_bip21
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| "bitcoin:tb1qlockup?amount=0.000502".into());
             Ok(serde_json::from_value(serde_json::json!({
-                "acceptZeroConf": false,
+                "acceptZeroConf": *self.submarine_zero_conf.lock().unwrap(),
                 "address": "tb1qlockup",
-                "bip21": "bitcoin:tb1qlockup?amount=0.000502",
+                "bip21": bip21,
                 "claimPublicKey":
                     "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
                 "expectedAmount": self.submarine_expected.lock().unwrap().unwrap_or(50_200),
@@ -2425,10 +3051,43 @@ mod tests {
         /// Make those failures permanent: a refund that fails the same way
         /// every time.
         refund_failures_permanent: bool,
+        /// Txids broadcast and accepted.
+        broadcasts: Mutex<Vec<String>>,
+        /// Broadcasts refused before one is accepted.
+        broadcast_failures: Mutex<u32>,
+        /// What a refused broadcast says; "broadcast refused" when unset.
+        broadcast_refusal: Mutex<Option<String>>,
+        /// What spends the lockup, as `lockup_spender` reports it.
+        spender: Mutex<Option<LockupSpender>>,
+        /// Txids the chain has, in the mempool or a block.
+        on_chain: Mutex<Vec<String>>,
+        /// When set, each broadcast records whether this store already held
+        /// the transaction being broadcast.
+        observe: Mutex<Option<Arc<MemoryStore>>>,
+        saved_before_broadcast: Mutex<Vec<bool>>,
     }
 
     fn pubkey_hex(keys: &Keypair) -> String {
         keys.public_key().to_string()
+    }
+
+    /// Pending once, then ready: lets two futures polled together
+    /// interleave at the chain step, as a real broadcast would.
+    struct YieldOnce(bool);
+
+    impl std::future::Future for YieldOnce {
+        type Output = ();
+        fn poll(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<()> {
+            if self.0 {
+                return std::task::Poll::Ready(());
+            }
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        }
     }
 
     #[macros::async_trait]
@@ -2448,19 +3107,28 @@ mod tests {
             }
             Ok(())
         }
-        async fn claim(
+        async fn sign_claim(
             &self,
             record: &SwapRecord,
             keys: &Keypair,
             _preimage: &Preimage,
-        ) -> Result<String, Error> {
+        ) -> Result<SignedTx, Error> {
+            YieldOnce(false).await;
             self.claim
                 .lock()
                 .unwrap()
                 .push((record.id.clone(), pubkey_hex(keys)));
-            Ok("claim-txid".into())
+            Ok(SignedTx {
+                txid: "claim-txid".into(),
+                hex: "claim-hex".into(),
+            })
         }
-        async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error> {
+        async fn sign_refund(
+            &self,
+            record: &SwapRecord,
+            keys: &Keypair,
+        ) -> Result<SignedTx, Error> {
+            YieldOnce(false).await;
             {
                 let mut failures = self.refund_failures.lock().unwrap();
                 if *failures > 0 {
@@ -2476,7 +3144,47 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((record.id.clone(), pubkey_hex(keys)));
-            Ok("refund-txid".into())
+            Ok(SignedTx {
+                txid: "refund-txid".into(),
+                hex: "refund-hex".into(),
+            })
+        }
+        async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error> {
+            let observe = self.observe.lock().unwrap().clone();
+            if let Some(store) = observe {
+                let stored = store.get(&record.id).await.unwrap().unwrap();
+                let saved = [stored.state.pending_claim, stored.state.pending_refund]
+                    .contains(&Some(tx.clone()));
+                self.saved_before_broadcast.lock().unwrap().push(saved);
+            }
+            {
+                let mut failures = self.broadcast_failures.lock().unwrap();
+                if *failures > 0 {
+                    *failures -= 1;
+                    let refusal = self.broadcast_refusal.lock().unwrap().clone();
+                    return Err(Error::Generic(
+                        refusal.unwrap_or_else(|| "broadcast refused".into()),
+                    ));
+                }
+            }
+            self.broadcasts.lock().unwrap().push(tx.txid.clone());
+            self.on_chain.lock().unwrap().push(tx.txid.clone());
+            Ok(())
+        }
+        async fn tx_seen(&self, _record: &SwapRecord, tx: &SignedTx) -> Result<bool, Error> {
+            if self.chain_down {
+                return Err(Error::Generic("connection refused".into()));
+            }
+            Ok(self.on_chain.lock().unwrap().contains(&tx.txid))
+        }
+        async fn lockup_spender(
+            &self,
+            _record: &SwapRecord,
+        ) -> Result<Option<LockupSpender>, Error> {
+            if self.chain_down {
+                return Err(Error::Generic("connection refused".into()));
+            }
+            Ok(self.spender.lock().unwrap().clone())
         }
         async fn lockup_tip_height(&self, _record: &SwapRecord) -> Result<u32, Error> {
             if self.chain_down {
@@ -2526,6 +3234,14 @@ mod tests {
     }
 
     fn harness_with(store: Arc<MemoryStore>, flows: FakeFlows) -> Harness {
+        harness_with_headroom(store, flows, None)
+    }
+
+    fn harness_with_headroom(
+        store: Arc<MemoryStore>,
+        flows: FakeFlows,
+        reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
+    ) -> Harness {
         let maker = Arc::new(FakeMaker::default());
         let flows = Arc::new(flows);
         let kaleido = KaleidoSwap::with_seams(
@@ -2540,6 +3256,7 @@ mod tests {
                 fee_sat_per_vb: None,
                 quote_ttl: None,
                 maker_timeout: None,
+                reverse_timeout_headroom,
             },
             "https://maker.example/v2".into(),
             maker.clone(),
@@ -2705,11 +3422,71 @@ mod tests {
     }
 
     #[macros::async_test_all]
-    async fn submarine_is_priced_against_the_invoice_and_checks_its_network() {
+    async fn an_expired_invoice_is_refused_locally_and_bounds_the_quote() {
         let h = harness();
+        let err = h
+            .kaleido
+            .quote(submarine_request(&invoice_expiring_in(-60)))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::InvoiceExpired, "{}", err.message);
+
+        // So is one with less than the minimum validity left.
+        let margin = MIN_INVOICE_VALIDITY.as_secs() as i64;
+        let err = h
+            .kaleido
+            .quote(submarine_request(&invoice_expiring_in(margin - 60)))
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::InvoiceExpired, "{}", err.message);
+
+        // A quote lasts no longer than its invoice stays usable.
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&invoice_expiring_in(margin + 120)))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        assert!(q.expires_at <= unix_now() + 120, "{}", q.expires_at);
+
+        // `start` reads the invoice itself, not only the quote's expiry.
+        let stale = Quote {
+            binding: QuoteBinding {
+                invoice: Some(invoice_expiring_in(-60)),
+                ..q.binding.clone()
+            },
+            ..q
+        };
+        let err = h
+            .kaleido
+            .start(
+                &stale,
+                StartOptions {
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::InvoiceExpired, "{}", err.message);
+        assert!(
+            h.maker.created.lock().unwrap().is_empty(),
+            "nothing reached the maker"
+        );
+        assert_eq!(
+            serde_json::to_value(SwapErrorCode::InvoiceExpired).unwrap(),
+            "INVOICE_EXPIRED"
+        );
+    }
+
+    #[macros::async_test_all]
+    async fn submarine_is_priced_against_the_invoice_and_checks_its_network() {
+        let h = harness();
+        let invoice = fresh_invoice();
+        let q = h
+            .kaleido
+            .quote(submarine_request(&invoice))
             .await
             .unwrap()
             .quote()
@@ -2717,7 +3494,7 @@ mod tests {
         assert_eq!(q.protocol, Protocol::BoltzSubmarine);
         assert_eq!(q.to_amount, 50_000);
         assert_eq!(q.from_amount, 50_000 + 50 + 150);
-        assert_eq!(q.binding.invoice.as_deref(), Some(INVOICE_SIGNET_50K));
+        assert_eq!(q.binding.invoice.as_deref(), Some(invoice.as_str()));
 
         let wrong = h
             .kaleido
@@ -2912,6 +3689,76 @@ mod tests {
     }
 
     #[macros::async_test_all]
+    async fn the_reverse_timeout_headroom_can_be_overridden_down_to_its_floor() {
+        // The fake L-BTC lockup times out at block 200; the default needs 120
+        // blocks left, so a tip of 100 is refused by default.
+        let start_at = |tip: u32, headroom: Option<ReverseTimeoutHeadroom>| async move {
+            let h = harness_with_headroom(
+                Arc::new(MemoryStore::new()),
+                FakeFlows {
+                    tip,
+                    ..Default::default()
+                },
+                headroom,
+            );
+            let q = reverse_quote(&h).await;
+            h.kaleido
+                .start(
+                    &q,
+                    StartOptions {
+                        destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map(|_| ())
+                .map_err(|e| e.code)
+        };
+        assert_eq!(start_at(100, None).await, Err(SwapErrorCode::SwapExpired));
+        let liquid = |blocks| {
+            Some(ReverseTimeoutHeadroom {
+                liquid_blocks: Some(blocks),
+                ..Default::default()
+            })
+        };
+        assert_eq!(start_at(100, liquid(90)).await, Ok(()));
+        assert_eq!(
+            start_at(110, liquid(90)).await,
+            Err(SwapErrorCode::SwapExpired)
+        );
+        // An override for the other chain leaves this one at its default.
+        let bitcoin = Some(ReverseTimeoutHeadroom {
+            bitcoin_blocks: Some(1),
+            ..Default::default()
+        });
+        assert_eq!(
+            start_at(100, bitcoin).await,
+            Err(SwapErrorCode::SwapExpired)
+        );
+        // Below one and a half times the claim margin (90 on Liquid) is
+        // raised to it.
+        assert_eq!(start_at(109, liquid(1)).await, Ok(()));
+        assert_eq!(
+            start_at(110, liquid(1)).await,
+            Err(SwapErrorCode::SwapExpired)
+        );
+
+        use crate::swaps::ClaimPolicy;
+        let bitcoin_chain = ChainKind::Bitcoin(BitcoinChain::BitcoinSignet);
+        assert_eq!(
+            reverse_timeout_headroom(bitcoin_chain, ReverseTimeoutHeadroom::default()),
+            2 * ClaimPolicy::BITCOIN_SAFETY_MARGIN_BLOCKS
+        );
+        let wire: ReverseTimeoutHeadroom =
+            serde_json::from_value(serde_json::json!({"liquidBlocks": 90})).unwrap();
+        assert_eq!(wire.liquid_blocks, Some(90));
+        assert!(serde_json::from_value::<ReverseTimeoutHeadroom>(
+            serde_json::json!({"liquid": 90})
+        )
+        .is_err());
+    }
+
+    #[macros::async_test_all]
     async fn each_swap_takes_a_fresh_index_and_expired_quotes_are_refused() {
         let h = harness();
         let q = reverse_quote(&h).await;
@@ -2981,7 +3828,7 @@ mod tests {
         let h = harness();
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3179,7 +4026,7 @@ mod tests {
         );
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3232,13 +4079,14 @@ mod tests {
             SwapAction {
                 funding_address: Some("tb1qlockup".into()),
                 funding_amount: Some(50_200),
+                bip21: Some("bitcoin:tb1qlockup?amount=0.000502".into()),
                 zero_conf_limit: Some(0),
                 invoice: None,
             }
         );
         assert_eq!(
             h.maker.created.lock().unwrap()[0]["invoice"],
-            INVOICE_SIGNET_50K
+            q.binding.invoice.clone().unwrap()
         );
 
         // A submarine maker never reports a refund: it stays at the status
@@ -3269,7 +4117,7 @@ mod tests {
     async fn started_submarine(h: &Harness) -> Swap {
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3386,11 +4234,124 @@ mod tests {
     }
 
     #[macros::async_test_all]
+    async fn action_carries_the_quoted_zero_conf_limit_when_the_maker_accepts_zero_conf() {
+        let h = harness();
+        *h.maker.submarine_zero_conf.lock().unwrap() = true;
+        let swap = started_submarine(&h).await;
+        assert_eq!(swap.action().zero_conf_limit, Some(100_000));
+        // The limit is part of the stored record, so a resumed handle has it.
+        assert_eq!(
+            h.kaleido
+                .swap(&swap.id())
+                .await
+                .unwrap()
+                .action()
+                .zero_conf_limit,
+            Some(100_000)
+        );
+
+        // A record written before the limit was kept still reads.
+        let mut json = serde_json::to_value(swap.record()).unwrap();
+        json["state"]
+            .as_object_mut()
+            .unwrap()
+            .remove("zeroConfLimit");
+        let old: SwapRecord = serde_json::from_value(json).unwrap();
+        assert_eq!(old.action().zero_conf_limit, None);
+    }
+
+    #[macros::async_test_all]
+    async fn the_zero_conf_limit_kept_is_the_makers_not_the_quotes() {
+        let h = harness();
+        *h.maker.submarine_zero_conf.lock().unwrap() = true;
+        let mut q = h
+            .kaleido
+            .quote(submarine_request(&fresh_invoice()))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        q.binding.zero_conf_limit = 5_000_000;
+        let swap = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(swap.action().zero_conf_limit, Some(100_000));
+
+        // Terms the maker no longer publishes are not started on.
+        q.binding.pair_hash = "stale".into();
+        let err = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::QuoteExpired);
+    }
+
+    #[macros::async_test_all]
+    async fn action_passes_on_a_bip21_only_when_it_names_the_verified_funding() {
+        for (bip21, passed) in [
+            ("bitcoin:tb1qlockup?amount=0.000502", true),
+            ("bitcoin:tb1qlockup?amount=0.000502&label=swap", true),
+            ("BITCOIN:tb1qlockup?amount=.000502", true),
+            ("bitcoin:tb1qlockup?amount=0.0005021", false),
+            ("bitcoin:tb1qlockup?amount=0.000503", false),
+            ("bitcoin:tb1qlockup", false),
+            ("bitcoin:tb1qother?amount=0.000502", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&lightning=lntbs1", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&req-x=1", false),
+            ("bitcoin:tb1qlockup?amount=0.0005&amount=0.000502", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&amount=0.0005", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&label=a&label=b", false),
+            ("liquidtestnet:tb1qlockup?amount=0.000502", false),
+            ("bitcoin:tb1qlockup?amount=5.02e-4", false),
+            ("", false),
+        ] {
+            let h = harness();
+            *h.maker.submarine_bip21.lock().unwrap() = Some(bip21.into());
+            let swap = started_submarine(&h).await;
+            assert_eq!(swap.action().bip21.is_some(), passed, "{bip21}");
+        }
+        // On Liquid the asset, when named, has to be L-BTC.
+        let CreateResponse::BoltzSubmarine(mut r) =
+            started_submarine(&harness()).await.record().state.response
+        else {
+            unreachable!()
+        };
+        let lbtc = LiquidChain::from(Network::Signet).bitcoin().to_string();
+        r.bip21 = format!("liquidtestnet:tb1qlockup?amount=0.000502&assetid={lbtc}");
+        assert!(checked_bip21(&Asset::BtcLiquid, Network::Signet, &r).is_some());
+        r.bip21 = format!(
+            "liquidtestnet:tb1qlockup?amount=0.000502&assetid={}",
+            "ab".repeat(32)
+        );
+        assert!(checked_bip21(&Asset::BtcLiquid, Network::Signet, &r).is_none());
+
+        assert_eq!(btc_decimal_to_sat("1"), Some(100_000_000));
+        assert_eq!(btc_decimal_to_sat("0.00000001"), Some(1));
+        assert_eq!(btc_decimal_to_sat("."), None);
+        assert_eq!(btc_decimal_to_sat("-1"), None);
+    }
+
+    #[macros::async_test_all]
     async fn submarine_expiry_before_funding_is_failed_not_refundable() {
         let h = harness();
         let q = h
             .kaleido
-            .quote(submarine_request(INVOICE_SIGNET_50K))
+            .quote(submarine_request(&fresh_invoice()))
             .await
             .unwrap()
             .quote()
@@ -3466,6 +4427,610 @@ mod tests {
 
         let quiet = third.kaleido.resume().await.unwrap();
         assert!(quiet.resumed.is_empty() && quiet.settled.is_empty() && quiet.errors.is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn handles_on_one_swap_take_turns_and_claim_once() {
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        let first = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let second = h.kaleido.swap(&first.id()).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        let (a, b) = futures_util::future::join(first.tick(), second.tick()).await;
+        a.unwrap();
+        b.unwrap();
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1, "claimed once");
+        assert_eq!(first.phase(), SwapPhase::Claiming);
+        assert_eq!(second.phase(), SwapPhase::Claiming);
+        assert_eq!(
+            second.record().state.claim_txid.as_deref(),
+            Some("claim-txid")
+        );
+
+        // A handle that sat out the claim takes it up on its next tick and
+        // reports the move to its own watcher.
+        let third = h.kaleido.swap(&first.id()).await.unwrap();
+        first.tick().await.unwrap();
+        third.tick().await.unwrap();
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1);
+    }
+
+    #[macros::async_test_all]
+    async fn handles_on_one_swap_refund_once() {
+        let h = harness();
+        let first = started_submarine(&h).await;
+        let second = h.kaleido.swap(&first.id()).await.unwrap();
+        h.maker.script(&["invoice.failedToPay"]);
+        let (a, b) = futures_util::future::join(first.tick(), second.tick()).await;
+        a.unwrap();
+        b.unwrap();
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1, "refunded once");
+        assert_eq!(second.phase(), SwapPhase::Refunding);
+        // An explicit refund on a handle that has not ticked since does not
+        // sign another.
+        let stale = h.kaleido.swap(&first.id()).await.unwrap();
+        let (c, d) = futures_util::future::join(first.refund(), stale.refund()).await;
+        c.unwrap();
+        d.unwrap();
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
+
+        // A lock lives as long as the last handle on its swap.
+        drop((first, second, stale));
+        let held = |id: &str| h.kaleido.env.swap_locks.lock().unwrap()[id].strong_count();
+        assert_eq!(held("sub-1"), 0);
+        let again = h.kaleido.swap("sub-1").await.unwrap();
+        assert_eq!(held("sub-1"), 1);
+        drop(again);
+    }
+
+    async fn started_reverse(h: &Harness) -> Swap {
+        let q = reverse_quote(h).await;
+        h.kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Writes `id` back to `store` as a process that saved a signed claim
+    /// or refund and stopped before recording its broadcast would have.
+    async fn save_unrecorded(store: &MemoryStore, id: &str, phase: SwapPhase, kind: Spend) {
+        let mut record = store.get(id).await.unwrap().unwrap();
+        record.phase = phase;
+        let tx = match kind {
+            Spend::Claim => "claim",
+            Spend::Refund => "refund",
+        };
+        *kind.pending(&mut record) = Some(SignedTx {
+            txid: format!("{tx}-txid"),
+            hex: format!("{tx}-hex"),
+        });
+        store.put(&record).await.unwrap();
+    }
+
+    #[macros::async_test_all]
+    async fn a_claim_is_saved_before_it_is_broadcast() {
+        let h = harness();
+        *h.flows.observe.lock().unwrap() = Some(h.store.clone());
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        let record = swap.tick().await.unwrap();
+        assert_eq!(*h.flows.saved_before_broadcast.lock().unwrap(), vec![true]);
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(record.state.pending_claim, None);
+        let stored = serde_json::to_value(h.store.get("rev-1").await.unwrap().unwrap()).unwrap();
+        assert!(stored["state"].get("pendingClaim").is_none(), "{stored}");
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_claim_is_finished_on_the_next_tick_not_signed_again() {
+        // The chain took the broadcast and already has it: rebroadcasting is
+        // refused, and the chain's copy is what gets recorded.
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let second = harness_with(
+            store.clone(),
+            FakeFlows {
+                broadcast_failures: Mutex::new(1),
+                on_chain: Mutex::new(vec!["claim-txid".into()]),
+                ..Default::default()
+            },
+        );
+        second.maker.script(&["transaction.confirmed"]);
+        let report = second.kaleido.resume().await.unwrap();
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(
+            second.flows.claim.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+        let record = store.get("rev-1").await.unwrap().unwrap();
+        assert_eq!(record.phase, SwapPhase::Claiming);
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(record.state.pending_claim, None);
+
+        // The broadcast never happened: the saved claim is broadcast as is.
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let second = harness_with(store.clone(), FakeFlows::default());
+        second.maker.script(&["transaction.confirmed"]);
+        second.kaleido.resume().await.unwrap();
+        assert!(
+            second.flows.claim.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+        assert_eq!(*second.flows.broadcasts.lock().unwrap(), vec!["claim-txid"]);
+        assert_eq!(
+            store
+                .get("rev-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .state
+                .claim_txid
+                .as_deref(),
+            Some("claim-txid")
+        );
+    }
+
+    /// A store holding a reverse swap the way a process leaves it when it
+    /// saved a signed claim and stopped before recording its broadcast, and
+    /// a second harness over it.
+    async fn with_unrecorded_claim(flows: FakeFlows) -> (Arc<MemoryStore>, Harness) {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let second = harness_with(store.clone(), flows);
+        second.maker.script(&["transaction.confirmed"]);
+        (store, second)
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_claim_is_kept_and_rebroadcast_after_a_refusal() {
+        let (_, h) = with_unrecorded_claim(FakeFlows {
+            broadcast_failures: Mutex::new(1),
+            ..Default::default()
+        })
+        .await;
+        let swap = h.kaleido.swap("rev-1").await.unwrap();
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed, "{}", err.message);
+        assert!(swap.record().state.pending_claim.is_some(), "kept");
+        assert!(
+            swap.keeps_watching(&err),
+            "the lockup is clear of its timeout"
+        );
+        swap.tick().await.unwrap();
+        assert!(h.flows.claim.lock().unwrap().is_empty(), "not re-signed");
+        assert_eq!(*h.flows.broadcasts.lock().unwrap(), vec!["claim-txid"]);
+        assert_eq!(
+            swap.record().state.claim_txid.as_deref(),
+            Some("claim-txid")
+        );
+
+        // Close to the timeout, a failed claim broadcast ends the watch.
+        let (_, late) = with_unrecorded_claim(FakeFlows {
+            broadcast_failures: Mutex::new(1),
+            tip: 140,
+            ..Default::default()
+        })
+        .await;
+        let swap = late.kaleido.swap("rev-1").await.unwrap();
+        let err = swap.tick().await.unwrap_err();
+        assert!(!swap.keeps_watching(&err));
+        assert!(swap.record().state.pending_claim.is_some());
+    }
+
+    #[macros::async_test_all]
+    async fn missing_inputs_drop_a_saved_claim_only_after_a_look_at_the_lockup() {
+        let missing = || Mutex::new(Some("bad-txns-inputs-missingorspent".to_string()));
+
+        // Nothing spends the lockup: the next attempt signs afresh.
+        let (_, h) = with_unrecorded_claim(FakeFlows {
+            broadcast_failures: Mutex::new(1),
+            broadcast_refusal: missing(),
+            ..Default::default()
+        })
+        .await;
+        let swap = h.kaleido.swap("rev-1").await.unwrap();
+        swap.tick().await.unwrap_err();
+        assert_eq!(swap.record().state.pending_claim, None, "dropped");
+        swap.tick().await.unwrap();
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1, "signed afresh");
+        assert_eq!(
+            swap.record().state.claim_txid.as_deref(),
+            Some("claim-txid")
+        );
+
+        // A spend paying this swap is its claim, whatever its txid.
+        let (_, h) = with_unrecorded_claim(FakeFlows {
+            broadcast_failures: Mutex::new(1),
+            broadcast_refusal: missing(),
+            spender: Mutex::new(Some(LockupSpender {
+                txid: "earlier-claim".into(),
+                pays_swap: true,
+            })),
+            ..Default::default()
+        })
+        .await;
+        let record = h.kaleido.swap("rev-1").await.unwrap().tick().await.unwrap();
+        assert_eq!(record.phase, SwapPhase::Claiming);
+        assert_eq!(record.state.claim_txid.as_deref(), Some("earlier-claim"));
+        assert_eq!(record.state.pending_claim, None);
+        assert!(h.flows.claim.lock().unwrap().is_empty());
+
+        // Any other spend ends the attempt without signing again.
+        let (_, h) = with_unrecorded_claim(FakeFlows {
+            broadcast_failures: Mutex::new(1),
+            broadcast_refusal: missing(),
+            spender: Mutex::new(Some(LockupSpender {
+                txid: "other".into(),
+                pays_swap: false,
+            })),
+            ..Default::default()
+        })
+        .await;
+        let swap = h.kaleido.swap("rev-1").await.unwrap();
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed);
+        assert!(!swap.keeps_watching(&err));
+        assert_eq!(swap.record().state.pending_claim, None);
+        assert_eq!(swap.record().state.claim_txid, None);
+        assert!(h.flows.claim.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_refund_is_kept_after_a_refusal() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        let id = started_submarine(&first).await.id();
+        save_unrecorded(&store, &id, SwapPhase::Refundable, Spend::Refund).await;
+        let h = harness_with(
+            store.clone(),
+            FakeFlows {
+                broadcast_failures: Mutex::new(1),
+                broadcast_refusal: Mutex::new(Some("connection reset".into())),
+                ..Default::default()
+            },
+        );
+        let swap = h.kaleido.swap(&id).await.unwrap();
+        let err = swap.refund().await.unwrap_err();
+        assert!(swap.record().state.pending_refund.is_some(), "kept");
+        assert!(
+            !swap.keeps_watching(&err),
+            "a generic error is not transient"
+        );
+        let record = swap.refund().await.unwrap();
+        assert_eq!(record.state.refund_txid.as_deref(), Some("refund-txid"));
+        assert!(h.flows.refund.lock().unwrap().is_empty(), "not re-signed");
+    }
+
+    #[macros::async_test_all]
+    async fn an_ended_swap_broadcasts_nothing_it_saved() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        let id = started_submarine(&first).await.id();
+        save_unrecorded(&store, &id, SwapPhase::Failed, Spend::Refund).await;
+        let h = harness_with(store.clone(), FakeFlows::default());
+        let err = h
+            .kaleido
+            .swap(&id)
+            .await
+            .unwrap()
+            .refund()
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed);
+        assert!(h.flows.broadcasts.lock().unwrap().is_empty());
+
+        // Settling clears whatever was saved.
+        let (store, h) = with_unrecorded_claim(FakeFlows::default()).await;
+        h.maker.script(&["invoice.settled"]);
+        let record = h.kaleido.swap("rev-1").await.unwrap().tick().await.unwrap();
+        assert_eq!(record.phase, SwapPhase::Settled);
+        let stored = store.get("rev-1").await.unwrap().unwrap();
+        assert_eq!(stored.state.pending_claim, None);
+        assert!(h.flows.broadcasts.lock().unwrap().is_empty());
+    }
+
+    #[macros::test_all]
+    fn broadcast_refusals_are_permanent_unless_a_timelock_is_not_final() {
+        assert!(!spend_error_is_transient(&Error::Esplora(
+            "Broadcast rejected (400 Bad Request): min relay fee not met".into()
+        )));
+        assert!(spend_error_is_transient(&Error::Esplora(
+            "Broadcast rejected (400 Bad Request): non-final".into()
+        )));
+        assert!(spend_error_is_transient(&Error::Esplora(
+            "Broadcast rejected (503 Service Unavailable): busy".into()
+        )));
+        assert!(spend_error_is_transient(&Error::Esplora(
+            "error sending request".into()
+        )));
+        assert!(inputs_missing_or_spent(&Error::Esplora(
+            "Broadcast rejected (400 Bad Request): bad-txns-inputs-missingorspent".into()
+        )));
+        assert!(!inputs_missing_or_spent(&Error::Generic(
+            "broadcast refused".into()
+        )));
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_claim_the_chain_cannot_be_asked_about_is_kept() {
+        // A chain it cannot read decides nothing: the saved claim is kept.
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let blind = harness_with(
+            store.clone(),
+            FakeFlows {
+                broadcast_failures: Mutex::new(1),
+                chain_down: true,
+                ..Default::default()
+            },
+        );
+        blind.maker.script(&["transaction.confirmed"]);
+        let err = blind
+            .kaleido
+            .swap("rev-1")
+            .await
+            .unwrap()
+            .tick()
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::ChainUnreachable);
+        assert!(store
+            .get("rev-1")
+            .await
+            .unwrap()
+            .unwrap()
+            .state
+            .pending_claim
+            .is_some());
+        assert!(blind.flows.claim.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_refund_is_finished_not_signed_again() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        let id = started_submarine(&first).await.id();
+        save_unrecorded(&store, &id, SwapPhase::Refundable, Spend::Refund).await;
+
+        // Asked for explicitly…
+        let second = harness_with(store.clone(), FakeFlows::default());
+        let record = second
+            .kaleido
+            .swap(&id)
+            .await
+            .unwrap()
+            .refund()
+            .await
+            .unwrap();
+        assert_eq!(record.phase, SwapPhase::Refunding);
+        assert_eq!(record.state.refund_txid.as_deref(), Some("refund-txid"));
+        assert!(
+            second.flows.refund.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+
+        // …or by the driver.
+        save_unrecorded(&store, &id, SwapPhase::Refundable, Spend::Refund).await;
+        let mut record = store.get(&id).await.unwrap().unwrap();
+        record.state.refund_txid = None;
+        store.put(&record).await.unwrap();
+        let third = harness_with(store.clone(), FakeFlows::default());
+        third.maker.script(&["invoice.failedToPay"]);
+        let record = third.kaleido.swap(&id).await.unwrap().tick().await.unwrap();
+        assert_eq!(record.phase, SwapPhase::Refunding);
+        assert_eq!(record.raw_status, "invoice.failedToPay");
+        assert!(
+            third.flows.refund.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+        assert_eq!(*third.flows.broadcasts.lock().unwrap(), vec!["refund-txid"]);
+    }
+
+    /// A store whose reads fail a set number of times before they work.
+    struct FlakyStore {
+        inner: MemoryStore,
+        failing_gets: Mutex<u32>,
+    }
+
+    #[macros::async_trait]
+    impl SwapStore for FlakyStore {
+        async fn get(&self, id: &str) -> Result<Option<SwapRecord>, SwapError> {
+            {
+                let mut failing = self.failing_gets.lock().unwrap();
+                if *failing > 0 {
+                    *failing -= 1;
+                    return Err(SwapError::new(SwapErrorCode::StoreFailed, "busy"));
+                }
+            }
+            self.inner.get(id).await
+        }
+        async fn put(&self, record: &SwapRecord) -> Result<(), SwapError> {
+            self.inner.put(record).await
+        }
+        async fn list(&self) -> Result<Vec<SwapRecord>, SwapError> {
+            self.inner.list().await
+        }
+        async fn next_index(&self) -> Result<u64, SwapError> {
+            self.inner.next_index().await
+        }
+    }
+
+    #[macros::async_test_all]
+    async fn watch_waits_out_a_store_it_cannot_read() {
+        let store = Arc::new(FlakyStore {
+            inner: MemoryStore::new(),
+            failing_gets: Mutex::new(0),
+        });
+        let maker = Arc::new(FakeMaker::default());
+        let kaleido = KaleidoSwap::with_seams(
+            KaleidoSwapOptions {
+                network: Network::Signet,
+                store: store.clone(),
+                signer: Arc::new(FakeSigner),
+                maker_url: None,
+                bitcoin_esplora_url: None,
+                liquid_esplora_url: None,
+                poll_interval: Some(Duration::from_millis(1)),
+                fee_sat_per_vb: None,
+                quote_ttl: None,
+                maker_timeout: None,
+                reverse_timeout_headroom: None,
+            },
+            "https://maker.example/v2".into(),
+            maker.clone(),
+            Arc::new(FakeFlows::default()),
+        );
+        let q = kaleido
+            .quote(reverse_request(50_000))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        let swap = kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        *store.failing_gets.lock().unwrap() = 2;
+        maker.script(&["transaction.confirmed", "invoice.settled"]);
+        let done = swap.settled().await.unwrap();
+        assert_eq!(done.phase, SwapPhase::Settled);
+    }
+
+    /// A one-route-per-path HTTP stub on a local port, for the Esplora calls
+    /// [`DefaultFlows`] makes.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    fn stub_esplora(routes: Vec<(String, u16, String)>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = Vec::new();
+                let mut buf = [0u8; 1024];
+                while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match stream.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => request.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let request = String::from_utf8_lossy(&request);
+                let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
+                let (code, body) = routes
+                    .iter()
+                    .find(|(route, _, _)| *route == path)
+                    .map(|(_, code, body)| (*code, body.clone()))
+                    .unwrap_or((404, "not found".into()));
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 {code} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+            }
+        });
+        base
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[macros::async_test]
+    async fn default_flows_ask_the_chain_for_the_transaction_itself() {
+        let lockup = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx";
+        let refund = "tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7";
+        let script = |a: &str| {
+            a.parse::<bitcoin::Address<bitcoin::address::NetworkUnchecked>>()
+                .unwrap()
+                .assume_checked()
+                .script_pubkey()
+                .to_hex_string()
+        };
+        let (known, unknown) = ("aa".repeat(32), "bb".repeat(32));
+        let (ours, theirs) = ("cc".repeat(32), "dd".repeat(32));
+        let history = serde_json::json!([
+            {"txid": theirs, "vin": [{"prevout": {"scriptpubkey": "0014ff"}}],
+             "vout": [{"scriptpubkey": script(lockup)}]},
+            {"txid": ours, "vin": [{"prevout": {"scriptpubkey": script(lockup)}}],
+             "vout": [{"scriptpubkey": script(refund)}]},
+        ]);
+        // Esplora answers an unknown txid as unconfirmed on `/status` and
+        // unspent on `/outspend`; only `/tx/:txid` says it does not know it.
+        let base = stub_esplora(vec![
+            (format!("/tx/{known}"), 200, "00".into()),
+            (
+                format!("/tx/{unknown}/status"),
+                200,
+                r#"{"confirmed":false}"#.into(),
+            ),
+            (
+                format!("/tx/{unknown}/outspend/0"),
+                200,
+                r#"{"spent":false}"#.into(),
+            ),
+            (format!("/address/{lockup}/txs"), 200, history.to_string()),
+        ]);
+        let flows = DefaultFlows::new(
+            Arc::new(BoltzApiClientV2::new(base.clone(), None)),
+            EsploraBitcoinClient::new(BitcoinChain::BitcoinSignet, &base, 5),
+            EsploraLiquidClient::new(LiquidChain::LiquidTestnet, &base, 5),
+            2.0,
+        );
+        let mut record = started_submarine(&harness()).await.record();
+        if let CreateResponse::BoltzSubmarine(r) = &mut record.state.response {
+            r.address = lockup.into();
+        }
+        record.state.refund_address = Some(refund.into());
+        let signed = |txid: &str| SignedTx {
+            txid: txid.into(),
+            hex: String::new(),
+        };
+        assert!(flows.tx_seen(&record, &signed(&known)).await.unwrap());
+        assert!(!flows.tx_seen(&record, &signed(&unknown)).await.unwrap());
+        assert_eq!(
+            flows.lockup_spender(&record).await.unwrap(),
+            Some(LockupSpender {
+                txid: ours,
+                pays_swap: true
+            })
+        );
+        record.state.refund_address = None;
+        assert_eq!(
+            flows
+                .lockup_spender(&record)
+                .await
+                .unwrap()
+                .map(|s| s.pays_swap),
+            Some(false)
+        );
     }
 
     #[macros::async_test_all]

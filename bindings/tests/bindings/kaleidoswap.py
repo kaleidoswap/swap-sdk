@@ -10,7 +10,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import kaleidorg_swap_sdk as sdk
 
-INVOICE_SIGNET_50K = "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e"
+# A hold invoice the signet maker issued (50 000 sat), long since expired.
+EXPIRED_INVOICE_SIGNET_50K = "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e"
 REVERSE_CARD = {
     "hash": "rev-hash",
     "rate": 1,
@@ -136,16 +137,20 @@ async def run():
             1_000_000,
         )
 
-        # A submarine is priced against its invoice.
-        sub = await kaleido.quote(
-            sdk.QuoteRequest(
-                pay=sdk.Asset.BTC_ONCHAIN(),
-                receive=sdk.Asset.BTC_LIGHTNING(),
-                amount=sdk.Amount.INVOICE(INVOICE_SIGNET_50K),
+        # A submarine is priced against its invoice, which has to be
+        # unexpired: an expired one is refused before the maker is contacted.
+        try:
+            await kaleido.quote(
+                sdk.QuoteRequest(
+                    pay=sdk.Asset.BTC_ONCHAIN(),
+                    receive=sdk.Asset.BTC_LIGHTNING(),
+                    amount=sdk.Amount.INVOICE(EXPIRED_INVOICE_SIGNET_50K),
+                )
             )
-        )
-        assert sub.quote.protocol == sdk.Protocol.BOLTZ_SUBMARINE
-        assert (sub.quote.to_amount, sub.quote.from_amount) == (50_000, 50_200)
+        except sdk.Error.Swap as error:
+            assert code_of(error) == sdk.SwapErrorCode.INVOICE_EXPIRED, error
+        else:
+            raise AssertionError("an expired invoice was quoted")
 
         # A route this layer does not create swaps for is a refusal that says
         # where it lives; an RGB asset is named by its contract.
@@ -180,14 +185,34 @@ async def run():
                 assert code_of(error) == expected, error
             else:
                 raise AssertionError("an unusable destination was accepted")
+        # `start` reads the invoice itself rather than trusting the quote.
+        stale = sdk.Quote(
+            protocol=sdk.Protocol.BOLTZ_SUBMARINE,
+            from_asset=sdk.Asset.BTC_ONCHAIN(),
+            to_asset=sdk.Asset.BTC_LIGHTNING(),
+            from_amount=50_200,
+            to_amount=50_000,
+            fees=quote.fees,
+            limits=quote.limits,
+            expires_at=quote.expires_at,
+            binding=sdk.QuoteBinding(
+                pair_hash="sub-hash",
+                invoice=EXPIRED_INVOICE_SIGNET_50K,
+                zero_conf_limit=0,
+            ),
+        )
         try:
             await kaleido.start(
-                sub.quote, sdk.StartOptions(destination=None, refund_address=None)
+                stale,
+                sdk.StartOptions(
+                    destination=None,
+                    refund_address="tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx",
+                ),
             )
         except sdk.Error.Swap as error:
-            assert code_of(error) == sdk.SwapErrorCode.REFUND_ADDRESS_REQUIRED
+            assert code_of(error) == sdk.SwapErrorCode.INVOICE_EXPIRED, error
         else:
-            raise AssertionError("a submarine without a refund address was accepted")
+            raise AssertionError("an expired invoice was started against")
         assert posts == [], "nothing reached the maker"
 
         # A record's string form must not be able to carry the maker's

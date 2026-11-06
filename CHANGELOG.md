@@ -71,6 +71,48 @@ the configured network, before it contacts the maker. `watch` and `settled`
 keep retrying a refund only while the failure is one waiting can fix, and end
 on one that will fail the same way again.
 
+`Swap::action()` reports the zero-conf limit from the maker's pair terms when
+`start` created the swap, when the maker accepts unconfirmed funding; `start`
+refuses pair terms the maker no longer publishes. It offers the maker's BIP21
+URI as `bip21` only when it names exactly the verified lockup address and
+amount, with an `assetid`, if any, of L-BTC on Liquid, and no repeated
+parameter or any other parameter, such as `lightning`, that a wallet could act
+on instead.
+
+A swap to Lightning checks the invoice's own expiry by the local clock: `quote`
+and `start` refuse, with the new `INVOICE_EXPIRED` code and before the maker is
+contacted, an invoice with less than `MIN_INVOICE_VALIDITY` (10 minutes) left,
+and a quote priced against an invoice expires no later than that.
+
+Every `Swap` handle one `KaleidoSwap` gives out on the same id — from `start`,
+`swap` or `resume` — shares a lock: `tick` and `refund` wait for any other in
+flight on that swap and reload the record from the store before acting, so two
+handles never both claim or both refund.
+
+A claim or refund is saved to the record, signed, before it is broadcast, and
+its txid is recorded once the chain has it, as `GET /tx/:txid` reports it. A
+tick or `refund()` that finds one saved rebroadcasts it, or records it when the
+chain already has it, instead of signing a second spend of the lockup. A saved
+transaction is kept through every failed broadcast except an answer that its
+inputs are missing or spent; then the lockup's spender is looked up, and a spend
+paying the swap is recorded as its claim or refund, any other spend ends the
+attempt, and no spend leaves the next attempt to sign afresh. A swap that ends
+settled or refunded drops anything saved, and `refund()` on an ended swap
+broadcasts nothing. `SwapFlows` splits `claim` and `refund` into `sign_claim`
+and `sign_refund`, which return a `SignedTx`, plus `broadcast`, `tx_seen` and
+`lockup_spender`, and `DefaultFlows::new` takes the two Esplora clients.
+
+`watch` and `settled` also keep polling through a store they cannot read and a
+failed claim broadcast while the lockup is more than the claim safety margin
+from its timeout. A broadcast refused with a 4xx answer is no longer retried as
+transient, unless it names a timelock that is not yet final.
+
+The headroom a reverse swap's lockup timeout must leave for `start` to hand
+out the invoice can be set per chain with `reverse_timeout_headroom`
+(`reverseTimeoutHeadroom: { bitcoinBlocks?, liquidBlocks? }` in TypeScript) in
+every binding. Each chain defaults to 12 and 120 blocks as before, and a value
+below one and a half times the claim safety margin (9 and 90) is raised to it.
+
 ### Added — the high-level surface documented in each binding
 
 The Python, TypeScript and React Native READMEs document `KaleidoSwap` in each
