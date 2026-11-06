@@ -112,28 +112,44 @@ import {
   Network,
 } from "@kaleidorg/swap-sdk-react-native";
 
+// Once, at app scope: one FileStore and one KaleidoSwap per store directory.
 const kaleido = new KaleidoSwap(
   KaleidoSwapOptions.create({
     network: Network.Signet,
-    store: new FileStore(`${RNFS.DocumentDirectoryPath}/swaps`),
+    store: new FileStore(storeDir),
     signer: new MnemonicSigner(swapMnemonic, undefined, Network.Signet),
   }),
 );
 const report = await kaleido.resume();
 ```
 
-`FileStore` keeps one JSON file per swap, owner-readable only, and hands out
-each swap index exactly once; `MemoryStore` keeps nothing past the process.
-Keep the directory inside the app's private storage and the swap mnemonic in
-the Keychain or Keystore: records carry the maker's `swapAuth` and the material
-a refund needs.
+`FileStore` keeps one JSON file per swap, owner-readable only. `MemoryStore`
+keeps nothing past the process: use it in tests only, never for a swap you
+fund. Records carry the maker's `swapAuth` and the material a refund needs, so
+keep the swap mnemonic in the Keychain or Keystore and put `storeDir` in
+app-private storage that is not backed up: on iOS, a directory under
+`Library/Application Support` marked excluded from backup; on Android, the
+no-backup files directory (`Context.getNoBackupFilesDir()`); elsewhere,
+exclude it from backup. Do not log records or send them to telemetry.
+
+**Store rules.**
+
+- A store belongs to exactly one swap mnemonic.
+- Use one `FileStore` and one `KaleidoSwap` per store directory per process.
+- Never reset, copy or restore a store from an older backup while its swap
+  mnemonic is in use.
+- If a store is lost, start a new swap mnemonic.
 
 To keep swaps in your own storage or derive keys from your own wallet, pass any
 object that implements the `SwapStore` interface (`get`, `put`, `list`,
 `nextIndex`, records as JSON strings persisted verbatim) or `SwapSigner`
 (`deriveKey`, `derivePreimage`, hex out). These are **synchronous**: the native
 side calls them and waits for the return value, so they cannot return a
-promise.
+promise. A store of your own follows the store rules above, and:
+
+- `put` does not return until the record is durably stored.
+- `nextIndex` persists the advanced counter before it returns, is atomic
+  across callers, and never goes backwards.
 
 > **Not yet run on a device.** A JavaScript `SwapStore`, `SwapSigner` and the
 > `PhaseListener` passed to `watch` are UniFFI foreign-trait callbacks: native
@@ -145,10 +161,13 @@ promise.
 > signet on real hardware before you ship it.
 
 **Resume at launch.** A swap has a deadline and a phone does not stay awake.
-`resume()` claims or refunds every swap the store still holds and returns a
-`ResumeReport`: `resumed` (the `Swap`s still in flight), `settled`, `refunded`,
-`failed`, and `errors`, the swaps it could not move this pass, each with an
-`id`, a `code` and a `message`. Those stay in the store for the next `resume()`.
+`resume()` moves every swap the store still holds one step (claiming what is
+claimable, refunding what is refundable) and returns a `ResumeReport`:
+`resumed` (the `Swap`s still in flight), `settled`, `refunded`, `failed`, and
+`errors`, the swaps it could not move this pass, each with an `id`, a `code`
+and a `message`. Those stay in the store for the next `resume()`. Follow each
+swap in `resumed` to the end with `watch()` or `settled()`; `resume()` does not
+wait for funding or confirmations.
 
 ### Quote
 
@@ -165,6 +184,8 @@ Both sides are yours to name, each an `Asset`: what it is and where it lives.
 | `new Asset.RgbOnchain({ contractId })`   | `bitcoin:rgb:…`   |
 | `new Asset.RgbLightning({ contractId })` | `lightning:rgb:…` |
 | `new Asset.SparkToken({ tokenId })`      | `spark:btkn…`     |
+
+`contractId` is the full RGB contract id, `rgb:` prefix included.
 
 The protocol follows from the two sides and is reported on the quote, never
 inferred from an address. The amount says what it fixes, in sats as a

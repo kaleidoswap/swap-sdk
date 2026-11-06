@@ -2,24 +2,29 @@ import {
   FileStore,
   KaleidoSwap,
   KaleidoSwapOptions,
-  type ResumeReport,
   MnemonicSigner,
   Network,
 } from "@kaleidorg/swap-sdk-react-native";
 
-export async function openKaleidoSwap(
+/**
+ * Builds the one `KaleidoSwap` the app uses. Call it once, at app scope, and
+ * pass the instance to `resume`, `submarine` and `reverse`: one `FileStore`
+ * and one `KaleidoSwap` per store directory per process.
+ *
+ * `storeDir` belongs to this swap mnemonic alone. Keep it in app-private
+ * storage that is not backed up, and never reset, copy or restore it from an
+ * older backup while the mnemonic is in use. If it is lost, start a new swap
+ * mnemonic.
+ */
+export function openKaleidoSwap(
   storeDir: string,
   swapMnemonic: string,
-): Promise<{ kaleido: KaleidoSwap; report: ResumeReport }> {
-  const kaleido = new KaleidoSwap(
+): KaleidoSwap {
+  return new KaleidoSwap(
     KaleidoSwapOptions.create({
       network: Network.Signet,
       store: new FileStore(storeDir),
       signer: new MnemonicSigner(swapMnemonic, undefined, Network.Signet),
     }),
   );
-  const report = await kaleido.resume();
-  if (report.errors.length)
-    throw new Error(`resume could not move ${report.errors.map((e) => e.id)}`);
-  return { kaleido, report };
 }

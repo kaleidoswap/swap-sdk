@@ -54,29 +54,49 @@ import {
   mnemonicSigner,
 } from "@kaleidorg/swap-sdk";
 
+// Once per process: one FileStore and one KaleidoSwap per store directory.
 const kaleido = await createKaleidoSwap({
   network: "signet",
-  store: new FileStore("./swaps/"),
+  store: new FileStore(storeDir),
   signer: mnemonicSigner(swapMnemonic, "signet"),
 });
 const report = await kaleido.resume();
 ```
 
 `createKaleidoSwap` runs `init()` itself. `FileStore` (Node entry only) keeps
-one JSON file per swap and hands out each swap index exactly once;
-`MemoryStore` keeps nothing past the process. In a browser, or to keep swaps
-in your own database, pass any object with `get`, `put`, `list` and
-`nextIndex`: the `SwapStore` interface, whose methods may return a value or a
-promise. Records are plain JSON-compatible objects; persist them verbatim.
-They carry the maker's `swapAuth` and the material a refund needs, so treat
-the store as secret. A wallet that keeps its seed elsewhere implements
-`SwapSigner` (`deriveKey`, `derivePreimage`) instead of `mnemonicSigner`.
+one JSON file per swap; give it a directory under your application's data
+directory, outside any source tree and out of version control. A relative
+path resolves against the working directory. `MemoryStore` keeps nothing past
+the process: use it in tests only, never for a swap you fund. In a browser, or
+to keep swaps in your own database, pass any object with `get`, `put`, `list`
+and `nextIndex`: the `SwapStore` interface, whose methods may return a value
+or a promise. Records are plain JSON-compatible objects; persist them
+verbatim. Their `state` carries the maker's `swapAuth` and the material a
+refund needs, so treat the store as secret and do not log records or send them
+to telemetry. A wallet that keeps its seed elsewhere implements `SwapSigner`
+(`deriveKey`, `derivePreimage`) instead of `mnemonicSigner`.
 
-**Resume at startup.** `resume()` claims or refunds every swap the store still
-holds and returns a `ResumeReport`: `resumed` (the `Swap`s still in flight),
-`settled`, `refunded`, `failed`, and `errors`, the swaps it could not move this
-pass, each with an `id`, a `code` and a `message`. Those stay in the store for
-the next `resume()`.
+**Store rules.**
+
+- A store belongs to exactly one swap mnemonic.
+- Use one `FileStore` and one `KaleidoSwap` per store directory per process.
+- Never reset, copy or restore a store from an older backup while its swap
+  mnemonic is in use.
+- If a store is lost, start a new swap mnemonic.
+
+A store of your own follows the same rules, and:
+
+- `put` does not resolve until the record is durably stored.
+- `nextIndex` persists the advanced counter before it resolves, is atomic
+  across callers, and never goes backwards.
+
+**Resume at startup.** `resume()` moves every swap the store still holds one
+step (claiming what is claimable, refunding what is refundable) and returns a
+`ResumeReport`: `resumed` (the `Swap`s still in flight), `settled`, `refunded`,
+`failed`, and `errors`, the swaps it could not move this pass, each with an
+`id`, a `code` and a `message`. Those stay in the store for the next
+`resume()`. Follow each swap in `resumed` to the end with `settled()` or
+`phases()`; `resume()` does not wait for funding or confirmations.
 
 ### Quote
 
@@ -148,8 +168,8 @@ try {
   the maker and the chain move, and yields every phase change. It ends on any
   terminal phase, so check `swap.phase` afterwards. `swap.settled(signal?)`
   resolves with the `SwapRecord` on `settled` and rejects with a `SwapError`
-  on `refunded` or `failed`. Aborting either rejects with `ABORTED`; the swap
-  stays in the store and is resumable. A swap moves only while something
+  on `refunded` or `failed`. Aborting either rejects with `ABORTED`. Aborting
+  stops waiting; this process keeps driving the swap until it ends. A swap moves only while something
   follows it (or `resume()` runs), so keep following it until it ends, and
   resume at the next start if the process stops first.
 - `swap.id`, `swap.phase`, `swap.record()` and `kaleido.swap(id)` read state

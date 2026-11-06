@@ -4,36 +4,53 @@ The high-level `KaleidoSwap` surface in a React Native app. You name what you
 pay and what you receive; the SDK prices the route, checks the maker's
 response, persists the swap, and claims or refunds on its own.
 
-| Example               | What it does                                                          | Needs                                               |
-| --------------------- | --------------------------------------------------------------------- | --------------------------------------------------- |
-| `simple/submarine.ts` | On-chain BTC → a Lightning invoice; refunds on its own if it unwinds. | a swap mnemonic, a BOLT11 invoice, a refund address |
-| `simple/reverse.ts`   | A Lightning payment → L-BTC on Liquid.                                | a swap mnemonic, a Liquid address, 50k signet sats  |
-| `simple/resume.ts`    | Finishes or refunds whatever the store still holds.                   | a swap mnemonic                                     |
-| `simple/kaleido.ts`   | Builds the `KaleidoSwap` the three above share, and resumes it.       |                                                     |
+| Example               | What it does                                                             | Needs                                                |
+| --------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `simple/kaleido.ts`   | Builds the one `KaleidoSwap` the app shares. Call it once, at app scope. | a store directory, a swap mnemonic                   |
+| `simple/resume.ts`    | Moves every stored swap one step, then follows the ones still in flight. | the `KaleidoSwap`                                    |
+| `simple/submarine.ts` | On-chain BTC → a Lightning invoice; refunds on its own if it unwinds.    | the `KaleidoSwap`, an invoice, a refund address      |
+| `simple/reverse.ts`   | A Lightning payment → L-BTC on Liquid.                                   | the `KaleidoSwap`, a Liquid address, 50k signet sats |
 
-These are functions, not scripts: call them from a screen or a startup hook,
-and pass what they need.
+These are functions, not scripts: build the instance once, call `resume` from
+a startup hook, and call the swaps from a screen.
 
 ```ts
+import { openKaleidoSwap } from "./examples/simple/kaleido";
+import { resume } from "./examples/simple/resume";
 import { reverse } from "./examples/simple/reverse";
 
+// Once, at app scope. storeDir: see "The store directory" below.
+const kaleido = openKaleidoSwap(storeDir, swapMnemonic);
+
+// At every launch.
+await resume(kaleido, (swapId, phase) => setPhase(swapId, SwapPhase[phase]));
+
+// From a screen.
 await reverse(
-  `${RNFS.DocumentDirectoryPath}/swaps`,
-  swapMnemonic,
+  kaleido,
   liquidAddress,
   (invoice) => setInvoice(invoice),
-  (phase) => setPhase(SwapPhase[phase]),
+  (phase) => setPhase(undefined, SwapPhase[phase]),
 );
 ```
 
-- **The store directory** must be inside the app's private storage. Every record
-  carries the maker's `swapAuth` and the material a refund needs. `FileStore`
-  creates the directory, keeps files owner-readable only and never hands out a
-  swap index twice.
+- **The store directory** belongs in app-private storage that is not backed
+  up: on iOS, a directory under `Library/Application Support` marked excluded
+  from backup; on Android, the no-backup files directory
+  (`Context.getNoBackupFilesDir()`); elsewhere, exclude it from backup. Every
+  record carries the maker's `swapAuth` and the material a refund needs.
+  `FileStore` creates the directory and keeps files owner-readable only.
+- **Store rules.** A store belongs to exactly one swap mnemonic. Use one
+  `FileStore` and one `KaleidoSwap` per store directory per process. Never
+  reset, copy or restore a store from an older backup while its swap mnemonic
+  is in use. If a store is lost, start a new swap mnemonic.
 - **The swap mnemonic** belongs in the Keychain or Keystore, not in app state.
 - **Call `resume` at launch.** A swap has a deadline and a phone does not stay
-  awake. A function that rejects (a refusal, a swap that ends `refunded` or
-  `failed`) leaves the swap in the store for the next `resume`.
+  awake. `resume()` moves each stored swap one step; `resume.ts` then follows
+  every swap in `report.resumed` to the end. A swap that ends `refunded` or
+  `failed`, or one `resume()` could not move this pass, is reported; one it
+  could not move stays in the store for the next launch and never stops the
+  others.
 - The module is native code, so none of this runs in Expo Go.
 - **Not yet run on a device.** These examples use the Rust `FileStore` and
   `MnemonicSigner`, but the `{ onPhase }` listener passed to `watch` is a
