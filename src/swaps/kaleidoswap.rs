@@ -31,7 +31,9 @@ use crate::swaps::boltz::{
     CreateSubmarineResponse, GetReversePairsResponse, GetSubmarinePairsResponse, PairMinerFees,
     ReversePair, SubmarinePair,
 };
-use crate::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
+use crate::swaps::{
+    BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
+};
 use crate::util::fees::Fee;
 use crate::util::secrets::{Preimage, SwapMasterKey};
 use crate::util::{sleep, unix_now};
@@ -468,8 +470,18 @@ pub struct SwapState {
     pub response: CreateResponse,
     pub destination: String,
     pub refund_address: Option<String>,
+    /// Set once the claim's broadcast is known to have reached the chain.
     pub claim_txid: Option<String>,
+    /// Set once the refund's broadcast is known to have reached the chain.
     pub refund_txid: Option<String>,
+    /// A claim signed and saved before its broadcast. A broadcast that the
+    /// process does not live to record is finished from this on the next
+    /// tick instead of signing a second spend of the same lockup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_claim: Option<SignedTx>,
+    /// A refund signed and saved before its broadcast, as `pending_claim`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_refund: Option<SignedTx>,
     /// Whether a lockup from us was ever seen — decides `failed` vs
     /// `refundable` on expiry.
     #[serde(default)]
@@ -479,6 +491,16 @@ pub struct SwapState {
     /// the limit was kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zero_conf_limit: Option<u64>,
+}
+
+/// A claim or refund this layer signed: what it broadcasts, and what it
+/// rebroadcasts or looks up if it cannot tell whether the broadcast landed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedTx {
+    pub txid: String,
+    /// The consensus-encoded transaction.
+    pub hex: String,
 }
 
 /// `Network` as the lowercase names every binding uses (`"signet"`), read
@@ -712,13 +734,21 @@ pub trait SwapFlows: Send + Sync {
         keys: &Keypair,
         preimage: &Preimage,
     ) -> Result<(), Error>;
-    async fn claim(
+    /// Builds and signs the claim of a reverse swap's lockup to its
+    /// destination. Broadcasts nothing: the caller saves it first.
+    async fn sign_claim(
         &self,
         record: &SwapRecord,
         keys: &Keypair,
         preimage: &Preimage,
-    ) -> Result<String, Error>;
-    async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error>;
+    ) -> Result<SignedTx, Error>;
+    /// Builds and signs the refund of a submarine swap's lockup to its
+    /// refund address. Broadcasts nothing: the caller saves it first.
+    async fn sign_refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<SignedTx, Error>;
+    /// Broadcasts a transaction `sign_claim` or `sign_refund` produced.
+    async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error>;
+    /// Whether the chain client has `tx`, in the mempool or in a block.
+    async fn tx_seen(&self, record: &SwapRecord, tx: &SignedTx) -> Result<bool, Error>;
     /// The tip of the chain the swap's lockup lives on, from the trusted
     /// chain client, never the maker's `/chain/heights`.
     async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error>;
@@ -1022,6 +1052,19 @@ impl DefaultFlows {
         }
     }
 
+    fn signed(tx: &BtcLikeTransaction) -> SignedTx {
+        match tx {
+            BtcLikeTransaction::Bitcoin(tx) => SignedTx {
+                txid: tx.compute_txid().to_string(),
+                hex: bitcoin::consensus::encode::serialize_hex(tx),
+            },
+            BtcLikeTransaction::Liquid(tx) => SignedTx {
+                txid: tx.txid().to_string(),
+                hex: elements::encode::serialize_hex(tx),
+            },
+        }
+    }
+
     fn swap_auth(record: &SwapRecord) -> Option<String> {
         match &record.state.response {
             CreateResponse::BoltzReverse(r) => r.swap_auth.clone(),
@@ -1090,12 +1133,12 @@ impl SwapFlows for DefaultFlows {
         }
     }
 
-    async fn claim(
+    async fn sign_claim(
         &self,
         record: &SwapRecord,
         keys: &Keypair,
         preimage: &Preimage,
-    ) -> Result<String, Error> {
+    ) -> Result<SignedTx, Error> {
         let script = Self::script(record, keys)?;
         let destination = record.state.destination.clone();
         // The maker co-signs Bitcoin claims but not every Liquid lockup; the
@@ -1116,10 +1159,10 @@ impl SwapFlows for DefaultFlows {
             }
             Err(e) => return Err(e),
         };
-        self.chain.broadcast_tx(&tx).await
+        Ok(Self::signed(&tx))
     }
 
-    async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error> {
+    async fn sign_refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<SignedTx, Error> {
         let Some(address) = record.state.refund_address.clone() else {
             return Err(Error::Generic(
                 "no refund address was recorded for this swap".into(),
@@ -1141,7 +1184,41 @@ impl SwapFlows for DefaultFlows {
                     .await?
             }
         };
-        self.chain.broadcast_tx(&tx).await
+        Ok(Self::signed(&tx))
+    }
+
+    async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error> {
+        let tx = BtcLikeTransaction::from_hex(Self::chain_kind(record), &tx.hex)?;
+        self.chain.broadcast_tx(&tx).await.map(|_| ())
+    }
+
+    async fn tx_seen(&self, record: &SwapRecord, tx: &SignedTx) -> Result<bool, Error> {
+        let missing = |chain: &str| Error::Generic(format!("no {chain} chain client configured"));
+        let no_outputs = || Error::Generic(format!("{} has no outputs", tx.txid));
+        // The chain knows a transaction exactly when it can report on its
+        // first output, in the mempool or in a block.
+        let status = match BtcLikeTransaction::from_hex(Self::chain_kind(record), &tx.hex)? {
+            BtcLikeTransaction::Bitcoin(tx) => {
+                let out = tx.output.first().ok_or_else(no_outputs)?;
+                self.chain
+                    .bitcoin_client()
+                    .ok_or_else(|| missing("Bitcoin"))?
+                    .get_output_status(
+                        &bitcoin::OutPoint::new(tx.compute_txid(), 0),
+                        &out.script_pubkey,
+                    )
+                    .await?
+            }
+            BtcLikeTransaction::Liquid(tx) => {
+                let out = tx.output.first().ok_or_else(no_outputs)?;
+                self.chain
+                    .liquid_client()
+                    .ok_or_else(|| missing("Liquid"))?
+                    .get_output_status(&elements::OutPoint::new(tx.txid(), 0), &out.script_pubkey)
+                    .await?
+            }
+        };
+        Ok(status.is_some())
     }
 
     async fn lockup_tip_height(&self, record: &SwapRecord) -> Result<u32, Error> {
@@ -1419,7 +1496,7 @@ fn map_status(protocol: Protocol, status: &str, state: &SwapState) -> Transition
 /// has not matured yet, or the chain or the maker could not be reached. A
 /// malformed address, a signing error or a rejected spend will fail the same
 /// way every time, so retrying it only hides it.
-fn refund_error_is_transient(error: &Error) -> bool {
+fn spend_error_is_transient(error: &Error) -> bool {
     match error {
         Error::Locktime(_) | Error::IO(_) | Error::HTTP(_) => true,
         Error::HTTPStatusNotSuccess(status, _) => !status.is_client_error(),
@@ -1431,6 +1508,22 @@ fn refund_error_is_transient(error: &Error) -> bool {
 
 // ---------------------------------------------------------------------------
 // A swap in flight
+
+/// The two spends this layer signs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Spend {
+    Claim,
+    Refund,
+}
+
+impl Spend {
+    fn pending(self, record: &mut SwapRecord) -> &mut Option<SignedTx> {
+        match self {
+            Spend::Claim => &mut record.state.pending_claim,
+            Spend::Refund => &mut record.state.pending_refund,
+        }
+    }
+}
 
 /// A handle over one record. Drive it with [`Swap::tick`] for one observation,
 /// [`Swap::watch`] to follow it to the end, or [`Swap::settled`] to wait.
@@ -1611,6 +1704,19 @@ impl Swap {
             funded_seen = true;
         }
 
+        // A claim or refund saved before a broadcast whose outcome was never
+        // recorded — the process stopped in between — is finished before
+        // anything else is decided: the chain may already have it, and a
+        // second one signed now would spend the same lockup.
+        if !matches!(phase, SwapPhase::Settled | SwapPhase::Refunded) {
+            if let Some(tx) = before.state.pending_refund.clone() {
+                return self.broadcast_saved(Spend::Refund, tx, Some(&status)).await;
+            }
+            if let Some(tx) = before.state.pending_claim.clone() {
+                return self.broadcast_saved(Spend::Claim, tx, Some(&status)).await;
+            }
+        }
+
         // A claim or refund we already broadcast is not undone by the maker
         // still reporting the phase that triggered it.
         if before.state.claim_txid.is_some()
@@ -1651,17 +1757,13 @@ impl Swap {
     async fn claim_now(&self) -> Result<SwapRecord, SwapError> {
         let (keys, preimage) = self.keys().await?;
         let record = self.record();
-        let txid = self
+        let tx = self
             .env
             .flows
-            .claim(&record, &keys, &preimage)
+            .sign_claim(&record, &keys, &preimage)
             .await
             .map_err(|e| SwapError::from_core(e, Some(&record.id)))?;
-        self.persist(|r| {
-            r.phase = SwapPhase::Claiming;
-            r.state.claim_txid = Some(txid.clone());
-        })
-        .await
+        self.save_and_broadcast(Spend::Claim, tx).await
     }
 
     async fn refund_now(&self) -> Result<SwapRecord, SwapError> {
@@ -1674,19 +1776,82 @@ impl Swap {
                 &record.id,
             ));
         }
-        let txid = match self.env.flows.refund(&record, &keys).await {
-            Ok(txid) => txid,
+        let tx = match self.env.flows.sign_refund(&record, &keys).await {
+            Ok(tx) => tx,
             Err(e) => {
                 self.refund_retryable.store(
-                    refund_error_is_transient(&e),
+                    spend_error_is_transient(&e),
                     std::sync::atomic::Ordering::Relaxed,
                 );
                 return Err(SwapError::from_core(e, Some(&record.id)));
             }
         };
+        self.save_and_broadcast(Spend::Refund, tx).await
+    }
+
+    /// Saves a signed claim or refund, then broadcasts it: a broadcast that
+    /// reaches the chain is never one the record has no trace of.
+    async fn save_and_broadcast(&self, kind: Spend, tx: SignedTx) -> Result<SwapRecord, SwapError> {
+        self.persist(|r| *kind.pending(r) = Some(tx.clone()))
+            .await?;
+        self.broadcast_saved(kind, tx, None).await
+    }
+
+    /// Broadcasts a saved claim or refund and records its txid once the
+    /// chain has it: accepted now, or already there from a broadcast whose
+    /// answer was lost. When the chain neither takes it nor has it, the saved
+    /// transaction is dropped so the next attempt signs afresh, as it would
+    /// have without one; when the chain cannot be read, it is kept.
+    async fn broadcast_saved(
+        &self,
+        kind: Spend,
+        tx: SignedTx,
+        status: Option<&str>,
+    ) -> Result<SwapRecord, SwapError> {
+        let record = self.record();
+        if let Err(error) = self.env.flows.broadcast(&record, &tx).await {
+            let seen = self.env.flows.tx_seen(&record, &tx).await.map_err(|e| {
+                SwapError::for_swap(
+                    SwapErrorCode::ChainUnreachable,
+                    format!(
+                        "could not tell whether {} reached the chain: {e:?}",
+                        tx.txid
+                    ),
+                    &record.id,
+                )
+            })?;
+            if !seen {
+                if kind == Spend::Refund {
+                    self.refund_retryable.store(
+                        spend_error_is_transient(&error),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+                self.persist(|r| {
+                    if let Some(status) = status {
+                        r.raw_status = status.to_string();
+                    }
+                    *kind.pending(r) = None;
+                })
+                .await?;
+                return Err(SwapError::from_core(error, Some(&record.id)));
+            }
+        }
         self.persist(|r| {
-            r.phase = SwapPhase::Refunding;
-            r.state.refund_txid = Some(txid.clone());
+            if let Some(status) = status {
+                r.raw_status = status.to_string();
+            }
+            *kind.pending(r) = None;
+            match kind {
+                Spend::Claim => {
+                    r.phase = SwapPhase::Claiming;
+                    r.state.claim_txid = Some(tx.txid.clone());
+                }
+                Spend::Refund => {
+                    r.phase = SwapPhase::Refunding;
+                    r.state.refund_txid = Some(tx.txid.clone());
+                }
+            }
         })
         .await
     }
@@ -1699,6 +1864,9 @@ impl Swap {
         let record = self.record();
         if record.state.refund_txid.is_some() {
             return Ok(record);
+        }
+        if let Some(tx) = record.state.pending_refund.clone() {
+            return self.broadcast_saved(Spend::Refund, tx, None).await;
         }
         if record.phase != SwapPhase::Refundable {
             return Err(SwapError::for_swap(
@@ -2247,6 +2415,8 @@ impl KaleidoSwap {
                 refund_address: options.refund_address,
                 claim_txid: None,
                 refund_txid: None,
+                pending_claim: None,
+                pending_refund: None,
                 funded_seen: false,
                 zero_conf_limit: (!reverse).then_some(quote.binding.zero_conf_limit),
             },
@@ -2628,6 +2798,16 @@ mod tests {
         /// Make those failures permanent: a refund that fails the same way
         /// every time.
         refund_failures_permanent: bool,
+        /// Txids broadcast and accepted.
+        broadcasts: Mutex<Vec<String>>,
+        /// Broadcasts refused before one is accepted.
+        broadcast_failures: Mutex<u32>,
+        /// Txids the chain has, in the mempool or a block.
+        on_chain: Mutex<Vec<String>>,
+        /// When set, each broadcast records whether this store already held
+        /// the transaction being broadcast.
+        observe: Mutex<Option<Arc<MemoryStore>>>,
+        saved_before_broadcast: Mutex<Vec<bool>>,
     }
 
     fn pubkey_hex(keys: &Keypair) -> String {
@@ -2670,20 +2850,27 @@ mod tests {
             }
             Ok(())
         }
-        async fn claim(
+        async fn sign_claim(
             &self,
             record: &SwapRecord,
             keys: &Keypair,
             _preimage: &Preimage,
-        ) -> Result<String, Error> {
+        ) -> Result<SignedTx, Error> {
             YieldOnce(false).await;
             self.claim
                 .lock()
                 .unwrap()
                 .push((record.id.clone(), pubkey_hex(keys)));
-            Ok("claim-txid".into())
+            Ok(SignedTx {
+                txid: "claim-txid".into(),
+                hex: "claim-hex".into(),
+            })
         }
-        async fn refund(&self, record: &SwapRecord, keys: &Keypair) -> Result<String, Error> {
+        async fn sign_refund(
+            &self,
+            record: &SwapRecord,
+            keys: &Keypair,
+        ) -> Result<SignedTx, Error> {
             YieldOnce(false).await;
             {
                 let mut failures = self.refund_failures.lock().unwrap();
@@ -2700,7 +2887,35 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push((record.id.clone(), pubkey_hex(keys)));
-            Ok("refund-txid".into())
+            Ok(SignedTx {
+                txid: "refund-txid".into(),
+                hex: "refund-hex".into(),
+            })
+        }
+        async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error> {
+            let observe = self.observe.lock().unwrap().clone();
+            if let Some(store) = observe {
+                let stored = store.get(&record.id).await.unwrap().unwrap();
+                let saved = [stored.state.pending_claim, stored.state.pending_refund]
+                    .contains(&Some(tx.clone()));
+                self.saved_before_broadcast.lock().unwrap().push(saved);
+            }
+            {
+                let mut failures = self.broadcast_failures.lock().unwrap();
+                if *failures > 0 {
+                    *failures -= 1;
+                    return Err(Error::Generic("broadcast refused".into()));
+                }
+            }
+            self.broadcasts.lock().unwrap().push(tx.txid.clone());
+            self.on_chain.lock().unwrap().push(tx.txid.clone());
+            Ok(())
+        }
+        async fn tx_seen(&self, _record: &SwapRecord, tx: &SignedTx) -> Result<bool, Error> {
+            if self.chain_down {
+                return Err(Error::Generic("connection refused".into()));
+            }
+            Ok(self.on_chain.lock().unwrap().contains(&tx.txid))
         }
         async fn lockup_tip_height(&self, _record: &SwapRecord) -> Result<u32, Error> {
             if self.chain_down {
@@ -3875,6 +4090,205 @@ mod tests {
         let again = h.kaleido.swap("sub-1").await.unwrap();
         assert_eq!(held("sub-1"), 1);
         drop(again);
+    }
+
+    async fn started_reverse(h: &Harness) -> Swap {
+        let q = reverse_quote(h).await;
+        h.kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+    }
+
+    /// Writes `id` back to `store` as a process that saved a signed claim
+    /// or refund and stopped before recording its broadcast would have.
+    async fn save_unrecorded(store: &MemoryStore, id: &str, phase: SwapPhase, kind: Spend) {
+        let mut record = store.get(id).await.unwrap().unwrap();
+        record.phase = phase;
+        let tx = match kind {
+            Spend::Claim => "claim",
+            Spend::Refund => "refund",
+        };
+        *kind.pending(&mut record) = Some(SignedTx {
+            txid: format!("{tx}-txid"),
+            hex: format!("{tx}-hex"),
+        });
+        store.put(&record).await.unwrap();
+    }
+
+    #[macros::async_test_all]
+    async fn a_claim_is_saved_before_it_is_broadcast() {
+        let h = harness();
+        *h.flows.observe.lock().unwrap() = Some(h.store.clone());
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        let record = swap.tick().await.unwrap();
+        assert_eq!(*h.flows.saved_before_broadcast.lock().unwrap(), vec![true]);
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(record.state.pending_claim, None);
+        let stored = serde_json::to_value(h.store.get("rev-1").await.unwrap().unwrap()).unwrap();
+        assert!(stored["state"].get("pendingClaim").is_none(), "{stored}");
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_claim_is_finished_on_the_next_tick_not_signed_again() {
+        // The chain took the broadcast and already has it: rebroadcasting is
+        // refused, and the chain's copy is what gets recorded.
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let second = harness_with(
+            store.clone(),
+            FakeFlows {
+                broadcast_failures: Mutex::new(1),
+                on_chain: Mutex::new(vec!["claim-txid".into()]),
+                ..Default::default()
+            },
+        );
+        second.maker.script(&["transaction.confirmed"]);
+        let report = second.kaleido.resume().await.unwrap();
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert!(
+            second.flows.claim.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+        let record = store.get("rev-1").await.unwrap().unwrap();
+        assert_eq!(record.phase, SwapPhase::Claiming);
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(record.state.pending_claim, None);
+
+        // The broadcast never happened: the saved claim is broadcast as is.
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let second = harness_with(store.clone(), FakeFlows::default());
+        second.maker.script(&["transaction.confirmed"]);
+        second.kaleido.resume().await.unwrap();
+        assert!(
+            second.flows.claim.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+        assert_eq!(*second.flows.broadcasts.lock().unwrap(), vec!["claim-txid"]);
+        assert_eq!(
+            store
+                .get("rev-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .state
+                .claim_txid
+                .as_deref(),
+            Some("claim-txid")
+        );
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_claim_the_chain_refuses_and_lacks_is_dropped_and_signed_afresh() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let second = harness_with(
+            store.clone(),
+            FakeFlows {
+                broadcast_failures: Mutex::new(1),
+                ..Default::default()
+            },
+        );
+        second.maker.script(&["transaction.confirmed"]);
+        let swap = second.kaleido.swap("rev-1").await.unwrap();
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed, "{}", err.message);
+        assert_eq!(swap.record().state.pending_claim, None);
+        assert_eq!(swap.record().state.claim_txid, None);
+        swap.tick().await.unwrap();
+        assert_eq!(second.flows.claim.lock().unwrap().len(), 1, "signed afresh");
+        assert_eq!(
+            swap.record().state.claim_txid.as_deref(),
+            Some("claim-txid")
+        );
+
+        // A chain it cannot read decides nothing: the saved claim is kept.
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        save_unrecorded(&store, "rev-1", SwapPhase::Locked, Spend::Claim).await;
+        let blind = harness_with(
+            store.clone(),
+            FakeFlows {
+                broadcast_failures: Mutex::new(1),
+                chain_down: true,
+                ..Default::default()
+            },
+        );
+        blind.maker.script(&["transaction.confirmed"]);
+        let err = blind
+            .kaleido
+            .swap("rev-1")
+            .await
+            .unwrap()
+            .tick()
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::ChainUnreachable);
+        assert!(store
+            .get("rev-1")
+            .await
+            .unwrap()
+            .unwrap()
+            .state
+            .pending_claim
+            .is_some());
+        assert!(blind.flows.claim.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn a_saved_refund_is_finished_not_signed_again() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        let id = started_submarine(&first).await.id();
+        save_unrecorded(&store, &id, SwapPhase::Refundable, Spend::Refund).await;
+
+        // Asked for explicitly…
+        let second = harness_with(store.clone(), FakeFlows::default());
+        let record = second
+            .kaleido
+            .swap(&id)
+            .await
+            .unwrap()
+            .refund()
+            .await
+            .unwrap();
+        assert_eq!(record.phase, SwapPhase::Refunding);
+        assert_eq!(record.state.refund_txid.as_deref(), Some("refund-txid"));
+        assert!(
+            second.flows.refund.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+
+        // …or by the driver.
+        save_unrecorded(&store, &id, SwapPhase::Refundable, Spend::Refund).await;
+        let mut record = store.get(&id).await.unwrap().unwrap();
+        record.state.refund_txid = None;
+        store.put(&record).await.unwrap();
+        let third = harness_with(store.clone(), FakeFlows::default());
+        third.maker.script(&["invoice.failedToPay"]);
+        let record = third.kaleido.swap(&id).await.unwrap().tick().await.unwrap();
+        assert_eq!(record.phase, SwapPhase::Refunding);
+        assert_eq!(record.raw_status, "invoice.failedToPay");
+        assert!(
+            third.flows.refund.lock().unwrap().is_empty(),
+            "not re-signed"
+        );
+        assert_eq!(*third.flows.broadcasts.lock().unwrap(), vec!["refund-txid"]);
     }
 
     #[macros::async_test_all]

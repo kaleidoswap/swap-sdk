@@ -87,6 +87,14 @@ Every `Swap` handle one `KaleidoSwap` gives out on the same id — from `start`,
 flight on that swap and reload the record from the store before acting, so two
 handles never both claim or both refund.
 
+A claim or refund is saved to the record, signed, before it is broadcast, and
+its txid is recorded once the chain has it. A tick that finds one saved
+rebroadcasts it, or records it when the chain already has it, instead of
+signing a second spend of the lockup; one the chain neither takes nor has is
+dropped and signed afresh. `SwapFlows` splits `claim` and `refund` into
+`sign_claim` and `sign_refund`, which return a `SignedTx`, plus `broadcast` and
+`tx_seen`.
+
 ### Changed
 
 - The atomic pair constants use the maker's canonical pair ids
