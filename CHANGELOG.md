@@ -86,6 +86,12 @@ on one that will fail the same way again.
   new `simple_submarine`, `simple_reverse`, `advanced_submarine` and
   `advanced_reverse`. Each folder keeps its swap state in its own gitignored
   `swaps/` subdirectory.
+- The TypeScript live suite authenticates to ldk-server with macaroons. Its
+  helper takes the node's hex `admin.macaroon` in
+  `KALEIDO_LIVE_LDK_MACAROON`, which replaces `KALEIDO_LIVE_LDK_API_KEY`, and
+  sends each call a copy bound to that call's method, body and time, as
+  current ldk-server requires. `npm test` checks the binding against
+  ldk-server's reference vector.
 
 ## [0.13.0] - 2026-10-28
 
