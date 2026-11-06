@@ -99,10 +99,14 @@ The headroom a reverse swap's lockup timeout must leave for `start` to hand
 out the invoice can be set per chain with `reverse_timeout_headroom`
 (`reverseTimeoutHeadroom: { bitcoinBlocks?, liquidBlocks? }` in TypeScript) in
 every binding. Each chain defaults to 12 and 120 blocks as before, and a value
-below the claim safety margin (6 and 60) is raised to it.
+below one and a half times the claim safety margin (9 and 90) is raised to it.
 
 ### Changed
 
+- A submarine swap keeps the zero-conf limit from the maker's current pair
+  terms rather than from the quote it is handed, and `start` refuses terms the
+  maker no longer publishes.
+- A BIP21 URI that repeats a parameter is not passed on in `SwapAction.bip21`.
 - The atomic pair constants use the maker's canonical pair ids
   (`BTC@L1/USDT-RGB@L1`, `USDT-RGB@L1/BTC@L1`).
 - The examples of every binding are split into `simple/`, on the high-level

@@ -620,8 +620,9 @@ fn btc_decimal_to_sat(value: &str) -> Option<u64> {
 /// The maker's BIP21 for a submarine lockup, when every part of it is one
 /// this layer verified: the scheme of the funding chain, the lockup address
 /// `verify_lockup` rebuilt, the exact lockup amount and, on Liquid, L-BTC.
-/// Labels and messages pass; any other parameter withholds the URI, since a
-/// wallet may act on it instead of the address.
+/// Labels and messages pass; any other parameter, or any parameter given
+/// twice, withholds the URI, since a wallet may act on it instead of the
+/// address.
 fn checked_bip21(from: &Asset, network: Network, r: &CreateSubmarineResponse) -> Option<String> {
     let uri = r.bip21.trim();
     let (scheme, rest) = uri.split_once(':')?;
@@ -638,9 +639,16 @@ fn checked_bip21(from: &Asset, network: Network, r: &CreateSubmarineResponse) ->
         return None;
     }
     let mut amount_ok = false;
+    let mut seen: Vec<String> = vec![];
     for pair in query.split('&').filter(|p| !p.is_empty()) {
         let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        match key.to_ascii_lowercase().as_str() {
+        let key = key.to_ascii_lowercase();
+        // A parameter given twice is read differently by different wallets.
+        if seen.contains(&key) {
+            return None;
+        }
+        seen.push(key.clone());
+        match key.as_str() {
             "amount" => amount_ok = btc_decimal_to_sat(value) == Some(r.expected_amount),
             "assetid" if *from == Asset::BtcLiquid => {
                 let lbtc = LiquidChain::from(network).bitcoin().to_string();
@@ -975,9 +983,10 @@ pub struct KaleidoSwapOptions {
 
 /// Per-chain overrides of the headroom `start` requires of a reverse swap's
 /// lockup timeout, in blocks. A chain left `None` keeps its default. A value
-/// below the claim path's safety margin ([`crate::swaps::ClaimPolicy`]: 6 on
-/// Bitcoin, 60 on Liquid) is raised to it, since a claim any closer to the
-/// timeout is refused anyway.
+/// below one and a half times the claim path's safety margin
+/// ([`crate::swaps::ClaimPolicy`]: 6 on Bitcoin, 60 on Liquid), so 9 and 90, is
+/// raised to it: the claim path refuses a claim within the margin of the
+/// timeout, and the lockup needs time to confirm before that.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReverseTimeoutHeadroom {
@@ -1338,7 +1347,7 @@ impl SwapFlows for DefaultFlows {
 /// the maker's refund ([`crate::swaps::ClaimPolicy`]: 6 on Bitcoin, 60 on
 /// Liquid, roughly an hour each). An invoice whose lockup could not be
 /// claimed in time is never one to pay. Twice the margin unless overridden,
-/// and never below the margin itself.
+/// and never below one and a half times the margin.
 fn reverse_timeout_headroom(chain: ChainKind, overrides: ReverseTimeoutHeadroom) -> u32 {
     use crate::swaps::ClaimPolicy;
     let (margin, given) = match chain {
@@ -1351,7 +1360,7 @@ fn reverse_timeout_headroom(chain: ChainKind, overrides: ReverseTimeoutHeadroom)
             overrides.liquid_blocks,
         ),
     };
-    given.map_or(2 * margin, |blocks| blocks.max(margin))
+    given.map_or(2 * margin, |blocks| blocks.max(margin + margin / 2))
 }
 
 // ---------------------------------------------------------------------------
@@ -2328,7 +2337,7 @@ impl KaleidoSwap {
         let preimage = self.env.signer.derive_preimage(swap_index).await?;
         let pubkey = bitcoin::PublicKey::new(keys.public_key());
 
-        let (id, response) = if reverse {
+        let (id, response, zero_conf_limit) = if reverse {
             // The terms the quote was priced on must still be the maker's.
             let pairs = self
                 .env
@@ -2386,8 +2395,29 @@ impl KaleidoSwap {
                     &r.id,
                 ));
             }
-            (r.id.clone(), CreateResponse::BoltzReverse(r))
+            (r.id.clone(), CreateResponse::BoltzReverse(r), None)
         } else {
+            // The zero-conf limit kept on the record is the maker's, read from
+            // the pair terms the quote was priced on, not the caller's copy.
+            let pairs = self
+                .env
+                .maker
+                .submarine_pairs()
+                .await
+                .map_err(|e| SwapError::from_core(e, None))?;
+            let card = pairs
+                .get(
+                    quote.from_asset.boltz_symbol()?,
+                    quote.to_asset.boltz_symbol()?,
+                )
+                .filter(|card| card.hash == quote.binding.pair_hash)
+                .cloned()
+                .ok_or_else(|| {
+                    SwapError::new(
+                        SwapErrorCode::QuoteExpired,
+                        "the pair terms changed since the quote; ask for a new one",
+                    )
+                })?;
             let r = self
                 .env
                 .maker
@@ -2413,7 +2443,11 @@ impl KaleidoSwap {
                     &r.id,
                 ));
             }
-            (r.id.clone(), CreateResponse::BoltzSubmarine(r))
+            (
+                r.id.clone(),
+                CreateResponse::BoltzSubmarine(r),
+                Some(card.limits.maximal_zero_conf),
+            )
         };
         if !is_plain_id(&id) {
             return Err(SwapError::new(
@@ -2444,7 +2478,7 @@ impl KaleidoSwap {
                 pending_claim: None,
                 pending_refund: None,
                 funded_seen: false,
-                zero_conf_limit: (!reverse).then_some(quote.binding.zero_conf_limit),
+                zero_conf_limit,
             },
         };
 
@@ -3437,7 +3471,7 @@ mod tests {
     }
 
     #[macros::async_test_all]
-    async fn the_reverse_timeout_headroom_can_be_overridden_down_to_the_claim_margin() {
+    async fn the_reverse_timeout_headroom_can_be_overridden_down_to_its_floor() {
         // The fake L-BTC lockup times out at block 200; the default needs 120
         // blocks left, so a tip of 100 is refused by default.
         let start_at = |tip: u32, headroom: Option<ReverseTimeoutHeadroom>| async move {
@@ -3483,10 +3517,11 @@ mod tests {
             start_at(100, bitcoin).await,
             Err(SwapErrorCode::SwapExpired)
         );
-        // Below the claim margin (60 on Liquid) is raised to it.
-        assert_eq!(start_at(139, liquid(1)).await, Ok(()));
+        // Below one and a half times the claim margin (90 on Liquid) is
+        // raised to it.
+        assert_eq!(start_at(109, liquid(1)).await, Ok(()));
         assert_eq!(
-            start_at(140, liquid(1)).await,
+            start_at(110, liquid(1)).await,
             Err(SwapErrorCode::SwapExpired)
         );
 
@@ -4008,6 +4043,47 @@ mod tests {
     }
 
     #[macros::async_test_all]
+    async fn the_zero_conf_limit_kept_is_the_makers_not_the_quotes() {
+        let h = harness();
+        *h.maker.submarine_zero_conf.lock().unwrap() = true;
+        let mut q = h
+            .kaleido
+            .quote(submarine_request(&fresh_invoice()))
+            .await
+            .unwrap()
+            .quote()
+            .unwrap();
+        q.binding.zero_conf_limit = 5_000_000;
+        let swap = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(swap.action().zero_conf_limit, Some(100_000));
+
+        // Terms the maker no longer publishes are not started on.
+        q.binding.pair_hash = "stale".into();
+        let err = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    refund_address: Some("tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::QuoteExpired);
+    }
+
+    #[macros::async_test_all]
     async fn action_passes_on_a_bip21_only_when_it_names_the_verified_funding() {
         for (bip21, passed) in [
             ("bitcoin:tb1qlockup?amount=0.000502", true),
@@ -4019,6 +4095,9 @@ mod tests {
             ("bitcoin:tb1qother?amount=0.000502", false),
             ("bitcoin:tb1qlockup?amount=0.000502&lightning=lntbs1", false),
             ("bitcoin:tb1qlockup?amount=0.000502&req-x=1", false),
+            ("bitcoin:tb1qlockup?amount=0.0005&amount=0.000502", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&amount=0.0005", false),
+            ("bitcoin:tb1qlockup?amount=0.000502&label=a&label=b", false),
             ("liquidtestnet:tb1qlockup?amount=0.000502", false),
             ("bitcoin:tb1qlockup?amount=5.02e-4", false),
             ("", false),

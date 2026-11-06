@@ -8766,8 +8766,8 @@ class ReverseTimeoutHeadroom:
     """
     Per-chain overrides, in blocks, of the headroom `start` requires of a
     reverse swap's lockup timeout. A chain left unset keeps its default (12
-    on Bitcoin, 120 on Liquid); a value below the claim safety margin (6, 60)
-    is raised to it.
+    on Bitcoin, 120 on Liquid); a value below one and a half times the claim
+    safety margin (9, 90) is raised to it.
     """
 
     bitcoin_blocks: "typing.Optional[int]"
