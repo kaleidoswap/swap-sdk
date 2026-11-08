@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-08
+
+This release adds `KaleidoSwap`, a high-level surface in the Rust core with
+Python, React Native and TypeScript bindings: `quote`, `start` and `resume`
+over the Boltz `/v2` routes the maker serves, with one phase machine, injected
+keys and persistence, and checks on the maker's answers before anything is
+persisted. The swap engine gains the matching create-time checks against the
+accepted pair card and the configured Lightning network, which are breaking
+for `RfqQuote::verify_receive_invoice` and `PayThroughClient` callers. Every
+binding documents the high-level API and ships `simple/` and `advanced/`
+examples.
+
 ### Added — `kaleidoswap`, a high-level surface in the Rust core, with Python, React Native and TypeScript bindings
 
 One verb per step — `quote`, `start`, `resume` — for the routes the maker
