@@ -160,7 +160,8 @@ CI runs it.
   card the maker has since replaced is refused. A caller-supplied reverse
   invoice is checked the same way.
 - Submarine create responses check a non-empty `bip21` against the response's
-  address, amount and asset.
+  address, amount and asset; a response that names no `assetId` funds L-BTC,
+  so its `bip21` may carry a Liquid network's L-BTC asset id.
 - `RfqQuote::verify_receive_invoice` takes the Lightning network the client pays
   on and refuses an invoice for another one. **Breaking** for Rust callers.
 - `PayThroughClient` takes a required `lightningNetwork` option and refuses an

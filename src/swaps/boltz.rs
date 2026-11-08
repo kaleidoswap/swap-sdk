@@ -18,7 +18,7 @@
 //! );
 
 use crate::kaleido::{ApiKey, OrgKey, API_KEY_HEADER, ATTRIBUTION_HEADER, ORG_KEY_HEADER};
-use crate::network::{BitcoinChain, Currency, Network};
+use crate::network::{BitcoinChain, Currency, LiquidChain, Network};
 use crate::swaps::corridor;
 use crate::swaps::rgb::RgbLock;
 #[cfg(feature = "ws")]
@@ -2800,12 +2800,11 @@ impl CreateSubmarineResponse {
             .bip21
             .split_once(':')
             .ok_or_else(|| mismatch("scheme"))?;
-        if !matches!(
-            scheme.to_ascii_lowercase().as_str(),
-            "bitcoin" | "liquidnetwork" | "liquidtestnet"
-        ) {
-            return Err(mismatch("scheme"));
-        }
+        let liquid_scheme = match scheme.to_ascii_lowercase().as_str() {
+            "bitcoin" => false,
+            "liquidnetwork" | "liquidtestnet" => true,
+            _ => return Err(mismatch("scheme")),
+        };
         let (address, query) = rest.split_once('?').unwrap_or((rest, ""));
         if address != self.address {
             return Err(mismatch("address"));
@@ -2830,11 +2829,25 @@ impl CreateSubmarineResponse {
                     amount_seen = true;
                 }
                 "assetid" | "asset" => {
+                    // A response without an assetId funds L-BTC, whose asset id
+                    // the maker still names on Liquid; it has to be the policy
+                    // asset of one of the Liquid networks.
                     let matches = !value.contains('%')
-                        && self
-                            .asset_id
-                            .as_deref()
-                            .is_some_and(|asset_id| value.eq_ignore_ascii_case(asset_id));
+                        && match self.asset_id.as_deref() {
+                            Some(asset_id) => value.eq_ignore_ascii_case(asset_id),
+                            None => {
+                                liquid_scheme
+                                    && [
+                                        LiquidChain::Liquid,
+                                        LiquidChain::LiquidTestnet,
+                                        LiquidChain::LiquidRegtest,
+                                    ]
+                                    .iter()
+                                    .any(|chain| {
+                                        value.eq_ignore_ascii_case(&chain.bitcoin().to_string())
+                                    })
+                            }
+                        };
                     if asset_seen || !matches {
                         return Err(mismatch("asset"));
                     }
@@ -5049,6 +5062,28 @@ mod tests {
         submarine_response(100_600, &agreeing)
             .validate_amounts(&invoice, Some(&pair))
             .unwrap();
+        // A plain L-BTC response carries no assetId, and the maker's bip21
+        // names the network's L-BTC asset.
+        let mut lbtc = submarine_response(100_600, "");
+        lbtc.asset_id = None;
+        let lbtc_asset = LiquidChain::LiquidRegtest.bitcoin().to_string();
+        lbtc.bip21 = format!("liquidnetwork:{address}?amount=0.001006&assetid={lbtc_asset}");
+        lbtc.validate_amounts(&invoice, Some(&pair)).unwrap();
+        lbtc.bip21 = format!("liquidnetwork:{address}?amount=0.001006");
+        lbtc.validate_amounts(&invoice, Some(&pair)).unwrap();
+        for bad in [
+            format!(
+                "liquidnetwork:{address}?amount=0.001006&assetid={}",
+                "ab".repeat(32)
+            ),
+            format!("bitcoin:{address}?amount=0.001006&assetid={lbtc_asset}"),
+        ] {
+            lbtc.bip21 = bad.clone();
+            assert!(
+                lbtc.validate_amounts(&invoice, Some(&pair)).is_err(),
+                "{bad}"
+            );
+        }
         for bad in [
             format!("bitcoin:{address}?amount=0.002"),
             "bitcoin:bcrt1qother?amount=0.001006".to_string(),
