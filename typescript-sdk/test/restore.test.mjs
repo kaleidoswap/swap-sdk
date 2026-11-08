@@ -24,8 +24,12 @@ const [bitcoin, liquid] = await Promise.all([
 
 // Reuse the captured script/key vectors as plain BTC / L-BTC swaps: asset
 // metadata is irrelevant to the Taproot tree, and is deliberately removed.
+// The pairHash goes too: a pinned hash makes create fetch and check the pair
+// card, which this restore server does not serve.
 function plainVector(fixture, kind, asset) {
   const vector = structuredClone(fixture.create[kind]);
+  for (const request of [vector.request, vector.userAmountRequest])
+    if (request) delete request.pairHash;
   if (kind === "chain") {
     vector.request = vector.userAmountRequest;
     vector.request.to = asset;
