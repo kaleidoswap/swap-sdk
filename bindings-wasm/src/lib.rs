@@ -1079,6 +1079,19 @@ impl BoltzClient {
                 }
                 None => None,
             };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match req.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_submarine_pairs()
+                .await
+                .map_err(core_err)?
+                .accepted(&req.from, &req.to, Some(hash))
+                .map_err(core_err)?
+                .cloned(),
+            None => None,
+        };
         let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
         if let Some(contract_id) = rgb_contract_id {
             let Chain::Bitcoin(chain) = from_chain else {
@@ -1103,6 +1116,8 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
+        resp.validate_amounts(&req.invoice, accepted_pair.as_ref())
+            .map_err(core_err)?;
         to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createReverseSwap)]
@@ -1166,6 +1181,19 @@ impl BoltzClient {
                 "reverse swap request needs preimageHash or invoice",
             ));
         };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match req.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_reverse_pairs()
+                .await
+                .map_err(core_err)?
+                .accepted(&req.from, &req.to, Some(hash))
+                .map_err(core_err)?
+                .cloned(),
+            None => None,
+        };
         let resp = self
             .inner
             .post_reverse_req(req.clone())
@@ -1188,7 +1216,8 @@ impl BoltzClient {
             )
             .map_err(core_err)?;
         }
-        resp.validate_amounts(&req, None).map_err(core_err)?;
+        resp.validate_amounts(&req, accepted_pair.as_ref())
+            .map_err(core_err)?;
         to_typed_js(&resp)
     }
     #[wasm_bindgen(js_name = createChainSwap)]
@@ -1250,6 +1279,19 @@ impl BoltzClient {
             (_, kaleidorg_swap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
             _ => (None, None),
         };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match req.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_chain_pairs()
+                .await
+                .map_err(core_err)?
+                .accepted(&req.from, &req.to, Some(hash))
+                .map_err(core_err)?
+                .cloned(),
+            None => None,
+        };
         let preimage_hash = req.preimage_hash;
         let resp = self
             .inner
@@ -1268,7 +1310,8 @@ impl BoltzClient {
             to_asset_context,
         )
         .map_err(core_err)?;
-        resp.validate_amounts(&req, None).map_err(core_err)?;
+        resp.validate_amounts(&req, accepted_pair.as_ref())
+            .map_err(core_err)?;
         to_typed_js(&resp)
     }
 

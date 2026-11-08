@@ -32,6 +32,11 @@ import platform
 _DEFAULT = object()  # type: typing.Any
 
 
+def _redact_secret(value):
+    """Render a secret field as present or absent, never as its value."""
+    return "None" if value is None else "<redacted>"
+
+
 class _UniffiRustBuffer(ctypes.Structure):
     _fields_ = [
         ("capacity", ctypes.c_uint64),
@@ -4814,7 +4819,7 @@ class ChainSwapDetails:
             self.server_public_key,
             self.timeout_block_height,
             self.amount,
-            self.blinding_key,
+            _redact_secret(self.blinding_key),
             self.refund_address,
             self.claim_address,
             self.bip21,
@@ -5149,7 +5154,7 @@ class ClaimDetails:
             self.lockup_address,
             self.server_public_key,
             self.timeout_block_height,
-            self.blinding_key,
+            _redact_secret(self.blinding_key),
             self.preimage_hash,
         )
 
@@ -5594,7 +5599,7 @@ class CreateChainResponse:
 
     def __str__(self):
         return "CreateChainResponse(id={}, claim_details={}, lockup_details={}, swap_auth={})".format(
-            self.id, self.claim_details, self.lockup_details, self.swap_auth
+            self.id, self.claim_details, self.lockup_details, _redact_secret(self.swap_auth)
         )
 
     def __eq__(self, other):
@@ -5902,10 +5907,10 @@ class CreateReverseResponse:
             self.refund_public_key,
             self.timeout_block_height,
             self.onchain_amount,
-            self.blinding_key,
+            _redact_secret(self.blinding_key),
             self.asset_id,
             self.fee_asset_id,
-            self.swap_auth,
+            _redact_secret(self.swap_auth),
             self.rgb,
         )
 
@@ -6221,10 +6226,10 @@ class CreateSubmarineResponse:
             self.referral_id,
             self.swap_tree,
             self.timeout_block_height,
-            self.blinding_key,
+            _redact_secret(self.blinding_key),
             self.asset_id,
             self.fee_asset_id,
-            self.swap_auth,
+            _redact_secret(self.swap_auth),
             self.rgb,
         )
 
@@ -8264,7 +8269,7 @@ class RefundDetails:
             self.lockup_address,
             self.server_public_key,
             self.timeout_block_height,
-            self.blinding_key,
+            _redact_secret(self.blinding_key),
         )
 
     def __eq__(self, other):
@@ -10824,7 +10829,7 @@ class TransactionOptions:
         return "TransactionOptions(cooperative={}, chain_claim={}, swap_auth={}, min_confirmations={}, allow_zero_conf={}, claim_safety_margin_blocks={}, allow_conflicting_spend={})".format(
             self.cooperative,
             self.chain_claim,
-            self.swap_auth,
+            _redact_secret(self.swap_auth),
             self.min_confirmations,
             self.allow_zero_conf,
             self.claim_safety_margin_blocks,

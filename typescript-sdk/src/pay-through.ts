@@ -76,9 +76,22 @@ export class PayThroughApiError extends Error {
   }
 }
 
+/** The Lightning network the caller pays on, pinned from the caller's own
+ * configuration; never derived from anything the maker returns. */
+export type LightningNetwork = "bitcoin" | "testnet" | "signet" | "regtest";
+
+const LIGHTNING_PREFIX: Record<LightningNetwork, string> = {
+  bitcoin: "bc",
+  testnet: "tb",
+  signet: "tbs",
+  regtest: "bcrt",
+};
+
 export interface PayThroughClientOptions {
   /** Maker URL ending in /v2. */
   makerUrl: string;
+  /** Network every returned invoice must be for. */
+  lightningNetwork: LightningNetwork;
   /** Optional organization attribution key, for server runtimes only. */
   apiKey?: string;
   /**
@@ -244,6 +257,18 @@ export function decodeBolt11(invoice: string): {
   return { amountMsat, paymentHash };
 }
 
+/** The network a BOLT11 invoice is for, read from its human-readable part. */
+export function bolt11Network(invoice: string): LightningNetwork {
+  const text = invoice.trim().toLowerCase();
+  const hrp = text.slice(0, text.lastIndexOf("1"));
+  const match = /^ln(bcrt|tbs|tb|bc)(\d*[munp]?)$/.exec(hrp);
+  if (!match) throw new Error("Invalid BOLT11 invoice network");
+  const found = (Object.keys(LIGHTNING_PREFIX) as LightningNetwork[]).find(
+    (network) => LIGHTNING_PREFIX[network] === match[1],
+  );
+  return found as LightningNetwork;
+}
+
 /** HTTP-only pay-through client; no WASM initialization is needed. */
 export class PayThroughClient {
   private readonly baseUrl: string;
@@ -251,8 +276,15 @@ export class PayThroughClient {
   private readonly orgKey?: string;
   private readonly request: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly lightningNetwork: LightningNetwork;
 
   constructor(options: PayThroughClientOptions) {
+    if (!(options.lightningNetwork in LIGHTNING_PREFIX)) {
+      throw new TypeError(
+        "lightningNetwork must be one of bitcoin, testnet, signet or regtest",
+      );
+    }
+    this.lightningNetwork = options.lightningNetwork;
     if (options.apiKey && !isServerRuntime()) {
       throw new TypeError(
         "Organization API keys can only be used on a server runtime",
@@ -404,6 +436,10 @@ export class PayThroughClient {
       created.payoutAsset.toLowerCase() !== input.asset.toLowerCase()
     ) {
       throw mismatch("payoutAsset", created.payoutAsset, input.asset);
+    }
+    const invoiceNetwork = bolt11Network(created.invoice);
+    if (invoiceNetwork !== this.lightningNetwork) {
+      throw mismatch("invoice network", invoiceNetwork, this.lightningNetwork);
     }
     const invoice = decodeBolt11(created.invoice);
     if (invoice.amountMsat !== BigInt(created.invoiceAmount) * 1000n) {

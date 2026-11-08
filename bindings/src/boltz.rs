@@ -236,6 +236,21 @@ impl SwapClient {
             }
             None => None,
         };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match swap_request.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_submarine_pairs()
+                .await?
+                .accepted(
+                    &from_currency.to_string(),
+                    &to_currency.to_string(),
+                    Some(hash),
+                )?
+                .cloned(),
+            None => None,
+        };
         let response = self
             .inner
             .post_swap_req(&boltz::CreateSubmarineRequest {
@@ -270,6 +285,7 @@ impl SwapClient {
                 expected_asset_context,
             )?;
         }
+        response.validate_amounts(&swap_request.invoice, accepted_pair.as_ref())?;
         Ok(response)
     }
 
@@ -305,6 +321,21 @@ impl SwapClient {
                     .expected_liquid_asset_context(from_currency, to_currency)?;
                 Some(trusted.cross_check_pair_card(pair_card)?)
             }
+            None => None,
+        };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match swap_request.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_reverse_pairs()
+                .await?
+                .accepted(
+                    &from_currency.to_string(),
+                    &to_currency.to_string(),
+                    Some(hash),
+                )?
+                .cloned(),
             None => None,
         };
         let request = boltz::CreateReverseRequest {
@@ -348,7 +379,7 @@ impl SwapClient {
                 expected_asset_context,
             )?;
         }
-        response.validate_amounts(&request, None)?;
+        response.validate_amounts(&request, accepted_pair.as_ref())?;
         Ok(response)
     }
 
@@ -393,6 +424,21 @@ impl SwapClient {
             (_, Currency::LUsdt) => (None, expected_asset_context),
             _ => (None, None),
         };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match swap_request.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_chain_pairs()
+                .await?
+                .accepted(
+                    &from_currency.to_string(),
+                    &to_currency.to_string(),
+                    Some(hash),
+                )?
+                .cloned(),
+            None => None,
+        };
         let preimage_hash = swap_request
             .preimage_hash
             .parse::<sha256::Hash>()
@@ -421,7 +467,7 @@ impl SwapClient {
             from_asset_context,
             to_asset_context,
         )?;
-        response.validate_amounts(&request, None)?;
+        response.validate_amounts(&request, accepted_pair.as_ref())?;
         Ok(response)
     }
 

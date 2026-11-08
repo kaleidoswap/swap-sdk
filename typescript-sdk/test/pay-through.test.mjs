@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   PayThroughApiError,
   PayThroughClient,
+  bolt11Network,
   decodeBolt11,
   PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT,
   PAY_THROUGH_IDEMPOTENCY_MISMATCH,
@@ -48,10 +49,35 @@ const created = {
 function clientReturning(body, init = { status: 201 }, options = {}) {
   return new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async () => Response.json(body, init),
     ...options,
   });
 }
+
+test("bolt11Network reads the network from the invoice prefix", () => {
+  assert.equal(bolt11Network(INVOICE_100K), "regtest");
+  assert.equal(bolt11Network(INVOICE_SIGNET_1SAT), "signet");
+  assert.equal(bolt11Network(INVOICE_MAINNET_25K), "bitcoin");
+  assert.equal(bolt11Network(INVOICE_NO_AMOUNT), "regtest");
+});
+
+test("create refuses an invoice for another Lightning network", async () => {
+  const client = clientReturning({
+    ...created,
+    invoice: INVOICE_MAINNET_25K,
+    invoiceAmount: 25000,
+  });
+  await assert.rejects(
+    client.create({
+      destination: "bcrt1test",
+      destinationLayer: "BTC_L1",
+      invoiceAmount: 25000,
+      asset: "BTC",
+    }),
+    /invoice network/,
+  );
+});
 
 test("decodeBolt11 reads amount and payment hash", () => {
   assert.deepEqual(decodeBolt11(INVOICE_100K), {
@@ -77,6 +103,7 @@ test("pay-through create sends only the known fields and accepts matching terms"
   let calls = 0;
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async (url, init) => {
       calls++;
       assert.equal(url, "https://maker.example/v2/swap/pay");
@@ -171,6 +198,7 @@ test("pay-through retries a lost create response with the persisted key after a 
   );
   const options = {
     makerUrl: `http://127.0.0.1:${server.address().port}/v2`,
+    lightningNetwork: "regtest",
     apiKey,
   };
   await assert.rejects(
@@ -203,6 +231,7 @@ for (const failure of ["timeout", "gateway 502", "lost response body"]) {
     let creations = 0;
     const options = {
       makerUrl: "https://maker.example/v2",
+      lightningNetwork: "regtest",
       timeoutMs: 20,
       fetch: async (_url, init) => {
         attempts++;
@@ -256,6 +285,7 @@ test("pay-through validates idempotency keys without trimming or sending invalid
   const sent = [];
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async (_url, init) => {
       calls++;
       sent.push(init.headers["Idempotency-Key"]);
@@ -308,6 +338,7 @@ test("pay-through can reuse its key after a temporary preflight rejection", asyn
   let attempts = 0;
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async (_url, init) => {
       attempts++;
       assert.equal(init.headers["Idempotency-Key"], idempotencyKey);
@@ -346,6 +377,7 @@ test("pay-through exposes idempotency conflicts without retrying or replacing th
     let attempts = 0;
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
+      lightningNetwork: "regtest",
       fetch: async (_url, init) => {
         attempts++;
         assert.equal(init.headers["Idempotency-Key"], idempotencyKey);
@@ -407,6 +439,7 @@ test("pay-through create rejects terms that differ from the request or the invoi
 test("pay-through status exposes broadcast reference and settlement state", async () => {
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async (url, init) => {
       assert.equal(init.headers["Idempotency-Key"], undefined);
       assert.equal(
@@ -462,6 +495,7 @@ test("pay-through fails closed on maker errors, gateway pages and unsafe amounts
   );
   const limited = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async () =>
       new Response(JSON.stringify({ error: "rate_limited" }), {
         status: 429,
@@ -474,6 +508,7 @@ test("pay-through fails closed on maker errors, gateway pages and unsafe amounts
   );
   const gateway = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async () =>
       new Response("<html>502 Bad Gateway</html>", { status: 502 }),
   });
@@ -500,6 +535,7 @@ test("pay-through requests time out and honour a caller's abort signal", async (
     });
   const slow = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: hanging,
     timeoutMs: 20,
   });
@@ -509,6 +545,7 @@ test("pay-through requests time out and honour a caller's abort signal", async (
   );
   const patient = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: hanging,
   });
   const controller = new AbortController();
@@ -551,6 +588,7 @@ test("pay-through calls the global fetch unbound when none is injected", async (
   try {
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
+      lightningNetwork: "regtest",
     });
     const status = await client.status("01J9ZSWAPIDULID0000000000");
     assert.equal(reached, true);
@@ -570,6 +608,7 @@ test("pay-through checks explicit capability before creating, failing closed on 
     const calls = [];
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
+      lightningNetwork: "regtest",
       fetch: async (url, init) => {
         calls.push(url);
         assert.equal(init.method, "GET");
@@ -592,6 +631,7 @@ test("caller can retry in-flight with the unchanged key and recover the original
   let originalBody;
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     fetch: async (_url, init) => {
       assert.equal(init.headers["Idempotency-Key"], idempotencyKey);
       if (!calls) originalBody = init.body;
@@ -635,6 +675,7 @@ test("pay-through sends the org key on create only, in any runtime", async () =>
   const seen = [];
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
     orgKey: ` ${ORG_KEY.toUpperCase()}\n`,
     fetch: async (url, init) => {
       seen.push({
@@ -668,7 +709,11 @@ test("pay-through refuses a malformed org key and an org key beside an API key",
   for (const orgKey of ["", ORG_KEY.slice(1), "z".repeat(64)]) {
     assert.throws(
       () =>
-        new PayThroughClient({ makerUrl: "https://maker.example/v2", orgKey }),
+        new PayThroughClient({
+          makerUrl: "https://maker.example/v2",
+          lightningNetwork: "regtest",
+          orgKey,
+        }),
       /orgKey must be/,
     );
   }
@@ -676,6 +721,7 @@ test("pay-through refuses a malformed org key and an org key beside an API key",
     () =>
       new PayThroughClient({
         makerUrl: "https://maker.example/v2",
+        lightningNetwork: "regtest",
         orgKey: ORG_KEY,
         apiKey: "kld_test_abc_secret",
       }),

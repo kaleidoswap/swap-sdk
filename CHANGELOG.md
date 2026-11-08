@@ -154,6 +154,20 @@ CI runs it.
   sends each call a copy bound to that call's method, body and time, as
   current ldk-server requires. `npm test` checks the binding against
   ldk-server's reference vector.
+- Create calls that pass a `pairHash` now check the maker's response against the
+  pair card behind that hash: the reverse payout, the chain computed leg and the
+  submarine `expectedAmount` stay within what the card's rate and fees imply. A
+  card the maker has since replaced is refused. A caller-supplied reverse
+  invoice is checked the same way.
+- Submarine create responses check a non-empty `bip21` against the response's
+  address, amount and asset; a response that names no `assetId` funds L-BTC,
+  so its `bip21` may carry a Liquid network's L-BTC asset id.
+- `RfqQuote::verify_receive_invoice` takes the Lightning network the client pays
+  on and refuses an invoice for another one. **Breaking** for Rust callers.
+- `PayThroughClient` takes a required `lightningNetwork` option and refuses an
+  invoice for another network. **Breaking** for TypeScript callers.
+- The generated Python `__str__` output prints `swap_auth` and `blinding_key` as
+  `<redacted>`; the attributes stay readable.
 
 ## [0.13.0] - 2026-10-28
 

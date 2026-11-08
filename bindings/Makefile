@@ -24,6 +24,7 @@ generate-python-glue: build-debug
 	cp $(PYTHON_NATIVE_DIR)/kaleidorg_swap_sdk.py python/kaleidorg_swap_sdk/_generated_uniffi.py
 	cd python && uv run ruff format kaleidorg_swap_sdk/_generated_uniffi.py
 	cd python && python3 scripts/prepare_uniffi_fallback.py
+	cd python && python3 scripts/redact_uniffi_secrets.py
 
 build-release:
 	cargo build --release
