@@ -63,9 +63,11 @@ test("bolt11Network reads the network from the invoice prefix", () => {
 });
 
 test("create refuses an invoice for another Lightning network", async () => {
-  const client = clientReturning(
-    { ...created, invoice: INVOICE_MAINNET_25K, invoiceAmount: 25000 },
-  );
+  const client = clientReturning({
+    ...created,
+    invoice: INVOICE_MAINNET_25K,
+    invoiceAmount: 25000,
+  });
   await assert.rejects(
     client.create({
       destination: "bcrt1test",
@@ -229,7 +231,7 @@ for (const failure of ["timeout", "gateway 502", "lost response body"]) {
     let creations = 0;
     const options = {
       makerUrl: "https://maker.example/v2",
-    lightningNetwork: "regtest",
+      lightningNetwork: "regtest",
       timeoutMs: 20,
       fetch: async (_url, init) => {
         attempts++;
@@ -375,7 +377,7 @@ test("pay-through exposes idempotency conflicts without retrying or replacing th
     let attempts = 0;
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
-    lightningNetwork: "regtest",
+      lightningNetwork: "regtest",
       fetch: async (_url, init) => {
         attempts++;
         assert.equal(init.headers["Idempotency-Key"], idempotencyKey);
@@ -586,7 +588,7 @@ test("pay-through calls the global fetch unbound when none is injected", async (
   try {
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
-    lightningNetwork: "regtest",
+      lightningNetwork: "regtest",
     });
     const status = await client.status("01J9ZSWAPIDULID0000000000");
     assert.equal(reached, true);
@@ -606,7 +608,7 @@ test("pay-through checks explicit capability before creating, failing closed on 
     const calls = [];
     const client = new PayThroughClient({
       makerUrl: "https://maker.example/v2",
-    lightningNetwork: "regtest",
+      lightningNetwork: "regtest",
       fetch: async (url, init) => {
         calls.push(url);
         assert.equal(init.method, "GET");
@@ -707,8 +709,11 @@ test("pay-through refuses a malformed org key and an org key beside an API key",
   for (const orgKey of ["", ORG_KEY.slice(1), "z".repeat(64)]) {
     assert.throws(
       () =>
-        new PayThroughClient({ makerUrl: "https://maker.example/v2",
-    lightningNetwork: "regtest", orgKey }),
+        new PayThroughClient({
+          makerUrl: "https://maker.example/v2",
+          lightningNetwork: "regtest",
+          orgKey,
+        }),
       /orgKey must be/,
     );
   }
@@ -716,7 +721,7 @@ test("pay-through refuses a malformed org key and an org key beside an API key",
     () =>
       new PayThroughClient({
         makerUrl: "https://maker.example/v2",
-    lightningNetwork: "regtest",
+        lightningNetwork: "regtest",
         orgKey: ORG_KEY,
         apiKey: "kld_test_abc_secret",
       }),

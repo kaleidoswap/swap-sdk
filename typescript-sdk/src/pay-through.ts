@@ -263,9 +263,9 @@ export function bolt11Network(invoice: string): LightningNetwork {
   const hrp = text.slice(0, text.lastIndexOf("1"));
   const match = /^ln(bcrt|tbs|tb|bc)(\d*[munp]?)$/.exec(hrp);
   if (!match) throw new Error("Invalid BOLT11 invoice network");
-  const found = (
-    Object.keys(LIGHTNING_PREFIX) as LightningNetwork[]
-  ).find((network) => LIGHTNING_PREFIX[network] === match[1]);
+  const found = (Object.keys(LIGHTNING_PREFIX) as LightningNetwork[]).find(
+    (network) => LIGHTNING_PREFIX[network] === match[1],
+  );
   return found as LightningNetwork;
 }
 

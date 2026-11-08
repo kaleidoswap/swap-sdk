@@ -27,20 +27,26 @@ UNREDACTED = re.compile(r"(?<!_redact_secret\()self\.(%s)\b" % FIELD)
 
 def redact_str_methods(source: str) -> str:
     """Wrap every secret field read inside a `__str__` body, wherever it sits."""
-    return STR_METHOD.sub(lambda m: SECRET.sub(r"_redact_secret(self.\1)", m.group(0)), source)
+    return STR_METHOD.sub(
+        lambda m: SECRET.sub(r"_redact_secret(self.\1)", m.group(0)), source
+    )
 
 
 def main() -> None:
     source = GENERATED.read_text()
     redacted = redact_str_methods(source)
-    leaked = [m for block in STR_METHOD.findall(redacted) for m in UNREDACTED.findall(block)]
+    leaked = [
+        m for block in STR_METHOD.findall(redacted) for m in UNREDACTED.findall(block)
+    ]
     if leaked:
         raise ValueError(f"a generated __str__ still reads a secret field: {leaked}")
     if HELPER_MARKER not in redacted:
         anchor = "\nclass _UniffiRustBuffer(ctypes.Structure)"
         if redacted.count(anchor) != 1:
             raise ValueError("expected exactly one anchor for the redaction helper")
-        redacted = redacted.replace(anchor, "\n" + HELPER.rstrip("\n") + "\n\n" + anchor, 1)
+        redacted = redacted.replace(
+            anchor, "\n" + HELPER.rstrip("\n") + "\n\n" + anchor, 1
+        )
     GENERATED.write_text(redacted)
 
 
