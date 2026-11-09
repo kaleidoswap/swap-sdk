@@ -1050,9 +1050,10 @@ pub struct ReverseFees {
 
 #[uniffi::remote(Record)]
 pub struct SubmarineFees {
-    /// The percentage of the "send amount" that is charged by Boltz as "Boltz Fee".
+    /// The percentage of the invoice (the output amount) charged as the service fee.
     pub percentage: f64,
-    /// The network fees charged for locking up and claiming funds onchain. These values are absolute, denominated in 10 ** -8 of the quote asset.
+    /// Network fees for the on-chain lockup and claim. Absolute, in the output
+    /// asset's base units — the invoice asset, not the asset the caller locks.
     pub miner_fees: u64,
 }
 
