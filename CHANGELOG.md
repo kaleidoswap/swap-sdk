@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The release workflow publishes both npm packages as an npm trusted publisher:
+  the `publish-npm` job authenticates with its OIDC token and no npm token is
+  stored. The read-only `npm whoami` check before publishing is gone, since it
+  cannot prove that grant; a missing trusted-publisher entry fails at the first
+  `npm publish`, before either package is out. The workflow checker now accepts
+  `PYPI_TOKEN` as the only secret. Each package needs a trusted-publisher entry
+  on npmjs.com before the next release; `docs/releasing.md` lists the fields.
+
 ## [0.14.1] - 2026-11-09
 
 A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims
