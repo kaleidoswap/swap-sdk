@@ -6473,6 +6473,115 @@ class _UniffiConverterTypeFailureReasonIncorrectAmounts(_UniffiConverterRustBuff
         _UniffiConverterUInt64.write(value.actual, buf)
 
 
+class FeePolicy:
+    """
+    How claims and refunds are priced when `fee_sat_per_vb` is not set: the
+    chain client's estimate for `target_blocks` (default 2), held between the
+    chain's floor and ceiling (Bitcoin 1 and 500 sat/vB, Liquid 0.1 and 1).
+    An estimate that cannot be read signs nothing and is retried. A spend
+    whose fee would exceed `max_fee_percent` of the lockup (default 10) is not
+    signed and fails with `FeeTooHigh`, before a claim hands out the preimage.
+    """
+
+    target_blocks: "typing.Optional[int]"
+    bitcoin_min_sat_per_vb: "typing.Optional[float]"
+    bitcoin_max_sat_per_vb: "typing.Optional[float]"
+    liquid_min_sat_per_vb: "typing.Optional[float]"
+    liquid_max_sat_per_vb: "typing.Optional[float]"
+    max_fee_percent: "typing.Optional[float]"
+
+    def __init__(
+        self,
+        *,
+        target_blocks: "typing.Optional[int]" = _DEFAULT,
+        bitcoin_min_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        bitcoin_max_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        liquid_min_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        liquid_max_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        max_fee_percent: "typing.Optional[float]" = _DEFAULT,
+    ):
+        if target_blocks is _DEFAULT:
+            self.target_blocks = None
+        else:
+            self.target_blocks = target_blocks
+        if bitcoin_min_sat_per_vb is _DEFAULT:
+            self.bitcoin_min_sat_per_vb = None
+        else:
+            self.bitcoin_min_sat_per_vb = bitcoin_min_sat_per_vb
+        if bitcoin_max_sat_per_vb is _DEFAULT:
+            self.bitcoin_max_sat_per_vb = None
+        else:
+            self.bitcoin_max_sat_per_vb = bitcoin_max_sat_per_vb
+        if liquid_min_sat_per_vb is _DEFAULT:
+            self.liquid_min_sat_per_vb = None
+        else:
+            self.liquid_min_sat_per_vb = liquid_min_sat_per_vb
+        if liquid_max_sat_per_vb is _DEFAULT:
+            self.liquid_max_sat_per_vb = None
+        else:
+            self.liquid_max_sat_per_vb = liquid_max_sat_per_vb
+        if max_fee_percent is _DEFAULT:
+            self.max_fee_percent = None
+        else:
+            self.max_fee_percent = max_fee_percent
+
+    def __str__(self):
+        return "FeePolicy(target_blocks={}, bitcoin_min_sat_per_vb={}, bitcoin_max_sat_per_vb={}, liquid_min_sat_per_vb={}, liquid_max_sat_per_vb={}, max_fee_percent={})".format(
+            self.target_blocks,
+            self.bitcoin_min_sat_per_vb,
+            self.bitcoin_max_sat_per_vb,
+            self.liquid_min_sat_per_vb,
+            self.liquid_max_sat_per_vb,
+            self.max_fee_percent,
+        )
+
+    def __eq__(self, other):
+        if self.target_blocks != other.target_blocks:
+            return False
+        if self.bitcoin_min_sat_per_vb != other.bitcoin_min_sat_per_vb:
+            return False
+        if self.bitcoin_max_sat_per_vb != other.bitcoin_max_sat_per_vb:
+            return False
+        if self.liquid_min_sat_per_vb != other.liquid_min_sat_per_vb:
+            return False
+        if self.liquid_max_sat_per_vb != other.liquid_max_sat_per_vb:
+            return False
+        if self.max_fee_percent != other.max_fee_percent:
+            return False
+        return True
+
+
+class _UniffiConverterTypeFeePolicy(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return FeePolicy(
+            target_blocks=_UniffiConverterOptionalUInt32.read(buf),
+            bitcoin_min_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            bitcoin_max_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            liquid_min_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            liquid_max_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            max_fee_percent=_UniffiConverterOptionalDouble.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalUInt32.check_lower(value.target_blocks)
+        _UniffiConverterOptionalDouble.check_lower(value.bitcoin_min_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.bitcoin_max_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.liquid_min_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.liquid_max_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.max_fee_percent)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalUInt32.write(value.target_blocks, buf)
+        _UniffiConverterOptionalDouble.write(value.bitcoin_min_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.bitcoin_max_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.liquid_min_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.liquid_max_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.max_fee_percent, buf)
+
+
 class Fees:
     maker: "int"
     miner: "int"
@@ -7005,6 +7114,12 @@ class KaleidoSwapOptions:
     liquid_esplora_url: "typing.Optional[str]"
     poll_interval_ms: "typing.Optional[int]"
     fee_sat_per_vb: "typing.Optional[float]"
+    """
+    A fixed fee rate for claims and refunds; no estimate is read.
+    Default: estimated, see `fee_policy`.
+    """
+
+    fee_policy: "typing.Optional[FeePolicy]"
     quote_ttl_secs: "typing.Optional[int]"
     maker_timeout_ms: "typing.Optional[int]"
     """
@@ -7028,6 +7143,7 @@ class KaleidoSwapOptions:
         liquid_esplora_url: "typing.Optional[str]" = _DEFAULT,
         poll_interval_ms: "typing.Optional[int]" = _DEFAULT,
         fee_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        fee_policy: "typing.Optional[FeePolicy]" = _DEFAULT,
         quote_ttl_secs: "typing.Optional[int]" = _DEFAULT,
         maker_timeout_ms: "typing.Optional[int]" = _DEFAULT,
         reverse_timeout_headroom: "typing.Optional[ReverseTimeoutHeadroom]" = _DEFAULT,
@@ -7055,6 +7171,10 @@ class KaleidoSwapOptions:
             self.fee_sat_per_vb = None
         else:
             self.fee_sat_per_vb = fee_sat_per_vb
+        if fee_policy is _DEFAULT:
+            self.fee_policy = None
+        else:
+            self.fee_policy = fee_policy
         if quote_ttl_secs is _DEFAULT:
             self.quote_ttl_secs = None
         else:
@@ -7069,7 +7189,7 @@ class KaleidoSwapOptions:
             self.reverse_timeout_headroom = reverse_timeout_headroom
 
     def __str__(self):
-        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={}, maker_timeout_ms={}, reverse_timeout_headroom={})".format(
+        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, fee_policy={}, quote_ttl_secs={}, maker_timeout_ms={}, reverse_timeout_headroom={})".format(
             self.network,
             self.store,
             self.signer,
@@ -7078,6 +7198,7 @@ class KaleidoSwapOptions:
             self.liquid_esplora_url,
             self.poll_interval_ms,
             self.fee_sat_per_vb,
+            self.fee_policy,
             self.quote_ttl_secs,
             self.maker_timeout_ms,
             self.reverse_timeout_headroom,
@@ -7100,6 +7221,8 @@ class KaleidoSwapOptions:
             return False
         if self.fee_sat_per_vb != other.fee_sat_per_vb:
             return False
+        if self.fee_policy != other.fee_policy:
+            return False
         if self.quote_ttl_secs != other.quote_ttl_secs:
             return False
         if self.maker_timeout_ms != other.maker_timeout_ms:
@@ -7121,6 +7244,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
             liquid_esplora_url=_UniffiConverterOptionalString.read(buf),
             poll_interval_ms=_UniffiConverterOptionalUInt64.read(buf),
             fee_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            fee_policy=_UniffiConverterOptionalTypeFeePolicy.read(buf),
             quote_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
             maker_timeout_ms=_UniffiConverterOptionalUInt64.read(buf),
             reverse_timeout_headroom=_UniffiConverterOptionalTypeReverseTimeoutHeadroom.read(
@@ -7138,6 +7262,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.liquid_esplora_url)
         _UniffiConverterOptionalUInt64.check_lower(value.poll_interval_ms)
         _UniffiConverterOptionalDouble.check_lower(value.fee_sat_per_vb)
+        _UniffiConverterOptionalTypeFeePolicy.check_lower(value.fee_policy)
         _UniffiConverterOptionalUInt64.check_lower(value.quote_ttl_secs)
         _UniffiConverterOptionalUInt64.check_lower(value.maker_timeout_ms)
         _UniffiConverterOptionalTypeReverseTimeoutHeadroom.check_lower(
@@ -7154,6 +7279,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.liquid_esplora_url, buf)
         _UniffiConverterOptionalUInt64.write(value.poll_interval_ms, buf)
         _UniffiConverterOptionalDouble.write(value.fee_sat_per_vb, buf)
+        _UniffiConverterOptionalTypeFeePolicy.write(value.fee_policy, buf)
         _UniffiConverterOptionalUInt64.write(value.quote_ttl_secs, buf)
         _UniffiConverterOptionalUInt64.write(value.maker_timeout_ms, buf)
         _UniffiConverterOptionalTypeReverseTimeoutHeadroom.write(
@@ -12830,6 +12956,8 @@ class SwapErrorCode(enum.Enum):
 
     INVOICE_EXPIRED = 16
 
+    FEE_TOO_HIGH = 17
+
 
 class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
     @staticmethod
@@ -12869,6 +12997,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             return SwapErrorCode.CHAIN_UNREACHABLE
         if variant == 17:
             return SwapErrorCode.INVOICE_EXPIRED
+        if variant == 18:
+            return SwapErrorCode.FEE_TOO_HIGH
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -12906,6 +13036,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
         if value == SwapErrorCode.CHAIN_UNREACHABLE:
             return
         if value == SwapErrorCode.INVOICE_EXPIRED:
+            return
+        if value == SwapErrorCode.FEE_TOO_HIGH:
             return
         raise ValueError(value)
 
@@ -12945,6 +13077,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             buf.write_i32(16)
         if value == SwapErrorCode.INVOICE_EXPIRED:
             buf.write_i32(17)
+        if value == SwapErrorCode.FEE_TOO_HIGH:
+            buf.write_i32(18)
 
 
 class SwapPhase(enum.Enum):
@@ -13456,6 +13590,32 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             return None
         elif flag == 1:
             return _UniffiConverterTypeFailureReasonIncorrectAmounts.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeFeePolicy(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeFeePolicy.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeFeePolicy.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeFeePolicy.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -19396,6 +19556,7 @@ __all__ = [
     "ElectrumBuilder",
     "EsploraBuilder",
     "FailureReasonIncorrectAmounts",
+    "FeePolicy",
     "Fees",
     "FinalizedRgbSpend",
     "FundedLiquidPset",

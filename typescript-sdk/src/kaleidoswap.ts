@@ -85,8 +85,13 @@ export interface KaleidoSwapOptions {
   pollIntervalMs?: number;
   /** Timeout of every request to the maker. Default 30 s. */
   makerTimeoutMs?: number;
-  /** Fee rate for claims and refunds this layer broadcasts. Default 2 sat/vB. */
+  /**
+   * A fixed fee rate for the claims and refunds this layer signs, on either
+   * chain. When set, no estimate is read. Default: estimated, see `feePolicy`.
+   */
   feeSatPerVb?: number;
+  /** How claims and refunds are priced when `feeSatPerVb` is not set. */
+  feePolicy?: FeePolicy;
   /**
    * How long a quote may be held before `start` refuses it. Pair terms are
    * bound by hash, so this guards staleness, not price. Default 10 minutes.
@@ -99,6 +104,30 @@ export interface KaleidoSwapOptions {
    * a smaller value is raised to one and a half times that margin (9 and 90).
    */
   reverseTimeoutHeadroom?: { bitcoinBlocks?: number; liquidBlocks?: number };
+}
+
+/**
+ * The rate is read from the chain client's `/fee-estimates` for
+ * `targetBlocks` when a claim or refund is about to be signed, and held
+ * between the chain's floor and ceiling. An estimate that cannot be read signs
+ * nothing: the spend fails with `CHAIN_UNREACHABLE` and is retried on the next
+ * poll. A spend whose fee would exceed `maxFeePercent` of the lockup is not
+ * signed either: it fails with `FEE_TOO_HIGH`, before a claim hands out the
+ * preimage, and is retried. Every field left out keeps its default.
+ */
+export interface FeePolicy {
+  /** Confirmation target in blocks; the nearest estimate at or below it is used. Default 2. */
+  targetBlocks?: number;
+  /** Default 1 sat/vB. */
+  bitcoinMinSatPerVb?: number;
+  /** Default 500 sat/vB. */
+  bitcoinMaxSatPerVb?: number;
+  /** Default 0.1 sat/vB. */
+  liquidMinSatPerVb?: number;
+  /** Default 1 sat/vB. */
+  liquidMaxSatPerVb?: number;
+  /** The largest share of the lockup a claim or refund may pay in fees, in percent. Default 10. */
+  maxFeePercent?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +323,8 @@ export type SwapErrorCode =
   | "STORE_FAILED"
   | "ABORTED"
   | "CHAIN_UNREACHABLE"
-  | "INVOICE_EXPIRED";
+  | "INVOICE_EXPIRED"
+  | "FEE_TOO_HIGH";
 
 /** Every failure crosses this boundary coded; the engine's errors are mapped in Rust. */
 export interface SwapError extends Error {
@@ -320,6 +350,7 @@ const SWAP_ERROR_CODES: ReadonlySet<string> = new Set<SwapErrorCode>([
   "ABORTED",
   "CHAIN_UNREACHABLE",
   "INVOICE_EXPIRED",
+  "FEE_TOO_HIGH",
 ]);
 
 export function isSwapError(error: unknown): error is SwapError {

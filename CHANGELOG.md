@@ -18,6 +18,25 @@ All notable changes to this project will be documented in this file.
   both by `watch` in the process that funded it and by `resume` in a new
   instance over the same store, and checks the refund is confirmed on chain.
 
+### Changed
+
+- `KaleidoSwap` prices its claims and refunds from the chain client's
+  `/fee-estimates` instead of a flat 2 sat/vB. The new `fee_policy` option
+  (`feePolicy` in TypeScript) sets the confirmation target (default 2
+  blocks), a floor and a ceiling per chain (Bitcoin 1 and 500 sat/vB, Liquid
+  0.1 and 1), and `max_fee_percent` (default 10): a spend whose fee would
+  exceed that share of the lockup is not signed and fails with the new
+  `FEE_TOO_HIGH` code, before a claim hands out the preimage, and is retried
+  on the next poll. An estimate that cannot be read signs nothing and fails
+  with `CHAIN_UNREACHABLE`; an empty one gives the floor. `fee_sat_per_vb`
+  now fixes the rate and skips the estimate; fee options that cannot be used
+  are refused by the constructor with `INVALID_AMOUNT`.
+- Breaking for Rust callers of the seams: `SwapFlows` gains
+  `fee_estimates`, `sign_claim` and `sign_refund` take the fee rate,
+  `DefaultFlows::new` no longer takes one, and `KaleidoSwap::with_seams`
+  returns a `Result`. `EsploraBitcoinClient` and `EsploraLiquidClient` gain
+  `fee_estimates`.
+
 ## [0.14.1] - 2026-11-09
 
 A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims
