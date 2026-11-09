@@ -13,7 +13,7 @@
 //! [`SwapFlows`], so the phase machine is tested without a network and every
 //! binding inherits the same one.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -32,6 +32,7 @@ use crate::swaps::boltz::{
     CreateSubmarineResponse, GetReversePairsResponse, GetSubmarinePairsResponse, PairMinerFees,
     ReversePair, SubmarinePair,
 };
+use crate::swaps::fees::{BTC_TX_SIZES, LIQUID_TX_SIZES};
 pub use crate::swaps::signing::MusigSession;
 use crate::swaps::signing::{self, MusigNonces, SpendSigner};
 use crate::swaps::{BtcLikeTransaction, ChainClient, SpendParams, SwapScript, TransactionOptions};
@@ -214,6 +215,10 @@ pub enum SwapErrorCode {
     ChainUnreachable,
     /// The BOLT11 a swap to Lightning would pay has expired.
     InvoiceExpired,
+    /// A claim or refund would pay more of the lockup in fees than
+    /// [`FeePolicy::max_fee_percent`] allows. Nothing was signed; the spend
+    /// is tried again on the next tick.
+    FeeTooHigh,
 }
 
 /// Every failure crosses this boundary coded; the engine's errors are mapped here.
@@ -509,6 +514,11 @@ pub struct SwapState {
     /// written before the limit was kept.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub zero_conf_limit: Option<u64>,
+    /// The rate, in sat/vB, the first claim attempt was signed at after
+    /// passing the fee cap. A claim already under way is never signed below
+    /// it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_fee_rate: Option<f64>,
 }
 
 /// A claim or refund this layer signed: what it broadcasts, and what it
@@ -861,21 +871,27 @@ pub trait SwapFlows: Send + Sync {
         pubkey: &PublicKey,
         preimage: &Preimage,
     ) -> Result<(), Error>;
-    /// Builds the claim of a reverse swap's lockup to its destination and has
-    /// `signer` sign it. Broadcasts nothing: the caller saves it first.
+    /// Fee rates in sat/vB by confirmation target in blocks, from the
+    /// trusted chain client of the chain the swap's lockup lives on.
+    async fn fee_estimates(&self, record: &SwapRecord) -> Result<BTreeMap<u32, f64>, Error>;
+    /// Builds the claim of a reverse swap's lockup to its destination at
+    /// `fee_sat_per_vb` and has `signer` sign it. Broadcasts nothing: the
+    /// caller saves it first.
     async fn sign_claim(
         &self,
         record: &SwapRecord,
         signer: &dyn SpendSigner,
         preimage: &Preimage,
+        fee_sat_per_vb: f64,
     ) -> Result<SignedTx, Error>;
     /// Builds the refund of a submarine swap's lockup to its refund address
-    /// and has `signer` sign it. Broadcasts nothing: the caller saves it
-    /// first.
+    /// at `fee_sat_per_vb` and has `signer` sign it. Broadcasts nothing: the
+    /// caller saves it first.
     async fn sign_refund(
         &self,
         record: &SwapRecord,
         signer: &dyn SpendSigner,
+        fee_sat_per_vb: f64,
     ) -> Result<SignedTx, Error>;
     /// Broadcasts a transaction `sign_claim` or `sign_refund` produced.
     async fn broadcast(&self, record: &SwapRecord, tx: &SignedTx) -> Result<(), Error>;
@@ -1157,8 +1173,14 @@ pub struct KaleidoSwapOptions {
     pub liquid_esplora_url: Option<String>,
     /// How often a swap in flight is asked for its status. Default 2 s.
     pub poll_interval: Option<Duration>,
-    /// Fee rate for the claims and refunds this layer broadcasts. Default 2 sat/vB.
+    /// A fixed fee rate for the claims and refunds this layer signs, on
+    /// either chain. When set, no estimate is read; the rate is raised to the
+    /// floor of the chain a spend is on and held to the same caps as an
+    /// estimate. A rate below the lower of the two floors is refused.
+    /// Default: estimated, see [`FeePolicy`].
     pub fee_sat_per_vb: Option<f64>,
+    /// How claims and refunds are priced when `fee_sat_per_vb` is not set.
+    pub fee_policy: Option<FeePolicy>,
     /// How long a quote may be held before `start` refuses it. Pair terms are
     /// bound by hash, so this guards staleness, not price. Default 10 minutes.
     pub quote_ttl: Option<Duration>,
@@ -1183,6 +1205,174 @@ pub struct ReverseTimeoutHeadroom {
     pub liquid_blocks: Option<u32>,
 }
 
+/// How the claims and refunds this layer signs are priced. Every field left
+/// `None` keeps its default.
+///
+/// The rate is read from the chain client's `GET /fee-estimates` when the
+/// spend is about to be signed, for `target_blocks`, and held between the
+/// chain's floor and ceiling. A chain client that answers with no usable
+/// estimate (a regtest Esplora answers `{}`) gets the floor. One that cannot
+/// be read signs nothing: the spend fails with `ChainUnreachable` and is
+/// tried again on the next tick, since the broadcast goes through the same
+/// chain client.
+///
+/// Before a claim or refund is built, its fee at that rate is checked
+/// against the lockup it spends: over `max_fee_percent` the spend fails with
+/// `FeeTooHigh` and is tried again on the next tick. For a claim this check
+/// runs before anything that could hand the preimage to the maker. The cap
+/// prices a spend at the larger of the sizes it can have, so a spend that
+/// takes the script path is covered.
+///
+/// A claim already under way, which may have handed the preimage out, is
+/// always signed: at the higher of the rate its first attempt was signed at
+/// and the current estimate (the recorded rate if no estimate can be read,
+/// the ceiling if none was recorded), held under 50% of the lockup, or
+/// `max_fee_percent` if higher, and never below the floor.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FeePolicy {
+    /// The confirmation target the estimate is read for, in blocks. An
+    /// Esplora answers a fixed set of targets; the nearest one at or below
+    /// this is used, the smallest it has when none is. Default 2.
+    pub target_blocks: Option<u32>,
+    /// The lowest rate signed on Bitcoin, in sat/vB. Default 1.
+    pub bitcoin_min_sat_per_vb: Option<f64>,
+    /// The highest rate signed on Bitcoin, in sat/vB. Default 500.
+    pub bitcoin_max_sat_per_vb: Option<f64>,
+    /// The lowest rate signed on Liquid, in sat/vB. Default 0.1.
+    pub liquid_min_sat_per_vb: Option<f64>,
+    /// The highest rate signed on Liquid, in sat/vB. Default 1.
+    pub liquid_max_sat_per_vb: Option<f64>,
+    /// The largest share of the lockup amount a claim or refund may pay in
+    /// fees, in percent, at the largest size such a spend can have.
+    /// Default 10.
+    pub max_fee_percent: Option<f64>,
+}
+
+/// [`FeePolicy`] and the fixed rate, checked and with defaults filled in.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct FeeRules {
+    fixed: Option<f64>,
+    target_blocks: u32,
+    bitcoin: (f64, f64),
+    liquid: (f64, f64),
+    max_fee_percent: f64,
+}
+
+impl FeeRules {
+    fn new(fixed: Option<f64>, policy: Option<FeePolicy>) -> Result<Self, SwapError> {
+        let policy = policy.unwrap_or_default();
+        let invalid = |message: String| SwapError::new(SwapErrorCode::InvalidAmount, message);
+        let rate = |name: &str, value: Option<f64>, default: f64| match value {
+            None => Ok(default),
+            Some(r) if r.is_finite() && r > 0.0 => Ok(r),
+            Some(r) => Err(invalid(format!(
+                "{name} must be positive and finite, not {r}"
+            ))),
+        };
+        let bounds = |chain: &str, min, max, defaults: (f64, f64)| {
+            let min = rate(&format!("{chain}MinSatPerVb"), min, defaults.0)?;
+            let max = rate(&format!("{chain}MaxSatPerVb"), max, defaults.1)?;
+            if min > max {
+                return Err(invalid(format!(
+                    "{chain}MinSatPerVb ({min}) is above {chain}MaxSatPerVb ({max})"
+                )));
+            }
+            Ok((min, max))
+        };
+        let target_blocks = match policy.target_blocks {
+            Some(0) => return Err(invalid("targetBlocks must be at least 1".into())),
+            target => target.unwrap_or(2),
+        };
+        let max_fee_percent = rate("maxFeePercent", policy.max_fee_percent, 10.0)?;
+        if max_fee_percent > 100.0 {
+            return Err(invalid(format!(
+                "maxFeePercent must be at most 100, not {max_fee_percent}"
+            )));
+        }
+        let bitcoin = bounds(
+            "bitcoin",
+            policy.bitcoin_min_sat_per_vb,
+            policy.bitcoin_max_sat_per_vb,
+            (1.0, 500.0),
+        )?;
+        let liquid = bounds(
+            "liquid",
+            policy.liquid_min_sat_per_vb,
+            policy.liquid_max_sat_per_vb,
+            (0.1, 1.0),
+        )?;
+        let fixed = match fixed {
+            Some(r) => {
+                let r = rate("feeSatPerVb", Some(r), r)?;
+                let floor = bitcoin.0.min(liquid.0);
+                if r < floor {
+                    return Err(invalid(format!(
+                        "feeSatPerVb ({r}) is below the lowest floor of the two chains ({floor})"
+                    )));
+                }
+                Some(r)
+            }
+            None => None,
+        };
+        Ok(Self {
+            fixed,
+            target_blocks,
+            bitcoin,
+            liquid,
+            max_fee_percent,
+        })
+    }
+
+    /// The chain's floor and ceiling.
+    fn bounds(&self, liquid: bool) -> (f64, f64) {
+        if liquid {
+            self.liquid
+        } else {
+            self.bitcoin
+        }
+    }
+
+    /// The rate for a spend on `liquid` or Bitcoin from the chain's
+    /// estimates: the target's, or the nearest below it, held between the
+    /// chain's floor and ceiling. No estimate at all gives the floor.
+    fn rate_from(&self, estimates: &BTreeMap<u32, f64>, liquid: bool) -> f64 {
+        let (min, max) = self.bounds(liquid);
+        estimates
+            .range(..=self.target_blocks)
+            .next_back()
+            .or_else(|| estimates.iter().next())
+            .map(|(_, rate)| *rate)
+            .filter(|rate| rate.is_finite())
+            .unwrap_or(min)
+            .clamp(min, max)
+    }
+}
+
+/// The fee cap a claim already under way is held to, in percent of the
+/// lockup, unless [`FeePolicy::max_fee_percent`] is higher.
+const UNDER_WAY_CLAIM_MAX_FEE_PERCENT: f64 = 50.0;
+
+/// The virtual size a claim or refund is priced at for the fee cap, checked
+/// before it is built: the larger of the sizes a spend of the lockup can
+/// have, so a spend that takes the script path is covered.
+fn spend_vsize(liquid: bool) -> u64 {
+    let sizes = if liquid {
+        LIQUID_TX_SIZES
+    } else {
+        BTC_TX_SIZES
+    };
+    sizes.reverse_claim.max(sizes.normal_claim)
+}
+
+/// What a swap's lockup holds: the amount a claim or refund spends.
+fn lockup_amount(record: &SwapRecord) -> u64 {
+    match &record.state.response {
+        CreateResponse::BoltzReverse(r) => r.onchain_amount,
+        CreateResponse::BoltzSubmarine(r) => r.expected_amount,
+    }
+}
+
 pub(crate) struct Env {
     network: Network,
     maker_url: String,
@@ -1193,6 +1383,7 @@ pub(crate) struct Env {
     poll_interval: Duration,
     quote_ttl: Duration,
     reverse_timeout_headroom: ReverseTimeoutHeadroom,
+    fee_rules: FeeRules,
     /// One lock per swap id, shared by every handle this instance gives out
     /// on that id. Held only by live handles: an entry whose handles are all
     /// gone is dropped the next time a lock is handed out.
@@ -1234,7 +1425,6 @@ pub struct DefaultFlows {
     chain: ChainClient,
     bitcoin: EsploraBitcoinClient,
     liquid: EsploraLiquidClient,
-    fee: Fee,
 }
 
 impl DefaultFlows {
@@ -1242,7 +1432,6 @@ impl DefaultFlows {
         api: Arc<BoltzApiClientV2>,
         bitcoin: EsploraBitcoinClient,
         liquid: EsploraLiquidClient,
-        fee_sat_per_vb: f64,
     ) -> Self {
         Self {
             api,
@@ -1251,7 +1440,6 @@ impl DefaultFlows {
                 .with_liquid(liquid.clone()),
             bitcoin,
             liquid,
-            fee: Fee::Relative(fee_sat_per_vb),
         }
     }
 
@@ -1325,6 +1513,7 @@ impl DefaultFlows {
         &'a self,
         record: &SwapRecord,
         output_address: String,
+        fee_sat_per_vb: f64,
         cooperative: bool,
     ) -> SpendParams<'a> {
         let mut options = TransactionOptions::default().with_cooperative(cooperative);
@@ -1333,7 +1522,7 @@ impl DefaultFlows {
         }
         SpendParams {
             output_address,
-            fee: self.fee,
+            fee: Fee::Relative(fee_sat_per_vb),
             swap_id: record.id.clone(),
             chain_client: &self.chain,
             boltz_api: &self.api,
@@ -1380,11 +1569,19 @@ impl SwapFlows for DefaultFlows {
         }
     }
 
+    async fn fee_estimates(&self, record: &SwapRecord) -> Result<BTreeMap<u32, f64>, Error> {
+        match Self::chain_kind(record) {
+            ChainKind::Bitcoin(_) => self.bitcoin.fee_estimates().await,
+            ChainKind::Liquid(_) => self.liquid.fee_estimates().await,
+        }
+    }
+
     async fn sign_claim(
         &self,
         record: &SwapRecord,
         signer: &dyn SpendSigner,
         preimage: &Preimage,
+        fee_sat_per_vb: f64,
     ) -> Result<SignedTx, Error> {
         let script = Self::script(record, &signer.public_key())?;
         let destination = record.state.destination.clone();
@@ -1394,7 +1591,7 @@ impl SwapFlows for DefaultFlows {
         let tx = match script
             .construct_claim_with_signer(
                 preimage,
-                self.params(record, destination.clone(), true),
+                self.params(record, destination.clone(), fee_sat_per_vb, true),
                 signer,
             )
             .await
@@ -1404,7 +1601,7 @@ impl SwapFlows for DefaultFlows {
                 script
                     .construct_claim_with_signer(
                         preimage,
-                        self.params(record, destination, false),
+                        self.params(record, destination, fee_sat_per_vb, false),
                         signer,
                     )
                     .await?
@@ -1417,6 +1614,7 @@ impl SwapFlows for DefaultFlows {
         &self,
         record: &SwapRecord,
         signer: &dyn SpendSigner,
+        fee_sat_per_vb: f64,
     ) -> Result<SignedTx, Error> {
         let Some(address) = record.state.refund_address.clone() else {
             return Err(Error::Generic(
@@ -1429,7 +1627,10 @@ impl SwapFlows for DefaultFlows {
         // the timelock has matured, so fall back to it rather than leave the
         // lockup behind.
         let cooperative_error = match script
-            .construct_refund_with_signer(self.params(record, address.clone(), true), signer)
+            .construct_refund_with_signer(
+                self.params(record, address.clone(), fee_sat_per_vb, true),
+                signer,
+            )
             .await
         {
             Ok(tx) => return Ok(Self::signed(&tx)),
@@ -1441,7 +1642,10 @@ impl SwapFlows for DefaultFlows {
         );
         self.script_refund_open(record, &cooperative_error).await?;
         let tx = script
-            .construct_refund_with_signer(self.params(record, address, false), signer)
+            .construct_refund_with_signer(
+                self.params(record, address, fee_sat_per_vb, false),
+                signer,
+            )
             .await?;
         Ok(Self::signed(&tx))
     }
@@ -1863,6 +2067,13 @@ enum Spend {
 }
 
 impl Spend {
+    fn name(self) -> &'static str {
+        match self {
+            Spend::Claim => "claim",
+            Spend::Refund => "refund",
+        }
+    }
+
     fn pending(self, record: &mut SwapRecord) -> &mut Option<SignedTx> {
         match self {
             Spend::Claim => &mut record.state.pending_claim,
@@ -2115,8 +2326,19 @@ impl Swap {
     async fn claim_now(&self) -> Result<SwapRecord, SwapError> {
         let signer = self.signer().await?;
         let preimage = self.env.signer.derive_preimage(signer.index).await?;
-        let record = self.persist(|r| r.state.claim_started = true).await?;
-        let tx = match self.env.flows.sign_claim(&record, &signer, &preimage).await {
+        let rate = self.spend_fee_rate(Spend::Claim, &self.record()).await?;
+        let record = self
+            .persist(|r| {
+                r.state.claim_started = true;
+                r.state.claim_fee_rate.get_or_insert(rate);
+            })
+            .await?;
+        let tx = match self
+            .env
+            .flows
+            .sign_claim(&record, &signer, &preimage, rate)
+            .await
+        {
             Ok(tx) => tx,
             Err(e) => {
                 let retryable = spend_error_is_transient(&e)
@@ -2252,7 +2474,8 @@ impl Swap {
                 &record.id,
             ));
         }
-        let tx = match self.env.flows.sign_refund(&record, &signer).await {
+        let rate = self.spend_fee_rate(Spend::Refund, &record).await?;
+        let tx = match self.env.flows.sign_refund(&record, &signer, rate).await {
             Ok(tx) => tx,
             Err(e) => {
                 self.set_retryable(spend_error_is_transient(&e));
@@ -2260,6 +2483,67 @@ impl Swap {
             }
         };
         self.save_and_broadcast(Spend::Refund, tx).await
+    }
+
+    /// The rate a claim or refund of `record` is signed at: the fixed rate,
+    /// raised to the chain's floor, or the chain's estimate under
+    /// [`FeePolicy`]. Read before anything is built, so a claim refused here
+    /// has handed the maker nothing.
+    ///
+    /// A claim already under way may have handed out the preimage, so it is
+    /// never refused here. It is signed at the higher of the rate its first
+    /// attempt passed the cap with and the current one (the recorded rate,
+    /// or the ceiling when there is none, if no estimate can be read), held
+    /// under [`UNDER_WAY_CLAIM_MAX_FEE_PERCENT`] of the lockup and never below
+    /// the floor.
+    async fn spend_fee_rate(&self, kind: Spend, record: &SwapRecord) -> Result<f64, SwapError> {
+        let rules = &self.env.fee_rules;
+        let liquid = matches!(DefaultFlows::chain_kind(record), ChainKind::Liquid(_));
+        let (floor, ceiling) = rules.bounds(liquid);
+        let current = match rules.fixed {
+            Some(rate) => Ok(rate.max(floor)),
+            None => self
+                .env
+                .flows
+                .fee_estimates(record)
+                .await
+                .map(|estimates| rules.rate_from(&estimates, liquid)),
+        };
+        let vsize = spend_vsize(liquid) as f64;
+        let amount = lockup_amount(record) as f64;
+        if kind == Spend::Claim && claim_under_way(&record.state) {
+            let recorded = record.state.claim_fee_rate;
+            let rate = match (current, recorded) {
+                (Ok(current), Some(recorded)) => current.max(recorded),
+                (Ok(current), None) => current,
+                (Err(_), Some(recorded)) => recorded,
+                (Err(_), None) => ceiling,
+            };
+            let percent = rules.max_fee_percent.max(UNDER_WAY_CLAIM_MAX_FEE_PERCENT);
+            let capped = amount * percent / 100.0 / vsize;
+            return Ok(rate.min(capped).max(floor));
+        }
+        let rate = current.map_err(|e| {
+            SwapError::for_swap(
+                SwapErrorCode::ChainUnreachable,
+                format!("could not read fee estimates: {e:?}"),
+                &record.id,
+            )
+        })?;
+        let fee = (vsize * rate).ceil();
+        if fee > amount * rules.max_fee_percent / 100.0 {
+            return Err(SwapError::for_swap(
+                SwapErrorCode::FeeTooHigh,
+                format!(
+                    "a {} at {rate} sat/vB would pay about {fee} sat of the {amount} sat lockup, \
+                     over the {}% the fee policy allows",
+                    kind.name(),
+                    rules.max_fee_percent
+                ),
+                &record.id,
+            ));
+        }
+        Ok(rate)
     }
 
     /// Saves a signed claim or refund, then broadcasts it: a broadcast that
@@ -2500,6 +2784,7 @@ impl Swap {
             SwapErrorCode::MakerUnreachable
                 | SwapErrorCode::ChainUnreachable
                 | SwapErrorCode::StoreFailed
+                | SwapErrorCode::FeeTooHigh
         ) || (error.code != SwapErrorCode::Aborted
             && self.retryable.load(std::sync::atomic::Ordering::Relaxed))
     }
@@ -2575,20 +2860,20 @@ impl KaleidoSwap {
             api.clone(),
             EsploraBitcoinClient::new(network.into(), &bitcoin_url, 30),
             EsploraLiquidClient::new(network.into(), &liquid_url, 30),
-            options.fee_sat_per_vb.unwrap_or(2.0),
         );
-        Ok(Self::with_seams(options, maker_url, api, Arc::new(flows)))
+        Self::with_seams(options, maker_url, api, Arc::new(flows))
     }
 
     /// The constructor tests use: the maker and the chain steps are whatever
-    /// the caller passes.
+    /// the caller passes. Fails only on fee options it cannot use.
     pub fn with_seams(
         options: KaleidoSwapOptions,
         maker_url: String,
         maker: Arc<dyn MakerApi>,
         flows: Arc<dyn SwapFlows>,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, SwapError> {
+        let fee_rules = FeeRules::new(options.fee_sat_per_vb, options.fee_policy)?;
+        Ok(Self {
             env: Arc::new(Env {
                 network: options.network,
                 maker_url,
@@ -2599,9 +2884,10 @@ impl KaleidoSwap {
                 poll_interval: options.poll_interval.unwrap_or(Duration::from_secs(2)),
                 quote_ttl: options.quote_ttl.unwrap_or(Duration::from_secs(600)),
                 reverse_timeout_headroom: options.reverse_timeout_headroom.unwrap_or_default(),
+                fee_rules,
                 swap_locks: std::sync::Mutex::new(HashMap::new()),
             }),
-        }
+        })
     }
 
     pub fn network(&self) -> Network {
@@ -3012,6 +3298,7 @@ impl KaleidoSwap {
                 claim_started: false,
                 funded_seen: false,
                 zero_conf_limit,
+                claim_fee_rate: None,
             },
         };
 
@@ -3437,7 +3724,15 @@ mod tests {
         /// the transaction being broadcast.
         observe: Mutex<Option<Arc<MemoryStore>>>,
         saved_before_broadcast: Mutex<Vec<bool>>,
+        /// What `fee_estimates` answers; [`FAKE_ESTIMATES`] when unset.
+        estimates: Mutex<Option<BTreeMap<u32, f64>>>,
+        /// `fee_estimates` fails, as an unreachable Esplora does.
+        estimates_down: bool,
+        /// The rate each signed claim or refund was built at, in order.
+        rates: Mutex<Vec<f64>>,
     }
+
+    const FAKE_ESTIMATES: [(u32, f64); 3] = [(1, 0.5), (2, 0.3), (6, 0.25)];
 
     fn pubkey_hex(pubkey: &PublicKey) -> String {
         pubkey.to_string()
@@ -3511,13 +3806,26 @@ mod tests {
             }
             Ok(())
         }
+        async fn fee_estimates(&self, _record: &SwapRecord) -> Result<BTreeMap<u32, f64>, Error> {
+            if self.estimates_down {
+                return Err(Error::Generic("fee estimates unreachable".into()));
+            }
+            Ok(self
+                .estimates
+                .lock()
+                .unwrap()
+                .clone()
+                .unwrap_or_else(|| FAKE_ESTIMATES.into_iter().collect()))
+        }
         async fn sign_claim(
             &self,
             record: &SwapRecord,
             signer: &dyn SpendSigner,
             _preimage: &Preimage,
+            fee_sat_per_vb: f64,
         ) -> Result<SignedTx, Error> {
             YieldOnce(false).await;
+            self.rates.lock().unwrap().push(fee_sat_per_vb);
             {
                 let mut failures = self.claim_failures.lock().unwrap();
                 if *failures > 0 {
@@ -3539,8 +3847,10 @@ mod tests {
             &self,
             record: &SwapRecord,
             signer: &dyn SpendSigner,
+            fee_sat_per_vb: f64,
         ) -> Result<SignedTx, Error> {
             YieldOnce(false).await;
+            self.rates.lock().unwrap().push(fee_sat_per_vb);
             {
                 let mut failures = self.refund_failures.lock().unwrap();
                 if *failures > 0 {
@@ -3720,34 +4030,48 @@ mod tests {
         flows: FakeFlows,
         reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
     ) -> Harness {
+        harness_with_options(store, flows, |o| {
+            o.reverse_timeout_headroom = reverse_timeout_headroom
+        })
+        .unwrap()
+    }
+
+    fn harness_with_options(
+        store: Arc<MemoryStore>,
+        flows: FakeFlows,
+        tweak: impl FnOnce(&mut KaleidoSwapOptions),
+    ) -> Result<Harness, SwapError> {
         let maker = Arc::new(FakeMaker::default());
         let flows = Arc::new(flows);
         let signer = Arc::new(FakeSigner::default());
+        let mut options = KaleidoSwapOptions {
+            network: Network::Signet,
+            store: store.clone(),
+            signer: signer.clone(),
+            maker_url: None,
+            bitcoin_esplora_url: None,
+            liquid_esplora_url: None,
+            poll_interval: Some(Duration::from_millis(1)),
+            fee_sat_per_vb: None,
+            fee_policy: None,
+            quote_ttl: None,
+            maker_timeout: None,
+            reverse_timeout_headroom: None,
+        };
+        tweak(&mut options);
         let kaleido = KaleidoSwap::with_seams(
-            KaleidoSwapOptions {
-                network: Network::Signet,
-                store: store.clone(),
-                signer: signer.clone(),
-                maker_url: None,
-                bitcoin_esplora_url: None,
-                liquid_esplora_url: None,
-                poll_interval: Some(Duration::from_millis(1)),
-                fee_sat_per_vb: None,
-                quote_ttl: None,
-                maker_timeout: None,
-                reverse_timeout_headroom,
-            },
+            options,
             "https://maker.example/v2".into(),
             maker.clone(),
             flows.clone(),
-        );
-        Harness {
+        )?;
+        Ok(Harness {
             kaleido,
             maker,
             flows,
             store,
             signer,
-        }
+        })
     }
 
     fn harness() -> Harness {
@@ -4571,7 +4895,12 @@ mod tests {
             .unwrap();
         let err = h
             .flows
-            .sign_claim(&record, &indexed, &Preimage::from_swap_key(&key_for(0)))
+            .sign_claim(
+                &record,
+                &indexed,
+                &Preimage::from_swap_key(&key_for(0)),
+                1.0,
+            )
             .await
             .unwrap_err();
         assert!(err.to_string().contains("device locked"), "{err}");
@@ -5651,6 +5980,7 @@ mod tests {
                 liquid_esplora_url: None,
                 poll_interval: Some(Duration::from_millis(1)),
                 fee_sat_per_vb: None,
+                fee_policy: None,
                 quote_ttl: None,
                 maker_timeout: None,
                 reverse_timeout_headroom: None,
@@ -5658,7 +5988,8 @@ mod tests {
             "https://maker.example/v2".into(),
             maker.clone(),
             Arc::new(FakeFlows::default()),
-        );
+        )
+        .unwrap();
         let q = kaleido
             .quote(reverse_request(50_000))
             .await
@@ -5751,18 +6082,26 @@ mod tests {
                 r#"{"spent":false}"#.into(),
             ),
             (format!("/address/{lockup}/txs"), 200, history.to_string()),
+            (
+                "/fee-estimates".into(),
+                200,
+                r#"{"1": 21.5, "2": 14, "144": 1.2}"#.into(),
+            ),
         ]);
         let flows = DefaultFlows::new(
             Arc::new(BoltzApiClientV2::new(base.clone(), None)),
             EsploraBitcoinClient::new(BitcoinChain::BitcoinSignet, &base, 5),
             EsploraLiquidClient::new(LiquidChain::LiquidTestnet, &base, 5),
-            2.0,
         );
         let mut record = started_submarine(&harness()).await.record();
         if let CreateResponse::BoltzSubmarine(r) = &mut record.state.response {
             r.address = lockup.into();
         }
         record.state.refund_address = Some(refund.into());
+        assert_eq!(
+            flows.fee_estimates(&record).await.unwrap(),
+            BTreeMap::from([(1, 21.5), (2, 14.0), (144, 1.2)])
+        );
         let signed = |txid: &str| SignedTx {
             txid: txid.into(),
             hex: String::new(),
@@ -5806,7 +6145,6 @@ mod tests {
                 Arc::new(BoltzApiClientV2::new(base.clone(), None)),
                 EsploraBitcoinClient::new(BitcoinChain::BitcoinSignet, &base, 5),
                 EsploraLiquidClient::new(LiquidChain::LiquidTestnet, &base, 5),
-                2.0,
             )
         };
         let refused = Error::Protocol("No Bitcoin UTXO detected for this script".into());
@@ -5824,6 +6162,279 @@ mod tests {
             .script_refund_open(&record, &refused)
             .await
             .unwrap();
+    }
+
+    #[macros::test_all]
+    fn the_fee_rate_is_the_targets_estimate_held_within_the_chain_bounds() {
+        let rules = FeeRules::new(None, None).unwrap();
+        let estimates = BTreeMap::from([(1, 20.0), (2, 12.0), (6, 5.0)]);
+        assert_eq!(rules.rate_from(&estimates, false), 12.0);
+        let at = |target| {
+            FeeRules::new(
+                None,
+                Some(FeePolicy {
+                    target_blocks: Some(target),
+                    ..Default::default()
+                }),
+            )
+            .unwrap()
+            .rate_from(&estimates, false)
+        };
+        assert_eq!(at(1), 20.0);
+        assert_eq!(at(4), 12.0, "the nearest target at or below");
+        assert_eq!(at(1008), 5.0);
+        let sparse = BTreeMap::from([(6, 5.0)]);
+        assert_eq!(rules.rate_from(&sparse, false), 5.0, "the smallest it has");
+        assert_eq!(rules.rate_from(&BTreeMap::new(), false), 1.0, "the floor");
+        assert_eq!(rules.rate_from(&BTreeMap::new(), true), 0.1);
+        assert_eq!(rules.rate_from(&BTreeMap::from([(2, 0.01)]), true), 0.1);
+        assert_eq!(rules.rate_from(&BTreeMap::from([(2, 0.5)]), false), 1.0);
+        assert_eq!(
+            rules.rate_from(&BTreeMap::from([(2, 9000.0)]), false),
+            500.0
+        );
+        assert_eq!(rules.rate_from(&BTreeMap::from([(2, 3.0)]), true), 1.0);
+    }
+
+    #[macros::test_all]
+    fn fee_options_that_cannot_be_used_are_refused() {
+        for fixed in [0.0, -1.0, 0.05, f64::NAN, f64::INFINITY] {
+            assert!(FeeRules::new(Some(fixed), None).is_err(), "{fixed}");
+        }
+        for policy in [
+            FeePolicy {
+                target_blocks: Some(0),
+                ..Default::default()
+            },
+            FeePolicy {
+                bitcoin_min_sat_per_vb: Some(10.0),
+                bitcoin_max_sat_per_vb: Some(5.0),
+                ..Default::default()
+            },
+            FeePolicy {
+                liquid_min_sat_per_vb: Some(2.0),
+                ..Default::default()
+            },
+            FeePolicy {
+                liquid_max_sat_per_vb: Some(0.0),
+                ..Default::default()
+            },
+            FeePolicy {
+                max_fee_percent: Some(0.0),
+                ..Default::default()
+            },
+            FeePolicy {
+                max_fee_percent: Some(150.0),
+                ..Default::default()
+            },
+        ] {
+            let err = FeeRules::new(None, Some(policy)).unwrap_err();
+            assert_eq!(err.code, SwapErrorCode::InvalidAmount, "{policy:?}");
+        }
+        let err = harness_with_options(Arc::new(MemoryStore::new()), FakeFlows::default(), |o| {
+            o.fee_sat_per_vb = Some(0.0)
+        })
+        .err()
+        .unwrap();
+        assert_eq!(err.code, SwapErrorCode::InvalidAmount);
+        assert_eq!(
+            serde_json::from_value::<FeePolicy>(serde_json::json!({
+                "targetBlocks": 3, "maxFeePercent": 5
+            }))
+            .unwrap(),
+            FeePolicy {
+                target_blocks: Some(3),
+                max_fee_percent: Some(5.0),
+                ..Default::default()
+            }
+        );
+        assert!(serde_json::from_value::<FeePolicy>(serde_json::json!({"target": 3})).is_err());
+    }
+
+    #[macros::async_test_all]
+    async fn claims_and_refunds_are_signed_at_the_chains_estimate() {
+        // The reverse swap claims on Liquid: the 2-block estimate, 0.3.
+        let h = harness();
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        swap.tick().await.unwrap();
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![0.3]);
+
+        // The submarine swap refunds on Bitcoin, where 0.3 is under the floor.
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                lockup_funded: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_submarine(&h).await;
+        h.maker.script(&["swap.expired"]);
+        swap.tick().await.unwrap();
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![1.0]);
+    }
+
+    #[macros::async_test_all]
+    async fn a_fixed_fee_rate_is_used_without_reading_an_estimate() {
+        let flows = FakeFlows {
+            estimates_down: true,
+            ..Default::default()
+        };
+        let h = harness_with_options(Arc::new(MemoryStore::new()), flows, |o| {
+            o.fee_sat_per_vb = Some(2.0)
+        })
+        .unwrap();
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![2.0]);
+
+        // A fixed rate under the chain's floor is raised to it: 0.5 is
+        // accepted for Liquid, and a Bitcoin refund is signed at 1.
+        let flows = FakeFlows {
+            estimates_down: true,
+            lockup_funded: true,
+            ..Default::default()
+        };
+        let h = harness_with_options(Arc::new(MemoryStore::new()), flows, |o| {
+            o.fee_sat_per_vb = Some(0.5)
+        })
+        .unwrap();
+        let swap = started_submarine(&h).await;
+        h.maker.script(&["swap.expired"]);
+        swap.tick().await.unwrap();
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![1.0]);
+    }
+
+    #[macros::async_test_all]
+    async fn an_unreadable_fee_estimate_signs_nothing_and_is_waited_out() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                estimates_down: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::ChainUnreachable);
+        assert!(swap.keeps_watching(&err));
+        let record = h.store.get("rev-1").await.unwrap().unwrap();
+        assert!(!record.state.claim_started, "nothing was handed out");
+        assert!(h.flows.claim.lock().unwrap().is_empty());
+        assert!(h.flows.rates.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn a_claim_whose_fee_would_eat_the_lockup_is_not_started_until_fees_fall() {
+        let flows = FakeFlows::default();
+        *flows.estimates.lock().unwrap() = Some(BTreeMap::from([(2, 50.0)]));
+        let h = harness_with_options(Arc::new(MemoryStore::new()), flows, |o| {
+            o.fee_policy = Some(FeePolicy {
+                liquid_max_sat_per_vb: Some(100.0),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        // 193 vB at 50 sat/vB is 9650 sat, over 10% of the 49 450 sat lockup.
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::FeeTooHigh, "{err:?}");
+        assert!(swap.keeps_watching(&err));
+        let record = h.store.get("rev-1").await.unwrap().unwrap();
+        assert!(!record.state.claim_started);
+        assert!(h.flows.rates.lock().unwrap().is_empty());
+
+        *h.flows.estimates.lock().unwrap() = Some(BTreeMap::from([(2, 20.0)]));
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![20.0]);
+    }
+
+    /// Starts a reverse swap over `flows` whose claim is already under way,
+    /// with `recorded` as the rate its first attempt passed the cap with.
+    async fn under_way_claim(flows: FakeFlows, recorded: Option<f64>) -> (Harness, Swap) {
+        let flows = FakeFlows {
+            lockup_funded: true,
+            ..flows
+        };
+        let h = harness_with_options(Arc::new(MemoryStore::new()), flows, |o| {
+            o.fee_policy = Some(FeePolicy {
+                liquid_max_sat_per_vb: Some(1000.0),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let swap = started_reverse(&h).await;
+        let mut record = h.store.get("rev-1").await.unwrap().unwrap();
+        record.state.claim_started = true;
+        record.state.claim_fee_rate = recorded;
+        h.store.put(&record).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        (h, swap)
+    }
+
+    #[macros::async_test_all]
+    async fn a_claim_already_under_way_is_signed_within_a_looser_cap() {
+        // 50% of the 49 450 sat lockup at the 193 vB the cap prices a Liquid
+        // spend at.
+        let capped = 49_450.0 * 0.5 / 193.0;
+
+        // Over the policy's cap, but under way: signed, held to the looser one.
+        let flows = FakeFlows::default();
+        *flows.estimates.lock().unwrap() = Some(BTreeMap::from([(2, 1000.0)]));
+        let (h, swap) = under_way_claim(flows, Some(0.3)).await;
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![capped]);
+
+        // Never below the rate the first attempt was signed at.
+        let (h, swap) = under_way_claim(FakeFlows::default(), Some(0.8)).await;
+        swap.tick().await.unwrap();
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![0.8]);
+
+        // An unreadable estimate gives the recorded rate…
+        let down = || FakeFlows {
+            estimates_down: true,
+            ..Default::default()
+        };
+        let (h, swap) = under_way_claim(down(), Some(0.8)).await;
+        swap.tick().await.unwrap();
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![0.8]);
+
+        // …or, with none recorded, the ceiling, still under the looser cap.
+        let (h, swap) = under_way_claim(down(), None).await;
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![capped]);
+    }
+
+    #[macros::async_test_all]
+    async fn the_first_claim_attempt_records_its_rate() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                claim_failures: Mutex::new(1),
+                lockup_funded: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed"]);
+        swap.tick().await.unwrap_err();
+        let record = h.store.get("rev-1").await.unwrap().unwrap();
+        assert!(record.state.claim_started);
+        assert_eq!(record.state.claim_fee_rate, Some(0.3));
+        // A later estimate does not move the recorded rate.
+        *h.flows.estimates.lock().unwrap() = Some(BTreeMap::from([(2, 0.5)]));
+        swap.tick().await.unwrap();
+        let record = h.store.get("rev-1").await.unwrap().unwrap();
+        assert_eq!(record.state.claim_fee_rate, Some(0.3));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![0.3, 0.5]);
     }
 
     #[macros::async_test_all]

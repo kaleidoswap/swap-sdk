@@ -3053,14 +3053,38 @@ struct KaleidoSwapJsOptions {
     liquid_esplora_url: Option<String>,
     poll_interval_ms: Option<u64>,
     fee_sat_per_vb: Option<f64>,
+    fee_policy: Option<hl::FeePolicy>,
     quote_ttl_ms: Option<u64>,
     maker_timeout_ms: Option<u64>,
     reverse_timeout_headroom: Option<hl::ReverseTimeoutHeadroom>,
 }
 
+/// Refuses a key of the nested option `name` that is not one of `known`:
+/// serde-wasm-bindgen reads only a struct's declared fields, so a
+/// misspelled one would otherwise pass as "keep the default".
+fn check_option_keys(options: &JsValue, name: &str, known: &[&str]) -> Result<(), JsValue> {
+    let value =
+        js_sys::Reflect::get(options, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED);
+    if !value.is_object() {
+        return Ok(());
+    }
+    for key in js_sys::Object::keys(value.unchecked_ref::<js_sys::Object>()).iter() {
+        let key = key.as_string().unwrap_or_default();
+        if !known.contains(&key.as_str()) {
+            return Err(arg_err(format!(
+                "{name}.{key} is not an option; expected one of {}",
+                known.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// `new KaleidoSwap({ network, store, signer, makerUrl?, bitcoinEsploraUrl?,
-/// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, quoteTtlMs?,
-/// makerTimeoutMs?, reverseTimeoutHeadroom?: { bitcoinBlocks?, liquidBlocks? } })`.
+/// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, feePolicy?: { targetBlocks?,
+/// bitcoinMinSatPerVb?, bitcoinMaxSatPerVb?, liquidMinSatPerVb?,
+/// liquidMaxSatPerVb?, maxFeePercent? }, quoteTtlMs?, makerTimeoutMs?,
+/// reverseTimeoutHeadroom?: { bitcoinBlocks?, liquidBlocks? } })`.
 #[wasm_bindgen]
 pub struct KaleidoSwap {
     inner: Arc<hl::KaleidoSwap>,
@@ -3084,21 +3108,23 @@ impl KaleidoSwap {
                 "options.signer must be an object with publicKey/derivePreimage/signSchnorr/musigNonce/musigPartialSign",
             ));
         }
-        // serde-wasm-bindgen reads only a struct's declared fields, so a
-        // misspelled chain would otherwise pass as "keep the default".
-        let headroom = js_sys::Reflect::get(&options, &JsValue::from_str("reverseTimeoutHeadroom"))
-            .unwrap_or(JsValue::UNDEFINED);
-        if headroom.is_object() {
-            for key in js_sys::Object::keys(headroom.unchecked_ref::<js_sys::Object>()).iter() {
-                let key = key.as_string().unwrap_or_default();
-                if !["bitcoinBlocks", "liquidBlocks"].contains(&key.as_str()) {
-                    return Err(arg_err(format!(
-                        "reverseTimeoutHeadroom.{key} is not an option; \
-                         expected bitcoinBlocks or liquidBlocks"
-                    )));
-                }
-            }
-        }
+        check_option_keys(
+            &options,
+            "reverseTimeoutHeadroom",
+            &["bitcoinBlocks", "liquidBlocks"],
+        )?;
+        check_option_keys(
+            &options,
+            "feePolicy",
+            &[
+                "targetBlocks",
+                "bitcoinMinSatPerVb",
+                "bitcoinMaxSatPerVb",
+                "liquidMinSatPerVb",
+                "liquidMaxSatPerVb",
+                "maxFeePercent",
+            ],
+        )?;
         let parsed: KaleidoSwapJsOptions = from_js(options)?;
         let inner = hl::KaleidoSwap::new(hl::KaleidoSwapOptions {
             network: parse_network(&parsed.network)?,
@@ -3111,6 +3137,7 @@ impl KaleidoSwap {
                 .poll_interval_ms
                 .map(std::time::Duration::from_millis),
             fee_sat_per_vb: parsed.fee_sat_per_vb,
+            fee_policy: parsed.fee_policy,
             quote_ttl: parsed.quote_ttl_ms.map(std::time::Duration::from_millis),
             maker_timeout: parsed
                 .maker_timeout_ms

@@ -7,6 +7,7 @@ use elements::hex::ToHex;
 use elements::pset::serialize::Serialize;
 use reqwest::Response;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -82,6 +83,12 @@ impl EsploraBitcoinClient {
             &txid.to_string(),
         )
         .await
+    }
+
+    /// `GET /fee-estimates`: fee rates in sat/vB by confirmation target in
+    /// blocks. Entries that are not a positive, finite rate are left out.
+    pub async fn fee_estimates(&self) -> Result<BTreeMap<u32, f64>, Error> {
+        fetch_fee_estimates(&self.client, &self.base_url, self.timeout).await
     }
 
     /// The transactions that spend an output paying `address`.
@@ -276,6 +283,12 @@ impl EsploraLiquidClient {
         .await
     }
 
+    /// `GET /fee-estimates`: fee rates in sat/vB by confirmation target in
+    /// blocks. Entries that are not a positive, finite rate are left out.
+    pub async fn fee_estimates(&self) -> Result<BTreeMap<u32, f64>, Error> {
+        fetch_fee_estimates(&self.client, &self.base_url, self.timeout).await
+    }
+
     /// The transactions that spend an output paying `address`.
     pub async fn spends_of_address(
         &self,
@@ -414,6 +427,40 @@ async fn fetch_tip_height(
         )));
     }
     parse_tip_height(&body)
+}
+
+async fn fetch_fee_estimates(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+) -> Result<BTreeMap<u32, f64>, Error> {
+    let url = format!("{base_url}/fee-estimates");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Fee estimates request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    parse_fee_estimates(&body)
+}
+
+/// The body of `GET /fee-estimates`, an object of target → sat/vB. Keys that
+/// are not a block count and rates that are not positive and finite are
+/// dropped; a body that is not such an object is an error.
+fn parse_fee_estimates(body: &str) -> Result<BTreeMap<u32, f64>, Error> {
+    let raw: BTreeMap<String, serde_json::Value> = serde_json::from_str(body)
+        .map_err(|e| Error::Esplora(format!("Failed to parse fee estimates: {e}")))?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(target, rate)| {
+            let target = target.parse::<u32>().ok().filter(|t| *t > 0)?;
+            let rate = rate.as_f64().filter(|r| r.is_finite() && *r > 0.0)?;
+            Some((target, rate))
+        })
+        .collect())
 }
 
 fn parse_tip_height(body: &str) -> Result<u32, Error> {
@@ -742,6 +789,20 @@ mod tests {
             esplora_client.get_genesis_hash().await.unwrap().to_hex(),
             "1466275836220db2944ca059a3a10ef6fd2ea684b0688d2c379296888a206003"
         );
+    }
+
+    #[macros::test_all]
+    fn fee_estimates_keep_only_usable_entries() {
+        let parsed =
+            parse_fee_estimates(r#"{"1": 12.5, "2": 10, "6": 0, "x": 3, "144": -1, "25": 1.01}"#)
+                .unwrap();
+        assert_eq!(
+            parsed.into_iter().collect::<Vec<_>>(),
+            vec![(1, 12.5), (2, 10.0), (25, 1.01)]
+        );
+        assert!(parse_fee_estimates("{}").unwrap().is_empty());
+        assert!(parse_fee_estimates("<html>").is_err());
+        assert!(parse_fee_estimates("[1, 2]").is_err());
     }
 
     #[macros::test_all]

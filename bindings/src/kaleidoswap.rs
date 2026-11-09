@@ -12,9 +12,9 @@
 use std::sync::Arc;
 
 use kaleidorg_swap_sdk::kaleidoswap::{
-    self as core, Amount, Asset, Fees, Limits, Protocol, Quote, QuoteBinding, QuoteRefusalReason,
-    QuoteRequest, Refusal, ReverseTimeoutHeadroom, StartOptions, SwapAction, SwapErrorCode,
-    SwapPhase,
+    self as core, Amount, Asset, FeePolicy, Fees, Limits, Protocol, Quote, QuoteBinding,
+    QuoteRefusalReason, QuoteRequest, Refusal, ReverseTimeoutHeadroom, StartOptions, SwapAction,
+    SwapErrorCode, SwapPhase,
 };
 use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
 
@@ -94,6 +94,7 @@ pub enum SwapErrorCode {
     Aborted,
     ChainUnreachable,
     InvoiceExpired,
+    FeeTooHigh,
 }
 
 #[uniffi::remote(Record)]
@@ -170,6 +171,31 @@ impl From<core::QuoteAnswer> for QuoteAnswer {
 pub struct StartOptions {
     pub destination: Option<String>,
     pub refund_address: Option<String>,
+}
+
+/// How claims and refunds are priced when `fee_sat_per_vb` is not set: the
+/// chain client's estimate for `target_blocks` (default 2), held between the
+/// chain's floor and ceiling (Bitcoin 1 and 500 sat/vB, Liquid 0.1 and 1).
+/// An estimate that cannot be read signs nothing and is retried. A spend
+/// whose fee would exceed `max_fee_percent` of the lockup (default 10) is not
+/// signed and fails with `FeeTooHigh`, before a claim hands out the preimage.
+/// A claim already under way is always signed, at no less than the rate its
+/// first attempt was signed at, held under 50% of the lockup (or
+/// `max_fee_percent` if higher).
+#[uniffi::remote(Record)]
+pub struct FeePolicy {
+    #[uniffi(default = None)]
+    pub target_blocks: Option<u32>,
+    #[uniffi(default = None)]
+    pub bitcoin_min_sat_per_vb: Option<f64>,
+    #[uniffi(default = None)]
+    pub bitcoin_max_sat_per_vb: Option<f64>,
+    #[uniffi(default = None)]
+    pub liquid_min_sat_per_vb: Option<f64>,
+    #[uniffi(default = None)]
+    pub liquid_max_sat_per_vb: Option<f64>,
+    #[uniffi(default = None)]
+    pub max_fee_percent: Option<f64>,
 }
 
 /// Per-chain overrides, in blocks, of the headroom `start` requires of a
@@ -604,8 +630,13 @@ pub struct KaleidoSwapOptions {
     pub liquid_esplora_url: Option<String>,
     #[uniffi(default = None)]
     pub poll_interval_ms: Option<u64>,
+    /// A fixed fee rate for claims and refunds; no estimate is read. Raised to
+    /// the floor of the chain a spend is on; a rate below both floors is
+    /// refused. Default: estimated, see `fee_policy`.
     #[uniffi(default = None)]
     pub fee_sat_per_vb: Option<f64>,
+    #[uniffi(default = None)]
+    pub fee_policy: Option<FeePolicy>,
     #[uniffi(default = None)]
     pub quote_ttl_secs: Option<u64>,
     /// Timeout of every request to the maker. Default 30 s.
@@ -655,6 +686,7 @@ impl KaleidoSwap {
                 .poll_interval_ms
                 .map(std::time::Duration::from_millis),
             fee_sat_per_vb: options.fee_sat_per_vb,
+            fee_policy: options.fee_policy,
             quote_ttl: options.quote_ttl_secs.map(std::time::Duration::from_secs),
             maker_timeout: options
                 .maker_timeout_ms

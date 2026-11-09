@@ -36,6 +36,7 @@ fn kaleidoswap(store: Arc<dyn SwapStore>, passphrase: &str) -> KaleidoSwap {
         liquid_esplora_url: None,
         poll_interval: Some(Duration::from_secs(1)),
         fee_sat_per_vb: None,
+        fee_policy: None,
         quote_ttl: None,
         maker_timeout: None,
         reverse_timeout_headroom: None,

@@ -362,6 +362,34 @@ test("options: reverseTimeoutHeadroom reaches the core and its keys are checked"
   );
 });
 
+test("options: feePolicy reaches the core and its keys and values are checked", async () => {
+  const options = {
+    network: "signet",
+    store: new MemoryStore(),
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+  };
+  const k = await createKaleidoSwap({
+    ...options,
+    feePolicy: { targetBlocks: 3, bitcoinMaxSatPerVb: 100, maxFeePercent: 5 },
+  });
+  assert.equal(k.network, "signet");
+  await assert.rejects(
+    createKaleidoSwap({ ...options, feePolicy: { target: 3 } }),
+  );
+  await assert.rejects(
+    createKaleidoSwap({
+      ...options,
+      feePolicy: { bitcoinMinSatPerVb: 10, bitcoinMaxSatPerVb: 5 },
+    }),
+    (e) => e.code === "INVALID_AMOUNT",
+  );
+  await assert.rejects(
+    createKaleidoSwap({ ...options, feeSatPerVb: 0 }),
+    (e) => e.code === "INVALID_AMOUNT",
+  );
+});
+
 test("swap() and resume() on an empty store", async (t) => {
   stubMaker(t);
   const k = await kaleido();
