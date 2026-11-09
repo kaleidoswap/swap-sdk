@@ -28,11 +28,14 @@ All notable changes to this project will be documented in this file.
   exceed that share of the lockup is not signed and fails with the new
   `FEE_TOO_HIGH` code, before a claim hands out the preimage, and is retried
   on the next poll. An estimate that cannot be read signs nothing and fails
-  with `CHAIN_UNREACHABLE`; an empty one gives the floor. A claim already
-  under way is always signed: the cap does not apply to it, and an
-  unreadable estimate gives the ceiling. `fee_sat_per_vb`
-  now fixes the rate and skips the estimate; fee options that cannot be used
-  are refused by the constructor with `INVALID_AMOUNT`.
+  with `CHAIN_UNREACHABLE`; an empty one gives the floor. The cap prices a
+  spend at the larger of the sizes it can have, covering the script path.
+  A claim already under way is always signed: at no less than the rate its
+  first attempt was signed at, which is kept in the record, and under 50% of
+  the lockup (or `max_fee_percent` if higher). `fee_sat_per_vb` now fixes the
+  rate and skips the estimate; it is raised to the chain's floor, and a rate
+  below both floors is refused. Fee options that cannot be used are refused
+  by the constructor with `INVALID_AMOUNT`.
 - Breaking for Rust callers of the seams: `SwapFlows` gains
   `fee_estimates`, `sign_claim` and `sign_refund` take the fee rate,
   `DefaultFlows::new` no longer takes one, and `KaleidoSwap::with_seams`

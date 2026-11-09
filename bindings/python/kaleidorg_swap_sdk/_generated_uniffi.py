@@ -6481,8 +6481,9 @@ class FeePolicy:
     An estimate that cannot be read signs nothing and is retried. A spend
     whose fee would exceed `max_fee_percent` of the lockup (default 10) is not
     signed and fails with `FeeTooHigh`, before a claim hands out the preimage.
-    A claim already under way is always signed, at the ceiling if no estimate
-    can be read.
+    A claim already under way is always signed, at no less than the rate its
+    first attempt was signed at, held under 50% of the lockup (or
+    `max_fee_percent` if higher).
     """
 
     target_blocks: "typing.Optional[int]"
@@ -7117,8 +7118,9 @@ class KaleidoSwapOptions:
     poll_interval_ms: "typing.Optional[int]"
     fee_sat_per_vb: "typing.Optional[float]"
     """
-    A fixed fee rate for claims and refunds; no estimate is read.
-    Default: estimated, see `fee_policy`.
+    A fixed fee rate for claims and refunds; no estimate is read. Raised to
+    the floor of the chain a spend is on; a rate below both floors is
+    refused. Default: estimated, see `fee_policy`.
     """
 
     fee_policy: "typing.Optional[FeePolicy]"

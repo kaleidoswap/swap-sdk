@@ -87,7 +87,9 @@ export interface KaleidoSwapOptions {
   makerTimeoutMs?: number;
   /**
    * A fixed fee rate for the claims and refunds this layer signs, on either
-   * chain. When set, no estimate is read. Default: estimated, see `feePolicy`.
+   * chain. When set, no estimate is read; the rate is raised to the floor of
+   * the chain a spend is on, and a rate below both floors is refused.
+   * Default: estimated, see `feePolicy`.
    */
   feeSatPerVb?: number;
   /** How claims and refunds are priced when `feeSatPerVb` is not set. */
@@ -113,8 +115,9 @@ export interface KaleidoSwapOptions {
  * nothing: the spend fails with `CHAIN_UNREACHABLE` and is retried on the next
  * poll. A spend whose fee would exceed `maxFeePercent` of the lockup is not
  * signed either: it fails with `FEE_TOO_HIGH`, before a claim hands out the
- * preimage, and is retried. A claim already under way is always signed, at
- * the ceiling if no estimate can be read. Every field left out keeps its default.
+ * preimage, and is retried. A claim already under way is always signed, at no
+ * less than the rate its first attempt was signed at, held under 50% of the
+ * lockup (or `maxFeePercent` if higher). Every field left out keeps its default.
  */
 export interface FeePolicy {
   /** Confirmation target in blocks; the nearest estimate at or below it is used. Default 2. */
