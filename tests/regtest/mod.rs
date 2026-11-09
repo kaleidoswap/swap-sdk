@@ -4,6 +4,8 @@ use std::time::Duration;
 
 mod chain_swaps;
 mod common;
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+mod kaleidoswap;
 mod reverse;
 mod submarine;
 

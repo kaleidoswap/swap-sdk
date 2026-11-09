@@ -122,6 +122,40 @@ pub async fn generate_invoice_lnd(amount_sat: u64) -> Result<String, Box<dyn Err
         .ok_or_else(|| "Missing payment_request field".into())
 }
 
+/// An LND invoice nobody can pay: a hold invoice for a random hash, cancelled
+/// before it is handed out, so LND fails every HTLC sent to it.
+pub async fn generate_cancelled_invoice_lnd(amount_sat: u64) -> Result<String, Box<dyn Error>> {
+    use bitcoin::key::rand::RngCore;
+
+    let mut hash = [0u8; 32];
+    bitcoin::key::rand::thread_rng().fill_bytes(&mut hash);
+    let hash = base64::engine::general_purpose::STANDARD.encode(hash);
+
+    let response = lnd_request(
+        "v2/invoices/hodl",
+        json!({ "hash": hash, "value": amount_sat }),
+    )
+    .await?;
+    let invoice = response["payment_request"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or("Missing payment_request field")?;
+    let cancelled = lnd_request("v2/invoices/cancel", json!({ "payment_hash": hash })).await?;
+    if let Some(message) = cancelled.get("message") {
+        return Err(format!("LND did not cancel the invoice: {message}").into());
+    }
+    Ok(invoice)
+}
+
+/// Confirmations of a transaction the node wallet is party to.
+pub async fn wallet_tx_confirmations(chain: Chain, txid: &str) -> Result<u64, Box<dyn Error>> {
+    let result = json_rpc_request(chain, "gettransaction", json!([txid])).await?;
+    result["confirmations"]
+        .as_i64()
+        .map(|c| c.max(0) as u64)
+        .ok_or_else(|| "Missing confirmations field".into())
+}
+
 /// Starts a payment through LND's `SendPaymentV2`.
 ///
 /// `v2/router/send` is a *server-streaming* RPC, so grpc-gateway answers with

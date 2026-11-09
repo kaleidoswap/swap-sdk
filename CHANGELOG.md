@@ -29,6 +29,20 @@ its keys in a hardware wallet, a secure enclave or a remote service.
 - TypeScript: the wasm package adds `WasmMnemonicSigner`, behind
   `mnemonicSigner`, and exports the `MusigSession` type.
 
+### Fixed
+
+- `KaleidoSwap`: a submarine refund takes the script path only once the
+  lockup's timelock has matured. Before that, a failed cooperative refund is
+  retried on the next tick instead of saving a script-path refund that cannot
+  confirm yet, and `watch` keeps following the swap.
+
+### Added
+
+- The regtest suite runs a `KaleidoSwap` submarine swap whose Lightning
+  payment fails through `refundable`, `refunding` and `refunded`, followed
+  both by `watch` in the process that funded it and by `resume` in a new
+  instance over the same store, and checks the refund is confirmed on chain.
+
 ## [0.14.1] - 2026-11-09
 
 A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims

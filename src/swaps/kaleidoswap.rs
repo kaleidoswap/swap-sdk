@@ -1282,6 +1282,29 @@ impl DefaultFlows {
         }
     }
 
+    /// Whether a refund may take the script path after the cooperative one
+    /// failed with `cooperative_error`. Before the timelock matures a
+    /// script-path refund cannot confirm, and once saved it would be
+    /// rebroadcast in place of a cooperative one; the answer then is a
+    /// retryable error, so the next attempt asks the maker again.
+    async fn script_refund_open(
+        &self,
+        record: &SwapRecord,
+        cooperative_error: &Error,
+    ) -> Result<(), Error> {
+        let CreateResponse::BoltzSubmarine(r) = &record.state.response else {
+            return Ok(());
+        };
+        let tip = u64::from(self.lockup_tip_height(record).await?);
+        if refund_timelock_matured(tip, r.timeout_block_height) {
+            return Ok(());
+        }
+        Err(Error::Locktime(format!(
+            "cooperative refund failed ({cooperative_error}); the script path opens at height {}, the chain is at {tip}",
+            r.timeout_block_height
+        )))
+    }
+
     fn params<'a>(
         &'a self,
         record: &SwapRecord,
@@ -1389,17 +1412,21 @@ impl SwapFlows for DefaultFlows {
         // wait out; when it will not, the script path is always available once
         // the timelock has matured, so fall back to it rather than leave the
         // lockup behind.
-        let tx = match script
+        let cooperative_error = match script
             .construct_refund_with_signer(self.params(record, address.clone(), true), signer)
             .await
         {
-            Ok(tx) => tx,
-            Err(_) => {
-                script
-                    .construct_refund_with_signer(self.params(record, address, false), signer)
-                    .await?
-            }
+            Ok(tx) => return Ok(Self::signed(&tx)),
+            Err(e) => e,
         };
+        log::warn!(
+            "Cooperative refund of swap {} failed: {cooperative_error}",
+            record.id
+        );
+        self.script_refund_open(record, &cooperative_error).await?;
+        let tx = script
+            .construct_refund_with_signer(self.params(record, address, false), signer)
+            .await?;
         Ok(Self::signed(&tx))
     }
 
@@ -1781,6 +1808,12 @@ fn spend_error_is_transient(error: &Error) -> bool {
         }
         _ => false,
     }
+}
+
+/// Whether a refund spending a lockup that times out at `timeout` can enter
+/// the block after `tip`: its locktime must be below that block's height.
+fn refund_timelock_matured(tip: u64, timeout: u64) -> bool {
+    tip >= timeout
 }
 
 /// Whether a broadcast was refused because an input is missing or already
@@ -5699,6 +5732,45 @@ mod tests {
                 .map(|s| s.pays_swap),
             Some(false)
         );
+    }
+
+    /// A cooperative refund that fails before the timelock matures does not
+    /// fall back to the script path: that refund could not confirm yet, and
+    /// once saved it would be rebroadcast in place of the next cooperative
+    /// attempt.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[macros::async_test]
+    async fn the_script_path_refund_waits_for_the_timelock() {
+        let mut record = started_submarine(&harness()).await.record();
+        let CreateResponse::BoltzSubmarine(r) = &mut record.state.response else {
+            unreachable!()
+        };
+        r.timeout_block_height = 1_000;
+
+        let flows_at = |tip: u32| {
+            let base = stub_esplora(vec![("/blocks/tip/height".into(), 200, tip.to_string())]);
+            DefaultFlows::new(
+                Arc::new(BoltzApiClientV2::new(base.clone(), None)),
+                EsploraBitcoinClient::new(BitcoinChain::BitcoinSignet, &base, 5),
+                EsploraLiquidClient::new(LiquidChain::LiquidTestnet, &base, 5),
+                2.0,
+            )
+        };
+        let refused = Error::Protocol("No Bitcoin UTXO detected for this script".into());
+
+        let early = flows_at(999)
+            .script_refund_open(&record, &refused)
+            .await
+            .unwrap_err();
+        assert!(matches!(early, Error::Locktime(_)), "{early:?}");
+        assert!(early.message().contains("No Bitcoin UTXO detected"));
+        // A refund that has to wait is retried, not given up on.
+        assert!(spend_error_is_transient(&early));
+
+        flows_at(1_000)
+            .script_refund_open(&record, &refused)
+            .await
+            .unwrap();
     }
 
     #[macros::async_test_all]
