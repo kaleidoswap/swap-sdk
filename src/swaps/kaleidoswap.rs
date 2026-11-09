@@ -1074,7 +1074,9 @@ pub struct ReverseTimeoutHeadroom {
 /// Before a claim or refund is built, its fee at that rate is checked
 /// against the lockup it spends: over `max_fee_percent` the spend fails with
 /// `FeeTooHigh` and is tried again on the next tick. For a claim this check
-/// runs before anything that could hand the preimage to the maker.
+/// runs before anything that could hand the preimage to the maker. A claim
+/// already under way, which may have handed it out, is always signed: the
+/// cap does not apply and an estimate that cannot be read gives the ceiling.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FeePolicy {
@@ -1158,6 +1160,14 @@ impl FeeRules {
             )?,
             max_fee_percent,
         })
+    }
+
+    fn ceiling(&self, liquid: bool) -> f64 {
+        if liquid {
+            self.liquid.1
+        } else {
+            self.bitcoin.1
+        }
     }
 
     /// The rate for a spend on `liquid` or Bitcoin from the chain's
@@ -2304,22 +2314,31 @@ impl Swap {
     /// The rate a claim or refund of `record` is signed at: the fixed rate,
     /// or the chain's estimate under [`FeePolicy`]. Read before anything is
     /// built, so a claim refused here has handed the maker nothing.
+    ///
+    /// A claim already under way may have handed out the preimage, so it is
+    /// never refused here: an estimate that cannot be read gives the chain's
+    /// ceiling, and the fee cap does not apply.
     async fn spend_fee_rate(&self, kind: Spend, record: &SwapRecord) -> Result<f64, SwapError> {
         let rules = &self.env.fee_rules;
         let liquid = matches!(DefaultFlows::chain_kind(record), ChainKind::Liquid(_));
+        let committed = kind == Spend::Claim && claim_under_way(&record.state);
         let rate = match rules.fixed {
             Some(rate) => rate,
-            None => {
-                let estimates = self.env.flows.fee_estimates(record).await.map_err(|e| {
-                    SwapError::for_swap(
+            None => match self.env.flows.fee_estimates(record).await {
+                Ok(estimates) => rules.rate_from(&estimates, liquid),
+                Err(_) if committed => rules.ceiling(liquid),
+                Err(e) => {
+                    return Err(SwapError::for_swap(
                         SwapErrorCode::ChainUnreachable,
                         format!("could not read fee estimates: {e:?}"),
                         &record.id,
-                    )
-                })?;
-                rules.rate_from(&estimates, liquid)
-            }
+                    ))
+                }
+            },
         };
+        if committed {
+            return Ok(rate);
+        }
         let fee = (spend_vsize(kind, liquid) as f64 * rate).ceil();
         let amount = lockup_amount(record);
         if fee > amount as f64 * rules.max_fee_percent / 100.0 {
@@ -5886,6 +5905,49 @@ mod tests {
         let record = swap.tick().await.unwrap();
         assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
         assert_eq!(*h.flows.rates.lock().unwrap(), vec![20.0]);
+    }
+
+    #[macros::async_test_all]
+    async fn a_claim_already_under_way_is_signed_whatever_the_fee() {
+        let flows = FakeFlows {
+            lockup_funded: true,
+            ..Default::default()
+        };
+        *flows.estimates.lock().unwrap() = Some(BTreeMap::from([(2, 50.0)]));
+        let h = harness_with_options(Arc::new(MemoryStore::new()), flows, |o| {
+            o.fee_policy = Some(FeePolicy {
+                liquid_max_sat_per_vb: Some(100.0),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        let swap = started_reverse(&h).await;
+        let mut record = h.store.get("rev-1").await.unwrap().unwrap();
+        record.state.claim_started = true;
+        h.store.put(&record).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        // Over the cap, but the claim may have handed out the preimage.
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![50.0]);
+
+        // An unreadable estimate gives the ceiling rather than no claim.
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                lockup_funded: true,
+                estimates_down: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        let mut record = h.store.get("rev-1").await.unwrap().unwrap();
+        record.state.claim_started = true;
+        h.store.put(&record).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(*h.flows.rates.lock().unwrap(), vec![1.0]);
     }
 
     #[macros::async_test_all]

@@ -113,7 +113,8 @@ export interface KaleidoSwapOptions {
  * nothing: the spend fails with `CHAIN_UNREACHABLE` and is retried on the next
  * poll. A spend whose fee would exceed `maxFeePercent` of the lockup is not
  * signed either: it fails with `FEE_TOO_HIGH`, before a claim hands out the
- * preimage, and is retried. Every field left out keeps its default.
+ * preimage, and is retried. A claim already under way is always signed, at
+ * the ceiling if no estimate can be read. Every field left out keeps its default.
  */
 export interface FeePolicy {
   /** Confirmation target in blocks; the nearest estimate at or below it is used. Default 2. */

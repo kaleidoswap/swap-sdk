@@ -28,7 +28,9 @@ All notable changes to this project will be documented in this file.
   exceed that share of the lockup is not signed and fails with the new
   `FEE_TOO_HIGH` code, before a claim hands out the preimage, and is retried
   on the next poll. An estimate that cannot be read signs nothing and fails
-  with `CHAIN_UNREACHABLE`; an empty one gives the floor. `fee_sat_per_vb`
+  with `CHAIN_UNREACHABLE`; an empty one gives the floor. A claim already
+  under way is always signed: the cap does not apply to it, and an
+  unreadable estimate gives the ceiling. `fee_sat_per_vb`
   now fixes the rate and skips the estimate; fee options that cannot be used
   are refused by the constructor with `INVALID_AMOUNT`.
 - Breaking for Rust callers of the seams: `SwapFlows` gains
