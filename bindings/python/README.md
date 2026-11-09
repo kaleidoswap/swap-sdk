@@ -50,6 +50,8 @@ do not log records or send them to telemetry.
 - Never reset, copy or restore a store from an older backup while its swap
   mnemonic is in use.
 - If a store is lost, start a new swap mnemonic.
+- On a phone, keep the store directory out of device and cloud backups, so
+  that a restore never brings back an older copy of it.
 
 A `SwapStore` subclass follows the same rules, and:
 

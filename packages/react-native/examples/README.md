@@ -43,7 +43,9 @@ await reverse(
 - **Store rules.** A store belongs to exactly one swap mnemonic. Use one
   `FileStore` and one `KaleidoSwap` per store directory per process. Never
   reset, copy or restore a store from an older backup while its swap mnemonic
-  is in use. If a store is lost, start a new swap mnemonic.
+  is in use. If a store is lost, start a new swap mnemonic. Keep the store
+  directory out of device and cloud backups, so that a restore never brings
+  back an older copy of it.
 - **The swap mnemonic** belongs in the Keychain or Keystore, not in app state.
 - **Call `resume` at launch.** A swap has a deadline and a phone does not stay
   awake. `resume()` moves each stored swap one step; `resume.ts` then follows

@@ -87,17 +87,26 @@ async def main():
                 chain=to_chain, reverse_response=response, our_pubkey=key_pair.public()
             )
 
-            tx = await swap_script.construct_claim(
-                preimage,
-                kaleidorg_swap_sdk.SwapTransactionParams(
+            def claim_params(cooperative):
+                return kaleidorg_swap_sdk.SwapTransactionParams(
                     swap_id=swap_id,
                     keys=key_pair,
                     fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                     output_address=claim_address,
                     chain_client=chain_client,
                     boltz_api=boltz_api,
-                ),
-            )
+                    options=kaleidorg_swap_sdk.TransactionOptions(
+                        cooperative=cooperative
+                    ),
+                )
+
+            # Cooperative first. The script path needs nothing from the maker,
+            # so any failure of the cooperative claim falls back to it.
+            try:
+                tx = await swap_script.construct_claim(preimage, claim_params(True))
+            except Exception as error:
+                print(f"Cooperative claim unavailable ({error}); claiming by script path")
+                tx = await swap_script.construct_claim(preimage, claim_params(False))
 
             print("Transaction signed, broadcasting...")
             tx_id = await chain_client.broadcast_tx(tx)

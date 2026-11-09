@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-09
+
+A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims
+follow the chain once started, and store indexes are taken exclusively.
+Recommended for every 0.14.0 user; see the security advisory
+GHSA-27v4-cvw8-64rf.
+
+### Changed
+
+- `KaleidoSwap`: once a reverse swap's claim is started, it is followed on
+  chain until it confirms or something else spends the lockup, whatever the
+  maker reports and also while the maker cannot be reached. A reverse swap is
+  `settled` when its own claim confirms. The maker reporting the payment taken
+  claims a lockup that is still unspent.
+- A claim falls back to the script path on any failure of the cooperative
+  claim.
+- `FileStore` (Rust and TypeScript) hands out an index by creating a
+  `taken-<n>` marker exclusively, so instances and processes sharing a
+  directory never get the same index, and a counter that went back is
+  skipped past. `start` also skips any index a record in the store already
+  uses.
+- The store rules in each README add: keep the store directory out of device
+  and cloud backups.
+
 ## [0.14.0] - 2026-11-08
 
 This release adds `KaleidoSwap`, a high-level surface in the Rust core with

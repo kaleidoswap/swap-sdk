@@ -33,9 +33,11 @@ export const createKaleidoSwap = makeCreateKaleidoSwap({
 
 /**
  * A {@link SwapStore} over a directory: one JSON file per swap plus `index`
- * for the BIP85 counter. Writes go through a rename so a crash mid-write
- * leaves the previous file, never a torn one. Single-process: two instances
- * on one directory would hand out the same index.
+ * for the BIP85 counter, and a `taken-<n>` marker per index handed out.
+ * Writes go through a rename so a crash mid-write leaves the previous file,
+ * never a torn one. An index is handed out by creating its marker
+ * exclusively, so instances and processes sharing the directory never get
+ * the same one.
  */
 export class FileStore implements SwapStore {
   private readonly dir: URL;
@@ -101,6 +103,20 @@ export class FileStore implements SwapStore {
     return records;
   }
 
+  /** Creates the marker for `index` exclusively: `false` when it exists. */
+  private async take(index: bigint): Promise<boolean> {
+    try {
+      await writeFile(this.file(`taken-${index}`), "", {
+        mode: 0o600,
+        flag: "wx",
+      });
+      return true;
+    } catch (error) {
+      if ((error as { code?: string }).code === "EEXIST") return false;
+      throw error;
+    }
+  }
+
   async nextIndex(): Promise<bigint> {
     const next = this.indexLock.then(async () => {
       let current = 0n;
@@ -109,8 +125,11 @@ export class FileStore implements SwapStore {
       } catch (error) {
         if ((error as { code?: string }).code !== "ENOENT") throw error;
       }
-      // The counter advances on disk before the index is handed out, so a
-      // crash between the two skips an index rather than reusing one.
+      // An index is taken by creating its marker exclusively, which only one
+      // caller can do, whichever instance or process it runs in. The counter
+      // is only where the search starts.
+      await mkdir(this.dir, { recursive: true, mode: 0o700 });
+      while (!(await this.take(current))) current += 1n;
       await this.write("index", (current + 1n).toString());
       return current;
     });

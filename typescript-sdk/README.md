@@ -83,6 +83,8 @@ to telemetry. A wallet that keeps its seed elsewhere implements `SwapSigner`
 - Never reset, copy or restore a store from an older backup while its swap
   mnemonic is in use.
 - If a store is lost, start a new swap mnemonic.
+- On a phone, keep the store directory out of device and cloud backups, so
+  that a restore never brings back an older copy of it.
 
 A store of your own follows the same rules, and:
 
