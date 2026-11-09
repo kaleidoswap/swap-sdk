@@ -67,16 +67,15 @@ jobs:
         run: >-
           npm install --global npm@${NPM_PUBLISH_VERSION}
           --ignore-scripts --no-audit --no-fund
-      # Authenticate the token here, not at publish time: `npm publish` against
-      # a bad token fails *after* the release is otherwise committed, and an npm
-      # publish cannot be undone cleanly. whoami is read-only.
-      - name: Verify npm credentials before publishing
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          test "$(npm --version)" = "${NPM_PUBLISH_VERSION}"
-          test -n "${NODE_AUTH_TOKEN}"
-          npm whoami --registry https://registry.npmjs.org
+      # npm authenticates this job as a trusted publisher: the CLI trades the
+      # job's OIDC token for a short-lived publish credential, so no npm token
+      # is stored anywhere. That needs npm 11.5.1 or later. No read-only command
+      # can prove the grant ahead of time (npm's docs say `npm whoami` is not a
+      # check of trusted publishing), so a missing or wrong trusted-publisher
+      # entry fails at the first `npm publish` below, before either package is
+      # out, and rerunning this job publishes once it is fixed.
+      - name: Check the npm CLI can publish as a trusted publisher
+        run: test "$(npm --version)" = "${NPM_PUBLISH_VERSION}"
       - name: Download validated release bundle
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
@@ -147,7 +146,6 @@ jobs:
       # package's install path depends on the GitHub release, not on it.
       - name: Publish the exact validated npm tarballs
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.release-ready.outputs.version }}
         run: |
           npm publish ./release-artifacts/kaleidorg-swap-sdk-${VERSION}.tgz --access public
@@ -162,8 +160,9 @@ jobs:
     permissions:
       # No id-token: write. PEP 740 attestations only work via Trusted
       # Publishing, so under token auth the OIDC scope would be unused
-      # privilege. npm is different: its provenance is generated from the OIDC
-      # token independently of how we authenticate, so publish-npm keeps it.
+      # privilege. npm is different: publish-npm authenticates with its OIDC
+      # token as a trusted publisher, and its provenance comes from the same
+      # token.
       contents: read
     # Ten minutes of waiting for the GitHub release, then the upload itself.
     timeout-minutes: 20

@@ -444,12 +444,11 @@ Per-tag concurrency and immutable, attempt-specific workflow artifacts prevent
 parallel or resumed runs from silently mixing outputs. An existing GitHub
 release is never overwritten.
 
-Registry publishing authenticates with API tokens stored as `release`
-environment secrets (`NPM_TOKEN`, `PYPI_TOKEN`), so every publisher runs behind
-that environment's required review; a token is unreachable from any other job,
-and the read-only build and rehearsal graph may not reference one at all.
-The npm job keeps job-scoped `id-token: write` so it can still emit provenance,
-which npm generates from the OIDC token independently of how we authenticate.
+Every publisher runs behind the `release` environment's required review. npm
+authenticates as a trusted publisher through the job-scoped `id-token: write`,
+which also signs its provenance, so no npm token is stored. PyPI authenticates
+with the `PYPI_TOKEN` environment secret, unreachable from any other job; the
+read-only build and rehearsal graph may not reference a secret at all.
 PyPI gets no OIDC scope: PEP 740 attestations only work via Trusted Publishing,
 so under token auth they are unavailable and requesting the scope would be unused
 privilege. A

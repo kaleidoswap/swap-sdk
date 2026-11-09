@@ -1149,11 +1149,17 @@ class WorkflowInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected secrets"):
             workflow.validate(contents + "\n# secrets.SOME_OTHER_TOKEN\n")
 
+    def test_stored_npm_token_is_rejected(self) -> None:
+        # npm publishes as a trusted publisher; a stored token must not return.
+        contents = (ROOT / ".github/workflows/release.yaml").read_text()
+        with self.assertRaisesRegex(ValueError, "unexpected secrets"):
+            workflow.validate(contents + "\n# secrets.NPM_TOKEN\n")
+
     def test_registry_secret_outside_release_environment_is_rejected(self) -> None:
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         changed = contents.replace(
             "  verify-npm:\n",
-            "  verify-npm:\n    env:\n      LEAK: ${{ secrets.NPM_TOKEN }}\n",
+            "  verify-npm:\n    env:\n      LEAK: ${{ secrets.PYPI_TOKEN }}\n",
             1,
         )
         with self.assertRaisesRegex(ValueError, "without the protected release"):
@@ -1166,8 +1172,8 @@ class WorkflowInvariantTests(unittest.TestCase):
             workflow.validate(contents + "\n          skip-existing: true\n")
 
     def test_npm_oidc_scope_requires_provenance_in_manifest(self) -> None:
-        # The npm job's id-token scope is justified only by provenance; if the
-        # manifest field goes, the scope must go with it.
+        # The npm job's id-token scope also signs provenance; a manifest that
+        # drops the field must fail the gate.
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         manifest = ROOT / "typescript-sdk/package.json"
         original = manifest.read_text(encoding="utf-8")

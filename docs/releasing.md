@@ -100,21 +100,22 @@ Both publisher jobs:
   unused privilege here. Every other job remains unable to request a token;
 - re-verify the sealed bundle's SHA-256 checksums before publishing;
 - publish the exact validated archive without `--skip-existing`;
-- authenticate with an API token drawn from the protected `release`
-  environment, never from repository-level secrets, and never with basic auth.
+- authenticate npm as a trusted publisher through the job's OIDC token, and
+  PyPI with an API token drawn from the protected `release` environment, never
+  from repository-level secrets, and never with basic auth.
 
-`scripts/check_release_workflow.py` enforces that: only `NPM_TOKEN` and
-`PYPI_TOKEN` may be referenced, only from a job declaring
+`scripts/check_release_workflow.py` enforces that: only `PYPI_TOKEN` may be
+referenced, only from a job declaring
 `environment: release`, and never from the read-only build or rehearsal
 workflows. A `username:` key is rejected outright.
 
-Before publishing, the npm job runs `npm whoami` to prove the credential
-authenticates. An npm publish cannot be cleanly undone, so a bad token must fail
-on a read-only call rather than half-way through the release.
-
-The npm job pins the npm CLI, proves its credential with `npm whoami`, then
-publishes the validated `.tgz`. npm emits provenance for a public package from
-this public repository. The PyPI job uses the immutable-pinned PyPA publisher
+The npm job pins the npm CLI (11.5.1 or later is what trusted publishing
+needs), then publishes the validated `.tgz` files with no stored credential:
+the CLI trades the job's OIDC token for a short-lived publish credential. No
+read-only call can prove that grant ahead of time, so a missing or wrong
+trusted-publisher entry fails at the first `npm publish`, before either package
+is out; fix the entry and rerun the failed job. npm emits provenance for a
+public package from this public repository. The PyPI job uses the immutable-pinned PyPA publisher
 action to upload the exact wheels and sdist. It does **not** attach PEP 740
 attestations: those require Trusted Publishing, and the action silently ignores
 the `attestations` input when a password is set, so it is pinned to `false`.
@@ -281,46 +282,38 @@ settings.
 
 ## Registry credential setup
 
-Publishing authenticates with API tokens held as **`release` environment
-secrets**. This is a deliberate tradeoff over OIDC trusted publishing: it avoids
-depending on registry-side publisher bootstrap, at the cost of storing long-lived
-credentials. See the changelog entry "registry publishing uses stored API tokens"
-for the invariants that replace the no-credential property.
+npm publishes as an OIDC trusted publisher and stores no credential. PyPI still
+authenticates with an API token held as a **`release` environment secret**, at
+the cost of a long-lived credential; see the changelog entry "registry
+publishing uses stored API tokens" for the invariants that apply to it.
 
-Both secrets live on the `release` environment, never at repository level, so
-they are unreachable except from a job that environment gates.
-`scripts/check_release_workflow.py` enforces that.
+`PYPI_TOKEN` lives on the `release` environment, never at repository level, so
+it is unreachable except from a job that environment gates.
+`scripts/check_release_workflow.py` enforces that, and rejects any other secret.
 
-### npm — `NPM_TOKEN`
+### npm — trusted publishing
 
-`@kaleidorg/swap-sdk` did not exist on npm when this pipeline was built, and
-npm configures trusted publishing from an existing package's settings, so a
-brand-new package could not be created by OIDC alone — which is the practical
-reason this pipeline uses a token. The package now exists, so that constraint is
-spent: migrating to trusted publishing is possible whenever someone wants to
-retire the stored credential.
+`publish-npm` authenticates as an npm trusted publisher, so no npm token is
+stored. Each package needs its own trusted-publisher entry; a package without
+one fails to publish.
 
-1. An owner of the `@kaleidorg` scope creates an **automation** token with
-   publish rights (granular access tokens scoped to this package are preferable
-   to a legacy classic token).
-2. Store it as `NPM_TOKEN` on the `release` environment. Never at repository
-   level, never in a file, never in logs.
-3. Verify it before relying on it — read-only, no publish:
+1. An owner of the `@kaleidorg` scope opens each package's settings on
+   npmjs.com — `@kaleidorg/swap-sdk` and `@kaleidorg/swap-sdk-react-native` —
+   and adds a trusted publisher under **Publishing access**: GitHub Actions,
+   organization `kaleidoswap`, repository `swap-sdk`, workflow `release.yaml`,
+   environment `release`. npm does not check the entry when it is saved, and the
+   fields are case-sensitive.
+2. Do this shortly before tagging: npm expires an entry that has not completed
+   a publish within two days of being created.
+3. Set `NPM_PUBLISH_ENABLED=true`.
+4. After a release has published through the entry, set **Require two-factor
+   authentication and disallow tokens** on both packages, and revoke any token
+   that only existed to publish them. Trusted publishing is unaffected by that
+   setting.
 
-   ```sh
-   NPM_TOKEN=<token> npm whoami --registry https://registry.npmjs.org
-   ```
-
-   The `publish-npm` job runs the same check before publishing, so a bad token
-   fails there rather than part-way through an irreversible release.
-4. Set `NPM_PUBLISH_ENABLED=true`.
-
-npm provenance still applies: `publishConfig.provenance` is `true` in
-`typescript-sdk/package.json`, and npm derives provenance from the workflow's
-OIDC token independently of how it authenticates. That is the only reason
-`publish-npm` holds `id-token: write`, and the workflow checker asserts the
-linkage — dropping the manifest field fails the gate rather than silently leaving
-an unused privilege.
+npm generates provenance from the same OIDC token: `publishConfig.provenance` is
+`true` in both manifests, and the workflow checker asserts it, so dropping the
+field fails the gate rather than shipping an unsigned package.
 
 ### PyPI — `PYPI_TOKEN`
 
@@ -375,8 +368,8 @@ TAG="v$VERSION"
 3. Confirm `trunk` branch protection, the active `Protect release tags`
    ruleset, the `v*` release-environment policy, required reviewers, and
    `can_admins_bypass: false`.
-4. Have a second maintainer confirm `NPM_TOKEN` is present on the `release`
-   environment and scoped to publish `@kaleidorg/swap-sdk`. Set
+4. Have a second maintainer confirm both npm packages list this workflow as a
+   trusted publisher, created within the last two days or already used. Set
    `NPM_PUBLISH_ENABLED=true`; production activation deliberately fails while
    this variable is false.
 5. To publish Python, confirm `PYPI_TOKEN` is present on the `release`
