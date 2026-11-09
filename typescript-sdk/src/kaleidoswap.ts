@@ -3,7 +3,7 @@
 // reach this package through the wasm binding; this file declares the types
 // callers write against and adapts the store and the signer they provide.
 
-import type { DerivedKey, DerivedPreimage, Network } from "./index.js";
+import type { DerivedPreimage, Network } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // Assets and amounts
@@ -56,17 +56,50 @@ export interface SwapStore {
 }
 
 /**
- * Derives per-swap material from a root the caller owns. `mnemonicSigner`
- * wraps `SwapMasterKey`; a wallet that keeps its seed elsewhere implements
- * this instead. The SDK never sees a mnemonic through it.
+ * A cooperative MuSig2 key-path signing session, hex-encoded: the two
+ * compressed public keys in aggregation order, the Taproot tweak and the
+ * sighash.
+ */
+export interface MusigSession {
+  pubkeys: [string, string];
+  tweak: string;
+  sighash: string;
+}
+
+type MaybePromise<T> = T | Promise<T>;
+
+/**
+ * Holds the per-swap keys, one per store index, and signs with them. The SDK
+ * asks for public keys, preimages and signatures, never a secret key, so a
+ * wallet can keep its keys in a hardware device, an enclave or a remote
+ * signer. `mnemonicSigner` is the in-memory implementation. Hex in, hex out.
+ *
+ * `musigNonce` generates and keeps a fresh secret nonce and returns the public
+ * nonce; `musigPartialSign` signs with the secret nonce behind `ourNonce` and
+ * forgets it. Never sign twice with one nonce, and never take a secret nonce
+ * from outside: either reveals the key.
  */
 export interface SwapSigner {
-  deriveKey(index: bigint | number): DerivedKey | Promise<DerivedKey>;
+  /** The compressed public key of swap `index`. */
+  publicKey(index: bigint | number): MaybePromise<string>;
+  /** The preimage of swap `index`. */
   derivePreimage(
     index: bigint | number,
-  ):
-    | Pick<DerivedPreimage, "preimage">
-    | Promise<Pick<DerivedPreimage, "preimage">>;
+  ): MaybePromise<Pick<DerivedPreimage, "preimage">>;
+  /** A BIP340 signature by the untweaked key over a script-path sighash. */
+  signSchnorr(index: bigint | number, sighash: string): MaybePromise<string>;
+  /** Starts a MuSig2 signature for `session`: the public nonce. */
+  musigNonce(
+    index: bigint | number,
+    session: MusigSession,
+  ): MaybePromise<string>;
+  /** Finishes it: the partial signature. */
+  musigPartialSign(
+    index: bigint | number,
+    session: MusigSession,
+    ourNonce: string,
+    theirNonce: string,
+  ): MaybePromise<string>;
 }
 
 // ---------------------------------------------------------------------------

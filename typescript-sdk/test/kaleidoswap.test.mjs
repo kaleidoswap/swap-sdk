@@ -691,8 +691,36 @@ test("mnemonicSigner derives what SwapMasterKey derives", async () => {
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
   const master = SwapMasterKey.fromSwapMnemonic(mnemonic, "signet");
   const signer = mnemonicSigner(mnemonic, "signet");
-  assert.deepEqual(await signer.deriveKey(7n), master.deriveSwapKey(7n));
+  assert.equal(await signer.publicKey(7n), master.deriveSwapKey(7n).publicKey);
   assert.deepEqual(await signer.derivePreimage(7n), master.derivePreimage(7n));
+  assert.match(
+    await signer.signSchnorr(7n, "11".repeat(32)),
+    /^[0-9a-f]{128}$/,
+  );
+});
+
+test("mnemonicSigner keeps its MuSig2 nonce and signs with it once", async () => {
+  await init();
+  const ours = mnemonicSigner(
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "signet",
+  );
+  const theirs = mnemonicSigner(
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "signet",
+    "maker",
+  );
+  const session = {
+    pubkeys: [await theirs.publicKey(0), await ours.publicKey(0)],
+    tweak: "03".repeat(32),
+    sighash: "05".repeat(32),
+  };
+  const ourNonce = await ours.musigNonce(0, session);
+  const theirNonce = await theirs.musigNonce(0, session);
+  assert.match(ourNonce, /^[0-9a-f]{132}$/);
+  const partial = await ours.musigPartialSign(0, session, ourNonce, theirNonce);
+  assert.match(partial, /^[0-9a-f]{64}$/);
+  assert.throws(() => ours.musigPartialSign(0, session, ourNonce, theirNonce));
 });
 
 test("FileStore: a swap id never names a path outside the directory", async () => {

@@ -38,7 +38,11 @@ directory under your application's data directory, outside any source tree and
 out of version control. `MemoryStore` keeps nothing past the process: use it in
 tests only, never for a swap you fund. Both implement `sdk.SwapStore`, and
 `MnemonicSigner` implements `sdk.SwapSigner`: subclass either to keep swaps in
-your own database or derive keys from your own wallet. Records cross
+your own database or sign with your own wallet. A `SwapSigner` is asked for
+public keys, preimages and signatures (`public_key`, `derive_preimage`,
+`sign_schnorr`, `musig_nonce`, `musig_partial_sign`, hex in and out), never for
+a secret key, so the keys can stay in a hardware wallet or a remote signer; it
+keeps each MuSig2 secret nonce itself and signs with it once. Records cross
 `SwapStore` as JSON strings; persist them verbatim. They carry the maker's
 `swap_auth` and the material a refund needs, so treat the store as secret and
 do not log records or send them to telemetry.

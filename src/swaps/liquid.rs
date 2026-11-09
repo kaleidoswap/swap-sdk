@@ -44,6 +44,14 @@ use super::{
     wrappers::SwapScriptCommon,
 };
 use crate::fees::{create_tx_with_fee, Fee};
+
+use super::signing::{
+    finish_musig, script_path_signature, KeypairSigner, MusigSession, SpendSigner,
+};
+
+/// A placeholder BIP340 signature (default sighash type, so 64 bytes), there
+/// for the size of a transaction before it is signed.
+const STUB_SIGNATURE: [u8; 64] = [0; 64];
 use crate::network::{Currency, LiquidChain, LiquidClient};
 use elements::bitcoin::PublicKey;
 use elements::secp256k1_zkp::Keypair as ZKKeyPair;
@@ -650,19 +658,29 @@ impl LiquidSwapScript {
     }
 
     pub fn musig_keyagg_cache(&self) -> musig::KeyAggCache {
+        let [a, b] = convert_pubkeys_for_musig(&self.musig_pubkeys());
+        musig::KeyAggCache::new(&[&a, &b])
+    }
+
+    /// The two keys of the key path, in aggregation order.
+    fn musig_pubkeys(&self) -> [elements::secp256k1_zkp::PublicKey; 2] {
         match (self.swap_type, self.side.clone()) {
             (SwapType::ReverseSubmarine, _) | (SwapType::Chain, Some(Side::Claim)) => {
-                let pubkeys = [self.sender_pubkey.inner, self.receiver_pubkey.inner];
-                let [a, b] = convert_pubkeys_for_musig(&pubkeys);
-                musig::KeyAggCache::new(&[&a, &b])
+                [self.sender_pubkey.inner, self.receiver_pubkey.inner]
             }
-
             (SwapType::Submarine, _) | (SwapType::Chain, _) => {
-                let pubkeys = [self.receiver_pubkey.inner, self.sender_pubkey.inner];
-                let [a, b] = convert_pubkeys_for_musig(&pubkeys);
-                musig::KeyAggCache::new(&[&a, &b])
+                [self.receiver_pubkey.inner, self.sender_pubkey.inner]
             }
         }
+    }
+
+    /// The MuSig2 session that signs `sighash` on the key path.
+    pub(crate) fn musig_session(&self, sighash: [u8; 32]) -> Result<MusigSession, Error> {
+        Ok(MusigSession {
+            pubkeys: self.musig_pubkeys(),
+            tweak: *self.taproot_spendinfo()?.tap_tweak().as_byte_array(),
+            sighash,
+        })
     }
 
     /// Internally used to convert struct into a bitcoin::Script type
@@ -1919,6 +1937,25 @@ impl LiquidSwapTx {
         is_cooperative: Option<Cooperative<'_>>,
         is_discount_ct: bool,
     ) -> Result<Transaction, Error> {
+        self.sign_claim_with(
+            &KeypairSigner::new(*keys),
+            preimage,
+            fee,
+            is_cooperative,
+            is_discount_ct,
+        )
+        .await
+    }
+
+    /// [`Self::sign_claim`] with the swap key behind a [`SpendSigner`].
+    pub async fn sign_claim_with(
+        &self,
+        signer: &dyn SpendSigner,
+        preimage: &Preimage,
+        fee: Fee,
+        is_cooperative: Option<Cooperative<'_>>,
+        is_discount_ct: bool,
+    ) -> Result<Transaction, Error> {
         if self.swap_script.requires_caller_funded_pset() {
             return Err(Error::Protocol(
                 "L-USDT claims require the caller-funded PSET flow".to_string(),
@@ -1949,11 +1986,19 @@ impl LiquidSwapTx {
 
         let mut claim_tx = create_tx_with_fee(
             fee,
-            |fee| self.create_claim(keys, preimage, fee, is_cooperative.is_some()),
+            |fee| self.create_claim(preimage, fee, is_cooperative.is_some()),
             |tx| tx_size(&tx, is_discount_ct),
         )?;
 
         // If its a cooperative claim, compute the Musig2 Aggregate Signature and use Keypath spending
+        if is_cooperative.is_none() {
+            let claim_script = self.swap_script.claim_script();
+            claim_tx.input[0].witness = self
+                .script_path_witness(&claim_tx, &claim_script, signer)
+                .await?;
+            return Ok(claim_tx);
+        }
+
         if let Some(Cooperative {
             boltz_api,
             swap_id,
@@ -1970,31 +2015,8 @@ impl LiquidSwapTx {
                 )?;
 
             let msg = *claim_tx_taproot_hash.as_byte_array();
-
-            let mut key_agg_cache = self.swap_script.musig_keyagg_cache();
-
-            let tweak = Scalar::from_be_bytes(
-                *self
-                    .swap_script
-                    .taproot_spendinfo()?
-                    .tap_tweak()
-                    .as_byte_array(),
-            )?;
-
-            let _ = key_agg_cache.pubkey_xonly_tweak_add(&tweak)?;
-
-            let session_secret_rand =
-                musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b());
-
-            let mut extra_rand = [0u8; 32];
-            OsRng.fill_bytes(&mut extra_rand);
-
-            let (claim_sec_nonce, claim_pub_nonce) = key_agg_cache.nonce_gen(
-                session_secret_rand,
-                convert_public_key(keys.public_key()),
-                &msg,
-                Some(extra_rand),
-            );
+            let session = self.swap_script.musig_session(msg)?;
+            let claim_pub_nonce = signer.musig_nonce(&session).await?;
 
             // Step 7: Get boltz's partial sig
             let claim_tx_hex = serialize(&claim_tx).to_lower_hex_string();
@@ -2034,30 +2056,15 @@ impl LiquidSwapTx {
             let boltz_partial_sig =
                 musig::PartialSignature::from_str(&partial_sig_resp.partial_signature)?;
 
-            let agg_nonce = musig::AggregatedNonce::new(&[&boltz_public_nonce, &claim_pub_nonce]);
-
-            let musig_session = musig::Session::new(&key_agg_cache, agg_nonce, &msg);
-
-            // Verify the sigs.
-            let boltz_partial_sig_verify = musig_session.partial_verify(
-                &key_agg_cache,
-                &boltz_partial_sig,
+            let schnorr_sig = finish_musig(
+                signer,
+                &session,
+                &claim_pub_nonce,
                 &boltz_public_nonce,
-                convert_public_key(self.swap_script.sender_pubkey.inner), //boltz key
-            );
-
-            if !boltz_partial_sig_verify {
-                return Err(Error::Taproot(
-                    "Unable to verify Partial Signature".to_string(),
-                ));
-            }
-
-            let our_partial_sig =
-                musig_session.partial_sign(claim_sec_nonce, &convert_keypair(keys), &key_agg_cache);
-
-            let schnorr_sig = musig_session
-                .partial_sig_agg(&[&boltz_partial_sig, &our_partial_sig])
-                .assume_valid();
+                &boltz_partial_sig,
+                self.swap_script.sender_pubkey.inner,
+            )
+            .await?;
 
             let final_schnorr_sig = SchnorrSig {
                 sig: convert_schnorr_signature(schnorr_sig),
@@ -2250,7 +2257,6 @@ impl LiquidSwapTx {
 
     fn create_claim(
         &self,
-        keys: &Keypair,
         preimage: &Preimage,
         absolute_fees: u64,
         is_cooperative: bool,
@@ -2284,27 +2290,10 @@ impl LiquidSwapTx {
         if is_cooperative {
             claim_tx.input[0].witness = Self::stubbed_cooperative_witness();
         } else {
-            // If Non-Cooperative claim use the Script Path spending
+            // Script path. The signature is a placeholder of the same size,
+            // replaced once the transaction is final.
             claim_tx.input[0].sequence = Sequence::ZERO;
             let claim_script = self.swap_script.claim_script();
-            let leaf_hash = TapLeafHash::from_script(&claim_script, LeafVersion::default());
-
-            let sighash = SighashCache::new(&claim_tx).taproot_script_spend_signature_hash(
-                0,
-                &Prevouts::All(&[&self.funding_utxo]),
-                leaf_hash,
-                SchnorrSighashType::Default,
-                self.genesis_hash,
-            )?;
-
-            let msg = Message::from_digest_slice(sighash.as_byte_array())?;
-
-            let sig = secp.sign_schnorr(&msg, keys);
-
-            let final_sig = SchnorrSig {
-                sig,
-                hash_ty: SchnorrSighashType::Default,
-            };
 
             let control_block = match self
                 .swap_script
@@ -2316,7 +2305,7 @@ impl LiquidSwapTx {
             };
 
             let mut script_witness = Witness::new();
-            script_witness.push(final_sig.to_vec());
+            script_witness.push(STUB_SIGNATURE);
             script_witness.push(preimage.bytes.ok_or(Error::Protocol(
                 "Preimage bytes not available - cannot claim without actual preimage".to_string(),
             ))?);
@@ -2345,6 +2334,23 @@ impl LiquidSwapTx {
         is_cooperative: Option<Cooperative<'_>>,
         is_discount_ct: bool,
     ) -> Result<Transaction, Error> {
+        self.sign_refund_with(
+            &KeypairSigner::new(*keys),
+            fee,
+            is_cooperative,
+            is_discount_ct,
+        )
+        .await
+    }
+
+    /// [`Self::sign_refund`] with the swap key behind a [`SpendSigner`].
+    pub async fn sign_refund_with(
+        &self,
+        signer: &dyn SpendSigner,
+        fee: Fee,
+        is_cooperative: Option<Cooperative<'_>>,
+        is_discount_ct: bool,
+    ) -> Result<Transaction, Error> {
         if self.swap_script.requires_caller_funded_pset() {
             return Err(Error::Protocol(
                 "L-USDT refunds require the caller-funded PSET flow".to_string(),
@@ -2364,9 +2370,17 @@ impl LiquidSwapTx {
 
         let mut refund_tx = create_tx_with_fee(
             fee,
-            |fee| self.create_refund(keys, fee, is_cooperative.is_some()),
+            |fee| self.create_refund(fee, is_cooperative.is_some()),
             |tx| tx_size(&tx, is_discount_ct),
         )?;
+
+        if is_cooperative.is_none() {
+            let refund_script = self.swap_script.refund_script();
+            refund_tx.input[0].witness = self
+                .script_path_witness(&refund_tx, &refund_script, signer)
+                .await?;
+            return Ok(refund_tx);
+        }
 
         if let Some(Cooperative {
             boltz_api,
@@ -2388,31 +2402,8 @@ impl LiquidSwapTx {
                 )?;
 
             let msg = *claim_tx_taproot_hash.as_byte_array();
-
-            let mut key_agg_cache = self.swap_script.musig_keyagg_cache();
-
-            let tweak = Scalar::from_be_bytes(
-                *self
-                    .swap_script
-                    .taproot_spendinfo()?
-                    .tap_tweak()
-                    .as_byte_array(),
-            )?;
-
-            let _ = key_agg_cache.pubkey_xonly_tweak_add(&tweak)?;
-
-            let session_secret_rand =
-                musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b());
-
-            let mut extra_rand = [0u8; 32];
-            OsRng.fill_bytes(&mut extra_rand);
-
-            let (sec_nonce, pub_nonce) = key_agg_cache.nonce_gen(
-                session_secret_rand,
-                convert_public_key(keys.public_key()),
-                &msg,
-                Some(extra_rand),
-            );
+            let session = self.swap_script.musig_session(msg)?;
+            let pub_nonce = signer.musig_nonce(&session).await?;
 
             // Step 7: Get boltz's partial sig
             let refund_tx_hex = serialize(&refund_tx).to_lower_hex_string();
@@ -2450,30 +2441,15 @@ impl LiquidSwapTx {
             let boltz_partial_sig =
                 musig::PartialSignature::from_str(&partial_sig_resp.partial_signature)?;
 
-            let agg_nonce = musig::AggregatedNonce::new(&[&boltz_public_nonce, &pub_nonce]);
-
-            let musig_session = musig::Session::new(&key_agg_cache, agg_nonce, &msg);
-
-            // Verify the sigs.
-            let boltz_partial_sig_verify = musig_session.partial_verify(
-                &key_agg_cache,
-                &boltz_partial_sig,
+            let schnorr_sig = finish_musig(
+                signer,
+                &session,
+                &pub_nonce,
                 &boltz_public_nonce,
-                convert_public_key(self.swap_script.receiver_pubkey.inner), //boltz key
-            );
-
-            if !boltz_partial_sig_verify {
-                return Err(Error::Taproot(
-                    "Unable to verify Partial Signature".to_string(),
-                ));
-            }
-
-            let our_partial_sig =
-                musig_session.partial_sign(sec_nonce, &convert_keypair(keys), &key_agg_cache);
-
-            let schnorr_sig = musig_session
-                .partial_sig_agg(&[&boltz_partial_sig, &our_partial_sig])
-                .assume_valid();
+                &boltz_partial_sig,
+                self.swap_script.receiver_pubkey.inner,
+            )
+            .await?;
 
             let final_schnorr_sig = SchnorrSig {
                 sig: convert_schnorr_signature(schnorr_sig),
@@ -2503,7 +2479,6 @@ impl LiquidSwapTx {
 
     fn create_refund(
         &self,
-        keys: &Keypair,
         absolute_fees: u64,
         is_cooperative: bool,
     ) -> Result<Transaction, Error> {
@@ -2537,26 +2512,9 @@ impl LiquidSwapTx {
         if is_cooperative {
             refund_tx.input[0].witness = Self::stubbed_cooperative_witness();
         } else {
+            // The signature is a placeholder of the same size, replaced once
+            // the transaction is final.
             refund_tx.input[0].sequence = Sequence::ZERO;
-
-            let leaf_hash = TapLeafHash::from_script(&refund_script, LeafVersion::default());
-
-            let sighash = SighashCache::new(&refund_tx).taproot_script_spend_signature_hash(
-                0,
-                &Prevouts::All(&[&self.funding_utxo]),
-                leaf_hash,
-                SchnorrSighashType::Default,
-                self.genesis_hash,
-            )?;
-
-            let msg = Message::from_digest_slice(sighash.as_byte_array())?;
-
-            let sig = secp.sign_schnorr(&msg, keys);
-
-            let final_sig = SchnorrSig {
-                sig,
-                hash_ty: SchnorrSighashType::Default,
-            };
 
             let control_block = match self
                 .swap_script
@@ -2568,7 +2526,7 @@ impl LiquidSwapTx {
             };
 
             let mut script_witness = Witness::new();
-            script_witness.push(final_sig.to_vec());
+            script_witness.push(STUB_SIGNATURE);
             script_witness.push(refund_script.as_bytes());
             script_witness.push(control_block.serialize());
 
@@ -2585,11 +2543,37 @@ impl LiquidSwapTx {
         Ok(refund_tx)
     }
 
+    /// The script-path witness of `tx`'s only input, its placeholder
+    /// signature replaced with one from `signer`.
+    async fn script_path_witness(
+        &self,
+        tx: &Transaction,
+        leaf_script: &Script,
+        signer: &dyn SpendSigner,
+    ) -> Result<TxInWitness, Error> {
+        let leaf_hash = TapLeafHash::from_script(leaf_script, LeafVersion::default());
+        let sighash = SighashCache::new(tx).taproot_script_spend_signature_hash(
+            0,
+            &Prevouts::All(&[&self.funding_utxo]),
+            leaf_hash,
+            SchnorrSighashType::Default,
+            self.genesis_hash,
+        )?;
+        let sig = script_path_signature(signer, *sighash.as_byte_array()).await?;
+        let final_sig = SchnorrSig {
+            sig,
+            hash_ty: SchnorrSighashType::Default,
+        };
+        let mut witness = tx.input[0].witness.clone();
+        witness.script_witness[0] = final_sig.to_vec();
+        Ok(witness)
+    }
+
     fn stubbed_cooperative_witness() -> TxInWitness {
         let mut witness = Witness::new();
         // Stub because we don't want to create cooperative signatures here
         // but still be able to have an accurate size estimation
-        witness.push([0; 64]);
+        witness.push(STUB_SIGNATURE);
 
         TxInWitness {
             amount_rangeproof: None,
@@ -2604,7 +2588,7 @@ impl LiquidSwapTx {
     /// Multiply the size by the fee_rate to get the absolute fees.
     pub fn size(
         &self,
-        keys: &Keypair,
+        _keys: &Keypair,
         is_cooperative: bool,
         is_discount_ct: bool,
     ) -> Result<usize, Error> {
@@ -2612,9 +2596,9 @@ impl LiquidSwapTx {
         let tx = match self.kind {
             SwapTxKind::Claim => {
                 let preimage = Preimage::from_vec([0; 32].to_vec())?;
-                self.create_claim(keys, &preimage, dummy_abs_fee, is_cooperative)?
+                self.create_claim(&preimage, dummy_abs_fee, is_cooperative)?
             }
-            SwapTxKind::Refund => self.create_refund(keys, dummy_abs_fee, is_cooperative)?,
+            SwapTxKind::Refund => self.create_refund(dummy_abs_fee, is_cooperative)?,
         };
         Ok(tx_size(&tx, is_discount_ct))
     }
@@ -3404,7 +3388,6 @@ mod tests {
         let network = LiquidChain::LiquidRegtest;
         let policy_asset = network.bitcoin();
         let secp = Secp256k1::new();
-        let keys = Keypair::new(&bitcoin::secp256k1::Secp256k1::new(), &mut OsRng);
         let preimage = Preimage::random();
 
         for context in [
@@ -3427,16 +3410,12 @@ mod tests {
             let funding_utxo = explicit_output(htlc_address.script_pubkey(), policy_asset, 100_000);
 
             let mut claim_tx = legacy_swap_tx(script.clone(), destination.clone(), funding_utxo);
-            claim_tx
-                .create_claim(&keys, &preimage, 1_000, false)
-                .unwrap();
-            claim_tx
-                .create_claim(&keys, &preimage, 1_000, true)
-                .unwrap();
+            claim_tx.create_claim(&preimage, 1_000, false).unwrap();
+            claim_tx.create_claim(&preimage, 1_000, true).unwrap();
 
             claim_tx.kind = SwapTxKind::Refund;
-            claim_tx.create_refund(&keys, 1_000, false).unwrap();
-            claim_tx.create_refund(&keys, 1_000, true).unwrap();
+            claim_tx.create_refund(1_000, false).unwrap();
+            claim_tx.create_refund(1_000, true).unwrap();
         }
     }
 
@@ -4530,12 +4509,10 @@ mod tests {
 
     #[macros::test_all]
     fn test_claim_single_output() {
-        let (swap_tx, keys, preimage, primary_blinder, asset_id) = claim_fixture();
+        let (swap_tx, _keys, preimage, primary_blinder, asset_id) = claim_fixture();
         let secp = Secp256k1::new();
 
-        let tx = swap_tx
-            .create_claim(&keys, &preimage, FEE_SAT, false)
-            .unwrap();
+        let tx = swap_tx.create_claim(&preimage, FEE_SAT, false).unwrap();
 
         assert_eq!(tx.output.len(), 2);
         assert_eq!(tx.output[1].value.explicit().unwrap(), FEE_SAT);
@@ -4554,7 +4531,7 @@ mod tests {
 
     #[macros::test_all]
     fn test_claim_with_additional_outputs() {
-        let (swap_tx, keys, preimage, primary_blinder, asset_id) = claim_fixture();
+        let (swap_tx, _keys, preimage, primary_blinder, asset_id) = claim_fixture();
         let secp = Secp256k1::new();
 
         let (extra_address_1, extra_blinder_1) = confidential_address(&secp);
@@ -4565,9 +4542,7 @@ mod tests {
             (extra_address_2.clone(), 1_200),
         ]);
 
-        let tx = swap_tx
-            .create_claim(&keys, &preimage, FEE_SAT, false)
-            .unwrap();
+        let tx = swap_tx.create_claim(&preimage, FEE_SAT, false).unwrap();
 
         // primary, two additional, fee
         assert_eq!(tx.output.len(), 4);
@@ -4607,14 +4582,14 @@ mod tests {
 
     #[macros::test_all]
     fn test_refund_with_additional_outputs() {
-        let (swap_tx, keys, _, primary_blinder, asset_id) =
+        let (swap_tx, _keys, _, primary_blinder, asset_id) =
             swap_tx_fixture(SwapType::Submarine, SwapTxKind::Refund);
         let secp = Secp256k1::new();
 
         let (extra_address, extra_blinder) = confidential_address(&secp);
         let swap_tx = swap_tx.with_additional_outputs(vec![(extra_address.clone(), 700)]);
 
-        let tx = swap_tx.create_refund(&keys, FEE_SAT, false).unwrap();
+        let tx = swap_tx.create_refund(FEE_SAT, false).unwrap();
 
         // fee first, then primary and additional (refund output order)
         assert_eq!(tx.output.len(), 3);
@@ -4643,21 +4618,19 @@ mod tests {
 
     #[macros::test_all]
     fn test_claim_additional_outputs_exceed_input() {
-        let (swap_tx, keys, preimage, _, _) = claim_fixture();
+        let (swap_tx, _keys, preimage, _, _) = claim_fixture();
         let secp = Secp256k1::new();
 
         let (extra_address, _) = confidential_address(&secp);
         let swap_tx = swap_tx.with_additional_outputs(vec![(extra_address, FUNDING_SAT)]);
 
-        let err = swap_tx
-            .create_claim(&keys, &preimage, FEE_SAT, false)
-            .unwrap_err();
+        let err = swap_tx.create_claim(&preimage, FEE_SAT, false).unwrap_err();
         assert!(err.message().contains("less than fees"));
     }
 
     #[macros::test_all]
     fn test_additional_output_validation() {
-        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let (swap_tx, _keys, preimage, ..) = claim_fixture();
         let secp = Secp256k1::new();
 
         // Zero amounts are rejected.
@@ -4665,7 +4638,7 @@ mod tests {
         let err = swap_tx
             .clone()
             .with_additional_outputs(vec![(extra_address, 0)])
-            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .create_claim(&preimage, FEE_SAT, false)
             .unwrap_err();
         assert!(err.message().contains("greater than zero"));
 
@@ -4681,46 +4654,44 @@ mod tests {
         );
         let err = swap_tx
             .with_additional_outputs(vec![(unblinded, 800)])
-            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .create_claim(&preimage, FEE_SAT, false)
             .unwrap_err();
         assert!(err.message().contains("must be confidential"));
     }
 
     #[macros::test_all]
     fn test_zero_primary_rejected_without_additional_outputs() {
-        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let (swap_tx, _keys, preimage, ..) = claim_fixture();
 
         // input == fee leaves a zero primary, which cannot be blinded.
         let err = swap_tx
-            .create_claim(&keys, &preimage, FUNDING_SAT, false)
+            .create_claim(&preimage, FUNDING_SAT, false)
             .unwrap_err();
         assert!(err.message().contains("Primary output value is zero"));
     }
 
     #[macros::test_all]
     fn test_zero_primary_rejected_with_additional_outputs() {
-        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let (swap_tx, _keys, preimage, ..) = claim_fixture();
         let secp = Secp256k1::new();
 
         let (extra_address, _) = confidential_address(&secp);
         let err = swap_tx
             .with_additional_outputs(vec![(extra_address, FUNDING_SAT - FEE_SAT)])
-            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .create_claim(&preimage, FEE_SAT, false)
             .unwrap_err();
         assert!(err.message().contains("Primary output value is zero"));
     }
 
     #[macros::test_all]
     fn test_additional_output_one_satoshi_blinds_and_verifies() {
-        let (swap_tx, keys, preimage, primary_blinder, asset_id) = claim_fixture();
+        let (swap_tx, _keys, preimage, primary_blinder, asset_id) = claim_fixture();
         let secp = Secp256k1::new();
 
         let (extra_address, extra_blinder) = confidential_address(&secp);
         let swap_tx = swap_tx.with_additional_outputs(vec![(extra_address.clone(), 1)]);
 
-        let tx = swap_tx
-            .create_claim(&keys, &preimage, FEE_SAT, false)
-            .unwrap();
+        let tx = swap_tx.create_claim(&preimage, FEE_SAT, false).unwrap();
 
         tx.verify_tx_amt_proofs(&secp, &[swap_tx.funding_utxo.clone()])
             .unwrap();
@@ -4740,14 +4711,14 @@ mod tests {
 
     #[macros::test_all]
     fn test_additional_outputs_overflow() {
-        let (swap_tx, keys, preimage, ..) = claim_fixture();
+        let (swap_tx, _keys, preimage, ..) = claim_fixture();
         let secp = Secp256k1::new();
 
         let (extra_1, _) = confidential_address(&secp);
         let (extra_2, _) = confidential_address(&secp);
         let err = swap_tx
             .with_additional_outputs(vec![(extra_1, u64::MAX), (extra_2, 1)])
-            .create_claim(&keys, &preimage, FEE_SAT, false)
+            .create_claim(&preimage, FEE_SAT, false)
             .unwrap_err();
         assert!(err.message().contains("overflow"));
     }

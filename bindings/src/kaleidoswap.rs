@@ -268,7 +268,7 @@ fn store_err(e: impl std::fmt::Display) -> core::SwapError {
 }
 
 fn signer_err(e: impl std::fmt::Display) -> core::SwapError {
-    core::SwapError::new(SwapErrorCode::SwapFailed, format!("signer: {e}"))
+    core::SwapError::new(SwapErrorCode::SwapFailed, e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -286,13 +286,43 @@ pub trait SwapStore: Send + Sync {
     fn next_index(&self) -> Result<u64, Error>;
 }
 
-/// Derives per-swap material from a root the application owns. Hex in, hex
-/// out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
-/// `derive_preimage`.
+/// A cooperative MuSig2 key-path signing session, hex-encoded: the two
+/// 33-byte public keys in aggregation order, the 32-byte Taproot tweak and the
+/// 32-byte sighash.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct MusigSession {
+    pub pubkeys: Vec<String>,
+    pub tweak: String,
+    pub sighash: String,
+}
+
+/// Holds the per-swap keys, one per store index, and signs with them; the SDK
+/// never asks for a secret key, so the keys can stay in a hardware wallet, a
+/// secure enclave or a remote signer. Hex in, hex out.
+///
+/// `musig_nonce` generates and keeps a fresh secret nonce and returns the
+/// 66-byte public nonce; `musig_partial_sign` signs with the secret nonce
+/// behind `our_nonce` and forgets it. Never sign twice with one nonce, and
+/// never take a secret nonce from outside: either reveals the key.
 #[uniffi::export(with_foreign)]
 pub trait SwapSigner: Send + Sync {
-    fn derive_key(&self, index: u64) -> Result<String, Error>;
+    /// The 33-byte compressed public key of swap `index`.
+    fn public_key(&self, index: u64) -> Result<String, Error>;
+    /// The 32-byte preimage of swap `index`.
     fn derive_preimage(&self, index: u64) -> Result<String, Error>;
+    /// A 64-byte BIP340 signature by the untweaked key of swap `index` over
+    /// a 32-byte Taproot script-path sighash.
+    fn sign_schnorr(&self, index: u64, sighash: String) -> Result<String, Error>;
+    /// Starts a MuSig2 signature for `session`: the 66-byte public nonce.
+    fn musig_nonce(&self, index: u64, session: MusigSession) -> Result<String, Error>;
+    /// Finishes it: the 32-byte partial signature.
+    fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: MusigSession,
+        our_nonce: String,
+        their_nonce: String,
+    ) -> Result<String, Error>;
 }
 
 /// Called on every phase change while a swap is watched.
@@ -328,25 +358,101 @@ impl core::SwapStore for ForeignStore {
     }
 }
 
+impl From<&core::MusigSession> for MusigSession {
+    fn from(session: &core::MusigSession) -> Self {
+        Self {
+            pubkeys: session.pubkeys.iter().map(|k| k.to_string()).collect(),
+            tweak: hex::encode(session.tweak),
+            sighash: hex::encode(session.sighash),
+        }
+    }
+}
+
+impl TryFrom<MusigSession> for core::MusigSession {
+    type Error = Error;
+    fn try_from(session: MusigSession) -> Result<Self, Error> {
+        let [a, b] = <[String; 2]>::try_from(session.pubkeys)
+            .map_err(|_| Error::Generic("a MuSig2 session has two public keys".into()))?;
+        Ok(Self {
+            pubkeys: [parse_pubkey(&a)?, parse_pubkey(&b)?],
+            tweak: hex32(&session.tweak, "tweak")?,
+            sighash: hex32(&session.sighash, "sighash")?,
+        })
+    }
+}
+
+fn parse_pubkey(hex: &str) -> Result<PublicKey, Error> {
+    PublicKey::from_str(hex).map_err(|e| Error::Generic(format!("public key: {e}")))
+}
+
+fn hex32(hex: &str, what: &str) -> Result<[u8; 32], Error> {
+    hex::decode(hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+        .ok_or_else(|| Error::Generic(format!("{what} must be 32 bytes of hex")))
+}
+
+fn parse_nonce(hex: &str) -> Result<musig::PublicNonce, Error> {
+    musig::PublicNonce::from_str(hex).map_err(|e| Error::Generic(format!("public nonce: {e:?}")))
+}
+
 struct ForeignSigner(Arc<dyn SwapSigner>);
 
 #[async_trait::async_trait]
 impl core::SwapSigner for ForeignSigner {
-    async fn derive_key(&self, index: u64) -> Result<bitcoin::secp256k1::Keypair, core::SwapError> {
-        let hex = self.0.derive_key(index).map_err(signer_err)?;
-        let secret = bitcoin::secp256k1::SecretKey::from_str(&hex).map_err(signer_err)?;
-        Ok(bitcoin::secp256k1::Keypair::from_secret_key(
-            &bitcoin::secp256k1::Secp256k1::new(),
-            &secret,
-        ))
+    async fn public_key(&self, index: u64) -> Result<PublicKey, core::SwapError> {
+        let hex = self.0.public_key(index).map_err(signer_err)?;
+        PublicKey::from_str(&hex).map_err(signer_err)
     }
     async fn derive_preimage(&self, index: u64) -> Result<CorePreimage, core::SwapError> {
         let hex = self.0.derive_preimage(index).map_err(signer_err)?;
         let bytes = hex::decode(hex).map_err(signer_err)?;
         CorePreimage::from_vec(bytes).map_err(|e| signer_err(format!("{e:?}")))
     }
+    async fn sign_schnorr(
+        &self,
+        index: u64,
+        sighash: [u8; 32],
+    ) -> Result<schnorr::Signature, core::SwapError> {
+        let hex = self
+            .0
+            .sign_schnorr(index, hex::encode(sighash))
+            .map_err(signer_err)?;
+        schnorr::Signature::from_str(&hex).map_err(signer_err)
+    }
+    async fn musig_nonce(
+        &self,
+        index: u64,
+        session: &core::MusigSession,
+    ) -> Result<musig::PublicNonce, core::SwapError> {
+        let hex = self
+            .0
+            .musig_nonce(index, session.into())
+            .map_err(signer_err)?;
+        parse_nonce(&hex).map_err(signer_err)
+    }
+    async fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: &core::MusigSession,
+        our_nonce: &musig::PublicNonce,
+        their_nonce: &musig::PublicNonce,
+    ) -> Result<musig::PartialSignature, core::SwapError> {
+        let hex = self
+            .0
+            .musig_partial_sign(
+                index,
+                session.into(),
+                hex::encode(our_nonce.serialize()),
+                hex::encode(their_nonce.serialize()),
+            )
+            .map_err(signer_err)?;
+        musig::PartialSignature::from_str(&hex).map_err(|e| signer_err(format!("{e:?}")))
+    }
 }
 
+use bitcoin::secp256k1::{schnorr, PublicKey};
+use core::musig;
 use std::str::FromStr;
 
 // ---------------------------------------------------------------------------
@@ -471,15 +577,40 @@ impl MnemonicSigner {
 
 #[uniffi::export]
 impl SwapSigner for MnemonicSigner {
-    fn derive_key(&self, index: u64) -> Result<String, Error> {
-        let keys = block_on(core::SwapSigner::derive_key(&self.0, index))?;
-        Ok(keys.secret_key().display_secret().to_string())
+    fn public_key(&self, index: u64) -> Result<String, Error> {
+        Ok(block_on(core::SwapSigner::public_key(&self.0, index))?.to_string())
     }
     fn derive_preimage(&self, index: u64) -> Result<String, Error> {
         let preimage = block_on(core::SwapSigner::derive_preimage(&self.0, index))?;
         preimage
             .to_string()
             .ok_or_else(|| Error::Generic("derived preimage has no bytes".into()))
+    }
+    fn sign_schnorr(&self, index: u64, sighash: String) -> Result<String, Error> {
+        let sighash = hex32(&sighash, "sighash")?;
+        Ok(block_on(core::SwapSigner::sign_schnorr(&self.0, index, sighash))?.to_string())
+    }
+    fn musig_nonce(&self, index: u64, session: MusigSession) -> Result<String, Error> {
+        let session = core::MusigSession::try_from(session)?;
+        let nonce = block_on(core::SwapSigner::musig_nonce(&self.0, index, &session))?;
+        Ok(hex::encode(nonce.serialize()))
+    }
+    fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: MusigSession,
+        our_nonce: String,
+        their_nonce: String,
+    ) -> Result<String, Error> {
+        let session = core::MusigSession::try_from(session)?;
+        let partial = block_on(core::SwapSigner::musig_partial_sign(
+            &self.0,
+            index,
+            &session,
+            &parse_nonce(&our_nonce)?,
+            &parse_nonce(&their_nonce)?,
+        ))?;
+        Ok(hex::encode(partial.serialize()))
     }
 }
 
