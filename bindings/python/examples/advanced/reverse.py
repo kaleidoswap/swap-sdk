@@ -105,7 +105,9 @@ async def main():
             try:
                 tx = await swap_script.construct_claim(preimage, claim_params(True))
             except Exception as error:
-                print(f"Cooperative claim unavailable ({error}); claiming by script path")
+                print(
+                    f"Cooperative claim unavailable ({error}); claiming by script path"
+                )
                 tx = await swap_script.construct_claim(preimage, claim_params(False))
 
             print("Transaction signed, broadcasting...")
