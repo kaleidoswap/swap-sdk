@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-09
+
+Ships the 0.14.1 changes: reverse-swap claims in the `KaleidoSwap` layer
+follow the chain once started, and store indexes are taken exclusively (details
+under 0.14.1). The 0.14.1 tag exists but its release never completed, so 0.14.1
+is not on npm or PyPI; install 0.14.2 instead.
+Recommended for every 0.14.0 user; see the security advisory
+GHSA-27v4-cvw8-64rf.
+
+### Changed
+
+- A TypeScript test of abandoning the `phases()` iterator no longer waits on a
+  status the chain stub cannot answer. No library change.
+
 ## [0.14.1] - 2026-11-09
 
 A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims
