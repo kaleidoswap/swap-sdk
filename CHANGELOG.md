@@ -37,6 +37,13 @@ its keys in a hardware wallet, a secure enclave or a remote service.
 
 ### Fixed
 
+- Create-response amount checks apply a cross-asset percentage fee in the
+  payout asset. Chain and reverse floors are `floor(amount × rate) −
+  ceil(percentage% × amount × rate) − minerFees`, with the card's miner fees
+  already in that asset. Submarine and chain funding ceilings convert that
+  same output-denominated fee into the asset being locked. A BTC → L-USDT
+  chain create whose claim matches the card is accepted; same-asset cards are
+  unchanged.
 - `KaleidoSwap`: a submarine refund takes the script path only once the
   lockup's timelock has matured. Before that, a failed cooperative refund is
   retried on the next tick instead of saving a script-path refund that cannot

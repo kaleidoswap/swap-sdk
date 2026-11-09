@@ -168,12 +168,23 @@ pub struct ChainFees {
 }
 
 impl ChainFees {
+    /// `ceil(percentage% × amount)` plus every miner fee on the card.
+    ///
+    /// `amount` is in the output asset, the claim. Miner fees are already in
+    /// that asset. A percentage of a lock amount denominated in the other
+    /// asset is `ceil(percentage% × amount × rate)`; the create-response
+    /// check applies that itself.
     pub fn total(&self, amount_sat: u64) -> u64 {
-        self.boltz(amount_sat) + self.claim_estimate() + self.lockup() + self.server()
+        self.boltz(amount_sat) + self.miner()
     }
 
     pub fn boltz(&self, amount_sat: u64) -> u64 {
         ((self.percentage / 100.0) * amount_sat as f64).ceil() as u64
+    }
+
+    /// Miner fees from the card, already in the output asset's base units.
+    fn miner(&self) -> u64 {
+        self.claim_estimate() + self.lockup() + self.server()
     }
 
     pub fn claim_estimate(&self) -> u64 {
@@ -197,12 +208,22 @@ pub struct ReverseFees {
 }
 
 impl ReverseFees {
+    /// `ceil(percentage% × amount)` plus every miner fee on the card.
+    ///
+    /// `amount` is in the output asset, the on-chain payout. Miner fees are
+    /// already in that asset. The create-response check applies the
+    /// percentage to `invoiceAmount × rate` rather than to the invoice.
     pub fn total(&self, invoice_amount_sat: u64) -> u64 {
-        self.boltz(invoice_amount_sat) + self.claim_estimate() + self.lockup()
+        self.boltz(invoice_amount_sat) + self.miner()
     }
 
     pub fn boltz(&self, invoice_amount_sat: u64) -> u64 {
         ((self.percentage / 100.0) * invoice_amount_sat as f64).ceil() as u64
+    }
+
+    /// Miner fees from the card, already in the output asset's base units.
+    fn miner(&self) -> u64 {
+        self.claim_estimate() + self.lockup()
     }
 
     pub fn claim_estimate(&self) -> u64 {
@@ -217,9 +238,10 @@ impl ReverseFees {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmarineFees {
-    /// The percentage of the "send amount" that is charged by Boltz as "Boltz Fee".
+    /// The percentage of the invoice (the output amount) charged as the service fee.
     pub percentage: f64,
-    /// The network fees charged for locking up and claiming funds onchain. These values are absolute, denominated in 10 ** -8 of the quote asset.
+    /// Network fees for the on-chain lockup and claim. Absolute, in the output
+    /// asset's base units — the invoice asset, not the asset the caller locks.
     pub miner_fees: u64,
 }
 
@@ -2528,31 +2550,62 @@ fn ensure_invoice_network(invoice: &Bolt11Invoice, chain: Chain) -> Result<(), E
     Ok(())
 }
 
-/// The least the maker can lock for `amount` under a rate card: the amount
-/// converted at `rate`, less every fee the card lists.
+/// The least the maker can pay for `amount` of the input asset.
 ///
-/// It over-deducts on purpose (the card's `total` includes fees the caller
-/// pays itself, such as its own claim), so it is a floor a legitimate
-/// response clears with room, and a response below it was priced off a
-/// different card than the caller accepted.
-fn minimum_payout(amount: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+/// `floor(amount × rate)`, less the percentage in that same output asset
+/// (`ceil(percentage% × amount × rate)`) and the card's miner fees. Miner
+/// fees are already in the output asset; the percentage of the unconverted
+/// amount is not. The floor still subtracts fees the caller pays itself,
+/// such as its own claim, so a legitimate response clears it with room and
+/// one priced off a different card does not.
+fn minimum_payout(amount: u64, rate: f64, percentage: f64, miner_fees: u64) -> Result<u64, Error> {
     let converted = convert_at_rate(amount, rate)?;
-    Ok(converted.saturating_sub(total_fees))
+    let percentage_fee = percentage_fee_output(amount, rate, percentage)?;
+    Ok(converted
+        .saturating_sub(percentage_fee)
+        .saturating_sub(miner_fees))
 }
 
-/// The most a caller can be asked to lock for a `payout` under a rate card:
-/// the payout converted back at `rate`, plus every fee the card lists.
-fn maximum_funding(payout: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+/// The most a caller can be asked to lock for `payout`.
+///
+/// `fees_output` is the percentage of `payout` plus the card's miner fees,
+/// both already in the payout (output) asset. The ceiling converts each into
+/// the asset being locked: `ceil(payout / rate) + ceil(fees_output / rate)`.
+/// At rate 1 this is `payout + fees_output`.
+fn maximum_funding(payout: u64, rate: f64, fees_output: u64) -> Result<u64, Error> {
+    let converted = convert_div_ceil(payout, rate)?;
+    let fees = convert_div_ceil(fees_output, rate)?;
+    Ok(converted.saturating_add(fees))
+}
+
+/// `ceil(percentage% × amount × rate)`, the service fee in the output asset.
+fn percentage_fee_output(amount: u64, rate: f64, percentage: f64) -> Result<u64, Error> {
+    if !(percentage.is_finite() && percentage >= 0.0) {
+        return Err(Error::Protocol(format!(
+            "Pair fee percentage {percentage} is not usable"
+        )));
+    }
     if !(rate.is_finite() && rate > 0.0) {
         return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
     }
-    let converted = ((payout as f64) / rate).ceil();
+    let fee = (percentage / 100.0) * (amount as f64) * rate;
+    if !fee.is_finite() || fee > u64::MAX as f64 {
+        return Err(Error::Protocol("Pair fee conversion overflows".to_string()));
+    }
+    Ok(fee.ceil() as u64)
+}
+
+fn convert_div_ceil(amount: u64, rate: f64) -> Result<u64, Error> {
+    if !(rate.is_finite() && rate > 0.0) {
+        return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
+    }
+    let converted = ((amount as f64) / rate).ceil();
     if !converted.is_finite() || converted > u64::MAX as f64 {
         return Err(Error::Protocol(
             "Pair rate conversion overflows".to_string(),
         ));
     }
-    Ok((converted as u64).saturating_add(total_fees))
+    Ok(converted as u64)
 }
 
 fn convert_at_rate(amount: u64, rate: f64) -> Result<u64, Error> {
@@ -2752,10 +2805,12 @@ impl CreateSubmarineResponse {
     }
 
     /// Check the funding instructions against the caller's invoice and the
-    /// pair card they accepted: the amount to lock may not exceed what the
-    /// invoice plus the card's rate and fees imply, and a non-empty `bip21`
-    /// has to agree with `address`, `expectedAmount` and `assetId`. Without a
-    /// pair only the `bip21` is checked.
+    /// pair card they accepted: the amount to lock may not exceed
+    /// `ceil(invoice / rate) + ceil(fees / rate)`, where `fees` is the
+    /// percentage of the invoice plus the card's miner fees, both in the
+    /// invoice asset. A non-empty `bip21` has to agree with `address`,
+    /// `expectedAmount` and `assetId`. Without a pair only the `bip21` is
+    /// checked.
     pub fn validate_amounts(
         &self,
         invoice: &str,
@@ -3423,11 +3478,12 @@ impl CreateReverseResponse {
     ///
     /// With `pair` — the rate card the caller accepted before creating the
     /// swap, not one fetched again now — `onchainAmount` must also be at least
-    /// `floor(invoiceAmount × rate) − fees.total(invoiceAmount)`. That is a
-    /// floor, not an equality: a maker that charges less than its card
-    /// advertises passes, one that pays out less than the card promised does
-    /// not. Pass the card for sat-denominated routes; on an asset route the
-    /// rate expresses the asset's units and the same bound applies.
+    /// `floor(invoiceAmount × rate) − ceil(percentage% × invoiceAmount × rate) − minerFees`.
+    /// The percentage is taken on the converted notional, in the payout asset;
+    /// miner fees on the card are already in that asset. That is a floor, not
+    /// an equality: a maker that charges less than its card advertises passes,
+    /// one that pays out less than the card promised does not. The same bound
+    /// applies to a same-asset route and to an asset route.
     ///
     /// Call this alongside [`Self::validate`] (or its variants) before paying
     /// the invoice. A request that supplied its own invoice has nothing to
@@ -3488,7 +3544,12 @@ impl CreateReverseResponse {
     }
 
     fn check_payout_floor(&self, invoice_amount: u64, pair: &ReversePair) -> Result<(), Error> {
-        let minimum = minimum_payout(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+        let minimum = minimum_payout(
+            invoice_amount,
+            pair.rate,
+            pair.fees.percentage,
+            pair.fees.miner(),
+        )?;
         if self.onchain_amount < minimum {
             return Err(Error::Protocol(format!(
                 "Reverse swap onchainAmount {} is below the {minimum} the accepted pair card implies for invoiceAmount {invoice_amount}",
@@ -3782,12 +3843,14 @@ impl CreateChainResponse {
     /// The leg the maker computed is bounded with `pair` — the rate card the
     /// caller accepted before creating the swap, not one fetched again now.
     /// With `userLockAmount` fixed, `claimDetails.amount` must be at least
-    /// `floor(userLockAmount × rate) − fees.total(userLockAmount)`; with
-    /// `serverLockAmount` fixed, `lockupDetails.amount` must be at most
-    /// `ceil(serverLockAmount ÷ rate) + fees.total(serverLockAmount)`. Both
-    /// are bounds, not equalities: a maker charging less than its card
-    /// advertises passes, one pricing off a card the caller never accepted
-    /// does not.
+    /// `floor(userLockAmount × rate) − ceil(percentage% × userLockAmount × rate) − minerFees`.
+    /// The percentage is in the claim asset; miner fees on the card already
+    /// are. With `serverLockAmount` fixed, `lockupDetails.amount` must be at
+    /// most `ceil(serverLockAmount ÷ rate) + ceil(fees ÷ rate)`, where `fees`
+    /// is the percentage of the claim plus those miner fees, converted into
+    /// the asset being locked. Both are bounds, not equalities: a maker
+    /// charging less than its card advertises passes, one pricing off a card
+    /// the caller never accepted does not.
     ///
     /// Call this alongside [`Self::validate`] (or its variants) before
     /// funding the lockup.
@@ -3812,7 +3875,8 @@ impl CreateChainResponse {
                 let minimum = minimum_payout(
                     user_lock_amount,
                     pair.rate,
-                    pair.fees.total(user_lock_amount),
+                    pair.fees.percentage,
+                    pair.fees.miner(),
                 )?;
                 if self.claim_details.amount < minimum {
                     return Err(Error::Protocol(format!(
@@ -5317,6 +5381,121 @@ mod tests {
         assert!(chain_create_response(100_000, 99_300)
             .validate_amounts(&user_fixed, Some(&broken))
             .is_err());
+    }
+
+    /// Percentage of a BTC lock, subtracted in L-USDT units, used to reject a
+    /// payout the pair card actually allows. Miner fees stay in the claim
+    /// asset. The numbers are the signet BTC → L-USDT create that failed
+    /// closed: 50_000 sat at rate 74_491, 0.5%, miner fees 93_055_417.
+    #[test]
+    fn chain_cross_asset_claim_accepts_a_rate_converted_percentage() {
+        let pair = chain_pair(74_491.0, 0.5, 93_055_417, 0, 0);
+        // floor(50_000 × 74_491) − ceil(0.5% × 50_000 × 74_491) − 93_055_417
+        // = 3_724_550_000 − 18_622_750 − 93_055_417 = 3_612_871_833.
+        // The previous floor subtracted ceil(0.5% × 50_000) = 250 instead,
+        // and landed on 3_631_494_333.
+        let request = chain_create_request(Some(50_000), None);
+        let claim = 3_612_871_833;
+        chain_create_response(50_000, claim)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        chain_create_response(50_000, claim + 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(50_000, claim - 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+        assert!(err.to_string().contains("3612871832"), "{err}");
+        assert!(err.to_string().contains("3612871833"), "{err}");
+    }
+
+    /// A fixed server lock converts the claim-asset percentage and miner fees
+    /// into the asset the caller locks. Leaving them unconverted inflates the
+    /// ceiling by the raw output fee.
+    #[test]
+    fn chain_cross_asset_lock_converts_output_fees() {
+        let pair = chain_pair(100_000.0, 0.5, 1_000, 200, 100);
+        // Claim 10_000_000_000. Percentage ceil(0.5% × claim) = 50_000_000.
+        // Miner fees 1_300. Ceiling:
+        // ceil(10_000_000_000 / 100_000) + ceil(50_001_300 / 100_000) = 100_501.
+        let request = chain_create_request(None, Some(10_000_000_000));
+        chain_create_response(100_501, 10_000_000_000)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(100_502, 10_000_000_000)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
+    }
+
+    fn chain_pair(rate: f64, percentage: f64, server: u64, lockup: u64, claim: u64) -> ChainPair {
+        serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": rate,
+            "limits": { "maximal": 25_000_000_000u64, "minimal": 1, "maximalZeroConf": 0 },
+            "fees": {
+                "percentage": percentage,
+                "minerFees": { "server": server, "user": { "lockup": lockup, "claim": claim } },
+            },
+        }))
+        .unwrap()
+    }
+
+    /// LN → L-USDT uses the same payout floor. Percentage of the invoice in
+    /// satoshis is not a fee in L-USDT units.
+    #[test]
+    fn reverse_cross_asset_payout_uses_the_converted_percentage() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice = Some(signed_invoice(LnCurrency::Regtest, Some(100_000_000), hash));
+        let pair: ReversePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 100_000.0,
+            "limits": { "maximal": 25_000_000_000u64, "minimal": 1 },
+            "fees": { "percentage": 0.5, "minerFees": { "lockup": 1_000, "claim": 200 } },
+        }))
+        .unwrap();
+        // floor(100_000 × 100_000) − ceil(0.5% × 100_000 × 100_000) − 1_200
+        // = 9_949_998_800.
+        let request = reverse_create_request(Some(100_000));
+        let payout = 9_949_998_800;
+        reverse_create_response(invoice.clone(), payout)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = reverse_create_response(invoice, payout - 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+    }
+
+    /// L-USDT → LN: the percentage and miner fees are in invoice satoshis and
+    /// have to be converted into the asset the caller locks.
+    #[test]
+    fn submarine_cross_asset_lock_converts_output_fees() {
+        use lightning_invoice::Currency as LnCurrency;
+        let invoice = signed_invoice(
+            LnCurrency::Regtest,
+            Some(100_000_000),
+            sha256::Hash::hash(&[3u8; 32]),
+        );
+        let pair: SubmarinePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 0.00001,
+            "limits": { "maximal": 25_000_000_000_000u64, "minimal": 1, "maximalZeroConf": 0 },
+            "fees": { "percentage": 0.5, "minerFees": 500 },
+        }))
+        .unwrap();
+        // ceil(100_000 / 0.00001) + ceil((ceil(0.5% × 100_000) + 500) / 0.00001)
+        // = 10_100_000_000.
+        let expected = 10_100_000_000;
+        submarine_response(expected, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        let err = submarine_response(expected + 1, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
     }
 
     /// Every create response must keep the maker's per-swap taker credential.
