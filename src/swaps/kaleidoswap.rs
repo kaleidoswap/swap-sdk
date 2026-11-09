@@ -482,6 +482,11 @@ pub struct SwapState {
     /// A refund signed and saved before its broadcast, as `pending_claim`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_refund: Option<SignedTx>,
+    /// Set, and saved, before a claim is first built: building it can hand
+    /// the preimage to the maker. From then on the claim is followed by what
+    /// the chain shows until it confirms, whatever the maker reports.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub claim_started: bool,
     /// Whether a lockup from us was ever seen — decides `failed` vs
     /// `refundable` on expiry.
     #[serde(default)]
@@ -852,10 +857,11 @@ impl SwapStore for MemoryStore {
 }
 
 /// A [`SwapStore`] over a directory: one JSON file per swap plus `index`
-/// for the BIP85 counter. Writes go through a rename so a crash mid-write
-/// leaves the previous file, never a torn one; files are owner-readable only
-/// because records carry `swap_auth`. Single-process: two instances on one
-/// directory would hand out the same index.
+/// for the BIP85 counter, and a `taken-<n>` marker per index handed out.
+/// Writes go through a rename so a crash mid-write leaves the previous file,
+/// never a torn one; files are owner-readable only because records carry
+/// `swap_auth`. An index is handed out by creating its marker exclusively,
+/// so instances and processes sharing the directory never get the same one.
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 pub struct FileStore {
     dir: std::path::PathBuf,
@@ -920,6 +926,26 @@ impl FileStore {
             Err(e) => Err(Self::store_err(e)),
         }
     }
+
+    /// Creates `index` marker exclusively: `false` when it already exists.
+    fn take(&self, index: u64) -> Result<bool, SwapError> {
+        std::fs::create_dir_all(&self.dir).map_err(Self::store_err)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        match options.open(self.file(&format!("taken-{index}"))?) {
+            Ok(f) => {
+                f.sync_all().map_err(Self::store_err)?;
+                Ok(true)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(e) => Err(Self::store_err(e)),
+        }
+    }
 }
 
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
@@ -956,14 +982,20 @@ impl SwapStore for FileStore {
     }
     async fn next_index(&self) -> Result<u64, SwapError> {
         let _guard = self.index_lock.lock().unwrap();
-        let current: u64 = match self.read("index")? {
+        let mut next: u64 = match self.read("index")? {
             Some(s) => s.trim().parse().map_err(Self::store_err)?,
             None => 0,
         };
-        // The counter advances on disk before the index is handed out, so a
-        // crash between the two skips an index rather than reusing one.
-        self.write("index", &(current + 1).to_string())?;
-        Ok(current)
+        // An index is taken by creating its marker exclusively, which only
+        // one caller can do, whichever instance or process it runs in. The
+        // counter is only where the search starts.
+        while !self.take(next)? {
+            next = next
+                .checked_add(1)
+                .ok_or_else(|| Self::store_err("index space exhausted"))?;
+        }
+        self.write("index", &(next + 1).to_string())?;
+        Ok(next)
     }
 }
 
@@ -1191,9 +1223,9 @@ impl SwapFlows for DefaultFlows {
     ) -> Result<SignedTx, Error> {
         let script = Self::script(record, keys)?;
         let destination = record.state.destination.clone();
-        // The maker co-signs Bitcoin claims but not every Liquid lockup; the
-        // script path is always available, so fall back to it rather than
-        // leave a claimable lockup behind.
+        // Cooperative first. The script path needs nothing from the maker and
+        // is always available, so any failure of the cooperative claim falls
+        // back to it rather than leave a claimable lockup behind.
         let tx = match script
             .construct_claim(
                 preimage,
@@ -1202,12 +1234,11 @@ impl SwapFlows for DefaultFlows {
             .await
         {
             Ok(tx) => tx,
-            Err(e) if format!("{e:?}").to_lowercase().contains("cooperative") => {
+            Err(_) => {
                 script
                     .construct_claim(preimage, self.params(record, keys, destination, false))
                     .await?
             }
-            Err(e) => return Err(e),
         };
         Ok(Self::signed(&tx))
     }
@@ -1595,6 +1626,11 @@ fn map_status(protocol: Protocol, status: &str, state: &SwapState) -> Transition
     }
 }
 
+/// Whether a reverse swap's claim has been started, saved or broadcast.
+fn claim_under_way(state: &SwapState) -> bool {
+    state.claim_started || state.pending_claim.is_some() || state.claim_txid.is_some()
+}
+
 /// Whether a failed refund attempt is one that waiting can fix: the timelock
 /// has not matured yet, or the chain or the maker could not be reached. A
 /// malformed address, a signing error or a spend the chain refused will fail
@@ -1785,16 +1821,29 @@ impl Swap {
         if before.phase.is_terminal() {
             return Ok(before);
         }
-        let status = self
-            .env
-            .maker
-            .swap_status(&before.id)
-            .await
-            .map_err(|e| SwapError::from_core(e, Some(&before.id)))?;
+        let reverse = before.protocol == Protocol::BoltzReverse;
+        let status = match self.env.maker.swap_status(&before.id).await {
+            Ok(status) => status,
+            // A claim under way does not wait on the maker.
+            Err(_) if reverse && claim_under_way(&before.state) => {
+                return self.follow_claim(None).await
+            }
+            Err(e) => return Err(SwapError::from_core(e, Some(&before.id))),
+        };
         let Transition {
             mut phase,
             mut funded_seen,
         } = map_status(before.protocol, &status, &before.state);
+
+        // Once a claim is under way, or the maker reports the payment taken,
+        // the chain decides how a reverse swap ends: it is settled when our
+        // claim confirms, failed when something else spends the lockup.
+        if reverse
+            && (claim_under_way(&before.state)
+                || matches!(phase, SwapPhase::Claiming | SwapPhase::Settled))
+        {
+            return self.follow_claim(Some(&status)).await;
+        }
         let chain_err = |e: Error| {
             SwapError::for_swap(
                 SwapErrorCode::ChainUnreachable,
@@ -1854,18 +1903,8 @@ impl Swap {
             }
         }
 
-        // A claim or refund we already broadcast is not undone by the maker
-        // still reporting the phase that triggered it.
-        if before.state.claim_txid.is_some()
-            && matches!(phase, SwapPhase::Locked | SwapPhase::Funded)
-        {
-            return self
-                .persist(|r| {
-                    r.raw_status = status.clone();
-                    r.phase = SwapPhase::Claiming;
-                })
-                .await;
-        }
+        // A refund we already broadcast is not undone by the maker still
+        // reporting the phase that triggered it.
         if before.state.refund_txid.is_some() && phase == SwapPhase::Refundable {
             return self
                 .persist(|r| {
@@ -1893,14 +1932,131 @@ impl Swap {
 
     async fn claim_now(&self) -> Result<SwapRecord, SwapError> {
         let (keys, preimage) = self.keys().await?;
-        let record = self.record();
-        let tx = self
-            .env
-            .flows
-            .sign_claim(&record, &keys, &preimage)
-            .await
-            .map_err(|e| SwapError::from_core(e, Some(&record.id)))?;
+        let record = self.persist(|r| r.state.claim_started = true).await?;
+        let tx = match self.env.flows.sign_claim(&record, &keys, &preimage).await {
+            Ok(tx) => tx,
+            Err(e) => {
+                let retryable = spend_error_is_transient(&e)
+                    || self.claim_has_time(&record).await.unwrap_or(true);
+                self.set_retryable(retryable);
+                return Err(SwapError::from_core(e, Some(&record.id)));
+            }
+        };
         self.save_and_broadcast(Spend::Claim, tx).await
+    }
+
+    /// Takes a reverse swap's claim one step on what the chain shows: a
+    /// saved claim is broadcast, a recorded one settles the swap once it
+    /// confirms, and a lockup still unspent is claimed. A lockup spent by
+    /// anything that does not pay this swap fails it.
+    async fn follow_claim(&self, status: Option<&str>) -> Result<SwapRecord, SwapError> {
+        let record = self.record();
+        let chain_err = |e: Error| {
+            SwapError::for_swap(
+                SwapErrorCode::ChainUnreachable,
+                format!("could not read the chain: {e:?}"),
+                &record.id,
+            )
+        };
+        let with_status = |r: &mut SwapRecord| {
+            if let Some(status) = status {
+                r.raw_status = status.to_string();
+            }
+        };
+        if let Some(tx) = record.state.pending_claim.clone() {
+            return self.broadcast_saved(Spend::Claim, tx, status).await;
+        }
+        if let Some(txid) = record.state.claim_txid.clone() {
+            if self
+                .env
+                .flows
+                .tx_confirmed(&record, &txid)
+                .await
+                .map_err(chain_err)?
+            {
+                return self
+                    .persist(|r| {
+                        with_status(r);
+                        r.phase = SwapPhase::Settled;
+                    })
+                    .await;
+            }
+        }
+        let flows = &self.env.flows;
+        match flows.lockup_spender(&record).await.map_err(chain_err)? {
+            Some(spender) if spender.pays_swap => {
+                if record.state.claim_txid.as_deref() == Some(spender.txid.as_str()) {
+                    self.persist(|r| {
+                        with_status(r);
+                        r.phase = SwapPhase::Claiming;
+                    })
+                    .await
+                } else {
+                    self.record_sent(Spend::Claim, &spender.txid, status).await
+                }
+            }
+            Some(spender) => {
+                self.persist(|r| {
+                    with_status(r);
+                    r.phase = SwapPhase::Failed;
+                })
+                .await?;
+                Err(SwapError::for_swap(
+                    SwapErrorCode::SwapFailed,
+                    format!(
+                        "the lockup is spent by {}, which does not pay this swap",
+                        spender.txid
+                    ),
+                    &record.id,
+                ))
+            }
+            None => {
+                // A claim the chain still has is waited on, even before
+                // the lockup's history lists it.
+                if let Some(txid) = &record.state.claim_txid {
+                    let seen = SignedTx {
+                        txid: txid.clone(),
+                        hex: String::new(),
+                    };
+                    if flows.tx_seen(&record, &seen).await.map_err(chain_err)? {
+                        return self
+                            .persist(|r| {
+                                with_status(r);
+                                r.phase = SwapPhase::Claiming;
+                            })
+                            .await;
+                    }
+                }
+                if flows.lockup_unspent(&record).await.map_err(chain_err)? {
+                    self.persist(|r| {
+                        with_status(r);
+                        r.state.claim_txid = None;
+                    })
+                    .await?;
+                    return self.claim_now().await;
+                }
+                if claim_under_way(&record.state) {
+                    // The lockup was there to claim; the chain client has
+                    // not caught up with it, or with what spent it.
+                    return self
+                        .persist(|r| {
+                            with_status(r);
+                            r.phase = SwapPhase::Claiming;
+                        })
+                        .await;
+                }
+                // Nothing of ours was ever locked or claimed: the maker's
+                // report stands.
+                let phase = status
+                    .map(|s| map_status(record.protocol, s, &record.state).phase)
+                    .unwrap_or(record.phase);
+                self.persist(|r| {
+                    with_status(r);
+                    r.phase = phase;
+                })
+                .await
+            }
+        }
     }
 
     async fn refund_now(&self) -> Result<SwapRecord, SwapError> {
@@ -2525,7 +2681,7 @@ impl KaleidoSwap {
             quote.to_asset.boltz_symbol()?,
         );
 
-        let swap_index = self.env.store.next_index().await?;
+        let swap_index = self.fresh_index().await?;
         let keys = self.env.signer.derive_key(swap_index).await?;
         let preimage = self.env.signer.derive_preimage(swap_index).await?;
         let pubkey = bitcoin::PublicKey::new(keys.public_key());
@@ -2670,6 +2826,7 @@ impl KaleidoSwap {
                 refund_txid: None,
                 pending_claim: None,
                 pending_refund: None,
+                claim_started: false,
                 funded_seen: false,
                 zero_conf_limit,
             },
@@ -2730,6 +2887,30 @@ impl KaleidoSwap {
         swap.persist(|r| r.phase = SwapPhase::AwaitingFunding)
             .await?;
         Ok(swap)
+    }
+
+    /// The store's next index that none of its records uses. A counter that
+    /// went back, as a store restored or rebuilt around older records leaves
+    /// it, is skipped past rather than trusted.
+    async fn fresh_index(&self) -> Result<u64, SwapError> {
+        let used: std::collections::BTreeSet<u64> = self
+            .env
+            .store
+            .list()
+            .await?
+            .iter()
+            .map(|r| r.state.swap_index)
+            .collect();
+        for _ in 0..=used.len() {
+            let index = self.env.store.next_index().await?;
+            if !used.contains(&index) {
+                return Ok(index);
+            }
+        }
+        Err(SwapError::new(
+            SwapErrorCode::StoreFailed,
+            "the store keeps handing out indexes its own records already use",
+        ))
     }
 
     /// A swap this instance or an earlier one started, by id.
@@ -3043,6 +3224,13 @@ mod tests {
         /// `None` never.
         refund_confirms_on: Option<u32>,
         confirm_checks: Mutex<u32>,
+        /// A claim the chain has stays out of a block. Claims otherwise
+        /// confirm as soon as the chain has them.
+        claim_unconfirmed: bool,
+        /// Claims fail to build, as a maker that answers the cooperative
+        /// request badly and a chain client that cannot list the lockup yet
+        /// together make them.
+        claim_failures: Mutex<u32>,
         /// Whether an unspent output pays the lockup address.
         lockup_funded: bool,
         /// Refund attempts that fail, as an immature timelock does, before
@@ -3114,6 +3302,13 @@ mod tests {
             _preimage: &Preimage,
         ) -> Result<SignedTx, Error> {
             YieldOnce(false).await;
+            {
+                let mut failures = self.claim_failures.lock().unwrap();
+                if *failures > 0 {
+                    *failures -= 1;
+                    return Err(Error::Protocol("partial signature is invalid".into()));
+                }
+            }
             self.claim
                 .lock()
                 .unwrap()
@@ -3192,9 +3387,13 @@ mod tests {
             }
             Ok(self.tip)
         }
-        async fn tx_confirmed(&self, _record: &SwapRecord, _txid: &str) -> Result<bool, Error> {
+        async fn tx_confirmed(&self, record: &SwapRecord, txid: &str) -> Result<bool, Error> {
             if self.chain_down {
                 return Err(Error::Generic("connection refused".into()));
+            }
+            if record.protocol == Protocol::BoltzReverse {
+                return Ok(!self.claim_unconfirmed
+                    && self.on_chain.lock().unwrap().iter().any(|t| t == txid));
             }
             let mut checks = self.confirm_checks.lock().unwrap();
             *checks += 1;
@@ -3983,7 +4182,6 @@ mod tests {
         );
         assert_eq!(h.flows.claim.lock().unwrap().len(), 1);
         assert_eq!(done.state.claim_txid.as_deref(), Some("claim-txid"));
-        assert_eq!(done.raw_status, "invoice.settled");
         assert_eq!(
             h.store.get("rev-1").await.unwrap().unwrap().phase,
             SwapPhase::Settled
@@ -4410,8 +4608,16 @@ mod tests {
             Some("claim-txid")
         );
 
-        // A third pass sees the claim already broadcast and does not repeat it.
-        let third = harness_with(store.clone(), FakeFlows::default());
+        // A third pass sees the claim already broadcast and does not repeat
+        // it: still unconfirmed, the swap is claiming; once in a block, settled.
+        let third = harness_with(
+            store.clone(),
+            FakeFlows {
+                claim_unconfirmed: true,
+                on_chain: Mutex::new(vec!["claim-txid".into()]),
+                ..Default::default()
+            },
+        );
         third
             .maker
             .script(&["transaction.confirmed", "invoice.settled"]);
@@ -4422,8 +4628,18 @@ mod tests {
             third.kaleido.swap("rev-1").await.unwrap().phase(),
             SwapPhase::Claiming
         );
-        let done = again.resumed[0].settled().await.unwrap();
-        assert_eq!(done.phase, SwapPhase::Settled);
+        let fourth = harness_with(
+            store.clone(),
+            FakeFlows {
+                on_chain: Mutex::new(vec!["claim-txid".into()]),
+                ..Default::default()
+            },
+        );
+        fourth.maker.script(&["invoice.settled"]);
+        let done = fourth.kaleido.resume().await.unwrap();
+        assert!(fourth.flows.claim.lock().unwrap().is_empty());
+        assert_eq!(done.settled.len(), 1);
+        assert_eq!(done.settled[0].phase, SwapPhase::Settled);
 
         let quiet = third.kaleido.resume().await.unwrap();
         assert!(quiet.resumed.is_empty() && quiet.settled.is_empty() && quiet.errors.is_empty());
@@ -4431,7 +4647,13 @@ mod tests {
 
     #[macros::async_test_all]
     async fn handles_on_one_swap_take_turns_and_claim_once() {
-        let h = harness();
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                claim_unconfirmed: true,
+                ..Default::default()
+            },
+        );
         let q = reverse_quote(&h).await;
         let first = h
             .kaleido
@@ -4741,15 +4963,128 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.code, SwapErrorCode::SwapFailed);
         assert!(h.flows.broadcasts.lock().unwrap().is_empty());
+    }
 
-        // Settling clears whatever was saved.
-        let (store, h) = with_unrecorded_claim(FakeFlows::default()).await;
-        h.maker.script(&["invoice.settled"]);
-        let record = h.kaleido.swap("rev-1").await.unwrap().tick().await.unwrap();
-        assert_eq!(record.phase, SwapPhase::Settled);
-        let stored = store.get("rev-1").await.unwrap().unwrap();
-        assert_eq!(stored.state.pending_claim, None);
-        assert!(h.flows.broadcasts.lock().unwrap().is_empty());
+    #[macros::async_test_all]
+    async fn a_saved_claim_is_broadcast_whatever_the_maker_reports() {
+        for status in [
+            "invoice.settled",
+            "transaction.claim.pending",
+            "swap.expired",
+        ] {
+            let (store, h) = with_unrecorded_claim(FakeFlows {
+                claim_unconfirmed: true,
+                ..Default::default()
+            })
+            .await;
+            h.maker.script(&[status]);
+            let record = h.kaleido.swap("rev-1").await.unwrap().tick().await.unwrap();
+            assert_eq!(record.phase, SwapPhase::Claiming, "{status}");
+            assert_eq!(*h.flows.broadcasts.lock().unwrap(), vec!["claim-txid"]);
+            let stored = store.get("rev-1").await.unwrap().unwrap();
+            assert_eq!(stored.state.claim_txid.as_deref(), Some("claim-txid"));
+            assert_eq!(stored.state.pending_claim, None);
+        }
+    }
+
+    #[macros::async_test_all]
+    async fn a_reverse_swap_settles_on_its_own_confirmed_claim_not_the_makers_word() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                claim_unconfirmed: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        h.maker
+            .script(&["transaction.confirmed", "invoice.settled"]);
+        assert_eq!(swap.tick().await.unwrap().phase, SwapPhase::Claiming);
+        // The maker reports the payment taken; our claim is not in a block.
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.phase, SwapPhase::Claiming);
+        assert_eq!(record.raw_status, "invoice.settled");
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1, "not signed again");
+    }
+
+    #[macros::async_test_all]
+    async fn a_claim_that_fails_to_build_is_retried_after_the_maker_reports_it_settled() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                claim_failures: Mutex::new(1),
+                lockup_funded: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        h.maker
+            .script(&["transaction.confirmed", "invoice.settled"]);
+        let err = swap.tick().await.unwrap_err();
+        assert!(swap.keeps_watching(&err), "{}", err.message);
+        assert!(swap.record().state.claim_started);
+        let done = swap.settled().await.unwrap();
+        assert_eq!(done.phase, SwapPhase::Settled);
+        assert_eq!(done.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(h.flows.claim.lock().unwrap().len(), 1);
+    }
+
+    #[macros::async_test_all]
+    async fn an_unclaimed_lockup_is_claimed_when_the_maker_reports_it_taken() {
+        for status in ["transaction.claim.pending", "invoice.settled"] {
+            let h = harness_with(
+                Arc::new(MemoryStore::new()),
+                FakeFlows {
+                    lockup_funded: true,
+                    ..Default::default()
+                },
+            );
+            let swap = started_reverse(&h).await;
+            h.maker.script(&[status]);
+            let record = swap.tick().await.unwrap();
+            assert_eq!(record.phase, SwapPhase::Claiming, "{status}");
+            assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        }
+    }
+
+    #[macros::async_test_all]
+    async fn a_started_claim_goes_on_while_the_maker_is_unreachable() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                claim_failures: Mutex::new(1),
+                lockup_funded: true,
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        h.maker.script(&["transaction.confirmed", "!down"]);
+        swap.tick().await.unwrap_err();
+        let record = swap.tick().await.unwrap();
+        assert_eq!(record.state.claim_txid.as_deref(), Some("claim-txid"));
+        assert_eq!(swap.tick().await.unwrap().phase, SwapPhase::Settled);
+    }
+
+    #[macros::async_test_all]
+    async fn a_lockup_spent_by_anything_else_fails_a_started_claim() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                claim_failures: Mutex::new(1),
+                spender: Mutex::new(Some(LockupSpender {
+                    txid: "maker-refund".into(),
+                    pays_swap: false,
+                })),
+                ..Default::default()
+            },
+        );
+        let swap = started_reverse(&h).await;
+        h.maker
+            .script(&["transaction.confirmed", "transaction.refunded"]);
+        swap.tick().await.unwrap_err();
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed);
+        assert_eq!(swap.record().phase, SwapPhase::Failed);
     }
 
     #[macros::test_all]
@@ -5180,7 +5515,58 @@ mod tests {
 
         // A second instance on the same directory continues the counter.
         assert_eq!(FileStore::new(&dir).next_index().await.unwrap(), 2);
+
+        // A counter that went back does not hand out an index again.
+        std::fs::write(dir.join("index"), "0").unwrap();
+        assert_eq!(store.next_index().await.unwrap(), 3);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[test]
+    fn file_store_instances_on_one_directory_never_share_an_index() {
+        let dir =
+            std::env::temp_dir().join(format!("kaleidoswap-store-shared-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let takers: Vec<_> = (0..8)
+            .map(|_| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    let store = FileStore::new(&dir);
+                    (0..10)
+                        .map(|_| {
+                            tokio::runtime::Builder::new_current_thread()
+                                .build()
+                                .unwrap()
+                                .block_on(store.next_index())
+                                .unwrap()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        let mut all: Vec<u64> = takers.into_iter().flat_map(|t| t.join().unwrap()).collect();
+        all.sort();
+        let len = all.len();
+        all.dedup();
+        assert_eq!(all.len(), len, "an index was handed out twice");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[macros::async_test_all]
+    async fn start_skips_an_index_a_stored_record_already_uses() {
+        let store = Arc::new(MemoryStore::new());
+        let first = harness_with(store.clone(), FakeFlows::default());
+        started_reverse(&first).await;
+        // The same records under a store whose counter starts over.
+        let rebuilt = Arc::new(MemoryStore::new());
+        for record in store.list().await.unwrap() {
+            rebuilt.put(&record).await.unwrap();
+        }
+        let h = harness_with(rebuilt, FakeFlows::default());
+        *h.maker.reverse_id.lock().unwrap() = "rev-2".into();
+        let swap = started_reverse(&h).await;
+        assert_eq!(swap.record().state.swap_index, 1);
     }
 
     #[macros::async_test_all]

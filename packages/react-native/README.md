@@ -139,6 +139,8 @@ exclude it from backup. Do not log records or send them to telemetry.
 - Never reset, copy or restore a store from an older backup while its swap
   mnemonic is in use.
 - If a store is lost, start a new swap mnemonic.
+- Keep the store directory out of device and cloud backups (iCloud, Android
+  Auto Backup), so that a restore never brings back an older copy of it.
 
 To keep swaps in your own storage or derive keys from your own wallet, pass any
 object that implements the `SwapStore` interface (`get`, `put`, `list`,
