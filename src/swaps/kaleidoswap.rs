@@ -244,6 +244,18 @@ impl SwapError {
     /// The engine's error onto a code. A 4xx from the maker is a rejection,
     /// anything else on the HTTP path is unreachability.
     pub fn from_core(error: Error, swap_id: Option<&str>) -> Self {
+        if let Error::Signer(signer) = error {
+            let SwapError {
+                code,
+                message,
+                swap_id: own_id,
+            } = *signer;
+            return Self {
+                code,
+                message: format!("signer: {message}"),
+                swap_id: swap_id.map(str::to_string).or(own_id),
+            };
+        }
         let code = match &error {
             Error::HTTPStatusNotSuccess(status, _) if status.is_client_error() => {
                 SwapErrorCode::MakerRejected
@@ -698,6 +710,10 @@ pub trait SwapStore: Send + Sync {
 /// so an implementation can keep its keys in a hardware wallet, an enclave or
 /// a remote service. [`MnemonicSigner`] is the in-memory implementation.
 ///
+/// A signer sees a sighash, not the transaction behind it: what it signs is
+/// what the SDK host built, so it trusts that host as much as it would a
+/// wallet asking it to sign.
+///
 /// The cooperative claim and refund are MuSig2 key-path spends with the maker.
 /// Their secret nonce stays with the signer: `musig_nonce` generates and keeps
 /// it, and `musig_partial_sign` spends it on one partial signature and forgets
@@ -756,7 +772,7 @@ impl<'a> IndexedSigner<'a> {
 }
 
 fn signer_error(e: SwapError) -> Error {
-    Error::Generic(format!("signer: {}", e.message))
+    Error::Signer(Box::new(e))
 }
 
 #[macros::async_trait]
@@ -1800,7 +1816,8 @@ fn claim_under_way(state: &SwapState) -> bool {
 /// broadcast is a refusal, except one that names a timelock not yet final.
 fn spend_error_is_transient(error: &Error) -> bool {
     match error {
-        Error::Locktime(_) | Error::IO(_) | Error::HTTP(_) => true,
+        // A locked device or a signer that timed out may answer next time.
+        Error::Locktime(_) | Error::IO(_) | Error::HTTP(_) | Error::Signer(_) => true,
         Error::HTTPStatusNotSuccess(status, _) => !status.is_client_error(),
         #[cfg(feature = "esplora")]
         Error::Esplora(message) => {
@@ -2483,7 +2500,7 @@ impl Swap {
             SwapErrorCode::MakerUnreachable
                 | SwapErrorCode::ChainUnreachable
                 | SwapErrorCode::StoreFailed
-        ) || (error.code == SwapErrorCode::SwapFailed
+        ) || (error.code != SwapErrorCode::Aborted
             && self.retryable.load(std::sync::atomic::Ordering::Relaxed))
     }
 
@@ -3621,6 +3638,8 @@ mod tests {
     struct FakeSigner {
         nonces: MusigNonces,
         requests: Mutex<Vec<(u64, &'static str)>>,
+        /// `sign_schnorr` calls to refuse first, as a locked device would.
+        locked_schnorr: Mutex<u32>,
     }
 
     impl FakeSigner {
@@ -3650,10 +3669,15 @@ mod tests {
             index: u64,
             sighash: [u8; 32],
         ) -> Result<schnorr::Signature, SwapError> {
-            Ok(signing::sign_schnorr(
-                &self.log(index, "sign_schnorr"),
-                sighash,
-            ))
+            let keys = self.log(index, "sign_schnorr");
+            {
+                let mut locked = self.locked_schnorr.lock().unwrap();
+                if *locked > 0 {
+                    *locked -= 1;
+                    return Err(SwapError::new(SwapErrorCode::SwapFailed, "device locked"));
+                }
+            }
+            Ok(signing::sign_schnorr(&keys, sighash))
         }
         async fn musig_nonce(
             &self,
@@ -4506,7 +4530,7 @@ mod tests {
     async fn a_signer_that_refuses_fails_the_spend_with_its_reason() {
         struct Refusing;
         fn locked() -> SwapError {
-            SwapError::new(SwapErrorCode::SwapFailed, "device locked")
+            SwapError::new(SwapErrorCode::Aborted, "device locked")
         }
         #[macros::async_trait]
         impl SwapSigner for Refusing {
@@ -4552,6 +4576,35 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("device locked"), "{err}");
         assert!(h.flows.claim.lock().unwrap().is_empty());
+        let coded = SwapError::from_core(err, Some(&record.id));
+        assert_eq!(coded.code, SwapErrorCode::Aborted);
+        assert_eq!(coded.swap_id.as_deref(), Some(record.id.as_str()));
+    }
+
+    #[macros::async_test_all]
+    async fn a_refund_the_signer_refuses_once_is_retried_not_failed() {
+        let h = harness_with(
+            Arc::new(MemoryStore::new()),
+            FakeFlows {
+                refund_confirms_on: Some(2),
+                ..Default::default()
+            },
+        );
+        let swap = started_submarine(&h).await;
+        *h.signer.locked_schnorr.lock().unwrap() = 1;
+        h.maker
+            .script(&["transaction.mempool", "invoice.failedToPay"]);
+        let err = swap.settled().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::SwapFailed);
+        assert_eq!(swap.phase(), SwapPhase::Refunded);
+        let schnorr = h
+            .signer
+            .requests()
+            .iter()
+            .filter(|(_, r)| *r == "sign_schnorr")
+            .count();
+        assert_eq!(schnorr, 2);
+        assert_eq!(h.flows.refund.lock().unwrap().len(), 1);
     }
 
     #[macros::async_test_all]

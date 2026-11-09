@@ -20,6 +20,12 @@ its keys in a hardware wallet, a secure enclave or a remote service.
 - Signatures returned by a signer are checked before they go into a
   transaction: a script-path signature against the swap key, a partial
   signature against the session.
+- A MuSig2 nonce from `MusigNonces` (behind `MnemonicSigner`) signs only for
+  the key and session it was generated for; any other call is an error that
+  leaves the nonce in place.
+- A signer error keeps its own code (`Error::Signer` in the core), and a
+  claim or refund the signer could not sign is retried on the next tick
+  instead of failing the swap.
 - Rust: the claim and refund builders take a `SpendSigner`
   (`SwapScript::construct_claim_with_signer`,
   `construct_refund_with_signer`, `sign_claim_with`, `sign_refund_with` on the

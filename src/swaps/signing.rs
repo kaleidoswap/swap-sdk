@@ -75,7 +75,16 @@ pub trait SpendSigner: Send + Sync {
 /// key in memory keeps one of these next to it.
 #[derive(Default)]
 pub struct MusigNonces {
-    pending: Mutex<Vec<(musig::PublicNonce, musig::SecretNonce)>>,
+    pending: Mutex<Vec<PendingNonce>>,
+}
+
+/// A secret nonce with the key and session it was generated for; it signs
+/// for nothing else.
+struct PendingNonce {
+    public: musig::PublicNonce,
+    secret: musig::SecretNonce,
+    signer: PublicKey,
+    session: MusigSession,
 }
 
 /// Sessions abandoned before their partial signature (the counterparty never
@@ -106,7 +115,12 @@ impl MusigNonces {
         if pending.len() >= MAX_PENDING_NONCES {
             pending.remove(0);
         }
-        pending.push((pub_nonce, sec_nonce));
+        pending.push(PendingNonce {
+            public: pub_nonce,
+            secret: sec_nonce,
+            signer: pubkey,
+            session: session.clone(),
+        });
         Ok(pub_nonce)
     }
 
@@ -117,27 +131,32 @@ impl MusigNonces {
         our_nonce: &musig::PublicNonce,
         their_nonce: &musig::PublicNonce,
     ) -> Result<musig::PartialSignature, Error> {
-        session.ensure_signs_for(&keys.public_key())?;
+        let pubkey = keys.public_key();
+        session.ensure_signs_for(&pubkey)?;
         let cache = session.key_agg_cache()?;
         let sec_nonce = {
             let mut pending = self.lock()?;
             let at = pending
                 .iter()
-                .position(|(pub_nonce, _)| pub_nonce == our_nonce)
+                .position(|p| p.public == *our_nonce)
                 .ok_or_else(|| {
                     Error::Protocol("MuSig2 nonce is unknown or already used".to_string())
                 })?;
-            pending.remove(at).1
+            // A nonce signs only for the key and session it was made for; a
+            // mismatch leaves it in place for the right call.
+            if pending[at].signer != pubkey || pending[at].session != *session {
+                return Err(Error::Protocol(
+                    "MuSig2 nonce was generated for another key or session".to_string(),
+                ));
+            }
+            pending.remove(at).secret
         };
         let agg_nonce = musig::AggregatedNonce::new(&[their_nonce, our_nonce]);
         let musig_session = musig::Session::new(&cache, agg_nonce, &session.sighash);
         Ok(musig_session.partial_sign(sec_nonce, &convert_keypair(keys), &cache))
     }
 
-    fn lock(
-        &self,
-    ) -> Result<std::sync::MutexGuard<'_, Vec<(musig::PublicNonce, musig::SecretNonce)>>, Error>
-    {
+    fn lock(&self) -> Result<std::sync::MutexGuard<'_, Vec<PendingNonce>>, Error> {
         self.pending
             .lock()
             .map_err(|_| Error::Generic("MuSig2 nonce store poisoned".to_string()))
@@ -294,6 +313,36 @@ mod tests {
             .musig_partial_sign(&session, &our_nonce, &their_nonce)
             .await
             .is_err());
+    }
+
+    #[macros::test_all]
+    fn a_nonce_signs_only_for_its_own_key_and_session() {
+        let secp = Secp256k1::new();
+        let ours = Keypair::new(&secp, &mut OsRng);
+        let other = Keypair::new(&secp, &mut OsRng);
+        let theirs = Keypair::new(&secp, &mut OsRng);
+        let nonces = MusigNonces::new();
+        let our_session = session(&ours, &theirs);
+        let other_session = session(&other, &theirs);
+        let our_nonce = nonces.generate(&ours, &our_session).unwrap();
+        let their_nonce = MusigNonces::new().generate(&theirs, &our_session).unwrap();
+
+        // Another key, through a session that includes it.
+        assert!(nonces
+            .sign(&other, &other_session, &our_nonce, &their_nonce)
+            .is_err());
+        // The right key, another sighash.
+        let moved = MusigSession {
+            sighash: [1; 32],
+            ..our_session.clone()
+        };
+        assert!(nonces
+            .sign(&ours, &moved, &our_nonce, &their_nonce)
+            .is_err());
+        // The nonce is still there for the call it was made for.
+        nonces
+            .sign(&ours, &our_session, &our_nonce, &their_nonce)
+            .unwrap();
     }
 
     #[macros::async_test_all]

@@ -2866,7 +2866,7 @@ fn hl_store_err(e: impl std::fmt::Display) -> hl::SwapError {
 }
 
 fn hl_signer_err(e: impl std::fmt::Display) -> hl::SwapError {
-    hl::SwapError::new(hl::SwapErrorCode::SwapFailed, format!("signer: {e}"))
+    hl::SwapError::new(hl::SwapErrorCode::SwapFailed, e.to_string())
 }
 
 struct JsStore(JsHandle);

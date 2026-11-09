@@ -242,7 +242,7 @@ fn store_err(e: impl std::fmt::Display) -> core::SwapError {
 }
 
 fn signer_err(e: impl std::fmt::Display) -> core::SwapError {
-    core::SwapError::new(SwapErrorCode::SwapFailed, format!("signer: {e}"))
+    core::SwapError::new(SwapErrorCode::SwapFailed, e.to_string())
 }
 
 // ---------------------------------------------------------------------------
