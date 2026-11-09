@@ -378,6 +378,146 @@ impl WasmSwapMasterKey {
     }
 }
 
+/// A swap signer over a swap mnemonic held in memory, in the shape the
+/// KaleidoSwap `signer` option takes. Hex in, hex out; a MuSig2 session is
+/// `{ pubkeys: [hex, hex], tweak, sighash }`.
+#[wasm_bindgen]
+pub struct WasmMnemonicSigner {
+    master: SwapMasterKey,
+    nonces: kaleidorg_swap_sdk::swaps::signing::MusigNonces,
+}
+
+#[derive(serde::Deserialize)]
+struct JsMusigSession {
+    pubkeys: Vec<String>,
+    tweak: String,
+    sighash: String,
+}
+
+fn parse_hex32(hex: &str, what: &str) -> Result<[u8; 32], JsValue> {
+    hex_decode_bytes(hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+        .ok_or_else(|| arg_err(format!("{what} must be 32 bytes of hex")))
+}
+
+fn parse_musig_session(
+    value: JsValue,
+) -> Result<kaleidorg_swap_sdk::swaps::signing::MusigSession, JsValue> {
+    let session: JsMusigSession = serde_wasm_bindgen::from_value(value).map_err(arg_err)?;
+    let [a, b] = <[String; 2]>::try_from(session.pubkeys)
+        .map_err(|_| arg_err("a MuSig2 session has two public keys"))?;
+    let key = |hex: &str| {
+        kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey::from_str(hex).map_err(arg_err)
+    };
+    Ok(kaleidorg_swap_sdk::swaps::signing::MusigSession {
+        pubkeys: [key(&a)?, key(&b)?],
+        tweak: parse_hex32(&session.tweak, "tweak")?,
+        sighash: parse_hex32(&session.sighash, "sighash")?,
+    })
+}
+
+fn parse_public_nonce(
+    hex: &str,
+) -> Result<kaleidorg_swap_sdk::kaleidoswap::musig::PublicNonce, JsValue> {
+    kaleidorg_swap_sdk::kaleidoswap::musig::PublicNonce::from_str(hex)
+        .map_err(|e| arg_err(format!("public nonce: {e:?}")))
+}
+
+#[wasm_bindgen]
+impl WasmMnemonicSigner {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        mnemonic: StringArg,
+        passphrase: Option<StringArg>,
+        network: StringArg,
+    ) -> Result<WasmMnemonicSigner, JsValue> {
+        let mnemonic = str_arg(mnemonic, "mnemonic")?;
+        let passphrase = opt_str_arg(passphrase, "passphrase")?;
+        let network = str_arg(network, "network")?;
+        let master = SwapMasterKey::from_mnemonic(
+            &mnemonic,
+            passphrase.as_deref(),
+            parse_network(&network)?,
+        )
+        .map_err(core_err)?;
+        Ok(WasmMnemonicSigner {
+            master,
+            nonces: Default::default(),
+        })
+    }
+
+    fn keys(&self, index: u64) -> Result<Keypair, JsValue> {
+        self.master.derive_swapkey(index).map_err(core_err)
+    }
+
+    /// The compressed public key of swap `index`.
+    #[wasm_bindgen(js_name = publicKey)]
+    pub fn public_key(&self, index: u64) -> Result<String, JsValue> {
+        Ok(self.keys(index)?.public_key().to_string())
+    }
+
+    /// The preimage of swap `index`, as `{ preimage, sha256, hash160 }` hex.
+    #[wasm_bindgen(js_name = derivePreimage)]
+    pub fn derive_preimage(&self, index: u64) -> Result<JsValue, JsValue> {
+        let p = Preimage::from_swap_key(&self.keys(index)?);
+        let preimage = p
+            .to_string()
+            .ok_or_else(|| internal_err("derived preimage has no bytes"))?;
+        to_js(&DerivedPreimage {
+            preimage,
+            sha256: p.sha256.to_string(),
+            hash160: p.hash160.to_string(),
+        })
+    }
+
+    /// A BIP340 signature by the untweaked key of swap `index` over a
+    /// 32-byte Taproot script-path sighash.
+    #[wasm_bindgen(js_name = signSchnorr)]
+    pub fn sign_schnorr(&self, index: u64, sighash: StringArg) -> Result<String, JsValue> {
+        let sighash = parse_hex32(&str_arg(sighash, "sighash")?, "sighash")?;
+        Ok(
+            kaleidorg_swap_sdk::swaps::signing::sign_schnorr(&self.keys(index)?, sighash)
+                .to_string(),
+        )
+    }
+
+    /// Starts a MuSig2 signature for `session`: generates and keeps a secret
+    /// nonce and returns the public nonce.
+    #[wasm_bindgen(js_name = musigNonce)]
+    pub fn musig_nonce(&self, index: u64, session: JsValue) -> Result<String, JsValue> {
+        let session = parse_musig_session(session)?;
+        let nonce = self
+            .nonces
+            .generate(&self.keys(index)?, &session)
+            .map_err(core_err)?;
+        Ok(nonce.serialize().to_lower_hex_string())
+    }
+
+    /// Finishes it: the partial signature, spending the secret nonce behind
+    /// `ourNonce`.
+    #[wasm_bindgen(js_name = musigPartialSign)]
+    pub fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: JsValue,
+        our_nonce: StringArg,
+        their_nonce: StringArg,
+    ) -> Result<String, JsValue> {
+        let session = parse_musig_session(session)?;
+        let partial = self
+            .nonces
+            .sign(
+                &self.keys(index)?,
+                &session,
+                &parse_public_nonce(&str_arg(our_nonce, "ourNonce")?)?,
+                &parse_public_nonce(&str_arg(their_nonce, "theirNonce")?)?,
+            )
+            .map_err(core_err)?;
+        Ok(partial.serialize().to_lower_hex_string())
+    }
+}
+
 fn parse_network(s: &str) -> Result<Network, JsValue> {
     match s.to_lowercase().as_str() {
         "mainnet" => Ok(Network::Mainnet),
@@ -2667,7 +2807,10 @@ pub fn validate_chain_timeout_headroom(
 // The store and the signer are JS objects the application provides:
 //   store  = { get(id) -> record | undefined, put(record), list() -> record[],
 //              nextIndex() -> bigint | number }   (each may return a Promise)
-//   signer = { deriveKey(index) -> { secretKey }, derivePreimage(index) -> { preimage } }
+//   signer = { publicKey(index) -> hex, derivePreimage(index) -> { preimage },
+//              signSchnorr(index, sighash) -> hex,
+//              musigNonce(index, session) -> hex,
+//              musigPartialSign(index, session, ourNonce, theirNonce) -> hex }
 // Records cross the store as plain JSON-compatible objects (numbers, no
 // bigint) so `JSON.stringify` and IndexedDB both take them unchanged.
 // ============================================================================
@@ -2789,15 +2932,33 @@ fn string_field(value: &JsValue, field: &str) -> Result<String, String> {
         .ok_or_else(|| format!("missing string field {field}"))
 }
 
+fn js_session(session: &hl::MusigSession) -> Result<JsValue, String> {
+    let value = serde_json::json!({
+        "pubkeys": session.pubkeys.iter().map(|k| k.to_string()).collect::<Vec<_>>(),
+        "tweak": session.tweak.to_lower_hex_string(),
+        "sighash": session.sighash.to_lower_hex_string(),
+    });
+    let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    serde::Serialize::serialize(&value, &ser).map_err(|e| e.to_string())
+}
+
+async fn js_string(signer: &JsSigner, method: &str, args: &[JsValue]) -> Result<String, String> {
+    call_js(&signer.0 .0, method, args)
+        .await?
+        .as_string()
+        .ok_or_else(|| format!("{method}() must return a hex string"))
+}
+
 #[async_trait::async_trait(?Send)]
 impl hl::SwapSigner for JsSigner {
-    async fn derive_key(&self, index: u64) -> Result<Keypair, hl::SwapError> {
-        let out = call_js(&self.0 .0, "deriveKey", &[JsValue::from(index)])
+    async fn public_key(
+        &self,
+        index: u64,
+    ) -> Result<kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey, hl::SwapError> {
+        let hex = js_string(self, "publicKey", &[JsValue::from(index)])
             .await
             .map_err(hl_signer_err)?;
-        let hex = string_field(&out, "secretKey").map_err(hl_signer_err)?;
-        let secret = SecretKey::from_str(&hex).map_err(hl_signer_err)?;
-        Ok(Keypair::from_secret_key(&Secp256k1::new(), &secret))
+        kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey::from_str(&hex).map_err(hl_signer_err)
     }
     async fn derive_preimage(&self, index: u64) -> Result<CorePreimage, hl::SwapError> {
         let out = call_js(&self.0 .0, "derivePreimage", &[JsValue::from(index)])
@@ -2806,6 +2967,53 @@ impl hl::SwapSigner for JsSigner {
         let hex = string_field(&out, "preimage").map_err(hl_signer_err)?;
         let bytes = hex_decode_bytes(&hex).map_err(hl_signer_err)?;
         CorePreimage::from_vec(bytes).map_err(|e| hl_signer_err(format!("{e:?}")))
+    }
+    async fn sign_schnorr(
+        &self,
+        index: u64,
+        sighash: [u8; 32],
+    ) -> Result<kaleidorg_swap_sdk::bitcoin::secp256k1::schnorr::Signature, hl::SwapError> {
+        let args = [
+            JsValue::from(index),
+            JsValue::from_str(&sighash.to_lower_hex_string()),
+        ];
+        let hex = js_string(self, "signSchnorr", &args)
+            .await
+            .map_err(hl_signer_err)?;
+        kaleidorg_swap_sdk::bitcoin::secp256k1::schnorr::Signature::from_str(&hex)
+            .map_err(hl_signer_err)
+    }
+    async fn musig_nonce(
+        &self,
+        index: u64,
+        session: &hl::MusigSession,
+    ) -> Result<hl::musig::PublicNonce, hl::SwapError> {
+        let args = [
+            JsValue::from(index),
+            js_session(session).map_err(hl_signer_err)?,
+        ];
+        let hex = js_string(self, "musigNonce", &args)
+            .await
+            .map_err(hl_signer_err)?;
+        hl::musig::PublicNonce::from_str(&hex).map_err(|e| hl_signer_err(format!("{e:?}")))
+    }
+    async fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: &hl::MusigSession,
+        our_nonce: &hl::musig::PublicNonce,
+        their_nonce: &hl::musig::PublicNonce,
+    ) -> Result<hl::musig::PartialSignature, hl::SwapError> {
+        let args = [
+            JsValue::from(index),
+            js_session(session).map_err(hl_signer_err)?,
+            JsValue::from_str(&our_nonce.serialize().to_lower_hex_string()),
+            JsValue::from_str(&their_nonce.serialize().to_lower_hex_string()),
+        ];
+        let hex = js_string(self, "musigPartialSign", &args)
+            .await
+            .map_err(hl_signer_err)?;
+        hl::musig::PartialSignature::from_str(&hex).map_err(|e| hl_signer_err(format!("{e:?}")))
     }
 }
 
@@ -2873,7 +3081,7 @@ impl KaleidoSwap {
         }
         if !signer.is_object() {
             return Err(arg_err(
-                "options.signer must be an object with deriveKey/derivePreimage",
+                "options.signer must be an object with publicKey/derivePreimage/signSchnorr/musigNonce/musigPartialSign",
             ));
         }
         // serde-wasm-bindgen reads only a struct's declared fields, so a

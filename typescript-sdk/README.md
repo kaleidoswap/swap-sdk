@@ -73,8 +73,11 @@ and `nextIndex`: the `SwapStore` interface, whose methods may return a value
 or a promise. Records are plain JSON-compatible objects; persist them
 verbatim. Their `state` carries the maker's `swapAuth` and the material a
 refund needs, so treat the store as secret and do not log records or send them
-to telemetry. A wallet that keeps its seed elsewhere implements `SwapSigner`
-(`deriveKey`, `derivePreimage`) instead of `mnemonicSigner`.
+to telemetry. A wallet that keeps its keys elsewhere, such as a hardware device or a remote
+signer, implements `SwapSigner` (`publicKey`, `derivePreimage`, `signSchnorr`,
+`musigNonce`, `musigPartialSign`) instead of `mnemonicSigner`: the SDK asks for
+public keys and signatures, never for a secret key. The MuSig2 secret nonce
+stays in the signer, and each one signs once.
 
 **Store rules.**
 

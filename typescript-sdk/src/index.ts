@@ -12,6 +12,7 @@ import initWasm, {
   RgbCooperativeRefund as WasmRgbCooperativeRefund,
   SwapScript as WasmSwapScript,
   WasmSwapMasterKey,
+  WasmMnemonicSigner,
   KaleidoSwap as WasmKaleidoSwap,
 } from "../vendor/bindings_wasm.js";
 import {
@@ -1241,20 +1242,25 @@ export const wasmKaleidoSwapClass =
   WasmKaleidoSwap as unknown as WasmKaleidoSwapCore["KaleidoSwap"];
 
 /**
- * A {@link SwapSigner} over a swap mnemonic (`SwapMasterKey.fromSwapMnemonic`).
- * The master key is built on first use, after `init()` has run.
+ * A {@link SwapSigner} over a swap mnemonic (`SwapMasterKey.fromSwapMnemonic`)
+ * held in memory. The signer is built on first use, after `init()` has run.
  */
 export function mnemonicSigner(
   mnemonic: string,
   network: Network,
   passphrase?: string,
 ): SwapSigner {
-  let master: SwapMasterKey | undefined;
+  let inner: WasmMnemonicSigner | undefined;
   const get = () =>
-    (master ??= SwapMasterKey.fromSwapMnemonic(mnemonic, network, passphrase));
+    (inner ??= new WasmMnemonicSigner(mnemonic, passphrase, network));
   return {
-    deriveKey: (index) => get().deriveSwapKey(BigInt(index)),
-    derivePreimage: (index) => get().derivePreimage(BigInt(index)),
+    publicKey: (index) => get().publicKey(BigInt(index)),
+    derivePreimage: (index) =>
+      get().derivePreimage(BigInt(index)) as DerivedPreimage,
+    signSchnorr: (index, sighash) => get().signSchnorr(BigInt(index), sighash),
+    musigNonce: (index, session) => get().musigNonce(BigInt(index), session),
+    musigPartialSign: (index, session, ourNonce, theirNonce) =>
+      get().musigPartialSign(BigInt(index), session, ourNonce, theirNonce),
   };
 }
 
