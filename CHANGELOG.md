@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- `KaleidoSwap`: a submarine refund takes the script path only once the
+  lockup's timelock has matured. Before that, a failed cooperative refund is
+  retried on the next tick instead of saving a script-path refund that cannot
+  confirm yet, and `watch` keeps following the swap.
+
 ### Added
 
 - The regtest suite runs a `KaleidoSwap` submarine swap whose Lightning
