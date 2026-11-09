@@ -583,9 +583,9 @@ test("phases(): abandoning the iterator leaves no unhandled rejection", async (t
     pollIntervalMs: 1,
   });
   const { resumed } = await k.resume();
-  status = "transaction.claim.pending"; // the first transition the iterator sees
+  status = "transaction.mempool"; // the first transition the iterator sees
   for await (const phase of resumed[0].phases()) {
-    assert.equal(phase, "claiming");
+    assert.equal(phase, "funded");
     break; // the consumer walks away…
   }
   status = "swap.expired"; // …and the swap then ends in `failed`
