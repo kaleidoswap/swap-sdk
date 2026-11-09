@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-09
+
+A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims
+follow the chain once started, and store indexes are taken exclusively.
+Recommended for every 0.14.0 user; see the security advisory
+GHSA-27v4-cvw8-64rf.
+
 ### Changed
 
 - `KaleidoSwap`: once a reverse swap's claim is started, it is followed on
