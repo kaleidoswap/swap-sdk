@@ -2556,25 +2556,30 @@ fn maximum_funding(payout: u64, rate: f64, total_fees: impl Fn(u64) -> u64) -> R
     let mut settled = false;
     for _ in 0..64 {
         let next = payout.saturating_add(total_fees(gross));
+        if next == u64::MAX {
+            break;
+        }
         if next <= gross {
             settled = true;
             break;
         }
         gross = next;
     }
-    if !settled {
+    if !settled || gross == u64::MAX {
         return Err(Error::Protocol(
             "Pair fees do not leave a payout".to_string(),
         ));
     }
     let converted = ((gross as f64) / rate).ceil();
-    if !converted.is_finite() || converted > u64::MAX as f64 {
+    if !converted.is_finite() || converted >= u64::MAX as f64 {
         return Err(Error::Protocol(
             "Pair rate conversion overflows".to_string(),
         ));
     }
     let slack = u64::from(rate != 1.0);
-    Ok((converted as u64).saturating_add(slack))
+    (converted as u64)
+        .checked_add(slack)
+        .ok_or_else(|| Error::Protocol("Pair rate conversion overflows".to_string()))
 }
 
 fn convert_at_rate(amount: u64, rate: f64) -> Result<u64, Error> {
@@ -5362,6 +5367,9 @@ mod tests {
 
         // Fees that never leave a payout are an error, not a bound.
         assert!(maximum_funding(100_000, 1.0, |amount| amount).is_err());
+        assert!(maximum_funding(100_000, 1.0, |_| u64::MAX).is_err());
+        assert!(maximum_funding(u64::MAX, 1.0, |_| 0).is_err());
+        assert!(maximum_funding(u64::MAX / 2, 1e-9, |_| 0).is_err());
         assert!(maximum_funding(100_000, 0.0, |_| 0).is_err());
     }
 
