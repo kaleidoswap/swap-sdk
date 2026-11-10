@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-11-10
+
+A patch release with one fix on top of 0.14.1.
+
+### Fixed
+
+- The amount to lock that a submarine or chain swap is checked against now
+  converts the pair card's fees together with the payout, since they are in
+  the payout's units, and charges the fee percentage on the gross amount.
+  Submarine swaps that fund an asset (such as USDT-RGB or L-USDT to
+  Lightning) no longer reject the maker's quote, and on chain swaps the bound
+  is in the lockup's units. A bound that would reach `u64::MAX` is an error.
+
 ## [0.14.1] - 2026-11-09
 
 A patch release for the `KaleidoSwap` high-level layer: reverse-swap claims
