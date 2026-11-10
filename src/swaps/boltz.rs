@@ -2540,19 +2540,46 @@ fn minimum_payout(amount: u64, rate: f64, total_fees: u64) -> Result<u64, Error>
     Ok(converted.saturating_sub(total_fees))
 }
 
-/// The most a caller can be asked to lock for a `payout` under a rate card:
-/// the payout converted back at `rate`, plus every fee the card lists.
-fn maximum_funding(payout: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+/// The most a caller can be asked to lock for a `payout` under a rate card.
+///
+/// A card's fees are denominated in the payout's units, so they are added to
+/// the payout before converting back at `rate`. `total_fees` is the card's
+/// fee for an amount: it is charged on the gross amount (payout plus fees),
+/// the smallest one that still covers its own fee, which also bounds a maker
+/// that charges the percentage on the payout alone. A pair with a rate other
+/// than 1 gets one unit of slack for rounding the rate.
+fn maximum_funding(payout: u64, rate: f64, total_fees: impl Fn(u64) -> u64) -> Result<u64, Error> {
     if !(rate.is_finite() && rate > 0.0) {
         return Err(Error::Protocol(format!("Pair rate {rate} is not usable")));
     }
-    let converted = ((payout as f64) / rate).ceil();
-    if !converted.is_finite() || converted > u64::MAX as f64 {
+    let mut gross = payout.saturating_add(total_fees(payout));
+    let mut settled = false;
+    for _ in 0..64 {
+        let next = payout.saturating_add(total_fees(gross));
+        if next == u64::MAX {
+            break;
+        }
+        if next <= gross {
+            settled = true;
+            break;
+        }
+        gross = next;
+    }
+    if !settled || gross == u64::MAX {
+        return Err(Error::Protocol(
+            "Pair fees do not leave a payout".to_string(),
+        ));
+    }
+    let converted = ((gross as f64) / rate).ceil();
+    if !converted.is_finite() || converted >= u64::MAX as f64 {
         return Err(Error::Protocol(
             "Pair rate conversion overflows".to_string(),
         ));
     }
-    Ok((converted as u64).saturating_add(total_fees))
+    let slack = u64::from(rate != 1.0);
+    (converted as u64)
+        .checked_add(slack)
+        .ok_or_else(|| Error::Protocol("Pair rate conversion overflows".to_string()))
 }
 
 fn convert_at_rate(amount: u64, rate: f64) -> Result<u64, Error> {
@@ -2776,7 +2803,7 @@ impl CreateSubmarineResponse {
             })?;
             let invoice_amount = amount_msat.div_ceil(1_000);
             let maximum =
-                maximum_funding(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+                maximum_funding(invoice_amount, pair.rate, |amount| pair.fees.total(amount))?;
             if self.expected_amount > maximum {
                 return Err(Error::Protocol(format!(
                     "Submarine swap expectedAmount {} is above the {maximum} the accepted pair card implies for the invoice",
@@ -3830,11 +3857,9 @@ impl CreateChainResponse {
                 )));
             }
             if let Some(pair) = pair {
-                let maximum = maximum_funding(
-                    server_lock_amount,
-                    pair.rate,
-                    pair.fees.total(server_lock_amount),
-                )?;
+                let maximum = maximum_funding(server_lock_amount, pair.rate, |amount| {
+                    pair.fees.total(amount)
+                })?;
                 if self.lockup_details.amount > maximum {
                     return Err(Error::Protocol(format!(
                         "Chain swap lockup amount {} is above the {maximum} the accepted pair card implies for serverLockAmount {server_lock_amount}",
@@ -5038,12 +5063,15 @@ mod tests {
             "fees": { "percentage": 0.1, "minerFees": 500 },
         }))
         .unwrap();
-        // 100_000 + 100 (0.1%) + 500.
+        // 100_000 + 101 (0.1% of the gross 100_601) + 500.
         let address = submarine_response(0, "").address;
         submarine_response(100_600, "")
             .validate_amounts(&invoice, Some(&pair))
             .unwrap();
-        let err = submarine_response(100_601, "")
+        submarine_response(100_601, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        let err = submarine_response(100_602, "")
             .validate_amounts(&invoice, Some(&pair))
             .unwrap_err();
         assert!(err.to_string().contains("above"), "{err}");
@@ -5051,7 +5079,7 @@ mod tests {
             .validate_amounts(&invoice, None)
             .is_err());
         // The same inflated amount is a fresh quote without an accepted pair.
-        submarine_response(100_601, "")
+        submarine_response(100_602, "")
             .validate_amounts(&invoice, None)
             .unwrap();
 
@@ -5299,14 +5327,15 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("below"), "{err}");
 
+        // 100_000 + 101 (0.1% of the gross 100_701) + 600.
         let server_fixed = chain_create_request(None, Some(100_000));
-        chain_create_response(100_700, 100_000)
+        chain_create_response(100_701, 100_000)
             .validate_amounts(&server_fixed, Some(&pair))
             .unwrap();
         chain_create_response(100_200, 100_000)
             .validate_amounts(&server_fixed, Some(&pair))
             .unwrap();
-        let err = chain_create_response(100_701, 100_000)
+        let err = chain_create_response(100_702, 100_000)
             .validate_amounts(&server_fixed, Some(&pair))
             .unwrap_err();
         assert!(err.to_string().contains("above"), "{err}");
@@ -5317,6 +5346,99 @@ mod tests {
         assert!(chain_create_response(100_000, 99_300)
             .validate_amounts(&user_fixed, Some(&broken))
             .is_err());
+    }
+
+    /// Fees are in the payout's units, so on an asset pair they are added to
+    /// the payout before converting back at the rate.
+    #[test]
+    fn maximum_funding_converts_the_fees_with_the_payout() {
+        // USDT-RGB@L1/BTC@LN: 0.65% + 1000 sat on a 27_455 sat invoice. The
+        // maker asks for 21_004_201 units of the asset for a gross 28_641 sat.
+        let fees = |amount: u64| ((0.65 / 100.0) * amount as f64).ceil() as u64 + 1_000;
+        let maximum = maximum_funding(27_455, 0.001_363_584_3, fees).unwrap();
+        assert_eq!(maximum, 21_004_937);
+        assert!(maximum >= 21_004_201);
+
+        // Rate 1.0 keeps the payout's own units: 100_000 + 101 + 500.
+        let fees = |amount: u64| ((0.1 / 100.0) * amount as f64).ceil() as u64 + 500;
+        assert_eq!(maximum_funding(100_000, 1.0, fees).unwrap(), 100_601);
+        // No fees, no slack.
+        assert_eq!(maximum_funding(100_000, 1.0, |_| 0).unwrap(), 100_000);
+
+        // Fees that never leave a payout are an error, not a bound.
+        assert!(maximum_funding(100_000, 1.0, |amount| amount).is_err());
+        assert!(maximum_funding(100_000, 1.0, |_| u64::MAX).is_err());
+        assert!(maximum_funding(u64::MAX, 1.0, |_| 0).is_err());
+        assert!(maximum_funding(u64::MAX / 2, 1e-9, |_| 0).is_err());
+        assert!(maximum_funding(100_000, 0.0, |_| 0).is_err());
+    }
+
+    #[test]
+    fn submarine_asset_amount_is_bounded_in_the_asset_units() {
+        use lightning_invoice::Currency as LnCurrency;
+        let invoice = signed_invoice(
+            LnCurrency::Regtest,
+            Some(27_455_000),
+            sha256::Hash::hash(&[4u8; 32]),
+        );
+        let pair: SubmarinePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 0.001_363_584_3,
+            "limits": { "maximal": 869_811_463, "minimal": 10_000_000, "maximalZeroConf": 0 },
+            "fees": { "percentage": 0.65, "minerFees": 1_000 },
+        }))
+        .unwrap();
+        submarine_response(21_004_201, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        submarine_response(21_004_937, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        let err = submarine_response(21_004_938, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
+
+        // L-USDT@LIQUID/BTC@LN: 0.45% + 500 sat. The maker asks for
+        // 2_061_500_108 units for a gross 28_081 sat.
+        let pair: SubmarinePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 1.362_163_402_254_021_9e-5,
+            "limits": { "maximal": 86_713_972_645_u64, "minimal": 1_000_000_000, "maximalZeroConf": 0 },
+            "fees": { "percentage": 0.45, "minerFees": 500 },
+        }))
+        .unwrap();
+        submarine_response(2_061_500_108, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap();
+        let err = submarine_response(2_061_573_522, "")
+            .validate_amounts(&invoice, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
+    }
+
+    #[test]
+    fn chain_asset_lockup_is_bounded_in_the_lockup_units() {
+        // BTC@L1/L-USDT@LIQUID: the server fee is in L-USDT units.
+        let pair: ChainPair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 73_090.236_45,
+            "limits": { "maximal": 34_353_757, "minimal": 50_000, "maximalZeroConf": 0 },
+            "fees": {
+                "percentage": 0.5,
+                "minerFees": { "server": 91_362_796, "user": { "lockup": 200, "claim": 100 } },
+            },
+        }))
+        .unwrap();
+        let server_fixed = chain_create_request(None, Some(2_000_000_000));
+        // The maker asks for 28_758 sat.
+        chain_create_response(28_758, 2_000_000_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(28_760, 2_000_000_000)
+            .validate_amounts(&server_fixed, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("above"), "{err}");
     }
 
     /// Every create response must keep the maker's per-swap taker credential.
