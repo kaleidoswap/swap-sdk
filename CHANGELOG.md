@@ -41,12 +41,6 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   lockup's timelock has matured. Before that, a failed cooperative refund is
   retried on the next tick instead of saving a script-path refund that cannot
   confirm yet, and `watch` keeps following the swap.
-- The amount to lock that a submarine or chain swap is checked against now
-  converts the pair card's fees together with the payout, since they are in
-  the payout's units, and charges the fee percentage on the gross amount.
-  Submarine swaps that fund an asset (such as USDT-RGB or L-USDT to
-  Lightning) no longer reject the maker's quote, and on chain swaps the bound
-  is in the lockup's units.
 
 ### Added
 
@@ -78,6 +72,19 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   `DefaultFlows::new` no longer takes one, and `KaleidoSwap::with_seams`
   returns a `Result`. `EsploraBitcoinClient` and `EsploraLiquidClient` gain
   `fee_estimates`.
+
+## [0.14.2] - 2026-11-10
+
+A patch release with one fix on top of 0.14.1.
+
+### Fixed
+
+- The amount to lock that a submarine or chain swap is checked against now
+  converts the pair card's fees together with the payout, since they are in
+  the payout's units, and charges the fee percentage on the gross amount.
+  Submarine swaps that fund an asset (such as USDT-RGB or L-USDT to
+  Lightning) no longer reject the maker's quote, and on chain swaps the bound
+  is in the lockup's units. A bound that would reach `u64::MAX` is an error.
 
 ## [0.14.1] - 2026-11-09
 
