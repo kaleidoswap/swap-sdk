@@ -41,6 +41,10 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   lockup's timelock has matured. Before that, a failed cooperative refund is
   retried on the next tick instead of saving a script-path refund that cannot
   confirm yet, and `watch` keeps following the swap.
+- Esplora `get_output_status` (Bitcoin and Liquid) reads transaction presence
+  from `/tx/{txid}`, so it returns `None` for a transaction the server has not
+  seen, as documented, and errors on an output index the transaction does not
+  have.
 
 ### Added
 
