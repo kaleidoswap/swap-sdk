@@ -41,6 +41,9 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   lockup's timelock has matured. Before that, a failed cooperative refund is
   retried on the next tick instead of saving a script-path refund that cannot
   confirm yet, and `watch` keeps following the swap.
+- The swap status response (`get_swap`, and the TypeScript pay-through
+  `status`) accepts `failureDetails` as a JSON object as well as a string.
+  An object is returned as its JSON text, so the field's type is unchanged.
 
 ### Added
 

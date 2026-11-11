@@ -132,6 +132,17 @@ function stringField(value: unknown, field: string): string {
   return value;
 }
 
+/**
+ * Failure detail as text: a string as itself, a JSON object (such as
+ * `{ expected, actual }` for an amount mismatch) as its JSON text.
+ */
+function detailText(value: unknown): string {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  return stringField(value, "failureDetails");
+}
+
 function amount(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
     throw new Error(`Invalid maker pay-through amount: ${field}`);
@@ -491,9 +502,7 @@ export class PayThroughClient {
           ? null
           : stringField(raw.failureReason, "failureReason"),
       failureDetails:
-        raw.failureDetails == null
-          ? null
-          : stringField(raw.failureDetails, "failureDetails"),
+        raw.failureDetails == null ? null : detailText(raw.failureDetails),
       events: raw.events.map((event: unknown) => {
         const entry = object(event);
         return {
