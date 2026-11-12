@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — RGB HTLC locks hand their consignment over out of band
+
+Makers on rgb-lib 0.11.2 speak RGB proxy protocol 1.0, which has no lookup by
+recipient id, so an RGB swap's lock consignment no longer travels through a
+proxy.
+
+- `RgbLock` and `RgbHtlcContext` drop `transportEndpoints`. **Breaking** for
+  callers that read it; the taker's lock is an rgb-lib donation `send` to the
+  HTLC script with no transport endpoint.
+- New `RgbLockConsignment` (`{ consignment, txid, vout }`, consignment base64).
+- `post_rgb_lock_consignment` / `postRgbLockConsignment` hands a submarine's
+  lock consignment to the maker (`POST /v2/swap/submarine/{id}/rgb-lock`), and
+  `get_rgb_lock_consignment` / `getRgbLockConsignment` reads the maker's lock of
+  a reverse swap (`GET /v2/swap/reverse/{id}/rgb-lock`). Both need the swap's
+  `swapAuth`.
+
 ### BREAKING — `SwapSigner` signs instead of handing out a keypair
 
 `KaleidoSwap` no longer asks the signer for a secret key, so a signer can keep

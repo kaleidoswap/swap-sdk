@@ -98,8 +98,7 @@ pub struct RgbLock {
     /// or `onchainAmount` (reverse).
     /// RGB contract units (six decimals for USDT-RGB), not Bitcoin satoshis.
     pub amount: u64,
-    /// rgb-lib witness recipient id of the HTLC script, the proxy key the
-    /// lock consignment is posted under.
+    /// rgb-lib witness recipient id of the HTLC script.
     pub recipient_id: String,
     /// Seal blinding the maker chose, as a decimal string.
     pub blinding: String,
@@ -111,10 +110,28 @@ pub struct RgbLock {
     pub claim_fee_rate: Option<u64>,
     /// The HTLC output script, hex. The same P2TR as the swap address.
     pub script_pubkey: String,
-    /// RGB proxy endpoints the lock consignment is posted to.
-    pub transport_endpoints: Vec<String>,
     /// Confirmations the lock needs before the other side acts on it.
     pub min_confirmations: u8,
+}
+
+/// An RGB lock's consignment, handed over out of band: proxy protocol 1.0 has
+/// no lookup by recipient id, so neither side can fetch the other's lock from
+/// a proxy.
+///
+/// The taker of a submarine posts its lock with
+/// [`crate::swaps::boltz::BoltzApiClientV2::post_rgb_lock_consignment`]; the
+/// taker of a reverse swap reads the maker's lock with
+/// [`crate::swaps::boltz::BoltzApiClientV2::get_rgb_lock_consignment`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "typescript", derive(ts_rs::TS))]
+pub struct RgbLockConsignment {
+    /// The rgb-lib transfer consignment, base64.
+    pub consignment: String,
+    /// The lock transaction id.
+    pub txid: String,
+    /// The HTLC output of the lock transaction.
+    pub vout: u32,
 }
 
 /// The RGB networks a witness recipient id can name, by the prefix rgb-lib
@@ -288,17 +305,19 @@ fn same_contract_id(a: &str, b: &str) -> bool {
 /// # Locking (submarine)
 ///
 /// The taker locks with rgb-lib's `send`. It uses `donation: true`, because
-/// the maker never ACKs, and one recipient built from these fields:
+/// the maker never ACKs, and one recipient with no transport endpoint, built
+/// from these fields:
 ///
 /// ```text
 /// Recipient {
 ///     recipient_id: recipient_id,
 ///     witness_data: Some(WitnessData { amount_sat: htlc_sat, blinding: Some(blinding) }),
 ///     assignment: Assignment::Fungible(amount),
-///     transport_endpoints: transport_endpoints,
+///     transport_endpoints: vec![],
 /// }
 /// ```
 ///
+/// Then it hands the lock's consignment over as an [`RgbLockConsignment`].
 /// Keep the lock transaction's id: a refund spends exactly that outpoint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RgbHtlcContext {
@@ -311,7 +330,6 @@ pub struct RgbHtlcContext {
     pub htlc_sat: u64,
     pub claim_fee_rate: Option<u64>,
     pub script_pubkey: ScriptBuf,
-    pub transport_endpoints: Vec<String>,
     pub min_confirmations: u8,
 }
 
@@ -345,16 +363,6 @@ impl RgbHtlcContext {
                 "RGB lock must require at least one confirmation".to_string(),
             ));
         }
-        if lock.transport_endpoints.is_empty()
-            || !lock
-                .transport_endpoints
-                .iter()
-                .all(|e| e.starts_with("rpc://") || e.starts_with("rpcs://"))
-        {
-            return Err(Error::Protocol(
-                "RGB transport endpoints must be rpc:// or rpcs:// proxies".to_string(),
-            ));
-        }
         if lock.claim_fee_rate == Some(0) {
             return Err(Error::Protocol("RGB claim fee rate is zero".to_string()));
         }
@@ -372,7 +380,6 @@ impl RgbHtlcContext {
             htlc_sat: lock.htlc_sat,
             claim_fee_rate: lock.claim_fee_rate,
             script_pubkey,
-            transport_endpoints: lock.transport_endpoints.clone(),
             min_confirmations: lock.min_confirmations,
         })
     }
@@ -1404,7 +1411,6 @@ mod tests {
             htlc_sat,
             claim_fee_rate: Some(5),
             script_pubkey: script_pubkey.clone(),
-            transport_endpoints: vec!["rpc://127.0.0.1:3000/json-rpc".to_string()],
             min_confirmations: 1,
         });
         Fixture {
@@ -1773,7 +1779,6 @@ mod tests {
             htlc_sat: rgb.htlc_sat,
             claim_fee_rate: (f.script.swap_type == SwapType::ReverseSubmarine).then_some(5),
             script_pubkey: rgb.script_pubkey.to_hex_string(),
-            transport_endpoints: rgb.transport_endpoints.clone(),
             min_confirmations: rgb.min_confirmations,
         }
     }
@@ -1864,7 +1869,6 @@ mod tests {
             "htlcSat": 1521,
             "claimFeeRate": 5,
             "scriptPubkey": RECIPIENT_VECTORS[1].0,
-            "transportEndpoints": ["rpcs://proxy.iriswallet.com/0.2/json-rpc"],
             "minConfirmations": 1
         });
         let lock: RgbLock = serde_json::from_value(json.clone()).unwrap();
@@ -1981,12 +1985,6 @@ mod tests {
         rejects("a non-numeric blinding", &|r| {
             r.rgb = Some(RgbLock {
                 blinding: "0x2a".to_string(),
-                ..lock(r)
-            })
-        });
-        rejects("an HTTP transport", &|r| {
-            r.rgb = Some(RgbLock {
-                transport_endpoints: vec!["https://proxy.example/json-rpc".to_string()],
                 ..lock(r)
             })
         });

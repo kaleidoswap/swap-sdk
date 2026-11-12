@@ -600,6 +600,33 @@ impl SwapClient {
             .await?)
     }
 
+    /// Hand the maker a submarine's RGB lock consignment, out of band.
+    #[uniffi::method]
+    pub async fn post_rgb_lock_consignment(
+        &self,
+        swap_id: &str,
+        lock: kaleidorg_swap_sdk::swaps::rgb::RgbLockConsignment,
+        swap_auth: &str,
+    ) -> Result<(), Error> {
+        Ok(self
+            .inner
+            .post_rgb_lock_consignment(swap_id, &lock, swap_auth)
+            .await?)
+    }
+
+    /// The maker's RGB lock consignment of a reverse swap, once it is sent.
+    #[uniffi::method]
+    pub async fn get_rgb_lock_consignment(
+        &self,
+        swap_id: &str,
+        swap_auth: &str,
+    ) -> Result<kaleidorg_swap_sdk::swaps::rgb::RgbLockConsignment, Error> {
+        Ok(self
+            .inner
+            .get_rgb_lock_consignment(swap_id, swap_auth)
+            .await?)
+    }
+
     /// The maker's Lightning nodes, keyed by implementation (`LND`, `CLN`).
     #[uniffi::method]
     pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
@@ -902,7 +929,6 @@ pub struct RgbLock {
     pub htlc_sat: u64,
     pub claim_fee_rate: Option<u64>,
     pub script_pubkey: String,
-    pub transport_endpoints: Vec<String>,
     pub min_confirmations: u8,
 }
 

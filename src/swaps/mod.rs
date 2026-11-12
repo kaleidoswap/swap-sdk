@@ -17,6 +17,6 @@ mod wrappers;
 pub use liquid::{FundedLiquidPset, LiquidOutputSecrets, LiquidPsetTemplate, PreparedLiquidSpend};
 pub use rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend, PreparedRgbSpend, RgbAllocation, RgbHtlcContext, RgbLock,
-    RgbPsbtTemplate, RgbSpendFunding,
+    RgbLockConsignment, RgbPsbtTemplate, RgbSpendFunding,
 };
 pub use wrappers::*;

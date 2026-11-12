@@ -13,7 +13,7 @@ use kaleidorg_swap_sdk::fees::Fee;
 use kaleidorg_swap_sdk::network::{Chain, Network};
 use kaleidorg_swap_sdk::swaps::rgb::{
     ColoredRgbPsbt, RgbAllocation, RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
-    RgbPsbtTemplate, RgbSpendFunding,
+    RgbLockConsignment, RgbPsbtTemplate, RgbSpendFunding,
 };
 use kaleidorg_swap_sdk::swaps::{self as swaps_bitcoin};
 use std::str::FromStr;
@@ -85,6 +85,13 @@ pub struct RgbCooperativeRefundRequest {
     pub index: u32,
     pub pub_nonce: String,
     pub session_id: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct RgbLockConsignment {
+    pub consignment: String,
+    pub txid: String,
+    pub vout: u32,
 }
 
 #[uniffi::remote(Record)]

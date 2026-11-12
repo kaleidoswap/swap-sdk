@@ -8,6 +8,8 @@ import {
   SwapClient,
   SwapScript,
   getRgbRefundPartialSig,
+  postRgbLockConsignment,
+  getRgbLockConsignment,
 } from "../dist/index.node.js";
 
 // Synthetic Bitcoin/PSBT vectors. Actual RGB proof validation belongs to rgb-lib.
@@ -378,6 +380,79 @@ test("RGB refund transport sends the versioned body and per-swap credential", as
         path: "/v2/swap/submarine/swap-id/refund",
         auth: "test-credential",
         body: request,
+      },
+    ]);
+  } finally {
+    client.free();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("RGB lock consignments travel out of band with the per-swap credential", async () => {
+  const received = [];
+  const server = createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    received.push({
+      method: req.method,
+      path: req.url,
+      auth: req.headers["x-swap-auth"],
+      body: body ? JSON.parse(body) : undefined,
+    });
+    if (req.method === "POST") {
+      res.writeHead(202);
+      res.end();
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        consignment: "Y29uc2lnbm1lbnQ=",
+        txid: "22".repeat(32),
+        vout: 2,
+      }),
+    );
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const client = new SwapClient(
+    `http://127.0.0.1:${server.address().port}/v2`,
+    undefined,
+  );
+  const lock = {
+    consignment: "Y29uc2lnbm1lbnQ=",
+    txid: "11".repeat(32),
+    vout: 1,
+  };
+  try {
+    await assert.rejects(
+      () => postRgbLockConsignment(client, "swap-id", lock, ""),
+      /credential|swapAuth/i,
+    );
+    assert.equal(received.length, 0);
+    await postRgbLockConsignment(client, "swap-id", lock, "test-credential");
+    const got = await getRgbLockConsignment(
+      client,
+      "swap-id",
+      "test-credential",
+    );
+    assert.deepEqual(got, {
+      consignment: "Y29uc2lnbm1lbnQ=",
+      txid: "22".repeat(32),
+      vout: 2,
+    });
+    assert.deepEqual(received, [
+      {
+        method: "POST",
+        path: "/v2/swap/submarine/swap-id/rgb-lock",
+        auth: "test-credential",
+        body: lock,
+      },
+      {
+        method: "GET",
+        path: "/v2/swap/reverse/swap-id/rgb-lock",
+        auth: "test-credential",
+        body: undefined,
       },
     ]);
   } finally {

@@ -26,6 +26,17 @@ REPLY = None
 
 class Maker(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.endswith("/rgb-lock"):
+            REQUEST_METADATA.append((self.path, self.headers.get("X-Swap-Auth")))
+            body = json.dumps(
+                dict(consignment="Y29uc2lnbm1lbnQ=", txid="22" * 32, vout=2)
+            ).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         raw = bytes.fromhex(VECTORS["swaps"]["reverse"]["lockTxHex"])
         txid = hashlib.sha256(hashlib.sha256(raw).digest()).digest()[::-1].hex()
         evidence = {
@@ -270,6 +281,31 @@ async def main(url):
         index=1,
         pubNonce=coop_request.pub_nonce,
         sessionId=coop_request.session_id,
+    )
+
+    # The RGB lock consignment travels out of band, with the swap credential.
+    lock = sdk.RgbLockConsignment(
+        consignment="Y29uc2lnbm1lbnQ=", txid="11" * 32, vout=1
+    )
+    before = len(REQUESTS)
+    await expect_async_error(
+        lambda: client.post_rgb_lock_consignment("swap-id", lock, ""), "swapAuth"
+    )
+    assert len(REQUESTS) == before
+    REPLY = {}
+    await client.post_rgb_lock_consignment("swap-id", lock, "test-credential")
+    assert REQUEST_METADATA[-1] == (
+        "/v2/swap/submarine/swap-id/rgb-lock",
+        "test-credential",
+    )
+    assert REQUESTS[-1] == dict(consignment=lock.consignment, txid=lock.txid, vout=1)
+    got = await client.get_rgb_lock_consignment("swap-id", "test-credential")
+    assert got == sdk.RgbLockConsignment(
+        consignment="Y29uc2lnbm1lbnQ=", txid="22" * 32, vout=2
+    )
+    assert REQUEST_METADATA[-1] == (
+        "/v2/swap/reverse/swap-id/rgb-lock",
+        "test-credential",
     )
 
 

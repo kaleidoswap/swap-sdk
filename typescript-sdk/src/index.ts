@@ -15,6 +15,7 @@ import initWasm, {
   WasmMnemonicSigner,
   KaleidoSwap as WasmKaleidoSwap,
 } from "../vendor/bindings_wasm.js";
+import type { RgbLockConsignment } from "../vendor/bindings_wasm.js";
 import {
   makeCreateKaleidoSwap,
   type SwapSigner,
@@ -66,6 +67,7 @@ export type {
   Leaf,
   SwapTree,
   RgbLock,
+  RgbLockConsignment,
   SubSwapStates,
   RevSwapStates,
   ChainSwapStates,
@@ -419,6 +421,32 @@ export async function getRgbRefundPartialSig(
     request,
     swapAuth,
   )) as RgbCooperativeRefundResponse;
+}
+
+/**
+ * Hand the maker a submarine's RGB lock consignment, out of band: the
+ * consignment (base64) of the rgb-lib `send` to the HTLC script with no
+ * transport endpoint, with its txid and HTLC vout.
+ */
+export async function postRgbLockConsignment(
+  client: WasmSwapClient,
+  swapId: string,
+  lock: RgbLockConsignment,
+  swapAuth: string,
+): Promise<void> {
+  await client.postRgbLockConsignment(swapId, lock, swapAuth);
+}
+
+/** The maker's RGB lock consignment of a reverse swap, once it is sent. */
+export async function getRgbLockConsignment(
+  client: WasmSwapClient,
+  swapId: string,
+  swapAuth: string,
+): Promise<RgbLockConsignment> {
+  return (await client.getRgbLockConsignment(
+    swapId,
+    swapAuth,
+  )) as RgbLockConsignment;
 }
 
 export class PreparedRgbSpend {

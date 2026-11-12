@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "kaleidoswap/kaleidoswap-maker-rs",
-    "revision": "823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d",
+    "revision": "3460fce64573191710482703c54bf6fe025cb233",
     "file": "openapi.yaml"
   },
   "routes": {
@@ -837,7 +837,6 @@
         "blinding",
         "htlcSat",
         "scriptPubkey",
-        "transportEndpoints",
         "minConfirmations"
       ],
       "properties": {
@@ -881,12 +880,6 @@
         },
         "scriptPubkey": {
           "type": "string"
-        },
-        "transportEndpoints": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         }
       }
     },

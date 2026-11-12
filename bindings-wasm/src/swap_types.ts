@@ -22,8 +22,7 @@ assetId: string,
  */
 amount: bigint,
 /**
- * rgb-lib witness recipient id of the HTLC script, the proxy key the
- * lock consignment is posted under.
+ * rgb-lib witness recipient id of the HTLC script.
  */
 recipientId: string,
 /**
@@ -44,13 +43,23 @@ claimFeeRate?: bigint,
  */
 scriptPubkey: string,
 /**
- * RGB proxy endpoints the lock consignment is posted to.
- */
-transportEndpoints: Array<string>,
-/**
  * Confirmations the lock needs before the other side acts on it.
  */
 minConfirmations: number, };
+
+export type RgbLockConsignment = {
+/**
+ * The rgb-lib transfer consignment, base64.
+ */
+consignment: string,
+/**
+ * The lock transaction id.
+ */
+txid: string,
+/**
+ * The HTLC output of the lock transaction.
+ */
+vout: number, };
 
 export type InternalHopRef = { payeeId: string, };
 

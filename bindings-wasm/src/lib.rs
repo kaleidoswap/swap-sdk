@@ -1638,6 +1638,43 @@ impl BoltzClient {
         )
     }
 
+    /// Hand the maker a submarine's RGB lock consignment
+    /// (`{ consignment, txid, vout }`, consignment base64), out of band.
+    #[wasm_bindgen(js_name = postRgbLockConsignment)]
+    pub async fn post_rgb_lock_consignment(
+        &self,
+        swap_id: StringArg,
+        lock: JsValue,
+        swap_auth: StringArg,
+    ) -> Result<(), JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        let lock: RgbLockConsignment = from_js(lock)?;
+        self.inner
+            .post_rgb_lock_consignment(&id, &lock, &auth)
+            .await
+            .map_err(core_err)
+    }
+
+    /// The maker's RGB lock consignment of a reverse swap
+    /// (`{ consignment, txid, vout }`), once the maker has sent its lock.
+    #[wasm_bindgen(js_name = getRgbLockConsignment)]
+    pub async fn get_rgb_lock_consignment(
+        &self,
+        swap_id: StringArg,
+        swap_auth: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        to_js(
+            &self
+                .inner
+                .get_rgb_lock_consignment(&id, &auth)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
     /// Accept a chain-swap re-quote at `amountSat`.
     ///
     /// `swapAuth` is the per-swap credential the KaleidoSwap maker returned as
@@ -1753,7 +1790,7 @@ use kaleidorg_swap_sdk::swaps::magic_routing;
 use kaleidorg_swap_sdk::swaps::rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
     PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,
-    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse, RgbLockConsignment,
     RgbSpendFunding as CoreRgbSpendFunding,
 };
 use kaleidorg_swap_sdk::swaps::{

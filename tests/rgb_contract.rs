@@ -186,11 +186,6 @@ fn changing_any_frozen_response_binding_is_refused() {
         ("/rgb/blinding", json!("18446744073709551616")),
         ("/rgb/htlcSat", json!(545)),
         ("/rgb/minConfirmations", json!(0)),
-        (
-            "/rgb/transportEndpoints",
-            json!(["https://proxy.test/json-rpc"]),
-        ),
-        ("/rgb/transportEndpoints", json!([])),
         ("/timeoutBlockHeight", json!(500)),
     ];
     for direction in ["submarine", "reverse"] {

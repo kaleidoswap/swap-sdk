@@ -1978,6 +1978,64 @@ impl BoltzApiClientV2 {
         .await
     }
 
+    /// Hand the maker a submarine's RGB lock consignment, out of band.
+    ///
+    /// Proxy protocol 1.0 has no lookup by recipient id, so the taker posts
+    /// the consignment of its lock (the rgb-lib `send` to the HTLC script with
+    /// no transport endpoint) here. The maker accepts it once the lock has
+    /// `minConfirmations`. A later call replaces it while the lock is
+    /// unverified; once the lock is verified, or refused for good, the maker
+    /// answers `409 rgb_lock_closed`.
+    pub async fn post_rgb_lock_consignment(
+        &self,
+        id: &str,
+        lock: &super::rgb::RgbLockConsignment,
+        swap_auth: &str,
+    ) -> Result<(), Error> {
+        if swap_auth.is_empty() {
+            return Err(Error::Protocol(
+                "handing an RGB lock over requires swapAuth".into(),
+            ));
+        }
+        let response = self
+            .post_response(
+                &format!("swap/submarine/{id}/rgb-lock"),
+                serde_json::to_value(lock)?,
+                Some(swap_auth),
+            )
+            .await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(Error::HTTPStatusNotSuccess(
+                status,
+                Self::parse_value(response.into_text()),
+            ));
+        }
+        Ok(())
+    }
+
+    /// The maker's RGB lock consignment of a reverse swap, once the maker has
+    /// sent its lock; `404 rgb_lock_not_found` before that.
+    pub async fn get_rgb_lock_consignment(
+        &self,
+        id: &str,
+        swap_auth: &str,
+    ) -> Result<super::rgb::RgbLockConsignment, Error> {
+        if swap_auth.is_empty() {
+            return Err(Error::Protocol(
+                "reading an RGB lock requires swapAuth".into(),
+            ));
+        }
+        let url = format!("{}/swap/reverse/{id}/rgb-lock", self.base_url);
+        let req_builder = self.http_client.get(&url);
+        let req_builder = self.maybe_add_timeout(req_builder);
+        let req_builder = Self::maybe_add_swap_auth(req_builder, Some(swap_auth))?;
+        let req_builder = self.maybe_add_api_key(req_builder, &url)?;
+        let response = self.send(req_builder).await?;
+        self.reject_credential_leaking_redirect(&response, self.credentials_sent(Some(swap_auth)))?;
+        Self::parse_json_response(response)
+    }
+
     pub async fn get_submarine_partial_sig(
         &self,
         id: &String,
@@ -5726,6 +5784,99 @@ mod tests {
             String::from_utf8_lossy(&raw).into_owned()
         });
         (base_url, handle)
+    }
+
+    /// A submarine's RGB lock consignment goes to the maker with the credential.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn an_rgb_lock_consignment_is_posted_with_the_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+        let lock = super::super::rgb::RgbLockConsignment {
+            consignment: "Y29uc2lnbm1lbnQ=".to_string(),
+            txid: "11".repeat(32),
+            vout: 1,
+        };
+        let client = |base| BoltzApiClientV2::new(base, None);
+        assert!(client("http://127.0.0.1:9/v2".to_string())
+            .post_rgb_lock_consignment("swap-id", &lock, "")
+            .await
+            .is_err());
+
+        let (base_url, maker) = capture_one_request_answering(
+            b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n".to_vec(),
+        );
+        client(base_url)
+            .post_rgb_lock_consignment("swap-id", &lock, auth)
+            .await
+            .unwrap();
+        let request = maker.join().unwrap();
+        let lower = request.to_lowercase();
+        assert!(
+            lower.starts_with("post /v2/swap/submarine/swap-id/rgb-lock "),
+            "{request}"
+        );
+        assert!(lower.contains(&format!("{}: {auth}", SWAP_AUTH_HEADER.to_lowercase())));
+        let body = &request[request.find("\r\n\r\n").unwrap() + 4..];
+        assert_eq!(
+            serde_json::from_str::<Value>(body).unwrap(),
+            json!({ "consignment": "Y29uc2lnbm1lbnQ=", "txid": "11".repeat(32), "vout": 1 })
+        );
+
+        // a refusal surfaces with the maker's error body
+        let refusal = br#"{"error":"rgb_lock_closed"}"#;
+        let mut response = format!(
+            "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            refusal.len()
+        )
+        .into_bytes();
+        response.extend_from_slice(refusal);
+        let (base_url, maker) = capture_one_request_answering(response);
+        let err = client(base_url)
+            .post_rgb_lock_consignment("swap-id", &lock, auth)
+            .await
+            .unwrap_err();
+        maker.join().unwrap();
+        assert!(
+            matches!(&err, Error::HTTPStatusNotSuccess(status, body)
+                if status.as_u16() == 409 && body["error"] == "rgb_lock_closed"),
+            "{err:?}"
+        );
+    }
+
+    /// A reverse swap's RGB lock consignment is read with the credential.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn an_rgb_lock_consignment_is_read_with_the_credential() {
+        let auth = "c0ffee2ac2b0d2ff1a8f5b7e6d4c3b2a19081726354453627180a9b8c7d6e5f4";
+        let reply = format!(
+            r#"{{"consignment":"Y29uc2lnbm1lbnQ=","txid":"{}","vout":2}}"#,
+            "22".repeat(32)
+        );
+        let mut response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
+            reply.len()
+        )
+        .into_bytes();
+        response.extend_from_slice(reply.as_bytes());
+        let (base_url, maker) = capture_one_request_answering(response);
+        let lock = BoltzApiClientV2::new(base_url, None)
+            .get_rgb_lock_consignment("swap-id", auth)
+            .await
+            .unwrap();
+        let request = maker.join().unwrap().to_lowercase();
+        assert!(
+            request.starts_with("get /v2/swap/reverse/swap-id/rgb-lock "),
+            "{request}"
+        );
+        assert!(request.contains(&format!("{}: {auth}", SWAP_AUTH_HEADER.to_lowercase())));
+        assert_eq!(
+            lock,
+            super::super::rgb::RgbLockConsignment {
+                consignment: "Y29uc2lnbm1lbnQ=".to_string(),
+                txid: "22".repeat(32),
+                vout: 2,
+            }
+        );
     }
 
     /// The credential must survive the trip from `accept_quote` to the wire.
