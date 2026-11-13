@@ -243,7 +243,18 @@ function spendTx(lockupTxid, lockupVout, witnessItems) {
  * seam at all (the "counterparty already resolved it" / "chain confirms our
  * own claim" path). */
 function spentLockupIndexer({ lockupTxid, preimage, revealed }) {
-  const witness = revealed ? [preimage] : [new Uint8Array(32).fill(0xee)];
+  // A reclaim must spend through the covenant's actual non-interactive refund
+  // leaf: the 0.1 classifier only reports `returned` for recognized refund
+  // leaves (script from the witness, second-to-last item), not for any
+  // non-preimage spend as the 0.0 classifier did.
+  const covenant = new VHTLC.ScriptV2(vhtlcOptions());
+  const witness = revealed
+    ? [preimage]
+    : [
+        new Uint8Array(64), // refund-leaf signature placeholder
+        Buffer.from(covenant.nonInteractiveRefundScript, "hex"),
+        new Uint8Array(33), // control block placeholder
+      ];
   const { psbt, txid: checkpointTxid } = spendTx(lockupTxid, 0, witness);
   return fakeIndexer({
     vtxos: [
