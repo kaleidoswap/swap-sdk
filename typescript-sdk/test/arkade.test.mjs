@@ -14,7 +14,7 @@ import { test } from "node:test";
 import { createHash } from "node:crypto";
 
 import { VHTLC, ArkAddress, Transaction } from "@arkade-os/sdk";
-import { LockupNeedsRecoveryError } from "@arkade-os/swap";
+import { LockupNeedsRecoveryError } from "@arkade-os/swap/protocol";
 
 import {
   ArkadeIntentsVenue,
@@ -947,7 +947,8 @@ test("concurrent reconcile calls share one pass", async () => {
 
 // ─── Asset-swap route ───────────────────────────────────────────────────────
 
-import { InMemoryAssetSwapRepository, updateAssetSwap } from "@arkade-os/swap";
+import { InMemoryAssetSwapRepository } from "@arkade-os/swap";
+import { updateAssetSwap } from "@arkade-os/swap/protocol";
 
 function assetVenue({ flows = {}, indexer, now = () => NOW } = {}) {
   const repository = new InMemoryAssetSwapRepository();
@@ -1000,7 +1001,7 @@ test("a funded asset swap is persisted pending, keyed by funding txid", async ()
   const swap = await fundedAssetSwap(venue);
   assert.equal(swap.id, "fund-tx");
   assert.equal(swap.status, "pending");
-  const stored = await repository.getAllSwaps();
+  const stored = (await repository.getAssetSwapsPage({ limit: 100 })).items;
   assert.equal(stored.length, 1);
   assert.equal(stored[0].offerHex, "0f0f");
 });
@@ -1020,7 +1021,7 @@ test("reconcile settles an asset swap whose deposit was filled", async () => {
   await fundedAssetSwap(venue);
   const report = await venue.reconcile();
   assert.deepEqual(report.settled, ["fund-tx"]);
-  const [stored] = await repository.getAllSwaps();
+  const [stored] = (await repository.getAssetSwapsPage({ limit: 100 })).items;
   assert.equal(stored.status, "fulfilled");
   assert.equal(stored.spentTxid, "fill-tx");
 });
@@ -1036,7 +1037,7 @@ test("an unspent asset-swap deposit stays pending forever — no expiry", async 
   await fundedAssetSwap(venue);
   const report = await venue.reconcile();
   assert.deepEqual(report.pending, ["fund-tx"]);
-  assert.equal((await repository.getAllSwaps())[0].status, "pending");
+  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "pending");
 });
 
 test("an unclassifiable spend is left alone, never guessed", async () => {
@@ -1052,7 +1053,7 @@ test("an unclassifiable spend is left alone, never guessed", async () => {
   await fundedAssetSwap(venue);
   const report = await venue.reconcile();
   assert.deepEqual(report.pending, ["fund-tx"]);
-  assert.equal((await repository.getAllSwaps())[0].status, "pending");
+  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "pending");
 });
 
 test("cancelAssetSwap losing the race to a fill reports fulfilled", async () => {
@@ -1073,7 +1074,7 @@ test("cancelAssetSwap losing the race to a fill reports fulfilled", async () => 
   await fundedAssetSwap(venue);
   const outcome = await venue.cancelAssetSwap("fund-tx");
   assert.equal(outcome.status, "fulfilled");
-  assert.equal((await repository.getAllSwaps())[0].status, "fulfilled");
+  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "fulfilled");
 });
 
 test("cancelAssetSwap rethrows when the chain answers nothing", async () => {
@@ -1095,7 +1096,7 @@ test("cancelAssetSwap rethrows when the chain answers nothing", async () => {
 test("cancelAssetSwap happy path returns the repository's view", async () => {
   const { venue, repository } = assetVenue({
     flows: {
-      cancelOffer: async (_w, _u, _hex, opts) => {
+      cancelOffer: async (_w, _hex, opts) => {
         await updateAssetSwap(opts.repository, "fund-tx", {
           status: "cancelled",
         });
@@ -1106,7 +1107,7 @@ test("cancelAssetSwap happy path returns the repository's view", async () => {
   await fundedAssetSwap(venue);
   const outcome = await venue.cancelAssetSwap("fund-tx");
   assert.equal(outcome.status, "cancelled");
-  assert.equal((await repository.getAllSwaps())[0].status, "cancelled");
+  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "cancelled");
 });
 
 // ---------------------------------------------------------------------------
