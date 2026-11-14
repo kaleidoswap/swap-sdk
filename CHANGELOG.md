@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1
+
+The peer ranges become `@arkade-os/sdk >=0.5.0 <0.6.0` and
+`@arkade-os/swap >=0.1.0 <0.2.0`. The venue's public surface —
+`ArkadeIntentsVenue`, `ArkadeSwapRecord`, the flows seam, the serialized
+covenant options — is unchanged, so consumers move on the peer ranges
+alone.
+
+- The corridor-era RFQ surface (`RfqSwapManager`, the flows, the wire
+  builders, `httpTransport`) ships as the 0.1 line's `protocol`
+  subpath, written against the 0.5 wallet API: the port re-points the
+  venue's machinery there. The maker-compatible HTTP corridor keeps
+  working unmodified.
+- Flows lost their `arkServerUrl` argument (the server rides the
+  wallet); `createOffer`/`cancelOffer` lost theirs.
+- `pushClaim`/`pushRefundWithoutReceiver` take the covenant as
+  `contract` and return `{txid, spent}`/`{txid, left}`; the venue maps
+  both onto its own stable `{arkTxid}` record shape and passes `spent`
+  through so piecemeal funding stays claimable.
+- `RfqSwapManager` is deprecated upstream in favour of
+  `createSwapClient`; this port is the maker-compatible stepping
+  stone, and the SwapClient move is tracked as the next chapter
+  (kaleidoswap/swap-sdk#181).
+
 ### BREAKING — `SwapSigner` signs instead of handing out a keypair
 
 `KaleidoSwap` no longer asks the signer for a secret key, so a signer can keep
