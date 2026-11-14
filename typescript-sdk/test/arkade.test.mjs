@@ -1048,7 +1048,10 @@ test("an unspent asset-swap deposit stays pending forever — no expiry", async 
   await fundedAssetSwap(venue);
   const report = await venue.reconcile();
   assert.deepEqual(report.pending, ["fund-tx"]);
-  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "pending");
+  assert.equal(
+    (await repository.getAssetSwapsPage({ limit: 100 })).items[0].status,
+    "pending",
+  );
 });
 
 test("an unclassifiable spend is left alone, never guessed", async () => {
@@ -1064,7 +1067,10 @@ test("an unclassifiable spend is left alone, never guessed", async () => {
   await fundedAssetSwap(venue);
   const report = await venue.reconcile();
   assert.deepEqual(report.pending, ["fund-tx"]);
-  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "pending");
+  assert.equal(
+    (await repository.getAssetSwapsPage({ limit: 100 })).items[0].status,
+    "pending",
+  );
 });
 
 test("cancelAssetSwap losing the race to a fill reports fulfilled", async () => {
@@ -1085,7 +1091,10 @@ test("cancelAssetSwap losing the race to a fill reports fulfilled", async () => 
   await fundedAssetSwap(venue);
   const outcome = await venue.cancelAssetSwap("fund-tx");
   assert.equal(outcome.status, "fulfilled");
-  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "fulfilled");
+  assert.equal(
+    (await repository.getAssetSwapsPage({ limit: 100 })).items[0].status,
+    "fulfilled",
+  );
 });
 
 test("cancelAssetSwap rethrows when the chain answers nothing", async () => {
@@ -1118,7 +1127,10 @@ test("cancelAssetSwap happy path returns the repository's view", async () => {
   await fundedAssetSwap(venue);
   const outcome = await venue.cancelAssetSwap("fund-tx");
   assert.equal(outcome.status, "cancelled");
-  assert.equal(((await repository.getAssetSwapsPage({ limit: 100 })).items)[0].status, "cancelled");
+  assert.equal(
+    (await repository.getAssetSwapsPage({ limit: 100 })).items[0].status,
+    "cancelled",
+  );
 });
 
 // ---------------------------------------------------------------------------
