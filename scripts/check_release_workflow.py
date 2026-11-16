@@ -16,6 +16,7 @@ REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
 # step with this repository. Both live here so the mirror can sync them, and
 # both must do nothing anywhere but the mirror.
 SECURITY_WORKFLOW = ROOT / ".github/workflows/security-release.yaml"
+SECURITY_SOURCE_WORKFLOW = ROOT / ".github/workflows/security-publish-source.yaml"
 MIRROR_SYNC_WORKFLOW = ROOT / ".github/workflows/mirror-sync.yaml"
 PUBLIC_REPOSITORY_GUARD = "if: ${{ github.repository == 'kaleidoswap/swap-sdk' }}"
 MIRROR_REPOSITORY_GUARD = (
@@ -256,9 +257,14 @@ def validate(
     runbook_contents: str | None = None,
     security_contents: str | None = None,
     mirror_sync_contents: str | None = None,
+    security_source_contents: str | None = None,
 ) -> None:
     if security_contents is None:
         security_contents = SECURITY_WORKFLOW.read_text(encoding="utf-8")
+    if security_source_contents is None:
+        security_source_contents = SECURITY_SOURCE_WORKFLOW.read_text(
+            encoding="utf-8"
+        )
     if mirror_sync_contents is None:
         mirror_sync_contents = MIRROR_SYNC_WORKFLOW.read_text(encoding="utf-8")
     if rehearsal_contents is None:
@@ -304,7 +310,9 @@ def validate(
     # Every workflow that can publish or rewrite a ref, for the rules that hold
     # everywhere: no skipping an existing version, no mutable actions, no basic
     # auth. Secrets are checked per workflow, because the mirror's differ.
-    every_workflow = combined + security_contents + mirror_sync_contents
+    every_workflow = (
+        combined + security_contents + security_source_contents + mirror_sync_contents
+    )
     # Both spellings. The CLI flag is what twine/npm take, but the PyPA action
     # is configured through a YAML input — and `skip-existing: true` is exactly
     # the edit someone reaches for after a half-failed release, which would
@@ -668,6 +676,7 @@ def validate(
 
     validate_release_mode(jobs)
     validate_security_workflow(security_contents)
+    validate_security_source_workflow(security_source_contents)
     validate_mirror_sync(mirror_sync_contents)
 
     # Last: a contradictory job graph should report its own failure first, not
@@ -751,13 +760,12 @@ SECURITY_JOBS = {
     "security-build": {"security-mode"},
     "security-publish-packages": {"security-build"},
     "security-verify-packages": {"security-build", "security-publish-packages"},
-    "security-publish-source": {"security-build", "security-verify-packages"},
 }
-SECURITY_ENVIRONMENTS = {
-    "security-publish-packages": "security-packages",
-    "security-publish-source": "security-source",
-}
+SECURITY_ENVIRONMENTS = {"security-publish-packages": "security-packages"}
 SECURITY_SECRETS = {"NPM_TOKEN", "PYPI_TOKEN", "SECURITY_RELEASE_APP_PRIVATE_KEY"}
+SOURCE_JOBS = {"source-mode": set(), "security-publish-source": {"source-mode"}}
+SOURCE_ENVIRONMENTS = {"security-publish-source": "security-source"}
+SOURCE_SECRETS = {"PYPI_TOKEN", "SECURITY_RELEASE_APP_PRIVATE_KEY"}
 
 
 def secret_jobs(
@@ -788,8 +796,36 @@ def forbid_ref_rewrites(contents: str, label: str) -> None:
             raise ValueError(f"{label} must never rewrite a ref (found {line.strip()!r})")
 
 
+def mirror_workflow_rules(
+    contents: str, environments: dict[str, str], secrets: set[str], label: str
+) -> dict[str, str]:
+    """What holds for every mirror publishing workflow; returns its jobs."""
+    jobs = production_jobs("\n" + contents.split("\njobs:\n", 1)[-1].lstrip("\n"))
+    for name, job in jobs.items():
+        environment = environments.get(name)
+        if environment is not None and f"environment: {environment}" not in job:
+            raise ValueError(f"{name} must use the {environment} environment")
+        if environment is None and "environment:" in job:
+            raise ValueError(f"{name} must not reach a protected environment")
+    secret_jobs(contents, secrets, environments, label)
+    if re.search(r"^\s*id-token: write\s*$", contents, re.MULTILINE):
+        raise ValueError(
+            f"{label} must not request OIDC: npm provenance cannot come from a "
+            "private repository, and nothing else here needs it"
+        )
+    if re.search(r"^\s*contents: write\s*$", contents, re.MULTILINE):
+        raise ValueError(
+            f"{label} writes only through scoped App tokens, never through "
+            "GITHUB_TOKEN contents: write"
+        )
+    if "--draft" in contents:
+        raise ValueError(f"{label} GitHub releases must not remain drafts")
+    forbid_ref_rewrites(contents, label)
+    return jobs
+
+
 def validate_security_workflow(contents: str) -> None:
-    """The mirror's security release: two gates, packages before source."""
+    """Gate 1 of a security release: build, publish the packages, verify them."""
     require_snippets(
         contents,
         (
@@ -805,9 +841,22 @@ def validate_security_workflow(contents: str) -> None:
     if graph != SECURITY_JOBS:
         raise ValueError(
             "security release jobs must run mode -> build -> packages -> verify "
-            f"-> source (found {graph})"
+            f"(found {graph})"
         )
-    jobs = production_jobs("\n" + contents.split("\njobs:\n", 1)[-1].lstrip("\n"))
+    jobs = mirror_workflow_rules(
+        contents, SECURITY_ENVIRONMENTS, SECURITY_SECRETS, "security release"
+    )
+    # Its one GitHub release is the binaries-only host's; the public release
+    # and the push of the source belong to gate 2.
+    if (
+        contents.count("gh release create") != 1
+        or "git push" in contents
+        or "PUBLIC_REPOSITORY" in contents
+    ):
+        raise ValueError(
+            "gate 1 must not publish the source: the public release and the push "
+            "belong to security-publish-source.yaml"
+        )
 
     mode = jobs["security-mode"]
     if MIRROR_REPOSITORY_GUARD not in mode:
@@ -834,28 +883,6 @@ def validate_security_workflow(contents: str) -> None:
     ):
         if snippet not in build:
             raise ValueError(f"security build call is missing {snippet!r}")
-
-    for name, job in jobs.items():
-        environment = SECURITY_ENVIRONMENTS.get(name)
-        if environment is not None and f"environment: {environment}" not in job:
-            raise ValueError(f"{name} must use the {environment} environment")
-        if environment is None and "environment:" in job:
-            raise ValueError(f"{name} must not reach a protected environment")
-    secret_jobs(contents, SECURITY_SECRETS, SECURITY_ENVIRONMENTS, "security release")
-
-    if re.search(r"^\s*id-token: write\s*$", contents, re.MULTILINE):
-        raise ValueError(
-            "security release must not request OIDC: npm provenance cannot come "
-            "from a private repository, and nothing else here needs it"
-        )
-    if re.search(r"^\s*contents: write\s*$", contents, re.MULTILINE):
-        raise ValueError(
-            "security release writes only through scoped App tokens, never "
-            "through GITHUB_TOKEN contents: write"
-        )
-    if "--draft" in contents:
-        raise ValueError("security release GitHub releases must not remain drafts")
-    forbid_ref_rewrites(contents, "security release")
 
     packages = jobs["security-publish-packages"]
     publishes = re.findall(r"npm publish\s+(\S+)[^\n]*", contents)
@@ -908,7 +935,60 @@ def validate_security_workflow(contents: str) -> None:
     if "secrets." in verify or "environment:" in verify:
         raise ValueError("security-verify-packages must hold no credential")
 
+
+
+def validate_security_source_workflow(contents: str) -> None:
+    """Gate 2: publish the source the verified gate 1 run sealed, nothing else."""
+    require_snippets(
+        contents,
+        (
+            "tags:",
+            '- "source/v*"',
+            "group: security-publish-source-${{ github.ref }}",
+            "cancel-in-progress: false",
+        ),
+        "security source",
+    )
+    graph = workflow_job_graph(contents)
+    if graph != SOURCE_JOBS:
+        raise ValueError(
+            f"security source jobs must run source-mode -> publish (found {graph})"
+        )
+    jobs = mirror_workflow_rules(
+        contents, SOURCE_ENVIRONMENTS, SOURCE_SECRETS, "security source"
+    )
+
+    mode = jobs["source-mode"]
+    if MIRROR_REPOSITORY_GUARD not in mode:
+        raise ValueError(
+            "source-mode must run only in kaleidoswap/swap-sdk-private; the "
+            "public repository carries this file only so the mirror can sync it"
+        )
+    for snippet, reason in (
+        ('if [ "${commit}" != "${release_commit}" ]', "sit on the release tag's commit"),
+        ("security-release.yaml/runs?branch=${tag}&event=push&status=success",
+         "follow a successful gate 1 run"),
+        ('select(.head_sha == \\"${commit}\\")', "follow a gate 1 run of this commit"),
+    ):
+        if snippet not in mode:
+            raise ValueError(f"source-mode must make gate 2 {reason}")
+
     source = jobs["security-publish-source"]
+    for snippet in (
+        "run-id: ${{ needs.source-mode.outputs.run_id }}",
+        "name: release-bundle-${{ needs.source-mode.outputs.tag }}",
+        "sha256sum --check --strict SHA256SUMS",
+        "cp release-artifacts/*.tar.gz",
+        '--repo "${PUBLIC_REPOSITORY}"',
+        "--verify-tag",
+        "--notes-file release-notes.md",
+    ):
+        if snippet not in source:
+            raise ValueError(f"security-publish-source is missing {snippet!r}")
+    if "npm publish" in contents or "*.whl" in contents:
+        raise ValueError(
+            "gate 2 publishes only the source; the packages belong to gate 1"
+        )
     verified = source.find("scripts/verify_release_bundle.py")
     pushed = source.find("push --atomic")
     released = source.find("gh release create")
@@ -922,15 +1002,6 @@ def validate_security_workflow(contents: str) -> None:
             "security-publish-source must verify the bundle before it pushes, and "
             "push the tag before it creates the release"
         )
-    for snippet in (
-        '--repo "${PUBLIC_REPOSITORY}"',
-        "--verify-tag",
-        "--notes-file release-notes.md",
-        "sha256sum --check --strict SHA256SUMS",
-        "cp release-artifacts/*.tar.gz",
-    ):
-        if snippet not in source:
-            raise ValueError(f"security-publish-source is missing {snippet!r}")
 
 
 def validate_mirror_sync(contents: str) -> None:

@@ -4,22 +4,26 @@ name: security release
 # repository carries this file so the mirror can sync it, and every job is
 # skipped there. docs/releasing.md ("Security releases") is the runbook.
 #
-# A security release ships its packages before its source. The fix is reviewed
-# and tagged on a `security/X.Y.Z` branch in the mirror, then:
+# A security release ships its packages before its source, in two steps that
+# are each an administrator's tag push. The mirror is on GitHub Team, which has
+# no required reviewers for a private repository's environments, so the second
+# person signs off earlier: the fix and its release commit reach the
+# `security/X.Y.Z` branch only through a pull request someone else approved,
+# and only administrators can create the tags that publish.
+#
+# This workflow is gate 1, started by the `vX.Y.Z` tag:
 #
 #   1. security-build builds and seals the bundle with the same read-only graph
 #      a public release uses;
-#   2. security-publish-packages (environment security-packages, gate 1)
-#      publishes the native archives to the binaries-only host, the Python
-#      wheels and both npm packages;
-#   3. security-verify-packages proves the registries serve the sealed bytes;
-#   4. security-publish-source (environment security-source, gate 2) uploads
-#      the sdist, pushes the commits and tag to the public repository and
-#      creates its GitHub release, where release.yaml verifies it again.
+#   2. security-publish-packages (environment security-packages) publishes the
+#      native archives to the binaries-only host, the Python wheels and both
+#      npm packages;
+#   3. security-verify-packages proves the registries serve the sealed bytes.
 #
-# Both gates need a second maintainer. Approved back to back, packages and
-# source go out together; holding gate 2 keeps the source private for an
-# embargo while the fixed packages are already installable.
+# Gate 2 is security-publish-source.yaml, started by a `source/vX.Y.Z` tag on
+# the same commit. Pushed straight after this run passes, packages and source
+# go out together; pushed later, the source stays private for an embargo while
+# the fixed packages are already installable.
 
 on:
   push:
@@ -36,7 +40,6 @@ permissions:
 env:
   NODE_VERSION: "22.23.1"
   NPM_PUBLISH_VERSION: "11.5.1"
-  PUBLIC_REPOSITORY: kaleidoswap/swap-sdk
   ARTIFACTS_REPOSITORY: kaleidoswap/swap-sdk-artifacts
 
 jobs:
@@ -97,9 +100,10 @@ jobs:
       release_tag: ${{ github.ref_name }}
       release_base: ${{ needs.security-mode.outputs.base }}
 
-  # Gate 1. One job, so one approval publishes everything a consumer installs,
-  # in the order that keeps every install working: the native archives first,
-  # because the React Native package's postinstall downloads them.
+  # Gate 1. One job publishes everything a consumer installs, in the order that
+  # keeps every install working: the native archives first, because the React
+  # Native package's postinstall downloads them. Its environment hands out the
+  # registry credentials only to a run on a `v*` tag.
   security-publish-packages:
     name: Publish the packages (gate 1)
     needs: security-build
@@ -240,103 +244,3 @@ jobs:
         run: >-
           node packages/react-native/scripts/smoke-react-native-install.mjs
           --version "${{ needs.security-build.outputs.version }}"
-
-  # Gate 2. Approve it straight after gate 1 for a release whose packages and
-  # source go out together, or after the embargo for one that ships binaries
-  # first. From here on everything about this version is public.
-  security-publish-source:
-    name: Publish the source (gate 2)
-    needs:
-      - security-build
-      - security-verify-packages
-    runs-on: ubuntu-24.04
-    environment: security-source
-    permissions:
-      contents: read
-    timeout-minutes: 30
-    steps:
-      # Full history: the commits behind the tag are what gets pushed.
-      - name: Checkout tagged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: Download validated release bundle
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
-        with:
-          name: release-bundle-${{ needs.security-build.outputs.release_id }}
-          path: release-artifacts
-      - name: Re-verify the sealed bundle bytes before publishing
-        working-directory: release-artifacts
-        run: sha256sum --check --strict SHA256SUMS
-      - name: Verify the sealed bundle against its manifest, checksums, and SBOM
-        run: >-
-          python3 scripts/verify_release_bundle.py release-artifacts
-          --version "${{ needs.security-build.outputs.version }}"
-          --tag "${{ needs.security-build.outputs.tag }}"
-          --commit "${{ needs.security-build.outputs.commit }}"
-      - name: Mint a token for the public repository
-        id: public-token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          client-id: ${{ vars.SECURITY_RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.SECURITY_RELEASE_APP_PRIVATE_KEY }}
-          owner: kaleidoswap
-          repositories: swap-sdk
-          permission-contents: write
-          permission-workflows: write
-      - name: Refuse to replace an existing public release
-        env:
-          GH_TOKEN: ${{ steps.public-token.outputs.token }}
-          RELEASE_TAG: ${{ needs.security-build.outputs.tag }}
-        run: |
-          if gh release view "${RELEASE_TAG}" --repo "${PUBLIC_REPOSITORY}" >/dev/null 2>&1; then
-            echo "${PUBLIC_REPOSITORY} already has a release for ${RELEASE_TAG}." >&2
-            exit 1
-          fi
-      - name: Select the exact validated source distribution
-        if: ${{ vars.PYPI_PUBLISH_ENABLED == 'true' }}
-        run: |
-          mkdir python-sdist
-          cp release-artifacts/*.tar.gz python-sdist/
-      - name: Publish the source distribution to PyPI
-        if: ${{ vars.PYPI_PUBLISH_ENABLED == 'true' }}
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
-        with:
-          attestations: false
-          packages-dir: python-sdist
-          password: ${{ secrets.PYPI_TOKEN }}
-      # The exact commits the bundle was built from, so the manifest's commit is
-      # the one the public repository now shows. They land on a
-      # `release/X.Y.Z` branch, as a patch release does, and reach trunk
-      # through the usual merge pull request. No --force: an existing branch or
-      # tag of the same name stops the push.
-      - name: Push the release commits and tag to the public repository
-        env:
-          COMMIT: ${{ needs.security-build.outputs.commit }}
-          GH_TOKEN: ${{ steps.public-token.outputs.token }}
-          RELEASE_TAG: ${{ needs.security-build.outputs.tag }}
-          VERSION: ${{ needs.security-build.outputs.version }}
-        run: |
-          auth="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w0)"
-          echo "::add-mask::${auth}"
-          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
-            push --atomic "https://github.com/${PUBLIC_REPOSITORY}.git" \
-            "${COMMIT}:refs/heads/release/${VERSION}" \
-            "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
-      - name: Extract finalized changelog notes
-        run: >-
-          python3 scripts/release_notes.py
-          "${{ needs.security-build.outputs.version }}" > release-notes.md
-      - name: Publish the public GitHub release from the sealed bundle
-        env:
-          GH_TOKEN: ${{ steps.public-token.outputs.token }}
-          RELEASE_TAG: ${{ needs.security-build.outputs.tag }}
-        run: |
-          gh release create "${RELEASE_TAG}" \
-            release-artifacts/* \
-            --repo "${PUBLIC_REPOSITORY}" \
-            --title "KaleidoSwap SDK ${RELEASE_TAG}" \
-            --verify-tag \
-            --latest \
-            --notes-file release-notes.md

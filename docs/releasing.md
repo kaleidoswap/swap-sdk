@@ -506,7 +506,7 @@ anyone can read it on GitHub. A normal release cannot promise that: its commit
 is public on `trunk` for the whole build and for however long the approval
 takes. So a security release is built and published from a private mirror,
 `kaleidoswap/swap-sdk-private`, and its source reaches this repository only at
-a second approval. `SECURITY.md` says which fixes take this path.
+a second, separate step. `SECURITY.md` says which fixes take this path.
 
 The published packages contain code (the npm package ships compiled
 JavaScript and WASM, the wheels ship the compiled core), so this is not
@@ -515,8 +515,10 @@ can be installed.
 
 ### How a security release runs
 
-`.github/workflows/security-release.yaml` runs on a `v*` tag in the mirror and
-does nothing anywhere else:
+A security release is two administrator tag pushes in the mirror, one per
+gate.
+
+**Gate 1, the `vX.Y.Z` tag.** `.github/workflows/security-release.yaml`:
 
 1. `security-mode` releases only when the mirror has a `security/X.Y.Z` branch
    for the tag and npm does not have that version yet. Every other tag, such as
@@ -524,8 +526,8 @@ does nothing anywhere else:
 2. `security-build` runs the same read-only `release-build.yaml` graph as a
    public release, with the tag required to be reachable from the
    `security/X.Y.Z` branch rather than `trunk`.
-3. `security-publish-packages` (environment `security-packages`, **gate 1**)
-   publishes the two native archives to the public binaries-only repository
+3. `security-publish-packages` (environment `security-packages`) publishes the
+   two native archives to the public binaries-only repository
    `kaleidoswap/swap-sdk-artifacts`, then the Python wheels, then both npm
    packages with `--provenance=false`. npm refuses provenance from a private
    repository. The sdist is source, so it waits.
@@ -534,29 +536,60 @@ does nothing anywhere else:
    installs the React Native package. The public repository has no release for
    the version yet, so that install proves `postinstall`'s fallback to the
    binaries-only host.
-5. `security-publish-source` (environment `security-source`, **gate 2**)
-   verifies the bundle again, uploads the sdist, pushes the exact release
-   commits to `release/X.Y.Z` and the tag to this repository in one atomic
-   push, and creates this repository's GitHub release from the sealed bundle.
 
-The pushed tag starts `release.yaml` here. `release-mode` finds the version on
-npm, and `verify-mirror-release` checks the public release and every registry
-file against each other. That green run is the public evidence that the
-packages match the source now visible here; it stands in for the missing npm
-provenance.
+**Gate 2, the `source/vX.Y.Z` tag** on the same commit.
+`.github/workflows/security-publish-source.yaml`:
 
-Both gates need a second maintainer. Approve gate 2 straight after gate 1 when
-packages and source should go out together. Hold it for an embargo when the
-fixed packages should be installable before the source is readable.
+1. `source-mode` refuses unless the commit is the one `vX.Y.Z` points to and a
+   `security-release.yaml` run for that tag and commit succeeded.
+2. `security-publish-source` (environment `security-source`) downloads that
+   run's sealed bundle (no rebuild), verifies it again, uploads the sdist,
+   pushes the exact release commits to `release/X.Y.Z` and the tag to this
+   repository in one atomic push, and creates this repository's GitHub release
+   from the bundle.
+
+The `source/` prefix keeps the second tag out of every other workflow: `v*`
+does not match it, and the sync copies only `v*` tags.
+
+The pushed `vX.Y.Z` tag starts `release.yaml` here. `release-mode` finds the
+version on npm, and `verify-mirror-release` checks the public release and every
+registry file against each other. That green run is the public evidence that
+the packages match the source now visible here; it stands in for the missing
+npm provenance.
+
+Push the gate 2 tag as soon as gate 1 passes when packages and source should go
+out together. Hold it for an embargo when the fixed packages should be
+installable before the source is readable. The sealed bundle is kept for 30
+days, so an embargo must end sooner.
+
+### Who signs off
+
+The mirror is on GitHub Team, which has no required reviewers for a private
+repository's environments. Nobody approves a run, so the second person signs
+off on the code instead:
+
+- the fix and the release commit reach `security/X.Y.Z` only through a pull
+  request that someone other than its author approved, including its most
+  recent push;
+- only administrators can create `v*` and `source/v*` tags, and a tag publishes
+  only from a commit on that reviewed branch;
+- the registry and App credentials sit in environments that hand them only to
+  runs on those tags, so no workflow on any other branch can read them.
+
+What this does not give: after the review, one administrator can publish both
+gates alone. On GitHub Enterprise Cloud, adding required reviewers (with
+self-review prevented) to `security-packages` and `security-source` turns each
+tag push into a run that also waits for a second maintainer. Nothing in the
+workflows changes.
 
 ### One-time setup
 
 These are organization and repository settings, so an administrator does them
 once. None of them can be done from this repository.
 
-1. **Plan.** Required reviewers on an environment of a private repository need
-   GitHub Enterprise Cloud. On Free or Team the mirror's gates would have no
-   second approver, so do not create the mirror's environments without it.
+1. **Plan.** GitHub Team or above. Free has no environments, rulesets or branch
+   protection for private repositories, so the credentials would be readable by
+   any workflow on any branch.
 2. **Mirror.** Create an empty private repository,
    `kaleidoswap/swap-sdk-private`, with access for the release maintainers only.
    Seed it with `trunk` and the release tags. Do not fork: a fork of a public
@@ -579,13 +612,14 @@ once. None of them can be done from this repository.
    bypass list of this repository's `Protect release tags` ruleset, so gate 2
    can create the tag. In the mirror, set the repository variable
    `SECURITY_RELEASE_APP_CLIENT_ID` to its client ID.
-5. **Mirror environments.** Clear administrator bypass on both gates.
+5. **Mirror environments.** None has reviewers on Team; the deployment rule is
+   what keeps the secrets to their gate.
 
-   | Environment | Reviewers | Deployments | Secrets |
-   |---|---|---|---|
-   | `security-packages` | `Arshia-r-m`, `bitwalt`, `darbon`; prevent self-review | `v*` tags | `NPM_TOKEN`, `PYPI_TOKEN`, `SECURITY_RELEASE_APP_PRIVATE_KEY` |
-   | `security-source` | the same; prevent self-review | `v*` tags | `PYPI_TOKEN`, `SECURITY_RELEASE_APP_PRIVATE_KEY` |
-   | `mirror-sync` | none | `trunk` | `SECURITY_RELEASE_APP_PRIVATE_KEY` |
+   | Environment | Deployments | Secrets |
+   |---|---|---|
+   | `security-packages` | tags `v*` | `NPM_TOKEN`, `PYPI_TOKEN`, `SECURITY_RELEASE_APP_PRIVATE_KEY` |
+   | `security-source` | tags `source/v*` | `PYPI_TOKEN`, `SECURITY_RELEASE_APP_PRIVATE_KEY` |
+   | `mirror-sync` | branch `trunk` | `SECURITY_RELEASE_APP_PRIVATE_KEY` |
 
    `NPM_TOKEN` here is its own granular token, scoped to publishing
    `@kaleidorg/swap-sdk` and `@kaleidorg/swap-sdk-react-native`, never a copy
@@ -596,9 +630,13 @@ once. None of them can be done from this repository.
    working.
 6. **Mirror variables.** `NPM_PUBLISH_ENABLED=true`, and `PYPI_PUBLISH_ENABLED`
    matching this repository's.
-7. **Mirror rulesets.** `v*` tags may be created only by administrators;
-   `security/*` branches need a pull request with one approval; `trunk` takes
-   pushes only from the App, through the sync.
+7. **Mirror rulesets.** These carry the sign-off, so give them no bypass.
+   - Tags `v*` and `source/v*`: creation, update and deletion restricted to
+     administrators.
+   - Branches `security/*`: require a pull request with one approval, dismiss
+     stale approvals, require approval of the most recent push, block force
+     pushes and deletion.
+   - Branch `trunk`: pushes only by the App, through the sync.
 8. **First sync.** Run it once by hand, then it runs hourly:
 
    ```sh
@@ -616,27 +654,35 @@ from a release that predates this pipeline therefore has to merge the pipeline
 from `trunk` first.
 
 1. Cut the branch from the last release tag and push it to the mirror. Do the
-   fix as a pull request into that branch, with CI, in the mirror only.
+   fix as a pull request into that branch, with CI, in the mirror only, and
+   have another maintainer approve it.
 
    ```sh
    git switch -c security/X.Y.Z vX.Y.W
    git push mirror security/X.Y.Z
    ```
 
-2. Add the release commit to the branch: `make sync-version VERSION=X.Y.Z` and
-   a `[X.Y.Z]` changelog section that describes the change neutrally.
-3. An administrator tags the branch head and pushes the tag to the mirror:
+2. Add the release commit the same way: `make sync-version VERSION=X.Y.Z` and
+   a `[X.Y.Z]` changelog section that describes the change neutrally, in an
+   approved pull request.
+3. **Gate 1.** An administrator tags the branch head and pushes the tag:
 
    ```sh
    git tag -a vX.Y.Z -m "KaleidoSwap SDK vX.Y.Z"
    git push mirror vX.Y.Z
    ```
 
-4. A second maintainer approves **gate 1**. Wait for
-   `security-verify-packages` to pass.
-5. A second maintainer approves **gate 2**, straight away or after the embargo.
-6. Watch `verify-mirror-release` pass on this repository's tag run.
-7. Open the usual pull request from `release/X.Y.Z` into `trunk` here, as for
+   Wait for `security-verify-packages` to pass.
+4. **Gate 2**, straight away or after the embargo. An administrator tags the
+   same commit:
+
+   ```sh
+   git tag -a source/vX.Y.Z vX.Y.Z^{commit} -m "Publish the source of vX.Y.Z"
+   git push mirror source/vX.Y.Z
+   ```
+
+5. Watch `verify-mirror-release` pass on this repository's tag run.
+6. Open the usual pull request from `release/X.Y.Z` into `trunk` here, as for
    any patch release, then publish the advisory with `X.Y.Z` as the patched
    version.
 
@@ -651,7 +697,8 @@ leaves neither the branch nor the tag behind and can be rerun.
   against the release's `SHA256SUMS`.
 - Until gate 2, Rust users who pin git tags and Python users on a platform with
   no wheel cannot get the fix.
-- The mirror's build runs the macOS jobs on its own Actions minutes.
+- The mirror's build runs the macOS jobs on its own Actions minutes, 3,000 a
+  month on Team. A release run uses roughly 400 of them.
 
 ## Rust distribution
 

@@ -1943,36 +1943,105 @@ class SecurityReleaseWorkflowTests(unittest.TestCase):
             ),
         )
 
-    def test_security_push_must_not_force(self) -> None:
+    def test_gate_one_must_not_publish_the_source(self) -> None:
         self.rejects(
-            "must never rewrite a ref",
+            "gate 1 must not publish the source",
             security_contents=self.changed(
-                "security-release.yaml", "push --atomic", "push --atomic --force"
+                "security-release.yaml",
+                "      - name: Select the exact validated wheels\n",
+                "      - name: Push early\n"
+                "        run: git push origin HEAD\n"
+                "      - name: Select the exact validated wheels\n",
             ),
         )
 
-    def test_source_gate_must_follow_verification(self) -> None:
+    # Mirror security-publish-source.yaml (gate 2)
+
+    def test_source_gate_must_run_only_in_the_mirror(self) -> None:
         self.rejects(
-            "security release jobs must run",
-            security_contents=self.changed(
-                "security-release.yaml",
-                "    needs:\n      - security-build\n      - security-verify-packages\n",
-                "    needs:\n      - security-build\n      - security-publish-packages\n",
+            "source-mode must run only in kaleidoswap/swap-sdk-private",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml",
+                "    if: ${{ github.repository == 'kaleidoswap/swap-sdk-private' }}\n",
+                "",
+            ),
+        )
+
+    def test_source_tag_must_sit_on_the_release_commit(self) -> None:
+        self.rejects(
+            "sit on the release tag's commit",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml",
+                'if [ "${commit}" != "${release_commit}" ]',
+                'if false',
+            ),
+        )
+
+    def test_source_gate_must_follow_a_successful_gate_one(self) -> None:
+        self.rejects(
+            "follow a successful gate 1 run",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml",
+                "&event=push&status=success",
+                "&event=push",
+            ),
+        )
+
+    def test_source_gate_must_use_gate_one_bundle(self) -> None:
+        self.rejects(
+            "run-id",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml",
+                "          run-id: ${{ needs.source-mode.outputs.run_id }}\n",
+                "",
+            ),
+        )
+
+    def test_source_gate_must_not_publish_packages(self) -> None:
+        self.rejects(
+            "gate 2 publishes only the source",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml",
+                "          cp release-artifacts/*.tar.gz python-sdist/\n",
+                "          cp release-artifacts/*.tar.gz python-sdist/\n"
+                "          cp release-artifacts/*.whl python-sdist/\n",
+            ),
+        )
+
+    def test_source_secret_must_stay_in_its_gate(self) -> None:
+        self.rejects(
+            "outside its protected environment",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml",
+                "    name: Find the verified security release for this tag\n",
+                "    name: Find the verified security release for this tag\n"
+                "    env:\n      LEAK: ${{ secrets.PYPI_TOKEN }}\n",
+            ),
+        )
+
+    def test_source_push_must_not_force(self) -> None:
+        self.rejects(
+            "must never rewrite a ref",
+            security_source_contents=self.changed(
+                "security-publish-source.yaml", "push --atomic", "push --atomic --force"
             ),
         )
 
     def test_source_gate_must_verify_before_pushing(self) -> None:
-        contents = self.read("security-release.yaml")
-        source = contents[contents.index("  security-publish-source:") :]
-        verify_start = source.index(
+        contents = self.read("security-publish-source.yaml")
+        verify_start = contents.index(
             "      - name: Verify the sealed bundle against its manifest"
         )
-        verify_end = source.index("      - name: Mint a token for the public repository")
-        step = source[verify_start:verify_end]
-        moved = source[:verify_start] + source[verify_end:].rstrip("\n") + "\n" + step
+        verify_end = contents.index("      - name: Mint a token for the public repository")
+        step = contents[verify_start:verify_end]
+        moved = (
+            contents[:verify_start]
+            + contents[verify_end:].rstrip("\n")
+            + "\n"
+            + step
+        )
         self.rejects(
-            "must verify the bundle before it pushes",
-            security_contents=contents.replace(source, moved, 1),
+            "must verify the bundle before it pushes", security_source_contents=moved
         )
 
     # Mirror mirror-sync.yaml

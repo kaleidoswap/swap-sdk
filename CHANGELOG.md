@@ -7,9 +7,11 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Security releases can be built and published from a private mirror, so the
-  fixed packages reach npm and PyPI before the source is public. The mirror's
-  `security-release.yaml` publishes behind two approvals, packages and then
-  source, and `mirror-sync.yaml` keeps the mirror's `trunk` and tags in step.
+  fixed packages reach npm and PyPI before the source is public. In the
+  mirror, a `vX.Y.Z` tag runs `security-release.yaml`, which publishes and
+  verifies the packages, and a later `source/vX.Y.Z` tag runs
+  `security-publish-source.yaml`, which publishes the source to this
+  repository. `mirror-sync.yaml` keeps the mirror's `trunk` and tags in step.
   When a pushed tag's version is already on npm, `release.yaml` now only
   verifies the release and the registry files against each other, and
   publishes nothing. `SECURITY.md` describes which fixes take this path.
