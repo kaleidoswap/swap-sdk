@@ -106,7 +106,10 @@ Both publisher jobs:
 `scripts/check_release_workflow.py` enforces that: only `NPM_TOKEN` and
 `PYPI_TOKEN` may be referenced, only from a job declaring
 `environment: release`, and never from the read-only build or rehearsal
-workflows. A `username:` key is rejected outright.
+workflows. A `username:` key is rejected outright. The private mirror's
+`security-release.yaml` and `mirror-sync.yaml` follow the same rule with their
+own environments, and add one secret, `SECURITY_RELEASE_APP_PRIVATE_KEY`; see
+"Security releases".
 
 Before publishing, the npm job runs `npm whoami` to prove the credential
 authenticates. An npm publish cannot be cleanly undone, so a bad token must fail
@@ -152,18 +155,28 @@ either registry job loses that step, runs it after publishing, or gains a
 `needs:` edge that would split the approval.
 
 The production jobs run in this order, and `scripts/check_release_workflow.py`
-fails when this list and the workflow's `needs:` graph disagree. Steps 3 to 5
-start together once approved, and the wait step keeps 4 and 5 behind 3:
+fails when this list and the workflow's `needs:` graph disagree. Steps 4 to 6
+start together once approved, and the wait step keeps 5 and 6 behind 4:
 
-1. `release-activation`
-2. `release-ready`
-3. `publish-github-release`
-4. `publish-npm`
-5. `publish-pypi`
-6. `verify-npm`
-7. `verify-pypi`
-8. `registry-publish-complete`
-9. `verify-react-native-install`
+1. `release-mode`
+2. `release-activation`
+3. `release-ready`
+4. `publish-github-release`
+5. `publish-npm`
+6. `publish-pypi`
+7. `verify-npm`
+8. `verify-pypi`
+9. `registry-publish-complete`
+10. `verify-react-native-install`
+11. `verify-mirror-release`
+
+`release-mode` asks npm whether the tag's version already exists. When it does
+not, the tag is a normal release and steps 2 to 10 run. When it does, the
+packages were published by the private mirror (see "Security releases"), steps
+2 to 10 are skipped, and only `verify-mirror-release` runs. That job holds no
+credential and publishes nothing: it waits for the release the mirror creates,
+checks it against its `SHA256SUMS` and manifest, hash-matches every registry
+file against it, and installs the React Native package with its `postinstall`.
 
 Production activation requires npm publishing to be enabled, but it enforces
 intent, not outcome: a publisher that fails after the release job leaves a
@@ -485,6 +498,160 @@ publisher succeeds and another fails:
      --verify-tag --latest \
      --notes-file <(python3 scripts/release_notes.py "$VERSION")
    ```
+
+## Security releases
+
+A fix for a vulnerability must be installable from npm and PyPI no later than
+anyone can read it on GitHub. A normal release cannot promise that: its commit
+is public on `trunk` for the whole build and for however long the approval
+takes. So a security release is built and published from a private mirror,
+`kaleidoswap/swap-sdk-private`, and its source reaches this repository only at
+a second approval. `SECURITY.md` says which fixes take this path.
+
+The published packages contain code (the npm package ships compiled
+JavaScript and WASM, the wheels ship the compiled core), so this is not
+secrecy. It closes the window in which the fix is readable but no fixed version
+can be installed.
+
+### How a security release runs
+
+`.github/workflows/security-release.yaml` runs on a `v*` tag in the mirror and
+does nothing anywhere else:
+
+1. `security-mode` releases only when the mirror has a `security/X.Y.Z` branch
+   for the tag and npm does not have that version yet. Every other tag, such as
+   the public tags the mirror syncs, is skipped.
+2. `security-build` runs the same read-only `release-build.yaml` graph as a
+   public release, with the tag required to be reachable from the
+   `security/X.Y.Z` branch rather than `trunk`.
+3. `security-publish-packages` (environment `security-packages`, **gate 1**)
+   publishes the two native archives to the public binaries-only repository
+   `kaleidoswap/swap-sdk-artifacts`, then the Python wheels, then both npm
+   packages with `--provenance=false`. npm refuses provenance from a private
+   repository. The sdist is source, so it waits.
+4. `security-verify-packages` hash-matches both npm tarballs and every wheel
+   against the sealed bundle, fails if an sdist is already on PyPI, and
+   installs the React Native package. The public repository has no release for
+   the version yet, so that install proves `postinstall`'s fallback to the
+   binaries-only host.
+5. `security-publish-source` (environment `security-source`, **gate 2**)
+   verifies the bundle again, uploads the sdist, pushes the exact release
+   commits to `release/X.Y.Z` and the tag to this repository in one atomic
+   push, and creates this repository's GitHub release from the sealed bundle.
+
+The pushed tag starts `release.yaml` here. `release-mode` finds the version on
+npm, and `verify-mirror-release` checks the public release and every registry
+file against each other. That green run is the public evidence that the
+packages match the source now visible here; it stands in for the missing npm
+provenance.
+
+Both gates need a second maintainer. Approve gate 2 straight after gate 1 when
+packages and source should go out together. Hold it for an embargo when the
+fixed packages should be installable before the source is readable.
+
+### One-time setup
+
+These are organization and repository settings, so an administrator does them
+once. None of them can be done from this repository.
+
+1. **Plan.** Required reviewers on an environment of a private repository need
+   GitHub Enterprise Cloud. On Free or Team the mirror's gates would have no
+   second approver, so do not create the mirror's environments without it.
+2. **Mirror.** Create an empty private repository,
+   `kaleidoswap/swap-sdk-private`, with access for the release maintainers only.
+   Seed it with `trunk` and the release tags. Do not fork: a fork of a public
+   repository is public and shares its fork network.
+
+   ```sh
+   git clone --bare git@github.com:kaleidoswap/swap-sdk.git swap-sdk-seed.git
+   cd swap-sdk-seed.git
+   git push git@github.com:kaleidoswap/swap-sdk-private.git \
+     refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
+   ```
+
+3. **Binaries host.** Create the public repository
+   `kaleidoswap/swap-sdk-artifacts` with one commit: a README saying it holds
+   only native archives, and that their digests are pinned in the React Native
+   package's `native-artifacts.json`.
+4. **GitHub App.** Create an App with repository permissions Contents
+   (read and write), Workflows (read and write) and Metadata (read). Install it
+   on `swap-sdk`, `swap-sdk-private` and `swap-sdk-artifacts`. Add it to the
+   bypass list of this repository's `Protect release tags` ruleset, so gate 2
+   can create the tag. In the mirror, set the repository variable
+   `SECURITY_RELEASE_APP_CLIENT_ID` to its client ID.
+5. **Mirror environments.** Clear administrator bypass on both gates.
+
+   | Environment | Reviewers | Deployments | Secrets |
+   |---|---|---|---|
+   | `security-packages` | `Arshia-r-m`, `bitwalt`, `darbon`; prevent self-review | `v*` tags | `NPM_TOKEN`, `PYPI_TOKEN`, `SECURITY_RELEASE_APP_PRIVATE_KEY` |
+   | `security-source` | the same; prevent self-review | `v*` tags | `PYPI_TOKEN`, `SECURITY_RELEASE_APP_PRIVATE_KEY` |
+   | `mirror-sync` | none | `trunk` | `SECURITY_RELEASE_APP_PRIVATE_KEY` |
+
+   `NPM_TOKEN` here is its own granular token, scoped to publishing
+   `@kaleidorg/swap-sdk` and `@kaleidorg/swap-sdk-react-native`, never a copy
+   of this repository's. `PYPI_TOKEN` is likewise its own, scoped to
+   `kaleidorg-swap-sdk`. Either side can then be revoked alone. If the packages
+   later move to npm trusted publishing, the mirror needs its own trusted
+   publisher entry before tokens are disallowed, or security releases stop
+   working.
+6. **Mirror variables.** `NPM_PUBLISH_ENABLED=true`, and `PYPI_PUBLISH_ENABLED`
+   matching this repository's.
+7. **Mirror rulesets.** `v*` tags may be created only by administrators;
+   `security/*` branches need a pull request with one approval; `trunk` takes
+   pushes only from the App, through the sync.
+8. **First sync.** Run it once by hand, then it runs hourly:
+
+   ```sh
+   gh workflow run mirror-sync.yaml --repo kaleidoswap/swap-sdk-private
+   ```
+
+`mirror-sync.yaml` fast-forwards the mirror's `trunk` and copies new `v*` tags
+from this repository. It never rewrites a ref, so a mirror `trunk` with commits
+of its own fails the sync instead of being overwritten.
+
+### Running one
+
+A tag runs the workflow files of the commit it points to. A security branch cut
+from a release that predates this pipeline therefore has to merge the pipeline
+from `trunk` first.
+
+1. Cut the branch from the last release tag and push it to the mirror. Do the
+   fix as a pull request into that branch, with CI, in the mirror only.
+
+   ```sh
+   git switch -c security/X.Y.Z vX.Y.W
+   git push mirror security/X.Y.Z
+   ```
+
+2. Add the release commit to the branch: `make sync-version VERSION=X.Y.Z` and
+   a `[X.Y.Z]` changelog section that describes the change neutrally.
+3. An administrator tags the branch head and pushes the tag to the mirror:
+
+   ```sh
+   git tag -a vX.Y.Z -m "KaleidoSwap SDK vX.Y.Z"
+   git push mirror vX.Y.Z
+   ```
+
+4. A second maintainer approves **gate 1**. Wait for
+   `security-verify-packages` to pass.
+5. A second maintainer approves **gate 2**, straight away or after the embargo.
+6. Watch `verify-mirror-release` pass on this repository's tag run.
+7. Open the usual pull request from `release/X.Y.Z` into `trunk` here, as for
+   any patch release, then publish the advisory with `X.Y.Z` as the patched
+   version.
+
+A failed job is rerun, never the whole workflow, for the reasons in
+"Partial-publication recovery". The push at gate 2 is atomic, so a failed push
+leaves neither the branch nor the tag behind and can be rerun.
+
+### What it does not cover
+
+- Security releases carry no npm provenance. `verify-mirror-release` is the
+  replacement check, and anyone can repeat it by hashing the registry files
+  against the release's `SHA256SUMS`.
+- Until gate 2, Rust users who pin git tags and Python users on a platform with
+  no wheel cannot get the fix.
+- The mirror's build runs the macOS jobs on its own Actions minutes.
 
 ## Rust distribution
 

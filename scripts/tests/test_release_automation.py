@@ -36,6 +36,7 @@ published = load_script("download_published_artifacts")
 react_native = load_script("react_native_release")
 registry = load_script("check_registry_availability")
 release_notes = load_script("release_notes")
+release_mode = load_script("release_mode")
 release_ref = load_script("validate_release_ref")
 release_version = load_script("release_version")
 verify_bundle = load_script("verify_release_bundle")
@@ -666,6 +667,110 @@ class PublishedArtifactTests(unittest.TestCase):
         self.assertTrue(wheel.name.endswith("manylinux_2_28_x86_64.whl"))
         self.assertTrue(sdist.name.endswith(".tar.gz"))
 
+    PYTHON_NAMES = (
+        "kaleidorg_swap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl",
+        "kaleidorg_swap_sdk-0.1.0-py3-none-manylinux_2_28_aarch64.whl",
+        "kaleidorg_swap_sdk-0.1.0-py3-none-macosx_10_12_x86_64.whl",
+        "kaleidorg_swap_sdk-0.1.0-py3-none-macosx_11_0_arm64.whl",
+        "kaleidorg_swap_sdk-0.1.0-py3-none-win_amd64.whl",
+        "kaleidorg_swap_sdk-0.1.0.tar.gz",
+    )
+
+    def pypi_payload(self, entries: dict, names) -> bytes:
+        return json.dumps(
+            {
+                "info": {"version": "0.1.0"},
+                "urls": [
+                    {
+                        "filename": name,
+                        "digests": {"sha256": entries[name]["sha256"]},
+                        "url": f"https://registry.example/{name}",
+                    }
+                    for name in names
+                ],
+            }
+        ).encode()
+
+    def test_wheels_only_inventory_verifies_every_wheel_and_no_sdist(self) -> None:
+        # A security release from the private mirror publishes the wheels
+        # before its source is public; the sdist follows with the source.
+        contents = b"exact Python artifact"
+        entries = {name: self.entry(contents) for name in self.PYTHON_NAMES}
+        wheels = [name for name in self.PYTHON_NAMES if name.endswith(".whl")]
+        with tempfile.TemporaryDirectory() as temp:
+            with (
+                mock.patch.object(
+                    published.urllib.request,
+                    "urlopen",
+                    return_value=io.BytesIO(self.pypi_payload(entries, wheels)),
+                ),
+                mock.patch.object(
+                    published,
+                    "download",
+                    side_effect=lambda _url, destination: destination.write_bytes(
+                        contents
+                    ),
+                ) as download,
+            ):
+                wheel, sdist = published.download_python_index(
+                    entries,
+                    Path(temp),
+                    "0.1.0",
+                    registry="https://registry.example",
+                    attempts=1,
+                    delay=0,
+                    include_sdist=False,
+                )
+        self.assertTrue(wheel.name.endswith("manylinux_2_28_x86_64.whl"))
+        self.assertIsNone(sdist)
+        self.assertEqual(download.call_count, len(wheels))
+
+    def test_wheels_only_inventory_rejects_an_early_sdist(self) -> None:
+        # The sdist carries the source. Finding it on PyPI while the release is
+        # still binaries-only means the embargo broke, so it must fail loudly.
+        contents = b"exact Python artifact"
+        entries = {name: self.entry(contents) for name in self.PYTHON_NAMES}
+        with (
+            mock.patch.object(
+                published.urllib.request,
+                "urlopen",
+                return_value=io.BytesIO(self.pypi_payload(entries, self.PYTHON_NAMES)),
+            ),
+            mock.patch.object(published, "download") as download,
+            self.assertRaisesRegex(ValueError, "unexpected"),
+        ):
+            published.download_python_index(
+                entries,
+                Path("/unused"),
+                "0.1.0",
+                registry="https://registry.example",
+                attempts=1,
+                delay=0,
+                include_sdist=False,
+            )
+        download.assert_not_called()
+
+    def test_wheels_only_flag_requires_pypi(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "download_published_artifacts.py",
+                    temp,
+                    str(Path(temp) / "out"),
+                    "--version",
+                    "0.1.0",
+                    "--npm",
+                    "--pypi-wheels-only",
+                ],
+            ),
+            mock.patch("sys.stderr", new_callable=io.StringIO) as stderr,
+        ):
+            self.assertEqual(published.main(), 1)
+        self.assertIn("applies only to --pypi", stderr.getvalue())
+
     def test_testpypi_missing_artifact_is_rejected(self) -> None:
         contents = b"artifact"
         wheel = "kaleidorg_swap_sdk-0.1.0-py3-none-manylinux_2_28_x86_64.whl"
@@ -1012,6 +1117,65 @@ class ReleaseArtifactTests(unittest.TestCase):
                     tag="v0.1.0",
                     commit="HEAD",
                 )
+
+
+class ReleaseModeTests(unittest.TestCase):
+    """The tag-time decision between a full release and verify-only."""
+
+    @staticmethod
+    def http_error(code: int) -> urllib.error.HTTPError:
+        return urllib.error.HTTPError("https://registry.example", code, "", {}, None)
+
+    def test_an_existing_version_is_published(self) -> None:
+        opener = mock.MagicMock()
+        self.assertTrue(
+            release_mode.published(
+                "0.1.0", package=NPM_PACKAGE, opener=opener, sleep=mock.Mock()
+            )
+        )
+        opener.assert_called_once()
+        self.assertTrue(
+            opener.call_args.args[0].full_url.endswith(
+                "/%40kaleidorg%2Fswap-sdk/0.1.0"
+            )
+        )
+
+    def test_a_404_is_an_answer_not_a_retry(self) -> None:
+        opener = mock.Mock(side_effect=self.http_error(404))
+        sleep = mock.Mock()
+        self.assertFalse(
+            release_mode.published(
+                "0.1.0", package=NPM_PACKAGE, opener=opener, sleep=sleep
+            )
+        )
+        opener.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_a_registry_outage_is_an_error_not_a_guess(self) -> None:
+        # Guessing `release` would start a build that preflight rejects;
+        # guessing `verify` would skip a real release.
+        opener = mock.Mock(side_effect=self.http_error(503))
+        sleep = mock.Mock()
+        with self.assertRaisesRegex(ValueError, "could not read"):
+            release_mode.published(
+                "0.1.0",
+                package=NPM_PACKAGE,
+                attempts=3,
+                delay=1,
+                opener=opener,
+                sleep=sleep,
+            )
+        self.assertEqual(opener.call_count, 3)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2])
+
+    def test_a_transient_failure_recovers(self) -> None:
+        opener = mock.MagicMock(side_effect=[OSError("reset"), mock.MagicMock()])
+        self.assertTrue(
+            release_mode.published(
+                "0.1.0", package=NPM_PACKAGE, opener=opener, sleep=mock.Mock()
+            )
+        )
+        self.assertEqual(opener.call_count, 2)
 
 
 class ReleaseRefTests(unittest.TestCase):
@@ -1419,8 +1583,8 @@ class WorkflowInvariantTests(unittest.TestCase):
         # graph it describes is worse than no prose, because it is trusted.
         runbook = (ROOT / "docs/releasing.md").read_text()
         changed = runbook.replace(
-            "2. `release-ready`\n3. `publish-github-release`",
-            "2. `publish-github-release`\n3. `release-ready`",
+            "3. `release-ready`\n4. `publish-github-release`",
+            "3. `publish-github-release`\n4. `release-ready`",
             1,
         )
         self.assertNotEqual(changed, runbook)
@@ -1432,7 +1596,7 @@ class WorkflowInvariantTests(unittest.TestCase):
 
     def test_runbook_must_list_every_production_job(self) -> None:
         runbook = (ROOT / "docs/releasing.md").read_text()
-        changed = runbook.replace("9. `verify-react-native-install`\n", "", 1)
+        changed = runbook.replace("10. `verify-react-native-install`\n", "", 1)
         self.assertNotEqual(changed, runbook)
         with self.assertRaisesRegex(ValueError, "must list every production job"):
             workflow.validate(
@@ -1598,6 +1762,250 @@ class WorkflowInvariantTests(unittest.TestCase):
         contents = (ROOT / ".github/workflows/release.yaml").read_text()
         self.assertNotIn("github.run_attempt", build)
         self.assertNotIn("github.run_attempt", contents)
+
+
+class SecurityReleaseWorkflowTests(unittest.TestCase):
+    """The mirror's two-gate security release and the public verify-only path."""
+
+    @staticmethod
+    def read(name: str) -> str:
+        return (ROOT / ".github/workflows" / name).read_text()
+
+    def validate(self, **overrides: str) -> None:
+        workflow.validate(
+            overrides.pop("contents", self.read("release.yaml")), **overrides
+        )
+
+    def rejects(self, pattern: str, **overrides: str) -> None:
+        with self.assertRaisesRegex(ValueError, pattern):
+            self.validate(**overrides)
+
+    def changed(self, name: str, old: str, new: str) -> str:
+        contents = self.read(name)
+        result = contents.replace(old, new, 1)
+        self.assertNotEqual(result, contents, f"{old!r} not found in {name}")
+        return result
+
+    def test_committed_workflows_pass(self) -> None:
+        self.validate()
+
+    # Public release.yaml
+
+    def test_release_mode_must_not_run_in_the_mirror(self) -> None:
+        self.rejects(
+            "release-mode must run only in kaleidoswap/swap-sdk",
+            contents=self.changed(
+                "release.yaml",
+                "    if: ${{ github.repository == 'kaleidoswap/swap-sdk' }}\n",
+                "",
+            ),
+        )
+
+    def test_activation_must_wait_for_release_mode(self) -> None:
+        self.rejects(
+            "release activation must need release-mode",
+            contents=self.changed(
+                "release.yaml",
+                "    if: ${{ needs.release-mode.outputs.mode == 'release' }}\n"
+                "    runs-on: ubuntu-24.04\n    steps:\n",
+                "    runs-on: ubuntu-24.04\n    steps:\n",
+            ),
+        )
+
+    def test_registry_gate_must_skip_a_verification(self) -> None:
+        self.rejects(
+            "registry completion gate must run only in release mode",
+            contents=self.changed(
+                "release.yaml",
+                "if: ${{ always() && needs.release-mode.outputs.mode == 'release' }}",
+                "if: ${{ always() }}",
+            ),
+        )
+
+    def test_verification_must_hold_no_authority(self) -> None:
+        for authority in (
+            "    environment: release\n",
+            "      LEAK: ${{ secrets.NPM_TOKEN }}\n",
+        ):
+            with self.subTest(authority=authority.strip()):
+                contents = self.changed(
+                    "release.yaml",
+                    "    name: Verify a release published from the private mirror\n",
+                    "    name: Verify a release published from the private mirror\n"
+                    + ("    env:\n" if "LEAK" in authority else "")
+                    + authority,
+                )
+                with self.assertRaises(ValueError):
+                    self.validate(contents=contents)
+
+    def test_verification_must_hash_match_the_registries(self) -> None:
+        self.rejects(
+            "verify-mirror-release must install the React Native package",
+            contents=self.changed(
+                "release.yaml",
+                "          node packages/react-native/scripts/smoke-react-native-install.mjs\n"
+                '          --version "${GITHUB_REF_NAME#v}"\n',
+                '          echo "${GITHUB_REF_NAME#v}"\n',
+            ),
+        )
+
+    def test_public_release_must_build_from_trunk(self) -> None:
+        self.rejects(
+            "must build from trunk",
+            contents=self.changed(
+                "release.yaml",
+                "      release_tag: ${{ github.ref_name }}\n",
+                "      release_tag: ${{ github.ref_name }}\n"
+                "      release_base: security/0.1.0\n",
+            ),
+        )
+
+    def test_build_base_must_stay_allowlisted(self) -> None:
+        self.rejects(
+            "release build workflow is missing invariants",
+            build_contents=self.changed(
+                "release-build.yaml",
+                "^(trunk|security/[0-9]+\\.[0-9]+\\.[0-9]+)$",
+                "^.+$",
+            ),
+        )
+
+    # Mirror security-release.yaml
+
+    def test_security_release_must_run_only_in_the_mirror(self) -> None:
+        self.rejects(
+            "security-mode must run only in kaleidoswap/swap-sdk-private",
+            security_contents=self.changed(
+                "security-release.yaml",
+                "    if: ${{ github.repository == 'kaleidoswap/swap-sdk-private' }}\n",
+                "",
+            ),
+        )
+
+    def test_security_npm_publish_must_disable_provenance(self) -> None:
+        self.rejects(
+            "--provenance=false",
+            security_contents=self.changed(
+                "security-release.yaml",
+                "kaleidorg-swap-sdk-${VERSION}.tgz --access public --provenance=false",
+                "kaleidorg-swap-sdk-${VERSION}.tgz --access public",
+            ),
+        )
+
+    def test_sdist_must_wait_for_gate_two(self) -> None:
+        self.rejects(
+            "must not publish the sdist",
+            security_contents=self.changed(
+                "security-release.yaml",
+                "          cp release-artifacts/*.whl python-wheels/\n",
+                "          cp release-artifacts/*.whl python-wheels/\n"
+                "          cp release-artifacts/*.tar.gz python-wheels/\n",
+            ),
+        )
+
+    def test_native_archives_must_precede_the_packages(self) -> None:
+        contents = self.read("security-release.yaml")
+        start = contents.index("      - name: Mint a token for the binaries-only host")
+        end = contents.index("      - name: Select the exact validated wheels")
+        archives = contents[start:end]
+        npm_start = contents.index("      # --provenance=false overrides")
+        npm_end = contents.index("  security-verify-packages:")
+        reordered = (
+            contents[:start]
+            + contents[end:npm_start]
+            + contents[npm_start:npm_end].rstrip("\n")
+            + "\n"
+            + archives
+            + "\n"
+            + contents[npm_end:]
+        )
+        self.rejects("native archives before any package", security_contents=reordered)
+
+    def test_security_secret_must_stay_in_its_gate(self) -> None:
+        self.rejects(
+            "outside its protected environment",
+            security_contents=self.changed(
+                "security-release.yaml",
+                "    name: Verify the published packages\n",
+                "    name: Verify the published packages\n"
+                "    env:\n      LEAK: ${{ secrets.NPM_TOKEN }}\n",
+            ),
+        )
+
+    def test_security_release_must_not_request_oidc(self) -> None:
+        self.rejects(
+            "must not request OIDC",
+            security_contents=self.changed(
+                "security-release.yaml",
+                "    environment: security-packages\n    permissions:\n      contents: read\n",
+                "    environment: security-packages\n    permissions:\n"
+                "      contents: read\n      id-token: write\n",
+            ),
+        )
+
+    def test_security_push_must_not_force(self) -> None:
+        self.rejects(
+            "must never rewrite a ref",
+            security_contents=self.changed(
+                "security-release.yaml", "push --atomic", "push --atomic --force"
+            ),
+        )
+
+    def test_source_gate_must_follow_verification(self) -> None:
+        self.rejects(
+            "security release jobs must run",
+            security_contents=self.changed(
+                "security-release.yaml",
+                "    needs:\n      - security-build\n      - security-verify-packages\n",
+                "    needs:\n      - security-build\n      - security-publish-packages\n",
+            ),
+        )
+
+    def test_source_gate_must_verify_before_pushing(self) -> None:
+        contents = self.read("security-release.yaml")
+        source = contents[contents.index("  security-publish-source:") :]
+        verify_start = source.index(
+            "      - name: Verify the sealed bundle against its manifest"
+        )
+        verify_end = source.index("      - name: Mint a token for the public repository")
+        step = source[verify_start:verify_end]
+        moved = source[:verify_start] + source[verify_end:].rstrip("\n") + "\n" + step
+        self.rejects(
+            "must verify the bundle before it pushes",
+            security_contents=contents.replace(source, moved, 1),
+        )
+
+    # Mirror mirror-sync.yaml
+
+    def test_mirror_sync_must_not_force(self) -> None:
+        self.rejects(
+            "mirror sync must never rewrite a ref",
+            mirror_sync_contents=self.changed(
+                "mirror-sync.yaml",
+                'push "${mirror}" "refs/heads/trunk:refs/heads/trunk"',
+                'push --force "${mirror}" "refs/heads/trunk:refs/heads/trunk"',
+            ),
+        )
+
+    def test_mirror_sync_must_not_rewrite_with_a_plus_refspec(self) -> None:
+        self.rejects(
+            "mirror sync must never rewrite a ref",
+            mirror_sync_contents=self.changed(
+                "mirror-sync.yaml",
+                'push "${mirror}" "refs/heads/trunk:refs/heads/trunk"',
+                'push "${mirror}" "+refs/heads/trunk:refs/heads/trunk"',
+            ),
+        )
+
+    def test_mirror_sync_must_run_only_in_the_mirror(self) -> None:
+        self.rejects(
+            "mirror sync workflow is missing invariants",
+            mirror_sync_contents=self.changed(
+                "mirror-sync.yaml",
+                "    if: ${{ github.repository == 'kaleidoswap/swap-sdk-private' }}\n",
+                "",
+            ),
+        )
 
 
 class WorkflowExpressionTests(unittest.TestCase):

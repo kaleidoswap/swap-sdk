@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Security releases can be built and published from a private mirror, so the
+  fixed packages reach npm and PyPI before the source is public. The mirror's
+  `security-release.yaml` publishes behind two approvals, packages and then
+  source, and `mirror-sync.yaml` keeps the mirror's `trunk` and tags in step.
+  When a pushed tag's version is already on npm, `release.yaml` now only
+  verifies the release and the registry files against each other, and
+  publishes nothing. `SECURITY.md` describes which fixes take this path.
+- The React Native package's `postinstall` falls back to
+  `kaleidoswap/swap-sdk-artifacts` for its native archives when the source
+  repository has no release for the version yet. The digests pinned in the
+  package still decide what is accepted.
+
 ## [0.15.0] - 2026-11-14
 
 ### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1

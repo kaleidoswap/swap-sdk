@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
@@ -129,6 +129,35 @@ test("an archive that arrives with the wrong digest is still fatal", () => {
     assert.notEqual(status, 0);
     assert.match(output, /SHA-256 mismatch/);
     assert.doesNotMatch(output, /WARNING: installed WITHOUT/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("each archive is tried on the source release, then the binaries-only host", () => {
+  const root = installedPackage();
+  try {
+    // A security release reaches npm before its source release exists, so the
+    // second host is what lets that install succeed. Record what was asked for.
+    const log = join(root, "requests.log");
+    const stub = join(root, "stub-fetch.mjs");
+    writeFileSync(
+      stub,
+      `import { appendFileSync } from "node:fs";\n` +
+        `globalThis.fetch = async (url) => {\n` +
+        `  appendFileSync(${JSON.stringify(log)}, String(url) + "\\n");\n` +
+        `  return new Response(null, { status: 404 });\n};\n`,
+    );
+    const { status, output } = runPostinstall(root, pathToFileURL(stub).href);
+    assert.notEqual(status, 0);
+    const requested = readFileSync(log, "utf8").trim().split("\n");
+    assert.deepEqual(requested, [
+      `https://github.com/kaleidoswap/swap-sdk/releases/download/v${VERSION}/${ARCHIVES[0]}`,
+      `https://github.com/kaleidoswap/swap-sdk-artifacts/releases/download/v${VERSION}/${ARCHIVES[0]}`,
+    ]);
+    // The failure names both places it looked.
+    assert.match(output, /swap-sdk\/releases\/download/);
+    assert.match(output, /swap-sdk-artifacts\/releases\/download/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

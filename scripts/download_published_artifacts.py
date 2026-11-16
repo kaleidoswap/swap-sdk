@@ -329,12 +329,19 @@ def download_python_index(
     attempts: int,
     delay: float,
     max_delay: float | None = None,
-) -> tuple[Path, Path]:
+    include_sdist: bool = True,
+) -> tuple[Path, Path | None]:
+    # A security release from the private mirror publishes the wheels first and
+    # the sdist only once its source is public, so between the two the complete
+    # inventory is every wheel and nothing else. Anything outside the expected
+    # set is still fatal, so an early sdist fails this check as loudly as a
+    # tampered wheel does.
     expected = {
         name: entry
         for name, entry in entries.items()
-        if name.endswith(".whl") or name.endswith(".tar.gz")
+        if name.endswith(".whl") or (include_sdist and name.endswith(".tar.gz"))
     }
+    expected_count = PYTHON_ARTIFACT_COUNT - (0 if include_sdist else 1)
 
     def validate_inventory(metadata: dict) -> None:
         if metadata.get("info", {}).get("version") != version:
@@ -382,21 +389,21 @@ def download_python_index(
         verify_download(destination, expected[name])
         destinations.append(destination)
         print(f"Verified published PyPI artifact: {destination.name}")
-    if len(destinations) != PYTHON_ARTIFACT_COUNT:
+    if len(destinations) != expected_count:
         raise ValueError(
-            f"expected {PYTHON_ARTIFACT_COUNT} Python artifacts, "
+            f"expected {expected_count} Python artifacts, "
             f"byte-verified {len(destinations)}"
         )
 
     # The smoke tests need one installable wheel for this runner plus the sdist.
     wheels = [path for path in destinations if LINUX_X86_64_WHEEL.search(path.name)]
     sdists = [path for path in destinations if path.name.endswith(".tar.gz")]
-    if len(wheels) != 1 or len(sdists) != 1:
+    if len(wheels) != 1 or len(sdists) != (1 if include_sdist else 0):
         raise ValueError(
             "could not select exactly one Linux wheel and one sdist for the "
             f"smoke tests (wheels={len(wheels)}, sdists={len(sdists)})"
         )
-    return wheels[0], sdists[0]
+    return wheels[0], sdists[0] if include_sdist else None
 
 
 def main() -> int:
@@ -406,6 +413,11 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--npm", action="store_true")
     parser.add_argument("--pypi", action="store_true")
+    parser.add_argument(
+        "--pypi-wheels-only",
+        action="store_true",
+        help="expect every wheel and no sdist (a security release before its source is public)",
+    )
     # The two registries propagate on different scales, so neither default is
     # shared. Left unset, each side gets the budget its own registry needs.
     parser.add_argument("--attempts", type=int)
@@ -417,6 +429,8 @@ def main() -> int:
     try:
         if args.npm == args.pypi:
             raise ValueError("select exactly one of --npm or --pypi")
+        if args.pypi_wheels_only and not args.pypi:
+            raise ValueError("--pypi-wheels-only applies only to --pypi")
         if args.npm:
             attempts, delay, max_delay = NPM_ATTEMPTS, NPM_DELAY, NPM_MAX_DELAY
         else:
@@ -456,6 +470,7 @@ def main() -> int:
                 attempts=attempts,
                 delay=delay,
                 max_delay=max_delay,
+                include_sdist=not args.pypi_wheels_only,
             )
     except (
         OSError,

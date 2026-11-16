@@ -35,6 +35,23 @@ email:
 - We credit researchers who report responsibly (unless you prefer anonymity).
 - Once a fix ships, we publish an advisory describing the issue and the fix.
 
+### How Fixes Ship
+
+Each fix takes one of three tracks, by impact:
+
+| Track | When | How it ships |
+|---|---|---|
+| **A. Open** | No funds or secrets at risk: a wrong status, a crash, a denial of service | A normal pull request and the next release. The advisory follows the release. |
+| **B. Private** | Funds or secrets at risk under some precondition, or a swap that needs manual recovery | Fixed and released from a private repository. Packages, source and advisory go public together. |
+| **C. Private, binaries first** | Funds can be taken or locked in default use | As B, but the fixed packages are published first and the source a few days later. |
+
+Tracks B and C are built and published from a private repository, so the fixed
+packages are on npm and PyPI before the fix is readable here.
+[docs/releasing.md](docs/releasing.md) ("Security releases") describes the
+pipeline.
+
+Security fixes go to the latest release only. Upgrade to it to receive them.
+
 ## Threat Model Notes
 
 When auditing this SDK, the highest-impact surfaces are:
