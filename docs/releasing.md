@@ -637,15 +637,17 @@ once. None of them can be done from this repository.
      stale approvals, require approval of the most recent push, block force
      pushes and deletion.
    - Branch `trunk`: pushes only by the App, through the sync.
-8. **First sync.** Run it once by hand, then it runs hourly:
+8. **First sync.** Run it once to check the setup:
 
    ```sh
    gh workflow run mirror-sync.yaml --repo kaleidoswap/swap-sdk-private
    ```
 
 `mirror-sync.yaml` fast-forwards the mirror's `trunk` and copies new `v*` tags
-from this repository. It never rewrites a ref, so a mirror `trunk` with commits
-of its own fails the sync instead of being overwritten.
+from this repository. It runs only when started by hand: a security branch is
+cut from the last release tag, so the mirror only has to be current at that
+moment. It never rewrites a ref, so a mirror `trunk` with commits of its own
+fails the sync instead of being overwritten.
 
 ### Running one
 
@@ -653,11 +655,13 @@ A tag runs the workflow files of the commit it points to. A security branch cut
 from a release that predates this pipeline therefore has to merge the pipeline
 from `trunk` first.
 
-1. Cut the branch from the last release tag and push it to the mirror. Do the
-   fix as a pull request into that branch, with CI, in the mirror only, and
-   have another maintainer approve it.
+1. Sync the mirror, so it has the last release tag, then cut the branch from
+   that tag and push it to the mirror. Do the fix as a pull request into that
+   branch, with CI, in the mirror only, and have another maintainer approve it.
 
    ```sh
+   gh workflow run mirror-sync.yaml --repo kaleidoswap/swap-sdk-private
+   git fetch mirror --tags
    git switch -c security/X.Y.Z vX.Y.W
    git push mirror security/X.Y.Z
    ```

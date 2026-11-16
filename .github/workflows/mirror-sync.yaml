@@ -1,16 +1,16 @@
 name: mirror sync
 
-# Runs only in the private mirror, kaleidoswap/swap-sdk-private. It keeps the
-# mirror's trunk and release tags identical to the public repository's, so a
-# security branch cut from the last release tag starts from exactly what users
-# run. The mirror never has commits of its own on trunk: security work lives on
-# `security/X.Y.Z` branches. Nothing here rewrites a ref, so a mirror trunk
+# Runs only in the private mirror, kaleidoswap/swap-sdk-private, and only when
+# started by hand. It brings the mirror's trunk and release tags up to the
+# public repository's, so a security branch cut from the last release tag
+# starts from exactly what users run. Run it before cutting one; nothing else
+# needs the mirror current, so it does not run on a schedule. The mirror never
+# has commits of its own on trunk: security work lives on `security/X.Y.Z`
+# branches. Nothing here rewrites a ref, so a mirror trunk
 # that has diverged, or a tag that points somewhere else, fails this job
 # instead of being overwritten.
 
 on:
-  schedule:
-    - cron: "17 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -25,8 +25,8 @@ jobs:
     name: Fast-forward trunk and copy release tags from the public repository
     if: ${{ github.repository == 'kaleidoswap/swap-sdk-private' }}
     runs-on: ubuntu-24.04
-    # Holds the App key. No reviewers, and deployments limited to trunk, which
-    # is where a schedule runs.
+    # Holds the App key. No reviewers, and deployments limited to trunk, so the
+    # key is handed only to this file as trunk has it.
     environment: mirror-sync
     timeout-minutes: 15
     steps:

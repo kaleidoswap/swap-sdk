@@ -2066,6 +2066,16 @@ class SecurityReleaseWorkflowTests(unittest.TestCase):
             ),
         )
 
+    def test_mirror_sync_must_not_run_on_a_schedule(self) -> None:
+        self.rejects(
+            "mirror sync must run only when started by hand",
+            mirror_sync_contents=self.changed(
+                "mirror-sync.yaml",
+                "on:\n  workflow_dispatch:\n",
+                'on:\n  schedule:\n    - cron: "17 * * * *"\n  workflow_dispatch:\n',
+            ),
+        )
+
     def test_mirror_sync_must_run_only_in_the_mirror(self) -> None:
         self.rejects(
             "mirror sync workflow is missing invariants",

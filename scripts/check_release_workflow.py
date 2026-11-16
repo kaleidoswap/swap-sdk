@@ -1009,7 +1009,7 @@ def validate_mirror_sync(contents: str) -> None:
     require_snippets(
         contents,
         (
-            "schedule:",
+            "workflow_dispatch:",
             MIRROR_REPOSITORY_GUARD,
             "environment: mirror-sync",
             "https://github.com/kaleidoswap/swap-sdk.git",
@@ -1023,6 +1023,11 @@ def validate_mirror_sync(contents: str) -> None:
         "mirror sync",
     )
     forbid_ref_rewrites(contents, "mirror sync")
+    # Started by hand before a security branch is cut. A schedule would hand
+    # the App key to a job every hour for a mirror nothing else needs current.
+    on = contents.split("\non:\n", 1)[-1].split("\n\n", 1)[0]
+    if "workflow_dispatch:" not in on or re.search(r"^  (?!workflow_dispatch:)\S", on, re.MULTILINE):
+        raise ValueError("mirror sync must run only when started by hand")
 
 
 def main() -> int:
