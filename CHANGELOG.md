@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Chain and reverse payout floors charge the pair card's fee on the converted
+  payout, `floor(amount × rate) − fees.total(that amount)`. The percentage is
+  no longer taken on the lock amount and subtracted in claim units, so a
+  BTC → L-USDT chain create whose claim matches the card is accepted.
+  Same-asset cards (`rate` 1) are unchanged. The funding ceiling is the one
+  shipped in 0.14.2.
+- Chain and reverse swaps recognize `transaction.refunded.confirmed`. The
+  maker emits that, and `transaction.refunded`, when it reclaims its own
+  lockup; `transaction.refunded.mempool` is not emitted and is accepted the
+  same way. `canRefund` treats them as a cooperative refund of the taker's
+  chain lockup while that lockup is still unspent. An unknown status stays
+  unknown.
+
 ## [0.15.0] - 2026-11-17
 
 ### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1

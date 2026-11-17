@@ -56,9 +56,9 @@ export type InternalHopRef = { payeeId: string, };
 
 export type SubSwapStates = "swap.created" | "transaction.mempool" | "transaction.confirmed" | "invoice.set" | "invoice.paid" | "invoice.pending" | "invoice.failedToPay" | "transaction.claimed" | "transaction.claim.pending" | "transaction.lockupFailed" | "swap.expired";
 
-export type RevSwapStates = "swap.created" | "minerfee.paid" | "transaction.mempool" | "transaction.confirmed" | "invoice.settled" | "invoice.expired" | "swap.expired" | "transaction.failed" | "transaction.refunded";
+export type RevSwapStates = "swap.created" | "minerfee.paid" | "transaction.mempool" | "transaction.confirmed" | "invoice.settled" | "invoice.expired" | "swap.expired" | "transaction.failed" | "transaction.refunded" | "transaction.refunded.confirmed" | "transaction.refunded.mempool";
 
-export type ChainSwapStates = "swap.created" | "transaction.zeroconf.rejected" | "transaction.mempool" | "transaction.confirmed" | "transaction.server.mempool" | "transaction.server.confirmed" | "transaction.claim.pending" | "transaction.claimed" | "transaction.lockupFailed" | "swap.expired" | "transaction.failed" | "transaction.refunded";
+export type ChainSwapStates = "swap.created" | "transaction.zeroconf.rejected" | "transaction.mempool" | "transaction.confirmed" | "transaction.server.mempool" | "transaction.server.confirmed" | "transaction.claim.pending" | "transaction.claimed" | "transaction.lockupFailed" | "swap.expired" | "transaction.failed" | "transaction.refunded" | "transaction.refunded.confirmed" | "transaction.refunded.mempool";
 
 export type Webhook<T> = { url: string, hashSwapId?: boolean | null, status?: Array<T> | null, };
 
