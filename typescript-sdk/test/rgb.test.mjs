@@ -47,8 +47,8 @@ test("RGB create pins, colored claims and caller-funded refunds cross the wasm b
       const evidence =
         req.url === "/v2/blocks/tip/height"
           ? "100"
-          : req.url === `/v2/tx/${lockTxid}/status`
-            ? { confirmed: true, block_height: 100 }
+          : req.url === `/v2/tx/${lockTxid}`
+            ? { status: { confirmed: true, block_height: 100 }, vout: [{}] }
             : req.url === `/v2/tx/${lockTxid}/outspend/0`
               ? { spent: false }
               : undefined;
