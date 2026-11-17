@@ -519,6 +519,38 @@ pub struct SwapState {
     /// it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claim_fee_rate: Option<f64>,
+    /// 32 random bytes, hex, drawn by `start` for a reverse swap and mixed
+    /// into the signer's preimage for `swap_index` (see [`swap_preimage`]),
+    /// so that the preimage depends on more than the index. `None` on
+    /// submarine swaps and on reverse records written before it was kept,
+    /// whose preimage is the signer's as is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preimage_salt: Option<String>,
+}
+
+/// Domain of the tagged hash that mixes [`SwapState::preimage_salt`] into a
+/// reverse swap's preimage.
+const PREIMAGE_SALT_DOMAIN: &[u8] = b"kaleidoswap/reverse-preimage/v1";
+
+/// The preimage a swap on `index` uses: the signer's, mixed with `salt` when
+/// the record has one.
+async fn swap_preimage(
+    signer: &dyn SwapSigner,
+    index: u64,
+    salt: Option<&str>,
+) -> Result<Preimage, SwapError> {
+    let base = signer.derive_preimage(index).await?;
+    let Some(salt) = salt else {
+        return Ok(base);
+    };
+    let salt = <[u8; 32] as bitcoin::hex::FromHex>::from_hex(salt).map_err(|e| {
+        SwapError::new(
+            SwapErrorCode::StoreFailed,
+            format!("the record's preimage salt is unreadable: {e}"),
+        )
+    })?;
+    base.mixed_with(PREIMAGE_SALT_DOMAIN, &salt)
+        .map_err(|e| SwapError::from_core(e, None))
 }
 
 /// A claim or refund this layer signed: what it broadcasts, and what it
@@ -733,8 +765,10 @@ pub trait SwapStore: Send + Sync {
 pub trait SwapSigner: Send + Sync {
     /// The public key of swap `index`.
     async fn public_key(&self, index: u64) -> Result<PublicKey, SwapError>;
-    /// The preimage of swap `index`. Its SHA-256 goes into the swap; the
-    /// preimage itself is revealed only by the claim of a reverse swap.
+    /// The preimage of swap `index`. A reverse swap uses it mixed with random
+    /// bytes kept on the swap's record ([`SwapState::preimage_salt`]); the
+    /// SHA-256 of the result goes into the swap, and the result itself is
+    /// revealed only by the claim.
     async fn derive_preimage(&self, index: u64) -> Result<Preimage, SwapError>;
     /// A BIP340 signature by the untweaked key of swap `index` over a Taproot
     /// script-path sighash: the claim or refund when the maker does not
@@ -2325,7 +2359,12 @@ impl Swap {
 
     async fn claim_now(&self) -> Result<SwapRecord, SwapError> {
         let signer = self.signer().await?;
-        let preimage = self.env.signer.derive_preimage(signer.index).await?;
+        let preimage = swap_preimage(
+            self.env.signer.as_ref(),
+            signer.index,
+            self.record().state.preimage_salt.as_deref(),
+        )
+        .await?;
         let rate = self.spend_fee_rate(Spend::Claim, &self.record()).await?;
         let record = self
             .persist(|r| {
@@ -3152,7 +3191,18 @@ impl KaleidoSwap {
 
         let swap_index = self.fresh_index().await?;
         let swap_pubkey = self.env.signer.public_key(swap_index).await?;
-        let preimage = self.env.signer.derive_preimage(swap_index).await?;
+        // A reverse swap's preimage mixes in fresh random bytes kept on its
+        // record, so it never depends on the store's index alone.
+        let preimage_salt = reverse.then(|| {
+            use bitcoin::hex::DisplayHex;
+            crate::util::secrets::rng_32b().to_lower_hex_string()
+        });
+        let preimage = swap_preimage(
+            self.env.signer.as_ref(),
+            swap_index,
+            preimage_salt.as_deref(),
+        )
+        .await?;
         let pubkey = bitcoin::PublicKey::new(swap_pubkey);
 
         let (id, response, zero_conf_limit) = if reverse {
@@ -3299,6 +3349,7 @@ impl KaleidoSwap {
                 funded_seen: false,
                 zero_conf_limit,
                 claim_fee_rate: None,
+                preimage_salt,
             },
         };
 
@@ -3730,6 +3781,8 @@ mod tests {
         estimates_down: bool,
         /// The rate each signed claim or refund was built at, in order.
         rates: Mutex<Vec<f64>>,
+        /// The SHA-256 of the preimage each claim was built with, in order.
+        claim_preimages: Mutex<Vec<String>>,
     }
 
     const FAKE_ESTIMATES: [(u32, f64); 3] = [(1, 0.5), (2, 0.3), (6, 0.25)];
@@ -3821,11 +3874,15 @@ mod tests {
             &self,
             record: &SwapRecord,
             signer: &dyn SpendSigner,
-            _preimage: &Preimage,
+            preimage: &Preimage,
             fee_sat_per_vb: f64,
         ) -> Result<SignedTx, Error> {
             YieldOnce(false).await;
             self.rates.lock().unwrap().push(fee_sat_per_vb);
+            self.claim_preimages
+                .lock()
+                .unwrap()
+                .push(preimage.sha256.to_string());
             {
                 let mut failures = self.claim_failures.lock().unwrap();
                 if *failures > 0 {
@@ -4592,6 +4649,125 @@ mod tests {
         let expired = Quote { expires_at: 0, ..q };
         let err = h.kaleido.start(&expired, dest()).await.unwrap_err();
         assert_eq!(err.code, SwapErrorCode::QuoteExpired);
+    }
+
+    /// The preimage hash each reverse create sent, in order.
+    fn created_preimage_hashes(maker: &FakeMaker) -> Vec<String> {
+        maker
+            .created
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|c| c["preimageHash"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[macros::async_test_all]
+    async fn reverse_swaps_on_one_index_get_distinct_preimages() {
+        // Two stores that both start at index 0 under one signer.
+        let dest = || StartOptions {
+            destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+            ..Default::default()
+        };
+        let (a, b) = (harness(), harness());
+        let swap_a = a
+            .kaleido
+            .start(&reverse_quote(&a).await, dest())
+            .await
+            .unwrap();
+        let swap_b = b
+            .kaleido
+            .start(&reverse_quote(&b).await, dest())
+            .await
+            .unwrap();
+        assert_eq!(swap_a.record().state.swap_index, 0);
+        assert_eq!(swap_b.record().state.swap_index, 0);
+
+        let hash_a = created_preimage_hashes(&a.maker).remove(0);
+        let hash_b = created_preimage_hashes(&b.maker).remove(0);
+        let unsalted = Preimage::from_swap_key(&key_for(0)).sha256.to_string();
+        assert_ne!(hash_a, hash_b);
+        assert_ne!(hash_a, unsalted);
+        assert_ne!(hash_b, unsalted);
+
+        // The salt is kept on the record, and the claim is built with the
+        // preimage whose hash the maker was given.
+        let salt = swap_a.record().state.preimage_salt.clone().unwrap();
+        assert_eq!(salt.len(), 64);
+        assert_eq!(
+            a.store.list().await.unwrap()[0].state.preimage_salt,
+            Some(salt)
+        );
+        a.maker.script(&["transaction.confirmed"]);
+        swap_a.tick().await.unwrap();
+        assert_eq!(*a.flows.claim_preimages.lock().unwrap(), vec![hash_a]);
+    }
+
+    #[macros::async_test_all]
+    async fn a_reverse_record_without_a_salt_claims_with_the_signers_preimage() {
+        // A record written before the salt was kept.
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        let started = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let mut record = started.record();
+        record.state.preimage_salt = None;
+        let json = serde_json::to_value(&record).unwrap();
+        assert!(json["state"].get("preimageSalt").is_none());
+        h.store
+            .put(&serde_json::from_value(json).unwrap())
+            .await
+            .unwrap();
+
+        let swap = h.kaleido.swap(&record.id).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        swap.tick().await.unwrap();
+        assert_eq!(
+            *h.flows.claim_preimages.lock().unwrap(),
+            vec![Preimage::from_swap_key(&key_for(0)).sha256.to_string()]
+        );
+    }
+
+    #[macros::async_test_all]
+    async fn an_unreadable_preimage_salt_stops_the_claim() {
+        let h = harness();
+        let q = reverse_quote(&h).await;
+        let started = h
+            .kaleido
+            .start(
+                &q,
+                StartOptions {
+                    destination: Some("tex1q50rtrmj2f8vl9tem8qpfw36ylw5jg9j24kmnvl".into()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let mut record = started.record();
+        record.state.preimage_salt = Some("not hex".into());
+        h.store.put(&record).await.unwrap();
+
+        let swap = h.kaleido.swap(&record.id).await.unwrap();
+        h.maker.script(&["transaction.confirmed"]);
+        let err = swap.tick().await.unwrap_err();
+        assert_eq!(err.code, SwapErrorCode::StoreFailed, "{err}");
+        assert!(h.flows.claim_preimages.lock().unwrap().is_empty());
+    }
+
+    #[macros::async_test_all]
+    async fn a_submarine_record_has_no_preimage_salt() {
+        let h = harness();
+        let swap = started_submarine(&h).await;
+        assert_eq!(swap.record().state.preimage_salt, None);
     }
 
     #[macros::async_test_all]
@@ -6012,40 +6188,8 @@ mod tests {
         assert_eq!(done.phase, SwapPhase::Settled);
     }
 
-    /// A one-route-per-path HTTP stub on a local port, for the Esplora calls
-    /// [`DefaultFlows`] makes.
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
-    fn stub_esplora(routes: Vec<(String, u16, String)>) -> String {
-        use std::io::{Read, Write};
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        std::thread::spawn(move || {
-            for stream in listener.incoming() {
-                let Ok(mut stream) = stream else { continue };
-                let mut request = Vec::new();
-                let mut buf = [0u8; 1024];
-                while !request.windows(4).any(|w| w == b"\r\n\r\n") {
-                    match stream.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => request.extend_from_slice(&buf[..n]),
-                    }
-                }
-                let request = String::from_utf8_lossy(&request);
-                let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
-                let (code, body) = routes
-                    .iter()
-                    .find(|(route, _, _)| *route == path)
-                    .map(|(_, code, body)| (*code, body.clone()))
-                    .unwrap_or((404, "not found".into()));
-                let _ = write!(
-                    stream,
-                    "HTTP/1.1 {code} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-            }
-        });
-        base
-    }
+    use crate::util::http_stub::stub_esplora;
 
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
     #[macros::async_test]
