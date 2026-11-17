@@ -779,13 +779,14 @@ function lockupReverseScript() {
 }
 
 /** A minimal Esplora serving one chain state: the tip, and the lockup's
- * status and outspend. Everything else fails, and every request is recorded. */
+ * transaction and outspend. Everything else fails, and every request is recorded. */
 async function lockupEsplora({ tip, status, outspend }) {
   const { createServer } = await import("node:http");
   const requests = [];
   const routes = {
     "/blocks/tip/height": String(tip),
-    [`/tx/${LOCKUP_TXID}/status`]: JSON.stringify(status),
+    // Only the status and the number of outputs are read.
+    [`/tx/${LOCKUP_TXID}`]: JSON.stringify({ status, vout: [{}, {}] }),
     [`/tx/${LOCKUP_TXID}/outspend/1`]: JSON.stringify(outspend),
   };
   const server = createServer((req, res) => {
@@ -836,7 +837,7 @@ test("constructClaim spends the claimLockup and asks nobody where it is", async 
     // guard must know before revealing the preimage, never where the lockup is.
     assert.deepEqual(esplora.requests, [
       "GET /blocks/tip/height",
-      `GET /tx/${LOCKUP_TXID}/status`,
+      `GET /tx/${LOCKUP_TXID}`,
       `GET /tx/${LOCKUP_TXID}/outspend/1`,
     ]);
   } finally {
