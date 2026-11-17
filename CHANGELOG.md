@@ -70,6 +70,10 @@ its keys in a hardware wallet, a secure enclave or a remote service.
 - The swap status response (`get_swap`, and the TypeScript pay-through
   `status`) accepts `failureDetails` as a JSON object as well as a string.
   An object is returned as its JSON text, so the field's type is unchanged.
+- Esplora `get_output_status` (Bitcoin and Liquid) reads transaction presence
+  from `/tx/{txid}`, so it returns `None` for a transaction the server has not
+  seen, as documented, and errors on an output index the transaction does not
+  have.
 
 ### Added
 
