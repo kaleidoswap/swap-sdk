@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.15.0] - 2026-11-14
+## [0.15.0] - 2026-11-17
 
 ### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1
 
