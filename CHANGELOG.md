@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-14
+
+### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1
+
+The peer ranges become `@arkade-os/sdk >=0.5.0 <0.6.0` and
+`@arkade-os/swap >=0.1.0 <0.2.0`. The venue's public surface —
+`ArkadeIntentsVenue`, `ArkadeSwapRecord`, the flows seam, the serialized
+covenant options — is unchanged, so consumers move on the peer ranges
+alone.
+
+- The corridor-era RFQ surface (`RfqSwapManager`, the flows, the wire
+  builders, `httpTransport`) ships as the 0.1 line's `protocol`
+  subpath, written against the 0.5 wallet API: the port re-points the
+  venue's machinery there. The maker-compatible HTTP corridor keeps
+  working unmodified.
+- Flows lost their `arkServerUrl` argument (the server rides the
+  wallet); `createOffer`/`cancelOffer` lost theirs.
+- `pushClaim`/`pushRefundWithoutReceiver` take the covenant as
+  `contract` and return `{txid, spent}`/`{txid, left}`; the venue maps
+  both onto its own stable `{arkTxid}` record shape and passes `spent`
+  through so piecemeal funding stays claimable.
+- `RfqSwapManager` is deprecated upstream in favour of
+  `createSwapClient`; this port is the maker-compatible stepping
+  stone, and the SwapClient move is tracked as the next chapter
+  (kaleidoswap/swap-sdk#181).
+
 ### BREAKING — `SwapSigner` signs instead of handing out a keypair
 
 `KaleidoSwap` no longer asks the signer for a secret key, so a signer can keep
@@ -41,6 +67,9 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   lockup's timelock has matured. Before that, a failed cooperative refund is
   retried on the next tick instead of saving a script-path refund that cannot
   confirm yet, and `watch` keeps following the swap.
+- The swap status response (`get_swap`, and the TypeScript pay-through
+  `status`) accepts `failureDetails` as a JSON object as well as a string.
+  An object is returned as its JSON text, so the field's type is unchanged.
 - Esplora `get_output_status` (Bitcoin and Liquid) reads transaction presence
   from `/tx/{txid}`, so it returns `None` for a transaction the server has not
   seen, as documented, and errors on an output index the transaction does not
@@ -54,6 +83,11 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   instance over the same store, and checks the refund is confirmed on chain.
 
 ### Changed
+
+- `KaleidoSwap`: a reverse swap's preimage mixes 32 random bytes, drawn by
+  `start` and kept on the record as `preimageSalt`, into the signer's
+  preimage for the swap's index. Records written before keep the signer's
+  preimage as is. `SwapSigner` and the store interface are unchanged.
 
 - `KaleidoSwap` prices its claims and refunds from the chain client's
   `/fee-estimates` instead of a flat 2 sat/vB. The new `fee_policy` option

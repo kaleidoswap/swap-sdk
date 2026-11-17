@@ -65,21 +65,27 @@ import {
 import type {
   AssetSwap,
   AssetSwapRepository,
-  AvailableRfqSwapManagerCallbacks,
   InvoiceFacts,
+  LockupSpendIndexer,
+  RfqSwapState,
+} from "@arkade-os/swap";
+// The corridor-era RFQ surface ships as the `protocol` subpath of the 0.1
+// line: the manager, its flows and the wire builders the venue is written
+// against all live here, against the 0.5 wallet API.
+import type {
+  ArkadeRefundResult,
+  AvailableRfqSwapManagerCallbacks,
   LightningReceiveSwap,
   LightningSendSwap,
   LockupFate,
-  LockupSpendIndexer,
   LockupVtxo,
-  RefundArkProvider,
+  ReceiveLockupSwap,
   RfqQuote,
   RfqSwap,
-  RfqSwapState,
   RfqTransport,
   SpendKind,
   SwapSecretsProjection,
-} from "@arkade-os/swap";
+} from "@arkade-os/swap/protocol";
 import {
   LockupNeedsRecoveryError,
   PreimageNotRecoverableError,
@@ -102,7 +108,13 @@ import {
   spendTxidsOf,
   swapSecretsToRecord,
   updateAssetSwap,
-} from "@arkade-os/swap";
+} from "@arkade-os/swap/protocol";
+/**
+ * The provider surface this venue refunds through. The 0.1 line dropped the
+ * named interface; `RestArkProvider` from the SDK satisfies it structurally
+ * and remains the default, so the type is derived from the default.
+ */
+type RefundArkProvider = InstanceType<typeof RestArkProvider>;
 
 /** Routes this venue serves today. Corridor grammar matches the Intents docs. */
 export type ArkadeRoute =
@@ -325,7 +337,11 @@ export interface ArkadeIntentsFlows {
     script: InstanceType<typeof VHTLC.ScriptV2>,
     vtxos: readonly LockupVtxo[],
     options: { partiallyClaimed: boolean },
-  ) => Promise<{ arkTxid: string; amount: number }>;
+  ) => Promise<{
+    arkTxid: string;
+    amount: number;
+    spent?: readonly LockupVtxo[];
+  }>;
   /** Push the trader's own `refundWithoutReceiver` for a lockup. Defaults to
    * resolving the record's sender identity from the wallet and calling
    * `pushRefundWithoutReceiver`; resolves `null` for an empty lockup. */
@@ -812,7 +828,6 @@ export class ArkadeIntentsVenue {
   }): Promise<PreparedLightningSend> {
     const send = await this.flows.requestLightningSend(
       this.wallet,
-      this.arkServerUrl,
       this.transport,
       { invoice: params.invoice, emulatorPubkey: params.emulatorPubkey },
     );
@@ -859,7 +874,6 @@ export class ArkadeIntentsVenue {
   }): Promise<PreparedLightningReceive> {
     const receive = await this.flows.requestLightningReceive(
       this.wallet,
-      this.arkServerUrl,
       this.transport,
       {
         amount: params.amountSats,
@@ -1149,18 +1163,18 @@ export class ArkadeIntentsVenue {
    * back into this venue's own persisted phase and write it through.
    */
   private async managerSaveSwap(swap: RfqSwap): Promise<void> {
-    if (swap.kind === "onchain_send") {
-      // Never reachable: this venue never calls `addSwap` with this kind.
-      throw new Error("ArkadeIntentsVenue never monitors onchain-send swaps");
+    if (swap.kind === "onchain_send" || swap.kind === "onchain_receive") {
+      // Never reachable: this venue only registers lightning routes.
+      throw new Error(`ArkadeIntentsVenue never monitors ${swap.kind} swaps`);
     }
     const record = await this.mustGet(swap.rfqId);
     record.managerState = swap.state;
-    record.managerRefundArkTxid = swap.refundArkTxid;
+    record.managerRefundArkTxid = swap.refundTxid;
     if (swap.kind === "lightning_receive") {
-      record.managerClaimArkTxid = swap.claimArkTxid;
+      record.managerClaimArkTxid = swap.claimTxid;
     }
-    record.managerLockupSpendArkTxids = swap.lockupSpendArkTxids
-      ? [...swap.lockupSpendArkTxids]
+    record.managerLockupSpendArkTxids = swap.lockupSpendTxids
+      ? [...swap.lockupSpendTxids]
       : undefined;
     record.failureReason = swap.failure;
 
@@ -1174,10 +1188,9 @@ export class ArkadeIntentsVenue {
 
     const terminalTxid =
       swap.kind === "lightning_receive"
-        ? ((swap.state === "refunded"
-            ? swap.refundArkTxid
-            : swap.claimArkTxid) ?? swap.lockupSpendArkTxids?.[0])
-        : (swap.refundArkTxid ?? swap.lockupSpendArkTxids?.[0]);
+        ? ((swap.state === "refunded" ? swap.refundTxid : swap.claimTxid) ??
+          swap.lockupSpendTxids?.[0])
+        : (swap.refundTxid ?? swap.lockupSpendTxids?.[0]);
     if (terminalTxid) record.resolvedTxid = terminalTxid;
 
     await this.store.put(record);
@@ -1203,9 +1216,9 @@ export class ArkadeIntentsVenue {
         return "settled";
       case "refunded": {
         const hasEvidence =
-          Boolean(swap.refundArkTxid) ||
-          Boolean(swap.lockupSpendArkTxids?.length) ||
-          (swap.kind === "lightning_receive" && Boolean(swap.claimArkTxid));
+          Boolean(swap.refundTxid) ||
+          Boolean(swap.lockupSpendTxids?.length) ||
+          (swap.kind === "lightning_receive" && Boolean(swap.claimTxid));
         return hasEvidence ? "refunded" : "cancelled";
       }
       case "failed":
@@ -1217,21 +1230,35 @@ export class ArkadeIntentsVenue {
 
   /** `RfqSwapManagerCallbacks.claimLockup`, dispatched to the flow seam. */
   private async dispatchClaimLockup(
-    swap: LightningReceiveSwap,
+    swap: ReceiveLockupSwap,
     vtxos: readonly LockupVtxo[],
     options: { partiallyClaimed: boolean },
-  ): Promise<{ arkTxid: string; amount: number }> {
+  ): Promise<{ txid: string; amount: number; spent?: readonly LockupVtxo[] }> {
+    if (swap.kind !== "lightning_receive") {
+      // Never reachable: this venue never registers onchain-receive swaps.
+      throw new Error(`ArkadeIntentsVenue never monitors ${swap.kind}`);
+    }
     const record = await this.mustGet(swap.rfqId);
     const script =
       swap.lockup?.script ??
       new VHTLC.ScriptV2(deserializeVhtlcOptions(record.scriptOptions));
-    return this.flows.claimLockup(record, script, vtxos, options);
+    const claimed = await this.flows.claimLockup(
+      record,
+      script,
+      vtxos,
+      options,
+    );
+    return {
+      txid: claimed.arkTxid,
+      amount: claimed.amount,
+      spent: claimed.spent,
+    };
   }
 
   /** `RfqSwapManagerCallbacks.refundArkade`, dispatched to the flow seam. */
   private async dispatchRefundArkade(
     swap: RfqSwap,
-  ): Promise<{ arkTxid: string; amount: number } | null> {
+  ): Promise<ArkadeRefundResult> {
     if (swap.kind === "onchain_send") {
       throw new Error("onchain-send swaps are not supported by this venue");
     }
@@ -1239,7 +1266,10 @@ export class ArkadeIntentsVenue {
     const script =
       swap.lockup?.script ??
       new VHTLC.ScriptV2(deserializeVhtlcOptions(record.scriptOptions));
-    return this.flows.refundArkade(record, script);
+    const refunded = await this.flows.refundArkade(record, script);
+    return refunded
+      ? { txid: refunded.arkTxid, amount: refunded.amount }
+      : null;
   }
 
   private async defaultClaimLockup(
@@ -1247,7 +1277,11 @@ export class ArkadeIntentsVenue {
     script: InstanceType<typeof VHTLC.ScriptV2>,
     vtxos: readonly LockupVtxo[],
     options: { partiallyClaimed: boolean },
-  ): Promise<{ arkTxid: string; amount: number }> {
+  ): Promise<{
+    arkTxid: string;
+    amount: number;
+    spent?: readonly LockupVtxo[];
+  }> {
     const receiver = await contractSigner(
       this.wallet,
       this.requireSigningDescriptor(record),
@@ -1256,16 +1290,25 @@ export class ArkadeIntentsVenue {
       ...record.secrets,
       paymentHash: this.paymentHashOf(record),
     });
-    return pushClaim(this.ark, {
-      script,
+    const claimed = await pushClaim(this.ark, {
+      contract: script,
       receiver,
       preimage,
       vtxos,
       destinationPkScript: ArkAddress.decode(this.payoutAddressOf(record))
         .pkScript,
+      // The manager's value check decides when to act; pushClaim's decides
+      // whether P is published and is the load-bearing one.
       expectedAmount: this.expectedAmountOf(record),
       partiallyClaimed: options.partiallyClaimed,
     });
+    // `spent` tells the manager which outputs this push consumed, so a
+    // piecemeal funding keeps the rest claimable.
+    return {
+      arkTxid: claimed.txid,
+      amount: claimed.amount,
+      spent: claimed.spent,
+    };
   }
 
   private async defaultRefundArkade(
@@ -1289,7 +1332,14 @@ export class ArkadeIntentsVenue {
       this.wallet,
       record.secrets,
     );
-    return pushRefundWithoutReceiver(this.ark, { script, sender, vtxos });
+    const refunded = await pushRefundWithoutReceiver(this.ark, {
+      contract: script,
+      sender,
+      vtxos,
+    });
+    return refunded
+      ? { arkTxid: refunded.txid, amount: refunded.amount }
+      : null;
   }
 
   private async mustGet(id: string): Promise<ArkadeSwapRecord> {
@@ -1365,7 +1415,7 @@ export class ArkadeIntentsVenue {
     offerAssetId?: string;
     emulatorPubkey?: string;
   }): Promise<PreparedAssetSwap> {
-    const offer = await this.flows.createOffer(this.wallet, this.arkServerUrl, {
+    const offer = await this.flows.createOffer(this.wallet, {
       wantAmount: params.wantAmountAtomic,
       wantAsset: params.wantAssetId
         ? asset.AssetId.fromString(params.wantAssetId)
@@ -1431,16 +1481,11 @@ export class ArkadeIntentsVenue {
     try {
       // Writes the cancelling → cancelled transition into the repository
       // itself; nothing to persist here on success.
-      await this.flows.cancelOffer(
-        this.wallet,
-        this.arkServerUrl,
-        swap.offerHex,
-        {
-          repository,
-          fundingTxid: swap.fundingTxid,
-          swapAddress: swap.swapAddress,
-        },
-      );
+      await this.flows.cancelOffer(this.wallet, swap.offerHex, {
+        repository,
+        fundingTxid: swap.fundingTxid,
+        swapAddress: swap.swapAddress,
+      });
     } catch (error) {
       // A spent deposit means the race resolved without us — classify it
       // rather than guessing, and rethrow only when the chain answers
