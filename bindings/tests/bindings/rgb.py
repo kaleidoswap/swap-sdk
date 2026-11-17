@@ -30,8 +30,7 @@ class Maker(BaseHTTPRequestHandler):
         txid = hashlib.sha256(hashlib.sha256(raw).digest()).digest()[::-1].hex()
         evidence = {
             "/v2/blocks/tip/height": 100,
-            # Esplora's `/tx/:txid`: the SDK reads the confirmation status and
-            # checks that the claimed output exists.
+            # Only the status and the number of outputs are read.
             f"/v2/tx/{txid}": {
                 "status": {"confirmed": True, "block_height": 100},
                 "vout": [{}],

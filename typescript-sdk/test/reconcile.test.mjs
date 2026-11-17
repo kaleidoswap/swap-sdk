@@ -219,8 +219,8 @@ test(
       const evidence =
         req.url === "/blocks/tip/height"
           ? "100"
-          : req.url === `/tx/${txid}/status`
-            ? { confirmed: true, block_height: 100 }
+          : req.url === `/tx/${txid}`
+            ? { status: { confirmed: true, block_height: 100 }, vout: [{}] }
             : req.url === `/tx/${txid}/outspend/0`
               ? { spent: false }
               : undefined;
@@ -284,7 +284,7 @@ test(
         JSON.parse(disclosures[0].body).preimage,
         vector.preimageHex,
       );
-      assert.ok(requests.some((r) => r.path === `/tx/${txid}/status`));
+      assert.ok(requests.some((r) => r.path === `/tx/${txid}`));
       assert.ok(requests.some((r) => r.path === `/tx/${txid}/outspend/0`));
       assert.ok(requests.every((r) => !r.path.startsWith("/address/")));
       assert.ok(result.transaction.hex().includes(vector.preimageHex));
