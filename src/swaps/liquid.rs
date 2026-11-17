@@ -971,6 +971,11 @@ impl LiquidSwapScript {
         self.find_utxo(&tx, network, tx_kind).await
     }
 
+    /// Refund fallback: take the lockup txid from the maker, then read the
+    /// lockup output from the chain client's copy of that transaction.
+    ///
+    /// "Confirmed" means the chain client returns the transaction by its txid,
+    /// so a mempool transaction passes; it does not wait for a block.
     pub(crate) async fn fetch_confirmed_lockup_utxo_boltz<LC: LiquidClient + ?Sized>(
         &self,
         liquid_client: &LC,
@@ -1841,8 +1846,12 @@ pub type LBtcSwapTx = LiquidSwapTx;
 
 impl LiquidSwapTx {
     /// Craft a new ClaimTx from a caller-provided lockup UTXO, without any Boltz
-    /// API access. Obtain the UTXO from the Electrum-only [`LiquidSwapScript::fetch_utxo`].
-    /// Only works for Reverse and Chain Swaps.
+    /// API access. Only works for Reverse and Chain Swaps.
+    ///
+    /// The UTXO goes through the same checks as [`Self::new_claim`]: it must
+    /// pay this swap's script in the swap asset with exactly the expected
+    /// amount, or construction fails. [`LiquidSwapScript::fetch_utxo`] returns
+    /// a UTXO that passes them.
     pub async fn new_claim_with_utxo<LC: LiquidClient + ?Sized>(
         swap_script: LiquidSwapScript,
         output_address: String,
@@ -1860,7 +1869,13 @@ impl LiquidSwapTx {
             ));
         }
 
-        let output_address = parse_output_address(&output_address, liquid_client.network())?;
+        let network = liquid_client.network();
+        let output_address = parse_output_address(&output_address, network)?;
+        let utxo = swap_script
+            .select_utxo([utxo], network, None, SwapTxKind::Claim)?
+            .ok_or(Error::Protocol(
+                "Provided UTXO does not pay this swap's script".to_string(),
+            ))?;
         let genesis_hash = liquid_client.get_genesis_hash().await?;
 
         Ok(LiquidSwapTx {
@@ -1961,8 +1976,11 @@ impl LiquidSwapTx {
     }
 
     /// Construct a RefundTx from a caller-provided lockup UTXO, without any Boltz
-    /// API access. Obtain the UTXO from the Electrum-only [`Self::fetch_utxo`].
-    /// Only works for Submarine and Chain Swaps.
+    /// API access. Only works for Submarine and Chain Swaps.
+    ///
+    /// The UTXO goes through the same checks as [`Self::new_refund`]: it must
+    /// pay this swap's script in the swap asset with a positive amount, or
+    /// construction fails.
     pub async fn new_refund_with_utxo<LC: LiquidClient + ?Sized>(
         swap_script: LiquidSwapScript,
         output_address: &str,
@@ -1980,7 +1998,13 @@ impl LiquidSwapTx {
             ));
         }
 
-        let address = parse_output_address(output_address, liquid_client.network())?;
+        let network = liquid_client.network();
+        let address = parse_output_address(output_address, network)?;
+        let utxo = swap_script
+            .select_utxo([utxo], network, None, SwapTxKind::Refund)?
+            .ok_or(Error::Protocol(
+                "Provided UTXO does not pay this swap's script".to_string(),
+            ))?;
         let genesis_hash = liquid_client.get_genesis_hash().await?;
 
         Ok(LiquidSwapTx {
@@ -4930,6 +4954,97 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.message(), "electrum unavailable");
+    }
+
+    #[macros::async_test_all]
+    async fn claim_with_utxo_checks_the_provided_utxo() {
+        let (swap_tx, ..) = claim_fixture();
+        let client = StubLiquidClient {
+            utxo_error: None,
+            tx: None,
+        };
+        let output_address = swap_tx.output_address.to_string();
+        let utxo = (swap_tx.funding_outpoint, swap_tx.funding_utxo.clone());
+
+        let tx = LiquidSwapTx::new_claim_with_utxo(
+            swap_tx.swap_script.clone(),
+            output_address.clone(),
+            &client,
+            utxo.clone(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(tx.funding_outpoint, utxo.0);
+        assert_eq!(tx.funding_utxo, utxo.1);
+
+        // The same output no longer matches a swap that expects a different amount.
+        for delta in [-1i64, 1] {
+            let mut script = swap_tx.swap_script.clone();
+            script.expected_amount = script.expected_amount.checked_add_signed(delta).unwrap();
+            let error = LiquidSwapTx::new_claim_with_utxo(
+                script,
+                output_address.clone(),
+                &client,
+                utxo.clone(),
+            )
+            .await
+            .unwrap_err();
+            assert!(error.to_string().contains("Liquid swap amount mismatch"));
+        }
+
+        let elsewhere = TxOut {
+            script_pubkey: Script::new(),
+            ..utxo.1.clone()
+        };
+        let error = LiquidSwapTx::new_claim_with_utxo(
+            swap_tx.swap_script.clone(),
+            output_address,
+            &client,
+            (utxo.0, elsewhere),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.message(),
+            "Provided UTXO does not pay this swap's script"
+        );
+    }
+
+    #[macros::async_test_all]
+    async fn refund_with_utxo_checks_the_provided_utxo() {
+        let (swap_tx, ..) = swap_tx_fixture(SwapType::Submarine, SwapTxKind::Refund);
+        let client = StubLiquidClient {
+            utxo_error: None,
+            tx: None,
+        };
+        let output_address = swap_tx.output_address.to_string();
+        let utxo = (swap_tx.funding_outpoint, swap_tx.funding_utxo.clone());
+
+        // Refunds recover whatever positive amount reached the HTLC.
+        let mut script = swap_tx.swap_script.clone();
+        script.expected_amount += 1;
+        let tx = LiquidSwapTx::new_refund_with_utxo(script, &output_address, &client, utxo.clone())
+            .await
+            .unwrap();
+        assert_eq!(tx.funding_outpoint, utxo.0);
+        assert_eq!(tx.funding_utxo, utxo.1);
+
+        let elsewhere = TxOut {
+            script_pubkey: Script::new(),
+            ..utxo.1.clone()
+        };
+        let error = LiquidSwapTx::new_refund_with_utxo(
+            swap_tx.swap_script.clone(),
+            &output_address,
+            &client,
+            (utxo.0, elsewhere),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            error.message(),
+            "Provided UTXO does not pay this swap's script"
+        );
     }
 
     fn lockup_tx_paying(output: TxOut) -> Transaction {

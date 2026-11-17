@@ -19,6 +19,9 @@ TypeScript, Python and React Native APIs are unchanged.
   with the 0.33 API from OS randomness, the signing key and fresh extra
   randomness.
 - `electrum-client` moves to 0.25.2.
+- The crate root re-exports `elements::hex::DisplayHex` in place of
+  `elements::hex::ToHex`, which `elements` 0.27 no longer has. Call
+  `to_lower_hex_string()` where you called `to_hex()`.
 - The toolchain is pinned to Rust 1.100 in `rust-toolchain.toml` and CI.
 
 ### Changed — claims and refunds read their lockup from the chain client
@@ -26,14 +29,19 @@ TypeScript, Python and React Native APIs are unchanged.
 - A claim takes its lockup UTXO only from the caller's chain client. When the
   client errors or does not see the lockup yet, building the claim fails and
   can be retried; it no longer falls back to the maker's copy of the lockup
-  transaction.
+  transaction. Wallets that claim as soon as the maker reports the lockup
+  should expect, and retry, this error while their indexer catches up.
 - A refund that falls back to the maker's copy of the lockup transaction uses
   it only once the chain client returns that transaction by its txid, and
   reads the refunded output from the chain client's copy.
 - `BtcSwapTx::new_refund_with_utxo` and `LiquidSwapTx::new_refund_with_utxo`
-  are new, and `LiquidSwapTx::new_claim_with_utxo` is now public: they build a
-  claim or refund from a caller-provided lockup UTXO with no maker API call.
-  RGB HTLCs and L-USDT swaps keep their dedicated flows and are refused here.
+  are new, and `BtcSwapTx::new_claim_with_utxo` and
+  `LiquidSwapTx::new_claim_with_utxo` are now public: they build a claim or
+  refund from a caller-provided lockup UTXO with no maker API call. They apply
+  the same UTXO checks as `new_claim` and `new_refund`: the UTXO must pay the
+  swap script (in the swap asset on Liquid), with exactly the expected amount
+  for a claim and a positive amount for a refund. RGB HTLCs and L-USDT swaps
+  keep their dedicated flows and are refused here.
 
 ## [0.15.0] - 2026-11-17
 

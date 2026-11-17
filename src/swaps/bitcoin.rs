@@ -694,6 +694,11 @@ impl BtcSwapScript {
         self.find_utxo(&tx, network, tx_kind)
     }
 
+    /// Refund fallback: take the lockup txid from the maker, then read the
+    /// lockup output from the chain client's copy of that transaction.
+    ///
+    /// "Confirmed" means the chain client returns the transaction by its txid,
+    /// so a mempool transaction passes; it does not wait for a block.
     pub(crate) async fn fetch_confirmed_lockup_utxo_boltz<BC: BitcoinClient + ?Sized>(
         &self,
         bitcoin_client: &BC,
@@ -837,8 +842,13 @@ impl BtcSwapTx {
     }
 
     /// Craft a new ClaimTx from a caller-provided lockup UTXO, without any Boltz
-    /// API access. Obtain the UTXO from the Electrum-only [`Self::fetch_utxos`].
-    /// Only works for Reverse and Chain Swaps.
+    /// API access. Only works for Reverse and Chain Swaps.
+    ///
+    /// The UTXO goes through the same checks as [`Self::new_claim`]: it must
+    /// pay this swap's script and carry exactly the swap's expected amount,
+    /// or construction fails. [`BtcSwapScript::fetch_utxos`] returns every
+    /// UTXO at the swap address unfiltered, so pass the candidate you intend
+    /// to claim and expect an error for any other.
     pub fn new_claim_with_utxo<BC: BitcoinClient + ?Sized>(
         swap_script: BtcSwapScript,
         claim_address: String,
@@ -852,7 +862,13 @@ impl BtcSwapTx {
             ));
         }
 
-        let address = parse_output_address(&claim_address, bitcoin_client.network())?;
+        let network = bitcoin_client.network();
+        let address = parse_output_address(&claim_address, network)?;
+        let utxo = swap_script
+            .select_utxo([utxo], network, None, SwapTxKind::Claim)?
+            .ok_or(Error::Protocol(
+                "Provided UTXO does not pay this swap's script".to_string(),
+            ))?;
 
         Ok(BtcSwapTx {
             kind: SwapTxKind::Claim,
@@ -921,8 +937,11 @@ impl BtcSwapTx {
     }
 
     /// Construct a RefundTx from caller-provided lockup UTXOs, without any Boltz
-    /// API access. Obtain the UTXOs from the Electrum-only [`Self::fetch_utxos`].
-    /// Only works for Submarine and Chain Swaps.
+    /// API access. Only works for Submarine and Chain Swaps.
+    ///
+    /// Every UTXO goes through the same checks as [`Self::new_refund`]: it must
+    /// pay this swap's script with a positive amount, or construction fails.
+    /// The UTXOs can come from [`BtcSwapScript::fetch_utxos`].
     pub fn new_refund_with_utxo<BC: BitcoinClient + ?Sized>(
         swap_script: BtcSwapScript,
         refund_address: &str,
@@ -942,7 +961,18 @@ impl BtcSwapTx {
             ));
         }
 
-        let address = parse_output_address(refund_address, bitcoin_client.network())?;
+        let network = bitcoin_client.network();
+        let address = parse_output_address(refund_address, network)?;
+        let utxos = utxos
+            .into_iter()
+            .map(|utxo| {
+                swap_script
+                    .select_utxo([utxo], network, None, SwapTxKind::Refund)?
+                    .ok_or(Error::Protocol(
+                        "Provided UTXO does not pay this swap's script".to_string(),
+                    ))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
 
         Ok(BtcSwapTx {
             kind: SwapTxKind::Refund,
@@ -2297,6 +2327,85 @@ mod tests {
         fn network(&self) -> BitcoinChain {
             BitcoinChain::Bitcoin
         }
+    }
+
+    #[macros::test_all]
+    fn claim_with_utxo_checks_the_provided_utxo() {
+        let network = BitcoinChain::Bitcoin;
+        let client = StubBitcoinClient {
+            utxos_error: None,
+            tx: None,
+        };
+        let script = test_script(10_000);
+        let claim_address = script.to_address(network).unwrap().to_string();
+        let outpoint = OutPoint::new(Txid::from_byte_array([7u8; 32]), 0);
+        let claim = |utxo| {
+            BtcSwapTx::new_claim_with_utxo(script.clone(), claim_address.clone(), &client, utxo)
+        };
+
+        let tx = claim((outpoint, output_to(&script, network, 10_000))).unwrap();
+        assert_eq!(
+            tx.utxos,
+            vec![(outpoint, output_to(&script, network, 10_000))]
+        );
+
+        for sats in [9_999, 10_001] {
+            let error = claim((outpoint, output_to(&script, network, sats))).unwrap_err();
+            assert!(error.to_string().contains("Bitcoin swap amount mismatch"));
+        }
+
+        let elsewhere = TxOut {
+            value: Amount::from_sat(10_000),
+            script_pubkey: ScriptBuf::new(),
+        };
+        let error = claim((outpoint, elsewhere)).unwrap_err();
+        assert_eq!(
+            error.message(),
+            "Provided UTXO does not pay this swap's script"
+        );
+    }
+
+    #[macros::test_all]
+    fn refund_with_utxo_checks_every_provided_utxo() {
+        let network = BitcoinChain::Bitcoin;
+        let client = StubBitcoinClient {
+            utxos_error: None,
+            tx: None,
+        };
+        let script = test_script(10_000);
+        let refund_address = script.to_address(network).unwrap().to_string();
+        let first = (
+            OutPoint::new(Txid::from_byte_array([7u8; 32]), 0),
+            output_to(&script, network, 9_000),
+        );
+        let second = (
+            OutPoint::new(Txid::from_byte_array([8u8; 32]), 1),
+            output_to(&script, network, 500),
+        );
+        let refund = |utxos| {
+            BtcSwapTx::new_refund_with_utxo(script.clone(), &refund_address, &client, utxos)
+        };
+
+        // Refunds recover whatever positive amount reached the HTLC.
+        let tx = refund(vec![first.clone(), second.clone()]).unwrap();
+        assert_eq!(tx.utxos, vec![first.clone(), second]);
+
+        let elsewhere = (
+            OutPoint::new(Txid::from_byte_array([9u8; 32]), 0),
+            TxOut {
+                value: Amount::from_sat(10_000),
+                script_pubkey: ScriptBuf::new(),
+            },
+        );
+        let error = refund(vec![first.clone(), elsewhere]).unwrap_err();
+        assert_eq!(
+            error.message(),
+            "Provided UTXO does not pay this swap's script"
+        );
+
+        let empty = (first.0, output_to(&script, network, 0));
+        let error = refund(vec![empty]).unwrap_err();
+        assert!(error.to_string().contains("Bitcoin swap amount mismatch"));
     }
 
     fn unreachable_boltz() -> BoltzApiClientV2 {
