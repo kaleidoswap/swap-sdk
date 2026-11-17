@@ -4,6 +4,10 @@ use std::time::Duration;
 pub mod bolt12;
 pub mod ec;
 pub mod fees;
+/// A local HTTP stub for Esplora client tests. Native-only: it binds a TCP
+/// listener.
+#[cfg(all(test, not(all(target_family = "wasm", target_os = "unknown"))))]
+pub(crate) mod http_stub;
 pub mod invoice;
 /// The skip-or-fail decision every live third-party test shares. Native-only:
 /// the tests that use it are native-only for the reasons given in

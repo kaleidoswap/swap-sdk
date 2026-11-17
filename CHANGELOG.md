@@ -35,7 +35,7 @@ TypeScript, Python and React Native APIs are unchanged.
   claim or refund from a caller-provided lockup UTXO with no maker API call.
   RGB HTLCs and L-USDT swaps keep their dedicated flows and are refused here.
 
-## [0.15.0] - 2026-11-14
+## [0.15.0] - 2026-11-17
 
 ### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1
 
@@ -98,6 +98,13 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   lockup's timelock has matured. Before that, a failed cooperative refund is
   retried on the next tick instead of saving a script-path refund that cannot
   confirm yet, and `watch` keeps following the swap.
+- The swap status response (`get_swap`, and the TypeScript pay-through
+  `status`) accepts `failureDetails` as a JSON object as well as a string.
+  An object is returned as its JSON text, so the field's type is unchanged.
+- Esplora `get_output_status` (Bitcoin and Liquid) reads transaction presence
+  from `/tx/{txid}`, so it returns `None` for a transaction the server has not
+  seen, as documented, and errors on an output index the transaction does not
+  have.
 
 ### Added
 
@@ -107,6 +114,11 @@ its keys in a hardware wallet, a secure enclave or a remote service.
   instance over the same store, and checks the refund is confirmed on chain.
 
 ### Changed
+
+- `KaleidoSwap`: a reverse swap's preimage mixes 32 random bytes, drawn by
+  `start` and kept on the record as `preimageSalt`, into the signer's
+  preimage for the swap's index. Records written before keep the signer's
+  preimage as is. `SwapSigner` and the store interface are unchanged.
 
 - `KaleidoSwap` prices its claims and refunds from the chain client's
   `/fee-estimates` instead of a flat 2 sat/vB. The new `fee_policy` option

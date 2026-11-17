@@ -4505,8 +4505,8 @@ pub struct GetSwapResponse {
     pub status: String,
     pub zero_conf_rejected: Option<bool>,
     pub transaction: Option<TransactionResponse>,
-    /// Everything below is served by the KaleidoSwap maker and absent from
-    /// Boltz, so each one is optional: an unmodelled field is dropped by
+    /// Everything below is optional: the KaleidoSwap maker serves all of it,
+    /// a Boltz server only some of it. An unmodelled field is dropped by
     /// serde, and callers were getting back `status` alone with no way to see
     /// what a swap had done or why it failed.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -4518,7 +4518,16 @@ pub struct GetSwapResponse {
     pub payment_status: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Detail on why the swap failed, as text. A server may send it as a
+    /// string or as a JSON object (Boltz sends `{"expected", "actual"}` for an
+    /// amount mismatch); an object is kept as its compact JSON text, so the
+    /// shape of this one field never fails the whole status.
+    #[serde(
+        default,
+        with = "string_or_json_text",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(feature = "typescript", ts(as = "Option<String>"))]
     pub failure_details: Option<String>,
     /// The swap's history, oldest first.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -4526,6 +4535,31 @@ pub struct GetSwapResponse {
     /// Direct payout progress on maker pay-through swaps.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payout: Option<SwapPayoutStatus>,
+}
+
+/// An optional text field that reads a JSON string as itself, `null` as
+/// `None`, and any other JSON value as its compact JSON text. It is written
+/// back out as a plain string.
+mod string_or_json_text {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use serde_json::Value;
+
+    pub fn serialize<S: Serializer>(
+        text: &Option<String>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        text.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<String>, D::Error> {
+        Ok(match Option::<Value>::deserialize(deserializer)? {
+            None | Some(Value::Null) => None,
+            Some(Value::String(text)) => Some(text),
+            Some(other) => Some(other.to_string()),
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -4713,6 +4747,80 @@ mod tests {
         let out = serde_json::to_value(&boltz).unwrap();
         assert!(out.get("events").is_none());
         assert!(out.get("type").is_none());
+    }
+
+    /// `failureDetails` must never fail a whole swap status. Boltz sends an
+    /// object for an amount mismatch, the KaleidoSwap maker a string or
+    /// `null`; each is kept as text, so `status` stays readable.
+    #[test]
+    fn swap_status_keeps_failure_details_sent_as_text_or_object() {
+        let parse = |details: Value| -> GetSwapResponse {
+            serde_json::from_value(json!({
+                "status": "transaction.lockupFailed",
+                "failureReason": "invalid amount",
+                "failureDetails": details,
+            }))
+            .unwrap()
+        };
+
+        let object = parse(json!({"actual": 50_200, "expected": 50_201}));
+        assert_eq!(object.status, "transaction.lockupFailed");
+        let text = object.failure_details.as_deref().unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(text).unwrap(),
+            json!({"actual": 50_200, "expected": 50_201}),
+        );
+
+        assert_eq!(
+            parse(json!("payment timed out")).failure_details.as_deref(),
+            Some("payment timed out"),
+        );
+        assert_eq!(parse(Value::Null).failure_details, None);
+        assert_eq!(
+            parse(json!(["a", 1])).failure_details.as_deref(),
+            Some(r#"["a",1]"#)
+        );
+
+        // Absent entirely, as from a server that never sends it.
+        let absent: GetSwapResponse =
+            serde_json::from_value(json!({"status": "transaction.lockupFailed"})).unwrap();
+        assert_eq!(absent.failure_details, None);
+        assert!(serde_json::to_value(&absent)
+            .unwrap()
+            .get("failureDetails")
+            .is_none());
+    }
+
+    /// The same, through `get_swap` and the response checks every maker
+    /// request goes through.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn get_swap_reads_a_status_with_object_failure_details() {
+        let body = json!({
+            "status": "transaction.lockupFailed",
+            "failureReason": "invalid amount",
+            "failureDetails": {"actual": 50_200, "expected": 50_201},
+        })
+        .to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
+            body.len(),
+            body
+        )
+        .into_bytes();
+        let (url, maker) = capture_one_request_answering(response);
+
+        let swap = BoltzApiClientV2::new(url, None)
+            .get_swap("01KZZYB138E7C3HZX7Q1YBGAQG")
+            .await
+            .unwrap();
+
+        assert!(maker
+            .join()
+            .unwrap()
+            .starts_with("GET /v2/swap/01KZZYB138E7C3HZX7Q1YBGAQG "));
+        assert_eq!(swap.status, "transaction.lockupFailed");
+        assert!(swap.failure_details.unwrap().contains("50201"));
     }
 
     /// All three create requests must put the caller's rate lock on the wire.

@@ -467,6 +467,7 @@ test("pay-through status exposes broadcast reference and settlement state", asyn
   const status = await client.status("01j9zswapidulid0000000000");
   assert.equal(status.payout.reference, "txid");
   assert.equal(status.status, "transaction.mempool");
+  assert.equal(status.failureDetails, null);
   await assert.rejects(
     clientReturning(
       {
@@ -479,6 +480,34 @@ test("pay-through status exposes broadcast reference and settlement state", asyn
     ).status("01J9ZSWAPIDULID0000000000"),
     /ID mismatch/,
   );
+});
+
+test("pay-through status keeps failure details sent as text or as an object", async () => {
+  const statusWith = (failureDetails) =>
+    new PayThroughClient({
+      makerUrl: "https://maker.example/v2",
+      lightningNetwork: "regtest",
+      fetch: async () =>
+        Response.json({
+          id: "01J9ZSWAPIDULID0000000000",
+          type: "reverse",
+          status: "transaction.lockupFailed",
+          paymentStatus: "failed",
+          failureReason: "invalid amount",
+          failureDetails,
+          events: [],
+          payout: { mode: "direct", destination: "bcrt1test" },
+        }),
+    }).status("01J9ZSWAPIDULID0000000000");
+
+  const asObject = await statusWith({ actual: 50200, expected: 50201 });
+  assert.deepEqual(JSON.parse(asObject.failureDetails), {
+    actual: 50200,
+    expected: 50201,
+  });
+  const asText = await statusWith("payment timed out");
+  assert.equal(asText.failureDetails, "payment timed out");
+  await assert.rejects(statusWith(42), /failureDetails/);
 });
 
 test("pay-through fails closed on maker errors, gateway pages and unsafe amounts", async () => {
