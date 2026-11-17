@@ -3609,6 +3609,7 @@ mod tests {
             funded_seen: true,
             zero_conf_limit: None,
             claim_fee_rate: None,
+            preimage_salt: None,
         };
         for status in [
             "transaction.refunded.confirmed",

@@ -169,7 +169,10 @@ pub struct ChainFees {
 
 impl ChainFees {
     pub fn total(&self, amount_sat: u64) -> u64 {
-        self.boltz(amount_sat) + self.claim_estimate() + self.lockup() + self.server()
+        self.boltz(amount_sat)
+            .saturating_add(self.claim_estimate())
+            .saturating_add(self.lockup())
+            .saturating_add(self.server())
     }
 
     pub fn boltz(&self, amount_sat: u64) -> u64 {
@@ -198,7 +201,9 @@ pub struct ReverseFees {
 
 impl ReverseFees {
     pub fn total(&self, invoice_amount_sat: u64) -> u64 {
-        self.boltz(invoice_amount_sat) + self.claim_estimate() + self.lockup()
+        self.boltz(invoice_amount_sat)
+            .saturating_add(self.claim_estimate())
+            .saturating_add(self.lockup())
     }
 
     pub fn boltz(&self, invoice_amount_sat: u64) -> u64 {
@@ -2538,7 +2543,16 @@ fn ensure_invoice_network(invoice: &Bolt11Invoice, chain: Chain) -> Result<(), E
 /// claim), so a legitimate response clears the floor with room.
 fn minimum_payout(amount: u64, rate: f64, total_fees: impl Fn(u64) -> u64) -> Result<u64, Error> {
     let converted = convert_at_rate(amount, rate)?;
-    Ok(converted.saturating_sub(total_fees(converted)))
+    let fees = total_fees(converted);
+    if fees >= converted {
+        // A floor of zero would accept any claim: a card whose fees take the
+        // whole payout (a percentage of 100 or more, or fees that saturate)
+        // prices nothing the caller can check.
+        return Err(Error::Protocol(
+            "Pair fees do not leave a payout".to_string(),
+        ));
+    }
+    Ok(converted - fees)
 }
 
 /// The most a caller can be asked to lock for a `payout` under a rate card.
@@ -5513,6 +5527,45 @@ mod tests {
         assert!(maximum_funding(u64::MAX, 1.0, |_| 0).is_err());
         assert!(maximum_funding(u64::MAX / 2, 1e-9, |_| 0).is_err());
         assert!(maximum_funding(100_000, 0.0, |_| 0).is_err());
+    }
+
+    #[test]
+    fn minimum_payout_refuses_fees_that_take_the_whole_payout() {
+        // BTC → L-USDT at 37_245.5 units per sat and the inverse direction:
+        // the card's fees come off the converted payout either way.
+        let fees = |amount: u64| ((0.5 / 100.0) * amount as f64).ceil() as u64 + 1_000;
+        assert_eq!(
+            minimum_payout(100_000, 37_245.5, fees).unwrap(),
+            3_705_926_250
+        );
+        assert_eq!(
+            minimum_payout(3_724_550_000, 1.0 / 37_245.5, fees).unwrap(),
+            98_500
+        );
+
+        // A percentage of 100 or more would floor the payout at zero and
+        // accept any claim amount; so would fees that saturate.
+        let card = |percentage: f64| ReverseFees {
+            percentage,
+            miner_fees: PairMinerFees {
+                lockup: 0,
+                claim: 0,
+            },
+        };
+        for percentage in [100.0, 150.0, f64::INFINITY] {
+            let fees = card(percentage);
+            assert!(minimum_payout(100_000, 1.0, |a| fees.total(a)).is_err());
+        }
+        let saturating = ReverseFees {
+            percentage: 1.0,
+            miner_fees: PairMinerFees {
+                lockup: u64::MAX,
+                claim: u64::MAX,
+            },
+        };
+        assert_eq!(saturating.total(100_000), u64::MAX);
+        assert!(minimum_payout(100_000, 1.0, |a| saturating.total(a)).is_err());
+        assert!(minimum_payout(100_000, 1.0, |amount| amount).is_err());
     }
 
     #[test]

@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
   BTC → L-USDT chain create whose claim matches the card is accepted.
   Same-asset cards (`rate` 1) are unchanged. The funding ceiling is the one
   shipped in 0.14.2.
+- A pair card whose fees take the whole payout (a percentage of 100 or more,
+  or miner fees that saturate) is refused instead of flooring the payout at
+  zero, which would have accepted any claim amount. Fee totals saturate
+  rather than overflow.
 - Chain and reverse swaps recognize `transaction.refunded.confirmed`. The
   maker emits that, and `transaction.refunded`, when it reclaims its own
   lockup; `transaction.refunded.mempool` is not emitted and is accepted the
