@@ -104,11 +104,12 @@ impl MusigNonces {
         let pubkey = keys.public_key();
         session.ensure_signs_for(&pubkey)?;
         let cache = session.key_agg_cache()?;
-        let rand = musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b());
-        let (sec_nonce, pub_nonce) = cache.nonce_gen(
-            rand,
+        let (sec_nonce, pub_nonce) = musig::new_nonce_pair(
+            musig::SessionSecretRand::assume_uniformly_random(rng_32b()),
+            Some(&cache),
+            Some(convert_keypair(keys).secret_key()),
             to_musig_pubkey(pubkey),
-            &session.sighash,
+            Some(&session.sighash),
             Some(rng_32b()),
         );
         let mut pending = self.lock()?;

@@ -1695,10 +1695,10 @@ impl SwapFlows for DefaultFlows {
                 )
             }
             ChainKind::Liquid(_) => {
-                use elements::hex::ToHex;
+                use elements::hex::DisplayHex;
                 let parse = |a: &str| a.parse::<elements::Address>().map_err(|e| bad(a, &e));
                 let script = payout
-                    .map(|a| parse(a).map(|a| a.script_pubkey().to_hex()))
+                    .map(|a| parse(a).map(|a| a.script_pubkey().as_bytes().to_lower_hex_string()))
                     .transpose()?;
                 (
                     self.liquid.spends_of_address(&parse(lockup)?).await?,

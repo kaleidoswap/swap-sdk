@@ -2,6 +2,7 @@
 
 use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputSpend, OutputStatus};
 use crate::error::Error;
+use bitcoin::hashes::Hash as _;
 use bitcoin::{Address, ScriptBuf, Transaction, Txid};
 use electrum_client::{ElectrumApi, GetHistoryRes};
 use elements::encode::{serialize, Decodable};
@@ -330,13 +331,11 @@ impl LiquidClient for ElectrumLiquidClient {
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error> {
         let response = self.inner.block_header_raw(0)?;
         let block_header = elements::BlockHeader::consensus_decode(&*response)?;
-        Ok(elements::BlockHash::from_raw_hash(
-            block_header.block_hash().into(),
-        ))
+        Ok(block_header.block_hash())
     }
 
     async fn get_tx(&self, txid: elements::Txid) -> Result<elements::Transaction, Error> {
-        let bitcoin_txid = bitcoin::Txid::from_raw_hash(txid.to_raw_hash());
+        let bitcoin_txid = bitcoin::Txid::from_byte_array(txid.to_byte_array());
         let raw_tx = self.inner.transaction_get_raw(&bitcoin_txid)?;
         Ok(elements::encode::deserialize(&raw_tx)?)
     }
@@ -361,7 +360,7 @@ impl LiquidClient for ElectrumLiquidClient {
         let history = self
             .inner
             .script_get_history(bitcoin::Script::from_bytes(script_pubkey.as_bytes()))?;
-        let txid = Txid::from_raw_hash(outpoint.txid.to_raw_hash());
+        let txid = Txid::from_byte_array(outpoint.txid.to_byte_array());
         let Some(block_height) = history_height(&history, &txid) else {
             return Ok(None);
         };

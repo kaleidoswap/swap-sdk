@@ -3,7 +3,7 @@ use crate::network::{
     BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputSpend, OutputStatus,
 };
 use bitcoin::ScriptBuf;
-use elements::hex::ToHex;
+use elements::hex::DisplayHex;
 use elements::pset::serialize::Serialize;
 use reqwest::Response;
 use serde::Deserialize;
@@ -207,7 +207,7 @@ impl BitcoinClient for EsploraBitcoinClient {
     }
 
     async fn broadcast_tx(&self, signed_tx: &bitcoin::Transaction) -> Result<bitcoin::Txid, Error> {
-        let tx_hex = signed_tx.serialize().to_hex();
+        let tx_hex = signed_tx.serialize().to_lower_hex_string();
         let response = self
             .client
             .post(format!("{}/tx", self.base_url))
@@ -299,7 +299,7 @@ impl EsploraLiquidClient {
             &self.base_url,
             self.timeout,
             &address.to_string(),
-            &address.script_pubkey().to_hex(),
+            &elements::hex::DisplayHex::to_lower_hex_string(address.script_pubkey().as_bytes()),
         )
         .await
     }
@@ -371,7 +371,7 @@ impl LiquidClient for EsploraLiquidClient {
 
     async fn broadcast_tx(&self, signed_tx: &elements::Transaction) -> Result<String, Error> {
         let url = format!("{}/tx", self.base_url);
-        let tx_hex = signed_tx.serialize().to_hex();
+        let tx_hex = signed_tx.serialize().to_lower_hex_string();
         let response = self
             .client
             .post(url)
@@ -628,7 +628,7 @@ async fn get_with_retry(
         log::log!(
             level,
             "{} status_code:{} - body bytes:{:?}",
-            &url,
+            url,
             response.status(),
             response.content_length(),
         );
@@ -754,7 +754,6 @@ struct OutSpend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use elements::hex::ToHex;
     use std::str::FromStr;
 
     /// The signet default must be our own Esplora for the maker's chain
@@ -786,7 +785,7 @@ mod tests {
 
         let esplora_client = EsploraLiquidClient::default(LiquidChain::Liquid, None);
         assert_eq!(
-            esplora_client.get_genesis_hash().await.unwrap().to_hex(),
+            esplora_client.get_genesis_hash().await.unwrap().to_string(),
             "1466275836220db2944ca059a3a10ef6fd2ea684b0688d2c379296888a206003"
         );
     }
