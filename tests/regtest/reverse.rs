@@ -440,6 +440,14 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
         .await
         .unwrap();
 
+    // A claim reveals the preimage, so the SDK refuses it until the chain
+    // client sees the lockup confirmed. Confirm it first, so the only thing
+    // the first attempt below can trip on is the hidden lockup.
+    utils::mine_blocks(1).await.unwrap();
+    next_status(&mut updates, "transaction.confirmed")
+        .await
+        .unwrap();
+
     let claim_address = utils::generate_address(chain).await.unwrap();
     let params = SwapTransactionParams {
         swap_id: swap_id.clone(),
