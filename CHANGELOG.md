@@ -77,6 +77,11 @@ its keys in a hardware wallet, a secure enclave or a remote service.
 
 ### Changed
 
+- `KaleidoSwap`: a reverse swap's preimage mixes 32 random bytes, drawn by
+  `start` and kept on the record as `preimageSalt`, into the signer's
+  preimage for the swap's index. Records written before keep the signer's
+  preimage as is. `SwapSigner` and the store interface are unchanged.
+
 - `KaleidoSwap` prices its claims and refunds from the chain client's
   `/fee-estimates` instead of a flat 2 sat/vB. The new `fee_policy` option
   (`feePolicy` in TypeScript) sets the confirmation target (default 2

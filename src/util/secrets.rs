@@ -318,12 +318,49 @@ impl Preimage {
             hash160,
         }
     }
+
+    /// The preimage `H(tag ‖ tag ‖ self ‖ salt)`, with `tag = SHA256(domain)`:
+    /// a BIP340-style tagged hash of this preimage and `salt`. Fails on a
+    /// preimage known only by its hash.
+    pub fn mixed_with(&self, domain: &[u8], salt: &[u8; 32]) -> Result<Preimage, Error> {
+        use bitcoin::hashes::HashEngine;
+        let bytes = self.bytes.ok_or_else(|| {
+            Error::Protocol("a preimage known only by its hash cannot be mixed".to_string())
+        })?;
+        let tag = sha256::Hash::hash(domain);
+        let mut engine = sha256::Hash::engine();
+        engine.input(tag.as_byte_array());
+        engine.input(tag.as_byte_array());
+        engine.input(&bytes);
+        engine.input(salt);
+        Self::from_vec(sha256::Hash::from_engine(engine).to_byte_array().to_vec())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use elements::pset::serialize::Serialize;
+
+    #[macros::test_all]
+    fn mixed_with_depends_on_the_preimage_the_salt_and_the_domain() {
+        let base = Preimage::from_vec(vec![7u8; 32]).unwrap();
+        let mixed = base.mixed_with(b"domain", &[1u8; 32]).unwrap();
+        assert_eq!(mixed, base.mixed_with(b"domain", &[1u8; 32]).unwrap());
+        assert_ne!(mixed, base);
+        assert_ne!(mixed, base.mixed_with(b"domain", &[2u8; 32]).unwrap());
+        assert_ne!(mixed, base.mixed_with(b"other", &[1u8; 32]).unwrap());
+        let other = Preimage::from_vec(vec![8u8; 32]).unwrap();
+        assert_ne!(mixed, other.mixed_with(b"domain", &[1u8; 32]).unwrap());
+        assert_eq!(
+            mixed.sha256,
+            sha256::Hash::hash(&mixed.bytes.unwrap()),
+            "the hash is of the mixed bytes"
+        );
+
+        let hash_only = Preimage::from_sha256_vec(base.sha256.to_byte_array().to_vec()).unwrap();
+        assert!(hash_only.mixed_with(b"domain", &[1u8; 32]).is_err());
+    }
 
     #[macros::test_all]
     fn test_derivation() {
