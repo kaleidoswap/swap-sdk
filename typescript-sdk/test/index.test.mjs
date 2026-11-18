@@ -404,8 +404,8 @@ test("the options object names the field that is wrong", () => {
   );
 
   // A document context builds too: the kld_ key is a public partner
-  // identifier, meant to ship in a page. `allowBrowser` is still read, and
-  // still has to be a boolean.
+  // identifier, meant to ship in a page. `allowBrowser` is gone, so it is an
+  // unknown option like any other.
   const hadDocument = "document" in globalThis;
   globalThis.document = {};
   try {
@@ -415,22 +415,17 @@ test("the options object names the field that is wrong", () => {
         apiKey: API_KEY,
       }) instanceof SwapClient,
     );
-    assert.ok(
-      SwapClient.forKaleidoMaker({
-        makerUrl: MAKER_URL,
-        apiKey: API_KEY,
-        allowBrowser: true,
-      }) instanceof SwapClient,
-    );
     assert.throws(
       () =>
         SwapClient.forKaleidoMaker({
           makerUrl: MAKER_URL,
           apiKey: API_KEY,
-          allowBrowser: "yes",
+          allowBrowser: true,
         }),
       (error) =>
-        isKaleidoSwapError(error) && /allowBrowser/.test(error.message),
+        isKaleidoSwapError(error) &&
+        /unknown option allowBrowser/.test(error.message) &&
+        !error.message.includes(API_KEY),
     );
   } finally {
     if (!hadDocument) {
@@ -529,13 +524,6 @@ test("forKaleidoMaker builds in pages, workers, extensions and Node", () => {
         `forKaleidoMaker should build in ${context}`,
       );
       assert.equal(client.lastAttribution, undefined);
-      assert.ok(
-        SwapClient.forKaleidoMaker({
-          ...options,
-          allowBrowser: true,
-        }) instanceof SwapClient,
-        `allowBrowser: true should still build in ${context}`,
-      );
     });
   }
 

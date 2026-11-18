@@ -102,12 +102,6 @@ export interface KaleidoMakerClientOptions {
   apiKey: string;
   /** Per-request timeout in seconds. Omit to leave it to the HTTP stack. */
   timeoutSecs?: number;
-  /**
-   * Has no effect for the keys Platform issues today, which are public and
-   * run in any context. Kept for a future secret, server-only key kind, which
-   * the constructor refuses in a browser unless this is `true`.
-   */
-  allowBrowser?: boolean;
 }
 
 /**

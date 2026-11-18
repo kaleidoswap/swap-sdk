@@ -849,8 +849,7 @@ access. The per-swap `swapAuth` below stays separate and unchanged.
 
 `makerUrl` must be `https` unless it is a loopback address, since over plain
 HTTP anything on the path could strip or replace the key. A value that cannot
-be a key is rejected here. `allowBrowser` is still accepted and has no effect
-for today's keys; it is kept for a future secret, server-only key kind.
+be a key is rejected here.
 
 Redirects are declined under `fetch` as on a server. The SDK issues every maker
 request with `redirect: "error"`, so a `3xx` away from the maker fails the call

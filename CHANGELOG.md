@@ -20,6 +20,10 @@ gone:
   `normalizeOrgKey`, plus the `orgKey` option on `PayThroughClient` and
   `kaleidoswapHttpTransport`. `ATTRIBUTION_HEADER` is still exported, now
   from the partner-key module, and `MakerAttribution` drops `"org_key"`.
+- WASM/TS: the `allowBrowser` option on `forKaleidoMaker` and
+  `createKaleidoMakerClient`. Every key Platform issues builds in a page, a
+  worker and an extension already, so the override had nothing left to allow;
+  passing it is now an unknown-option error.
 
 To keep attributing swaps, build the client from the `kld_` key instead:
 `KaleidoMakerClient` in Rust, `SwapClient.kaleido_maker` in Python,

@@ -665,17 +665,15 @@ mod boltz_asset_tests {
 /// `{ makerUrl, apiKey, timeoutSecs? }` for
 /// [`BoltzClient::for_kaleido_maker`]. A named struct rather than positional
 /// arguments: two adjacent strings is exactly the signature callers
-/// transpose. `allowBrowser` is still read, and only matters for a secret key
-/// kind, which Platform does not issue yet.
+/// transpose.
 struct KaleidoMakerOptions {
     maker_url: String,
     api_key: String,
     timeout_secs: Option<u64>,
-    allow_browser: bool,
 }
 
 /// The properties [`KaleidoMakerOptions`] reads, for the unknown-key check.
-const KALEIDO_MAKER_OPTION_KEYS: [&str; 4] = ["makerUrl", "apiKey", "timeoutSecs", "allowBrowser"];
+const KALEIDO_MAKER_OPTION_KEYS: [&str; 3] = ["makerUrl", "apiKey", "timeoutSecs"];
 
 impl KaleidoMakerOptions {
     /// Read the options object by hand, without `from_js`.
@@ -719,7 +717,6 @@ impl KaleidoMakerOptions {
             maker_url: required_string_option(&options, "makerUrl")?,
             api_key: required_string_option(&options, "apiKey")?,
             timeout_secs: timeout_secs_option(&options)?,
-            allow_browser: bool_option(&options, "allowBrowser")?,
         })
     }
 }
@@ -779,17 +776,6 @@ fn property(target: &JsValue, name: &str) -> JsValue {
         return JsValue::UNDEFINED;
     }
     js_sys::Reflect::get(target, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED)
-}
-
-/// An optional boolean property, defaulting to `false`.
-fn bool_option(options: &js_sys::Object, name: &str) -> Result<bool, JsValue> {
-    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
-    if value.is_undefined() || value.is_null() {
-        return Ok(false);
-    }
-    value
-        .as_bool()
-        .ok_or_else(|| arg_err(format!("option `{name}` must be a boolean")))
 }
 
 /// A required string property, named but never quoted back.
@@ -912,9 +898,7 @@ impl BoltzClient {
     /// unattributed. Read `lastAttribution` to notice it. In a browser the
     /// maker's edge must expose `X-Kaleido-Attribution` for it to be readable.
     ///
-    /// `allowBrowser` is accepted and changes nothing for today's keys; it is
-    /// kept for a future secret, server-only key kind, which this refuses in a
-    /// browser unless it is set.
+    /// A future secret, server-only key kind would be refused in a browser.
     ///
     /// Redirects are declined here as on the server: the core issues every
     /// maker `fetch` with `redirect: "error"`, so a `3xx` away from the maker
@@ -927,14 +911,13 @@ impl BoltzClient {
         // Every key Platform issues today is public and meant to ship in a
         // bundle, so this never fires for one. It stays for a secret,
         // server-only key kind: that one must not end up where every visitor
-        // can read it, and `allowBrowser: true` is the written-down exception.
-        if api_key.kind().requires_server() && !options.allow_browser && in_browser() {
+        // can read it.
+        if api_key.kind().requires_server() && in_browser() {
             return Err(arg_err(
                 "refusing to build a client with a secret partner key in a \
                  browser (a page, a worker or an extension): a key in a browser \
                  bundle is visible to anyone who loads or unpacks it. Call this \
-                 from Node with the key in server-side configuration, or pass \
-                 `allowBrowser: true` if you have accepted that exposure.",
+                 from Node with the key in server-side configuration.",
             ));
         }
         let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
