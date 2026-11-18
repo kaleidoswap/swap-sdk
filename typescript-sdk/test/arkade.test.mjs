@@ -1203,6 +1203,64 @@ test("kaleidoswapHttpTransport posts to /v1/swap and reads /v1/rfq beside the /v
   await transport.close();
 });
 
+test("kaleidoswapHttpTransport sends the partner key on corridor requests and nowhere else", async () => {
+  const apiKey = "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    const headers = new Headers(init?.headers);
+    calls.push({
+      url: String(url),
+      authorization: headers.get("authorization"),
+      contentType: headers.get("content-type"),
+    });
+    return new Response(JSON.stringify({ type: "nothing" }), { status: 200 });
+  };
+  const transport = kaleidoswapHttpTransport("https://maker.example/v2", {
+    fetchImpl,
+    apiKey: ` ${apiKey}\n`,
+  });
+  await transport
+    .requestQuote({ v: 1, type: "rfq_request", rfq_id: "abc", profile: {} })
+    .catch(() => {});
+  await transport.status("abc");
+  assert.deepEqual(calls, [
+    {
+      url: "https://maker.example/v1/swap",
+      authorization: `Bearer ${apiKey}`,
+      // The transport's own headers survive the wrapper.
+      contentType: "application/json",
+    },
+    {
+      url: "https://maker.example/v1/rfq/abc",
+      authorization: `Bearer ${apiKey}`,
+      contentType: null,
+    },
+  ]);
+
+  // Without a key, nothing is attached.
+  calls.length = 0;
+  const anonymous = kaleidoswapHttpTransport("https://maker.example/v2", {
+    fetchImpl,
+  });
+  await anonymous.status("abc");
+  assert.equal(calls[0].authorization, null);
+
+  // A value that cannot be a partner key is refused without being quoted.
+  for (const bad of ["", "abc", "kld_with space", 42]) {
+    assert.throws(
+      () =>
+        kaleidoswapHttpTransport("https://maker.example/v2", {
+          fetchImpl,
+          apiKey: bad,
+        }),
+      (error) =>
+        error instanceof TypeError &&
+        /apiKey must be/.test(error.message) &&
+        (bad === "" || !error.message.includes(String(bad))),
+    );
+  }
+});
+
 test("kaleidoswapHttpTransport refuses a base that is not a /v2 maker URL", () => {
   assert.throws(
     () => kaleidoswapHttpTransport("https://maker.example"),

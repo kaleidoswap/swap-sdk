@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — `apiKey` on `kaleidoswapHttpTransport`
+
+The Arkade corridor transport takes the partner's `kld_` key as `apiKey` and
+sends it as `Authorization: Bearer …` on every corridor request to the maker's
+origin, so swaps created through the Arkade venue are attributed like those
+created on the `/v2` routes.
+
 ### BREAKING — Removed: the organisation-key client
 
 Swaps are attributed with the organisation's `kld_` key alone. The

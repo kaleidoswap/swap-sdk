@@ -498,15 +498,84 @@ export interface PreparedLightningReceive {
  * ```ts
  * const venue = new ArkadeIntentsVenue({
  *   wallet, arkServerUrl, store,
- *   transport: kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2"),
+ *   transport: kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2", {
+ *     apiKey: KALEIDOSWAP_PARTNER_KEY,
+ *   }),
  * });
  * ```
+ *
+ * Pass `apiKey`, the partner's `kld_` key, to attribute the swaps this
+ * transport creates to the partner, as `createKaleidoMakerClient` does
+ * for the `/v2` routes. It goes out as `Authorization: Bearer <key>` on every
+ * corridor request to this maker's origin and on nothing addressed anywhere
+ * else.
  */
 export function kaleidoswapHttpTransport(
   makerUrl: string,
-  options?: { fetchImpl?: typeof fetch },
+  options?: { fetchImpl?: typeof fetch; apiKey?: string },
 ): RfqTransport {
-  return httpTransport(corridorRootFromMakerUrl(makerUrl), options);
+  const root = corridorRootFromMakerUrl(makerUrl);
+  const fetchImpl = options?.fetchImpl;
+  if (options?.apiKey === undefined) {
+    return httpTransport(root, { fetchImpl });
+  }
+  return httpTransport(root, {
+    fetchImpl: withPartnerKey(
+      fetchImpl ?? ((input, init) => fetch(input, init)),
+      new URL(root).origin,
+      checkPartnerKey(options.apiKey),
+    ),
+  });
+}
+
+/**
+ * A partner key as it goes on the wire, or a `TypeError` that names the
+ * problem without quoting the value.
+ */
+function checkPartnerKey(apiKey: string): string {
+  const key = typeof apiKey === "string" ? apiKey.trim() : "";
+  if (!/^kld_[\x21-\x7e]+$/.test(key)) {
+    throw new TypeError(
+      "apiKey must be the partner's kld_ key from the KaleidoSwap partner panel",
+    );
+  }
+  return key;
+}
+
+/**
+ * `fetch` that adds the partner key to every request addressed to `origin`.
+ * Anything addressed elsewhere passes through untouched, so the key reaches
+ * only the maker it was configured for.
+ */
+function withPartnerKey(
+  fetchImpl: typeof fetch,
+  origin: string,
+  apiKey: string,
+): typeof fetch {
+  return (input, init) => {
+    const request =
+      typeof Request !== "undefined" && input instanceof Request
+        ? input
+        : undefined;
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : (request?.url ?? String(input));
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(url).origin === origin;
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin) {
+      return fetchImpl(input, init);
+    }
+    const headers = new Headers(init?.headers ?? request?.headers);
+    headers.set("Authorization", `Bearer ${apiKey}`);
+    return fetchImpl(input, { ...init, headers });
+  };
 }
 
 const hex = {
