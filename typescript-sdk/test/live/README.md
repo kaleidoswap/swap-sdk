@@ -32,8 +32,8 @@ headers.
 
 `partner.live.test.mjs` runs only with `KALEIDO_LIVE_API_KEY` set. With the
 key, it checks the keyed pair cards against the anonymous ones and
-`lastAttribution`. It then creates and settles one L-BTC submarine and one
-L-BTC reverse swap through the keyed client, checking that each differs from
+`lastAttribution`. It then creates and settles one submarine swap (from BTC or L-BTC, whichever
+the maker publishes) and one L-BTC reverse swap through the keyed client, checking that each differs from
 an unfunded anonymous create of the same amount by exactly the partner fee.
 It also checks that a keyed `KaleidoSwap` quote shows that fee as
 `fees.partner`. The key is a public partner identifier, so it can sit in CI

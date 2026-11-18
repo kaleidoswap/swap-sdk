@@ -183,12 +183,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("   swap id     : {}", unrecognised.id);
     println!("   attribution : none");
 
-    // 7. A malformed `Authorization` is not a key at all, and stays a `401
-    //    partner_auth_invalid`. `ApiKey::parse` refuses to build one, so this
-    //    goes out through a plain HTTP client.
+    // 7. A malformed `Authorization` header is not a key at all, and stays a
+    //    `401 partner_auth_invalid`. Malformed means the header itself: a scheme
+    //    other than `Bearer`, or `Bearer` with nothing after it. Any value after
+    //    `Bearer` is a key, and one the maker cannot use is step 6's anonymous
+    //    201. `ApiKey::parse` refuses to build either, so this goes out through
+    //    a plain HTTP client.
     let malformed = kaleidorg_swap_sdk::reqwest::Client::new()
         .post(format!("{maker_url}/swap/reverse"))
-        .header("Authorization", "Bearer not-a-partner-key")
+        .header("Authorization", "Basic dXNlcjpwYXNz")
         .json(&reverse_request("sdk-probe-malformed", run, 100_000))
         .send()
         .await?;

@@ -65,13 +65,22 @@ describe("partner key", { skip }, () => {
     return { anon, keyed, pct };
   }
 
-  test("submarine L-BTC: the keyed card prices, creates and settles", async () => {
-    const { anon, keyed, pct } = await cards("submarinePairs", "L-BTC", "BTC");
+  test("submarine: the keyed card prices, creates and settles", async () => {
+    // Whichever on-chain side the maker publishes a submarine route from.
+    const listed = (await env.client.submarinePairs()) ?? {};
+    const chain = listed.BTC?.BTC
+      ? { from: "BTC", kind: "bitcoin", node: env.btc }
+      : { from: "L-BTC", kind: "liquid", node: env.liquid };
+    const { anon, keyed, pct } = await cards(
+      "submarinePairs",
+      chain.from,
+      "BTC",
+    );
     const create = async (client, card) => {
       const { invoice } = await env.ln.invoice(AMOUNT);
       const key = master.deriveSwapKey(index++);
       const response = await client.createSubmarineSwap(NETWORK, {
-        from: "L-BTC",
+        from: chain.from,
         to: "BTC",
         invoice,
         refundPublicKey: key.publicKey,
@@ -90,15 +99,15 @@ describe("partner key", { skip }, () => {
     );
 
     SwapScript.fromSubmarine(
-      "liquid",
+      chain.kind,
       NETWORK,
       swap.response,
       swap.key.publicKey,
     );
-    await env.liquid.send(swap.response.address, swap.response.expectedAmount);
-    await env.liquid.mine(1);
+    await chain.node.send(swap.response.address, swap.response.expectedAmount);
+    await chain.node.mine(1);
     await waitStatus(env.client, swap.response.id, "transaction.claimed", {
-      mine: env.liquid,
+      mine: chain.node,
       failOn: [
         "invoice.failedToPay",
         "transaction.lockupFailed",
