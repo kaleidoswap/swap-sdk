@@ -255,6 +255,7 @@ dependencies = [
  "async-trait",
  "bitcoin",
  "elements",
+ "hex",
  "kaleidorg-swap-sdk",
  "serde_json",
  "serial_test",

@@ -34,6 +34,13 @@ doctest = false
 crate-type = ["lib"]
 
 [[bin]]
+# Maturin 1.14 discovers UniFFI generators through workspace metadata, but
+# invokes the selected name with bindings/Cargo.toml. This matching root target
+# makes discovery deterministic; Cargo then runs the real bindings-owned bin.
+name = "uniffi-bindgen"
+path = "bindings/uniffi-workspace-shim.rs"
+
+[[bin]]
 name = "generate-typescript"
 path = "src/bin/generate_typescript.rs"
 required-features = ["typescript"]

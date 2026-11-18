@@ -19,7 +19,7 @@ chain_client = kaleidorg_swap_sdk.ChainClient(
 async def main():
     # Initialize the Boltz API client
     network = kaleidorg_swap_sdk.Network.REGTEST
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 
     to_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
 
@@ -63,8 +63,8 @@ async def main():
     asyncio.create_task(ws_client.run_ws_loop())
 
     # Monitor the swap status via WebSocket
-    await ws_client.subscribe_swap(swap_id)
     updates = ws_client.updates()
+    await ws_client.subscribe_swap(swap_id)
     while True:
         update = await updates.next()
         status = update.status
@@ -87,17 +87,28 @@ async def main():
                 chain=to_chain, reverse_response=response, our_pubkey=key_pair.public()
             )
 
-            tx = await swap_script.construct_claim(
-                preimage,
-                kaleidorg_swap_sdk.SwapTransactionParams(
+            def claim_params(cooperative):
+                return kaleidorg_swap_sdk.SwapTransactionParams(
                     swap_id=swap_id,
                     keys=key_pair,
                     fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                     output_address=claim_address,
                     chain_client=chain_client,
-                    kaleidorg_swap_sdk=boltz_api,
-                ),
-            )
+                    boltz_api=boltz_api,
+                    options=kaleidorg_swap_sdk.TransactionOptions(
+                        cooperative=cooperative
+                    ),
+                )
+
+            # Cooperative first. The script path needs nothing from the maker,
+            # so any failure of the cooperative claim falls back to it.
+            try:
+                tx = await swap_script.construct_claim(preimage, claim_params(True))
+            except Exception as error:
+                print(
+                    f"Cooperative claim unavailable ({error}); claiming by script path"
+                )
+                tx = await swap_script.construct_claim(preimage, claim_params(False))
 
             print("Transaction signed, broadcasting...")
             tx_id = await chain_client.broadcast_tx(tx)

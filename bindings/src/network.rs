@@ -1,16 +1,21 @@
 use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
 use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, LiquidChain, Network};
+use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain, Network};
 use kaleidorg_swap_sdk::swaps::ChainClient as CoreClient;
 
 use crate::boltz::Error;
 use crate::swap::BtcLikeTransaction;
 
+// NB: variant order here is the FFI wire order, independent of the core enum's
+// declaration order. New variants go at the END so existing indices keep their
+// meaning — inserting mid-enum would make a stale generated module decode
+// `Mainnet` as `Signet` against a freshly built library.
 #[uniffi::remote(Enum)]
 pub enum Network {
     Regtest,
     Testnet,
     Mainnet,
+    Signet,
 }
 
 #[uniffi::remote(Enum)]
@@ -20,17 +25,27 @@ pub enum LiquidChain {
     LiquidRegtest,
 }
 
+// Appended, not inserted — see the note on `Network` above.
 #[uniffi::remote(Enum)]
 pub enum BitcoinChain {
     Bitcoin,
     BitcoinTestnet,
     BitcoinRegtest,
+    BitcoinSignet,
 }
 
 #[uniffi::remote(Enum)]
 pub enum Chain {
     Bitcoin(BitcoinChain),
     Liquid(LiquidChain),
+}
+
+#[uniffi::remote(Enum)]
+pub enum Currency {
+    Btc,
+    LBtc,
+    LUsdt,
+    UsdtRgb,
 }
 
 #[derive(uniffi::Record)]
@@ -123,10 +138,37 @@ impl ChainClient {
     }
 }
 
-#[uniffi::export]
+// `async_runtime = "tokio"` is load-bearing: the Esplora/Electrum clients this
+// drives are reqwest/tokio-based, so without it UniFFI polls the future on a
+// bare executor and the first I/O aborts the process with "there is no reactor
+// running". Every other async export in these bindings carries the same
+// attribute — this one is the only place a caller reaches the chain directly.
+#[uniffi::export(async_runtime = "tokio")]
 impl ChainClient {
     #[uniffi::method]
     pub async fn broadcast_tx(&self, tx: &BtcLikeTransaction) -> Result<String, Error> {
         self.0.broadcast_tx(&tx.0).await.map_err(|e| e.into())
+    }
+
+    /// Tip height of the configured Bitcoin source. This is the trusted
+    /// height the create-time timeout validators and claim policies want —
+    /// the maker's `get_height` is the maker's claim, not the chain's.
+    #[uniffi::method]
+    pub async fn bitcoin_tip_height(&self) -> Result<u32, Error> {
+        let client = self
+            .0
+            .bitcoin_client()
+            .ok_or_else(|| Error::Generic("No Bitcoin client configured".into()))?;
+        client.get_tip_height().await.map_err(|e| e.into())
+    }
+
+    /// Tip height of the configured Liquid source.
+    #[uniffi::method]
+    pub async fn liquid_tip_height(&self) -> Result<u32, Error> {
+        let client = self
+            .0
+            .liquid_client()
+            .ok_or_else(|| Error::Generic("No Liquid client configured".into()))?;
+        client.get_tip_height().await.map_err(|e| e.into())
     }
 }

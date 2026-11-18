@@ -2,7 +2,7 @@ import kaleidorg_swap_sdk
 import asyncio
 
 network = kaleidorg_swap_sdk.Network.REGTEST
-boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
 lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)
 
@@ -61,7 +61,7 @@ async def delay():
     await asyncio.sleep(5)
 
 
-async def next_status(updates: kaleidorg_swap_sdk.BoltzWsUpdates, status: str):
+async def next_status(updates: kaleidorg_swap_sdk.SwapWsUpdates, status: str):
     # 5s per event flakes on loaded CI runners (the first event regularly
     # takes longer than that right after subscribing); 60s still fails fast
     # when an event genuinely never comes.
@@ -73,3 +73,25 @@ async def next_status(updates: kaleidorg_swap_sdk.BoltzWsUpdates, status: str):
         print("Waiting for status", update.status)
         if update.status == status:
             return update
+
+
+async def construct_claim_when_indexed(script, preimage, params):
+    """Build a claim once Esplora/electrs have caught up with the maker.
+
+    The regtest Boltz reports a status within milliseconds of a block, while
+    the indexers the chain client reads lag behind it. The claim guard trusts
+    the chain client, not the maker, so retry its two "not caught up yet"
+    refusals; anything else is a real failure.
+    """
+    for attempt in range(60):
+        try:
+            return await script.construct_claim(preimage, params)
+        except kaleidorg_swap_sdk.Error as error:
+            message = str(error)
+            if attempt < 59 and (
+                "confirmations" in message or "unknown to the chain source" in message
+            ):
+                print(f"chain source not caught up yet ({message}); retrying")
+                await asyncio.sleep(1)
+                continue
+            raise

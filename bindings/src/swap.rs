@@ -1,14 +1,20 @@
-use crate::boltz::BoltzApiClientV2;
 use crate::boltz::Error;
+use crate::boltz::SwapClient;
 use crate::network::ChainClient;
 use crate::util::Preimage;
 use bitcoin::hex::DisplayHex;
 use bitcoin::key::{rand, Keypair, PublicKey};
 use bitcoin::secp256k1::SecretKey;
 use kaleidorg_swap_sdk::boltz::ChainSwapDetails;
-use kaleidorg_swap_sdk::boltz::{CreateReverseResponse, CreateSubmarineResponse, Side};
+use kaleidorg_swap_sdk::boltz::{
+    CreateReverseResponse, CreateSubmarineResponse, Side, SwapRestoreResponse,
+};
 use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::Chain;
+use kaleidorg_swap_sdk::network::{Chain, Network};
+use kaleidorg_swap_sdk::swaps::rgb::{
+    ColoredRgbPsbt, RgbAllocation, RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbPsbtTemplate, RgbSpendFunding,
+};
 use kaleidorg_swap_sdk::swaps::{self as swaps_bitcoin};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -23,9 +29,322 @@ pub struct SwapTransactionParams {
     pub swap_id: String,
     pub keys: Arc<KeyPair>,
     pub chain_client: Arc<ChainClient>,
-    pub kaleidorg_swap_sdk: Arc<BoltzApiClientV2>,
+    pub boltz_api: Arc<SwapClient>,
     #[uniffi(default = None)]
     pub options: Option<TransactionOptions>,
+}
+
+#[derive(uniffi::Record)]
+pub struct RgbPsbtParams {
+    pub output_address: String,
+    pub funding: RgbSpendFunding,
+    pub max_fee: u64,
+    pub swap_id: String,
+    pub chain_client: Arc<ChainClient>,
+    pub boltz_api: Arc<SwapClient>,
+    pub lockup_tx: Arc<BtcLikeTransaction>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum RgbSpendFunding {
+    HtlcValue { fee_rate_sat_vb: u64 },
+    CallerInputs,
+}
+
+#[uniffi::remote(Record)]
+pub struct RgbPsbtTemplate {
+    pub psbt: String,
+    pub swap_outpoint: String,
+    pub swap_input_index: u32,
+    pub commitment_output_index: u32,
+    pub payment_output_index: u32,
+    pub asset_id: String,
+    pub amount: u64,
+    pub payment_value: u64,
+    pub max_fee: u64,
+    pub requires_funding: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct RgbAllocation {
+    pub asset_id: String,
+    pub vout: Option<u32>,
+    pub amount: u64,
+}
+
+#[uniffi::remote(Record)]
+pub struct ColoredRgbPsbt {
+    pub psbt: String,
+    pub allocations: Vec<RgbAllocation>,
+}
+
+#[uniffi::remote(Record)]
+pub struct RgbCooperativeRefundRequest {
+    pub protocol: String,
+    pub psbt: String,
+    pub index: u32,
+    pub pub_nonce: String,
+    pub session_id: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct RgbCooperativeRefundResponse {
+    pub session_id: String,
+    pub request_hash: String,
+    pub pub_nonce: String,
+    pub partial_signature: String,
+}
+
+#[derive(Debug, uniffi::Object)]
+pub struct RgbCooperativeRefund {
+    inner: std::sync::Mutex<Option<swaps_bitcoin::rgb::RgbCooperativeRefund>>,
+    request: RgbCooperativeRefundRequest,
+}
+
+#[uniffi::export]
+impl RgbCooperativeRefund {
+    pub fn request(&self) -> RgbCooperativeRefundRequest {
+        self.request.clone()
+    }
+
+    pub fn complete(
+        &self,
+        response: RgbCooperativeRefundResponse,
+        keys: &KeyPair,
+    ) -> Result<FinalizedRgbSpend, Error> {
+        let session = self
+            .inner
+            .lock()
+            .map_err(|_| Error::Generic("RGB signing session unavailable".into()))?
+            .take()
+            .ok_or_else(|| Error::Generic("RGB signing session already consumed".into()))?;
+        Ok(session.complete(response, &keys.inner)?.into())
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct FinalizedRgbSpend {
+    pub psbt: String,
+    pub swap_input_index: u32,
+    pub transaction: Option<Arc<BtcLikeTransaction>>,
+}
+
+impl From<swaps_bitcoin::rgb::FinalizedRgbSpend> for FinalizedRgbSpend {
+    fn from(spend: swaps_bitcoin::rgb::FinalizedRgbSpend) -> Self {
+        Self {
+            psbt: spend.psbt.to_string(),
+            swap_input_index: spend.swap_input_index,
+            transaction: spend.transaction.map(|tx| {
+                Arc::new(BtcLikeTransaction(
+                    swaps_bitcoin::BtcLikeTransaction::bitcoin(tx),
+                ))
+            }),
+        }
+    }
+}
+
+#[derive(Debug, uniffi::Object)]
+pub struct PreparedRgbSpend(swaps_bitcoin::rgb::PreparedRgbSpend);
+
+#[uniffi::export]
+impl PreparedRgbSpend {
+    pub fn template(&self) -> RgbPsbtTemplate {
+        self.0.template()
+    }
+
+    /// Return a new immutable spend with the wallet's BTC funding frozen.
+    pub fn fund(&self, funded_psbt: &str) -> Result<Self, Error> {
+        Ok(Self(self.0.fund(funded_psbt)?))
+    }
+
+    pub fn begin_cooperative_refund(
+        &self,
+        colored_psbt: ColoredRgbPsbt,
+        keys: &KeyPair,
+        swap_id: &str,
+    ) -> Result<RgbCooperativeRefund, Error> {
+        let session = self
+            .0
+            .begin_cooperative_refund(colored_psbt, &keys.inner, swap_id)?;
+        let request = session.request();
+        Ok(RgbCooperativeRefund {
+            inner: std::sync::Mutex::new(Some(session)),
+            request,
+        })
+    }
+
+    pub fn finalize_claim(
+        &self,
+        colored_psbt: ColoredRgbPsbt,
+        keys: &KeyPair,
+        preimage: &Preimage,
+    ) -> Result<FinalizedRgbSpend, Error> {
+        Ok(self
+            .0
+            .finalize_claim(colored_psbt, &keys.inner, &preimage.0)?
+            .into())
+    }
+
+    pub fn finalize_refund(
+        &self,
+        colored_psbt: ColoredRgbPsbt,
+        keys: &KeyPair,
+    ) -> Result<FinalizedRgbSpend, Error> {
+        Ok(self.0.finalize_refund(colored_psbt, &keys.inner)?.into())
+    }
+}
+
+impl<'a> TryFrom<&'a RgbPsbtParams> for swaps_bitcoin::RgbPsbtParams<'a> {
+    type Error = Error;
+
+    fn try_from(params: &'a RgbPsbtParams) -> Result<Self, Error> {
+        let lockup_tx =
+            params.lockup_tx.0.as_bitcoin().cloned().ok_or_else(|| {
+                Error::Generic("RGB lockup_tx must be a Bitcoin transaction".into())
+            })?;
+        Ok(Self {
+            output_address: params.output_address.clone(),
+            funding: params.funding,
+            max_fee: params.max_fee,
+            swap_id: params.swap_id.clone(),
+            chain_client: &params.chain_client.0,
+            boltz_api: &params.boltz_api.inner,
+            lockup_tx,
+        })
+    }
+}
+
+#[derive(uniffi::Record)]
+pub struct LiquidPsetParams {
+    pub output_address: String,
+    pub max_fee: u64,
+    pub quoted_fee_cap: u64,
+    pub swap_id: String,
+    pub chain_client: Arc<ChainClient>,
+    pub boltz_api: Arc<SwapClient>,
+    /// Optional locally available Liquid lockup transaction. Supplying it
+    /// avoids depending on API/indexer transaction discovery.
+    #[uniffi(default = None)]
+    pub lockup_tx: Option<Arc<BtcLikeTransaction>>,
+    /// Claim policy (confirmations, zero-conf opt-in, timeout margin); the
+    /// `cooperative`, `chain_claim` and `swap_auth` fields are ignored here.
+    #[uniffi(default = None)]
+    pub options: Option<TransactionOptions>,
+}
+
+impl LiquidPsetParams {
+    fn core_options(&self) -> Option<swaps_bitcoin::TransactionOptions> {
+        let mut options = swaps_bitcoin::TransactionOptions::default();
+        if let Some(policy) = &self.options {
+            options = options.with_claim_policy(policy.claim_policy());
+        }
+        if let Some(tx) = &self.lockup_tx {
+            options = options.with_lockup_tx(tx.0.clone());
+        }
+        Some(options)
+    }
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct LiquidPsetTemplate {
+    pub pset: String,
+    pub swap_input_index: u32,
+    pub payment_output_index: u32,
+    pub swap_asset_id: String,
+    pub policy_asset_id: String,
+    pub amount: u64,
+    pub max_fee: u64,
+    /// True when the payout address is confidential and the funding wallet
+    /// must therefore blind the payment output. A wallet that does not blind
+    /// has to rebuild the template against the unconfidential address.
+    pub payment_requires_blinding: bool,
+}
+
+impl From<swaps_bitcoin::liquid::LiquidPsetTemplate> for LiquidPsetTemplate {
+    fn from(template: swaps_bitcoin::liquid::LiquidPsetTemplate) -> Self {
+        Self {
+            pset: template.pset,
+            swap_input_index: template.swap_input_index,
+            payment_output_index: template.payment_output_index,
+            swap_asset_id: template.swap_asset_id,
+            policy_asset_id: template.policy_asset_id,
+            amount: template.amount,
+            max_fee: template.max_fee,
+            payment_requires_blinding: template.payment_requires_blinding,
+        }
+    }
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct LiquidOutputSecrets {
+    pub asset_id: String,
+    pub value: u64,
+    pub asset_blinding_factor: String,
+    pub value_blinding_factor: String,
+}
+
+impl From<LiquidOutputSecrets> for swaps_bitcoin::liquid::LiquidOutputSecrets {
+    fn from(secrets: LiquidOutputSecrets) -> Self {
+        Self {
+            asset_id: secrets.asset_id,
+            value: secrets.value,
+            asset_blinding_factor: secrets.asset_blinding_factor,
+            value_blinding_factor: secrets.value_blinding_factor,
+        }
+    }
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct FundedLiquidPset {
+    pub pset: String,
+    pub payment_output_secrets: LiquidOutputSecrets,
+}
+
+impl From<FundedLiquidPset> for swaps_bitcoin::liquid::FundedLiquidPset {
+    fn from(funded: FundedLiquidPset) -> Self {
+        Self {
+            pset: funded.pset,
+            payment_output_secrets: funded.payment_output_secrets.into(),
+        }
+    }
+}
+
+#[derive(Debug, uniffi::Object)]
+pub struct PreparedLiquidSpend(swaps_bitcoin::liquid::PreparedLiquidSpend);
+
+#[uniffi::export]
+impl PreparedLiquidSpend {
+    #[uniffi::method]
+    pub fn template(&self) -> LiquidPsetTemplate {
+        self.0.template().into()
+    }
+
+    #[uniffi::method]
+    pub fn finalize_claim(
+        &self,
+        funded_pset: FundedLiquidPset,
+        keys: &KeyPair,
+        preimage: &Preimage,
+    ) -> Result<BtcLikeTransaction, Error> {
+        self.0
+            .finalize_claim(funded_pset.into(), &keys.inner, &preimage.0)
+            .map(swaps_bitcoin::BtcLikeTransaction::liquid)
+            .map(BtcLikeTransaction)
+            .map_err(Into::into)
+    }
+
+    #[uniffi::method]
+    pub fn finalize_refund(
+        &self,
+        funded_pset: FundedLiquidPset,
+        keys: &KeyPair,
+    ) -> Result<BtcLikeTransaction, Error> {
+        self.0
+            .finalize_refund(funded_pset.into(), &keys.inner)
+            .map(swaps_bitcoin::BtcLikeTransaction::liquid)
+            .map(BtcLikeTransaction)
+            .map_err(Into::into)
+    }
 }
 
 impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParams<'a> {
@@ -36,8 +355,12 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
             fee: params.fee,
             swap_id: params.swap_id.clone(),
             options: params.options.clone().map(|o| {
-                let mut options =
-                    swaps_bitcoin::TransactionOptions::default().with_cooperative(o.cooperative);
+                let mut options = swaps_bitcoin::TransactionOptions::default()
+                    .with_cooperative(o.cooperative)
+                    .with_claim_policy(o.claim_policy());
+                if let Some(auth) = o.swap_auth {
+                    options = options.with_swap_auth(auth);
+                }
                 if let Some(chain_claim) = o.chain_claim {
                     options = options.with_chain_claim(
                         chain_claim.keys.inner,
@@ -47,13 +370,28 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
                 options
             }),
             chain_client: &params.chain_client.0,
-            kaleidorg_swap_sdk: &params.kaleidorg_swap_sdk.inner,
+            boltz_api: &params.boltz_api.inner,
         }
     }
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl SwapScript {
+    #[uniffi::constructor]
+    pub fn from_restored(
+        network: Network,
+        restored_swap: &SwapRestoreResponse,
+        our_pubkey: PublicKey,
+        side: Option<Side>,
+    ) -> Result<Self, Error> {
+        Ok(Self(swaps_bitcoin::SwapScript::from_restored(
+            network,
+            restored_swap,
+            our_pubkey,
+            side,
+        )?))
+    }
+
     #[uniffi::constructor]
     pub fn from_submarine(
         chain: Chain,
@@ -114,13 +452,82 @@ impl SwapScript {
         Ok(BtcLikeTransaction(tx))
     }
 
+    pub async fn prepare_rgb_claim(
+        &self,
+        params: &RgbPsbtParams,
+    ) -> Result<PreparedRgbSpend, Error> {
+        Ok(PreparedRgbSpend(
+            self.0.prepare_rgb_claim(params.try_into()?).await?,
+        ))
+    }
+
+    pub async fn prepare_rgb_refund(
+        &self,
+        params: &RgbPsbtParams,
+    ) -> Result<PreparedRgbSpend, Error> {
+        Ok(PreparedRgbSpend(
+            self.0.prepare_rgb_refund(params.try_into()?).await?,
+        ))
+    }
+
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: &RgbPsbtParams,
+    ) -> Result<PreparedRgbSpend, Error> {
+        Ok(PreparedRgbSpend(
+            self.0
+                .prepare_rgb_cooperative_refund(params.try_into()?)
+                .await?,
+        ))
+    }
+
+    #[uniffi::method]
+    pub async fn prepare_liquid_claim(
+        &self,
+        params: &LiquidPsetParams,
+    ) -> Result<PreparedLiquidSpend, Error> {
+        let prepared = self
+            .0
+            .prepare_liquid_claim(swaps_bitcoin::LiquidPsetParams {
+                output_address: params.output_address.clone(),
+                max_fee: params.max_fee,
+                quoted_fee_cap: params.quoted_fee_cap,
+                swap_id: params.swap_id.clone(),
+                chain_client: &params.chain_client.0,
+                boltz_api: &params.boltz_api.inner,
+                options: params.core_options(),
+            })
+            .await?;
+        Ok(PreparedLiquidSpend(prepared))
+    }
+
+    #[uniffi::method]
+    pub async fn prepare_liquid_refund(
+        &self,
+        params: &LiquidPsetParams,
+    ) -> Result<PreparedLiquidSpend, Error> {
+        let prepared = self
+            .0
+            .prepare_liquid_refund(swaps_bitcoin::LiquidPsetParams {
+                output_address: params.output_address.clone(),
+                max_fee: params.max_fee,
+                quoted_fee_cap: params.quoted_fee_cap,
+                swap_id: params.swap_id.clone(),
+                chain_client: &params.chain_client.0,
+                boltz_api: &params.boltz_api.inner,
+                options: params.core_options(),
+            })
+            .await?;
+        Ok(PreparedLiquidSpend(prepared))
+    }
+
     #[uniffi::method]
     pub async fn submarine_cooperative_claim(
         &self,
         swap_id: &String,
         keys: &KeyPair,
         invoice: &str,
-        boltz_api: &BoltzApiClientV2,
+        boltz_api: &SwapClient,
     ) -> Result<(), Error> {
         self.0
             .submarine_cooperative_claim(swap_id, &keys.inner, invoice, &boltz_api.inner)
@@ -140,6 +547,35 @@ pub struct TransactionOptions {
     pub cooperative: bool,
     #[uniffi(default = None)]
     pub chain_claim: Option<ChainClaim>,
+    /// Per-swap credential returned on creation or signed recovery.
+    #[uniffi(default = None)]
+    pub swap_auth: Option<String>,
+    /// Confirmations the lockup must have, per the chain client, before a
+    /// claim reveals the preimage. Refunds ignore it.
+    #[uniffi(default = 1)]
+    pub min_confirmations: u32,
+    /// Explicitly accept claiming an unconfirmed, replaceable lockup.
+    #[uniffi(default = false)]
+    pub allow_zero_conf: bool,
+    /// Blocks of headroom to the swap timeout a claim requires; `None` is the
+    /// chain default (6 on Bitcoin, 60 on Liquid). Zero accepts the expiry race.
+    #[uniffi(default = None)]
+    pub claim_safety_margin_blocks: Option<u32>,
+    /// Build a claim over an unconfirmed spend of the lockup, to fee-bump a
+    /// stuck claim of your own. A confirmed spend is always refused.
+    #[uniffi(default = false)]
+    pub allow_conflicting_spend: bool,
+}
+
+impl TransactionOptions {
+    fn claim_policy(&self) -> swaps_bitcoin::ClaimPolicy {
+        swaps_bitcoin::ClaimPolicy {
+            min_confirmations: self.min_confirmations,
+            allow_zero_conf: self.allow_zero_conf,
+            claim_safety_margin_blocks: self.claim_safety_margin_blocks,
+            allow_conflicting_spend: self.allow_conflicting_spend,
+        }
+    }
 }
 
 #[uniffi::remote(Enum)]
@@ -153,8 +589,39 @@ pub enum Fee {
 #[derive(uniffi::Object)]
 pub struct BtcLikeTransaction(pub(crate) swaps_bitcoin::BtcLikeTransaction);
 
+/// Transaction encoding family, independent of the network chosen at broadcast.
+/// Serialized transaction bytes cannot prove mainnet/testnet/regtest identity.
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum TransactionChain {
+    Bitcoin,
+    Liquid,
+}
+
 #[uniffi::export]
 impl BtcLikeTransaction {
+    /// Rebuild a saved Bitcoin/Liquid transaction without signing or broadcasting.
+    #[uniffi::constructor]
+    pub fn from_hex(hex: &str, chain: TransactionChain) -> Result<Self, Error> {
+        let restored = Self(match chain {
+            TransactionChain::Bitcoin => swaps_bitcoin::BtcLikeTransaction::from_hex_bitcoin(hex)?,
+            TransactionChain::Liquid => swaps_bitcoin::BtcLikeTransaction::from_hex_liquid(hex)?,
+        });
+        if !hex.eq_ignore_ascii_case(&restored.hex()) {
+            return Err(Error::Generic(
+                "hex must use canonical transaction encoding".into(),
+            ));
+        }
+        Ok(restored)
+    }
+
+    /// Parse a wallet or maker lock transaction for local RGB UTXO discovery.
+    #[uniffi::constructor]
+    pub fn from_hex_bitcoin(hex: &str) -> Result<Self, Error> {
+        Ok(Self(swaps_bitcoin::BtcLikeTransaction::from_hex_bitcoin(
+            hex,
+        )?))
+    }
+
     #[uniffi::method]
     pub fn hex(&self) -> String {
         match &self.0 {
@@ -178,7 +645,7 @@ impl BtcLikeTransaction {
 
 #[derive(uniffi::Object)]
 pub struct KeyPair {
-    inner: Keypair,
+    pub(crate) inner: Keypair,
 }
 
 #[uniffi::export]
@@ -212,6 +679,14 @@ impl KeyPair {
 impl Default for KeyPair {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl KeyPair {
+    /// Wrap an already-derived keypair. Not exported: callers reach this
+    /// through `SwapMasterKey::derive_swap_key`.
+    pub(crate) fn from_keypair(inner: Keypair) -> Self {
+        KeyPair { inner }
     }
 }
 

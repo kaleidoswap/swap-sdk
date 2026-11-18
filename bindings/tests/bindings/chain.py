@@ -4,7 +4,9 @@ from common import *
 
 
 async def swap(
-    from_chain: kaleidorg_swap_sdk.Chain, to_chain: kaleidorg_swap_sdk.Chain, refund: bool = False
+    from_chain: kaleidorg_swap_sdk.Chain,
+    to_chain: kaleidorg_swap_sdk.Chain,
+    refund: bool = False,
 ):
     claim_address = await getnewaddress(to_chain)
 
@@ -67,7 +69,7 @@ async def swap(
             swap_id=swap_id,
             keys=refund_keys,
             chain_client=chain_client,
-            kaleidorg_swap_sdk=boltz_api,
+            boltz_api=boltz_api,
         )
 
         refund_tx = await lockup_script.construct_refund(refund_params)
@@ -92,7 +94,7 @@ async def swap(
             swap_id=swap_id,
             keys=claim_keys,
             chain_client=chain_client,
-            kaleidorg_swap_sdk=boltz_api,
+            boltz_api=boltz_api,
             options=kaleidorg_swap_sdk.TransactionOptions(
                 chain_claim=kaleidorg_swap_sdk.ChainClaim(
                     keys=refund_keys, lockup_script=lockup_script
@@ -100,7 +102,9 @@ async def swap(
             ),
         )
 
-        claim_tx = await claim_script.construct_claim(preimage, claim_params)
+        claim_tx = await construct_claim_when_indexed(
+            claim_script, preimage, claim_params
+        )
         txid = await chain_client.broadcast_tx(claim_tx)
         print(f"Claim Transaction ID: {txid}")
 

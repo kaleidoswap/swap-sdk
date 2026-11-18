@@ -18,7 +18,7 @@ chain_client = kaleidorg_swap_sdk.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 
     btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
     lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)
@@ -84,8 +84,8 @@ async def main():
     )
 
     # Monitor the swap status via WebSocket
-    await ws_client.subscribe_swap(swap_id)
     updates = ws_client.updates()
+    await ws_client.subscribe_swap(swap_id)
     while True:
         update = await updates.next()
         status = update.status
@@ -120,7 +120,7 @@ async def main():
                 swap_id=swap_id,
                 keys=claim_keys,
                 chain_client=chain_client,
-                kaleidorg_swap_sdk=boltz_api,
+                boltz_api=boltz_api,
                 options=kaleidorg_swap_sdk.TransactionOptions(
                     chain_claim=kaleidorg_swap_sdk.ChainClaim(
                         keys=refund_keys, lockup_script=lockup_script
@@ -154,7 +154,7 @@ async def main():
                 swap_id=swap_id,
                 keys=refund_keys,
                 chain_client=chain_client,
-                kaleidorg_swap_sdk=boltz_api,
+                boltz_api=boltz_api,
             )
 
             refund_tx = await lockup_script.construct_refund(refund_params)

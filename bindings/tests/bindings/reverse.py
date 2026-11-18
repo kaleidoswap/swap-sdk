@@ -4,7 +4,7 @@ from common import *
 
 
 async def swap(to_chain: kaleidorg_swap_sdk.Chain):
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
 
@@ -28,6 +28,11 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     response = await boltz_api.create_reverse_swap(request)
     swap_id = response.id
 
+    # The validated magic-routing destination, when the maker offers one: the
+    # on-chain amount is bounded by the invoice, never above it.
+    destination = await boltz_api.check_mrh(response.invoice, to_chain)
+    assert destination is None or 0 < destination.amount_sat <= amount, destination
+
     asyncio.create_task(ws_client.run_ws_loop())
 
     # Monitor the swap status via WebSocket
@@ -46,6 +51,11 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     # Wait for transaction to appear in mempool
     await next_status(updates, "transaction.mempool")
 
+    # A claim reveals the preimage, so the SDK refuses it until the chain
+    # client sees the lockup confirmed (zero-conf is an explicit opt-in).
+    await mine_block()
+    await next_status(updates, "transaction.confirmed")
+
     await delay()
 
     swap_script = kaleidorg_swap_sdk.SwapScript.from_reverse(
@@ -53,7 +63,8 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
     )
 
     claim_address = await getnewaddress(to_chain)
-    tx = await swap_script.construct_claim(
+    tx = await construct_claim_when_indexed(
+        swap_script,
         preimage,
         kaleidorg_swap_sdk.SwapTransactionParams(
             swap_id=swap_id,
@@ -61,7 +72,7 @@ async def swap(to_chain: kaleidorg_swap_sdk.Chain):
             fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
             output_address=claim_address,
             chain_client=chain_client,
-            kaleidorg_swap_sdk=boltz_api,
+            boltz_api=boltz_api,
         ),
     )
 

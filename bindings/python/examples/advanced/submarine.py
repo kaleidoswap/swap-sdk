@@ -20,7 +20,7 @@ async def main():
     # Initialize the Boltz API client
     network = kaleidorg_swap_sdk.Network.REGTEST
     btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
-    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
 
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
@@ -61,8 +61,8 @@ async def main():
     asyncio.create_task(ws_client.run_ws_loop())
 
     # Monitor the swap status via WebSocket
-    await ws_client.subscribe_swap(swap_id)
     updates = ws_client.updates()
+    await ws_client.subscribe_swap(swap_id)
     while True:
         update = await updates.next()
         status = update.status
@@ -104,7 +104,7 @@ async def main():
                     swap_id=swap_id,
                     keys=key_pair,
                     chain_client=chain_client,
-                    kaleidorg_swap_sdk=boltz_api,
+                    boltz_api=boltz_api,
                 )
             )
 

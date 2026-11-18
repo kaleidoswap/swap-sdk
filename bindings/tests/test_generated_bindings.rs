@@ -26,3 +26,79 @@ fn chain() {
 fn submarine() {
     run_test("tests/bindings/submarine.py");
 }
+
+#[test]
+#[serial]
+fn typed_swap_dtos() {
+    run_test("tests/bindings/typed_swap_dtos.py");
+}
+
+#[test]
+#[serial]
+fn swap_script_restore() {
+    run_test("tests/bindings/swap_script_restore.py");
+}
+
+#[test]
+#[serial]
+fn kaleido_auth() {
+    run_test("tests/bindings/kaleido_auth.py");
+}
+
+#[test]
+#[serial]
+fn kaleido_org() {
+    run_test("tests/bindings/kaleido_org.py");
+}
+
+#[test]
+#[serial]
+fn auth_recovery() {
+    run_test("tests/bindings/auth_recovery.py");
+}
+
+/// `str()` on generated records must not print `swap_auth` or `blinding_key`.
+#[test]
+#[serial]
+fn secret_redaction() {
+    run_test("tests/bindings/secret_redaction.py");
+}
+
+#[test]
+#[serial]
+fn lightning_address() {
+    run_test("tests/bindings/lightning_address.py");
+}
+
+/// The high-level surface: foreign store and signer, a local maker stub.
+#[test]
+#[serial]
+fn kaleidoswap() {
+    run_test("tests/bindings/kaleidoswap.py");
+}
+
+#[test]
+#[serial]
+fn corridor_card() {
+    run_test("tests/bindings/corridor_card.py");
+}
+
+/// RGB create and spend bindings use a local HTTP stub, without regtest daemons.
+#[test]
+#[serial]
+fn rgb() {
+    run_test("tests/bindings/rgb.py");
+}
+
+/// L-USDT asset pinning against a local HTTP stub, without regtest daemons.
+#[test]
+#[serial]
+fn lusdt() {
+    run_test("tests/bindings/lusdt.py");
+}
+
+#[test]
+#[serial]
+fn transaction_restore() {
+    run_test("tests/bindings/transaction_restore.py");
+}

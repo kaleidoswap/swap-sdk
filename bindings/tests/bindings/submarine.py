@@ -55,7 +55,7 @@ async def swap(from_chain: kaleidorg_swap_sdk.Chain, refund: bool):
                 swap_id=swap_id,
                 keys=key_pair,
                 chain_client=chain_client,
-                kaleidorg_swap_sdk=boltz_api,
+                boltz_api=boltz_api,
             )
         )
 
