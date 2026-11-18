@@ -50,6 +50,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         address: Some(claim_address.clone()),
         claim_public_key,
         referral_id: None, // Add address signature here.
+        pair_hash: None,
         webhook: None,
     };
 
@@ -78,8 +79,8 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         SwapScript::reverse_from_swap_resp(chain, &reverse_resp, claim_public_key).unwrap();
     let swap_id = reverse_resp.id.clone();
 
-    ws_api.subscribe_swap(&swap_id).await.unwrap();
     let mut updates = ws_api.updates();
+    ws_api.subscribe_swap(&swap_id).await.unwrap();
 
     next_status(&mut updates, "swap.created").await.unwrap();
 
@@ -91,6 +92,13 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
 
     let lockup_tx = swap_script
         .parse_lockup_transaction(&status.transaction.unwrap())
+        .await
+        .unwrap();
+
+    // A claim reveals the preimage, so the SDK refuses it until the chain
+    // client sees the lockup confirmed (zero-conf is an explicit opt-in).
+    utils::mine_blocks(1).await.unwrap();
+    next_status(&mut updates, "transaction.confirmed")
         .await
         .unwrap();
 
@@ -122,7 +130,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         fee: Fee::Absolute(absolute_fee),
         output_address: claim_address.clone(),
         chain_client,
-        kaleidorg_swap_sdk: &boltz_api_v2,
+        boltz_api: &boltz_api_v2,
         options: Some(options),
     };
 
@@ -135,8 +143,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         .await
         .expect_err("Underpaid script should throw");
 
-    let tx = swap_script
-        .construct_claim(&preimage, params)
+    let tx = construct_claim_when_indexed(&swap_script, &preimage, params)
         .await
         .unwrap();
 
@@ -187,6 +194,7 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
         address: Some(claim_address.clone()),
         claim_public_key,
         referral_id: None, // Add address signature here.
+        pair_hash: None,
         webhook: None,
     };
 
@@ -217,8 +225,8 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
         SwapScript::reverse_from_swap_resp(chain, &reverse_resp, claim_public_key).unwrap();
     let swap_id = reverse_resp.id.clone();
 
-    ws_api.subscribe_swap(&swap_id).await.unwrap();
     let mut updates = ws_api.updates();
+    ws_api.subscribe_swap(&swap_id).await.unwrap();
 
     next_status(&mut updates, "swap.created").await.unwrap();
 
@@ -257,7 +265,9 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
 mod hidden_lockup {
     use kaleidorg_swap_sdk::error::Error;
     use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
-    use kaleidorg_swap_sdk::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
+    use kaleidorg_swap_sdk::network::{
+        BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputStatus,
+    };
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -296,6 +306,18 @@ mod hidden_lockup {
             self.inner.broadcast_tx(signed_tx).await
         }
 
+        async fn get_tip_height(&self) -> Result<u32, Error> {
+            self.inner.get_tip_height().await
+        }
+
+        async fn get_output_status(
+            &self,
+            outpoint: &bitcoin::OutPoint,
+            script_pubkey: &bitcoin::Script,
+        ) -> Result<Option<OutputStatus>, Error> {
+            self.inner.get_output_status(outpoint, script_pubkey).await
+        }
+
         fn network(&self) -> BitcoinChain {
             self.inner.network()
         }
@@ -308,14 +330,14 @@ mod hidden_lockup {
 
     #[macros::async_trait]
     impl LiquidClient for HiddenLiquid {
-        async fn get_address_utxo(
+        async fn get_address_utxos(
             &self,
             address: &elements::Address,
-        ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error> {
+        ) -> Result<Vec<(elements::OutPoint, elements::TxOut)>, Error> {
             if !self.visible.load(Ordering::SeqCst) {
-                return Ok(None);
+                return Ok(Vec::new());
             }
-            self.inner.get_address_utxo(address).await
+            self.inner.get_address_utxos(address).await
         }
 
         async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error> {
@@ -330,6 +352,18 @@ mod hidden_lockup {
             self.inner.broadcast_tx(signed_tx).await
         }
 
+        async fn get_tip_height(&self) -> Result<u32, Error> {
+            self.inner.get_tip_height().await
+        }
+
+        async fn get_output_status(
+            &self,
+            outpoint: &elements::OutPoint,
+            script_pubkey: &elements::Script,
+        ) -> Result<Option<OutputStatus>, Error> {
+            self.inner.get_output_status(outpoint, script_pubkey).await
+        }
+
         fn network(&self) -> LiquidChain {
             self.inner.network()
         }
@@ -341,8 +375,8 @@ mod hidden_lockup {
 /// lockup; once the client sees it, the same claim goes through.
 #[cfg(feature = "electrum")]
 async fn claim_waits_for_own_lockup(chain: Chain) {
-    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
     use hidden_lockup::{HiddenBitcoin, HiddenLiquid};
+    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     let visible = Arc::new(AtomicBool::new(false));
@@ -378,6 +412,7 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
         claim_public_key,
         referral_id: None,
         webhook: None,
+        pair_hash: None,
     };
 
     let boltz_api_v2 = create_boltz_api();
@@ -405,6 +440,14 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
         .await
         .unwrap();
 
+    // A claim reveals the preimage, so the SDK refuses it until the chain
+    // client sees the lockup confirmed. Confirm it first, so the only thing
+    // the first attempt below can trip on is the hidden lockup.
+    utils::mine_blocks(1).await.unwrap();
+    next_status(&mut updates, "transaction.confirmed")
+        .await
+        .unwrap();
+
     let claim_address = utils::generate_address(chain).await.unwrap();
     let params = SwapTransactionParams {
         swap_id: swap_id.clone(),
@@ -412,7 +455,7 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
         fee: Fee::Absolute(200),
         output_address: claim_address,
         chain_client: &chain_client,
-        kaleidorg_swap_sdk: &boltz_api_v2,
+        boltz_api: &boltz_api_v2,
         options: None,
     };
 

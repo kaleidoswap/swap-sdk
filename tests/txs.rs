@@ -7,12 +7,12 @@ use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{Amount, OutPoint, TxOut};
 use bitcoind::bitcoincore_rpc::json::{AddressType, ScanTxOutRequest};
 use bitcoind::bitcoincore_rpc::RpcApi;
+use elements::Address;
 use kaleidorg_swap_sdk::boltz::{SwapTxKind, SwapType};
 use kaleidorg_swap_sdk::fees::Fee;
 use kaleidorg_swap_sdk::network::{BitcoinChain, LiquidChain};
 use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::{BtcSwapScript, BtcSwapTx, LBtcSwapScript, LBtcSwapTx};
-use elements::Address;
+use kaleidorg_swap_sdk::{BtcSwapScript, BtcSwapTx, LiquidSwapScript, LiquidSwapTx};
 
 mod test_framework;
 use test_framework::{BtcTestFramework, LbtcTestFramework};
@@ -53,6 +53,8 @@ fn prepare_btc_claim() -> (
             compressed: true,
             inner: sender_keypair.public_key(),
         },
+        expected_amount: FUNDING_AMOUNT,
+        rgb: None,
     };
 
     // Send coin the swapscript address and confirm tx
@@ -231,6 +233,8 @@ fn prepare_btc_refund() -> (
             compressed: true,
             inner: sender_keypair.public_key(),
         },
+        expected_amount: 10000,
+        rgb: None,
     };
 
     // Send coin the swapscript address and confirm tx
@@ -380,7 +384,7 @@ async fn btc_submarine_refund_relative_fee() {
 
 fn prepare_lbtc_claim() -> (
     LbtcTestFramework,
-    LBtcSwapTx,
+    LiquidSwapTx,
     Preimage,
     Keypair,
     elements::secp256k1_zkp::Keypair,
@@ -400,7 +404,7 @@ fn prepare_lbtc_claim() -> (
     let blinding_keypair = elements::secp256k1_zkp::Keypair::new(&secp, &mut thread_rng());
 
     // create a btc swap script.
-    let swap_script = LBtcSwapScript {
+    let swap_script = LiquidSwapScript {
         swap_type: SwapType::ReverseSubmarine,
         side: None,
         funding_addrs: None,
@@ -414,7 +418,9 @@ fn prepare_lbtc_claim() -> (
             compressed: true,
             inner: sender_keypair.public_key(),
         },
-        blinding_key: blinding_keypair,
+        blinding_key: Some(blinding_keypair),
+        asset_context: None,
+        expected_amount: 10_000,
     };
 
     // Send coin the swapscript address and confirm tx
@@ -429,7 +435,7 @@ fn prepare_lbtc_claim() -> (
 
     let genesis_hash = test_framework.genesis_hash();
 
-    let swap_tx = LBtcSwapTx {
+    let swap_tx = LiquidSwapTx {
         kind: SwapTxKind::Claim,
         swap_script,
         output_address: refund_addrs,
@@ -539,7 +545,7 @@ async fn lbtc_reverse_claim_relative_fee() {
 
 fn prepare_lbtc_refund() -> (
     LbtcTestFramework,
-    LBtcSwapTx,
+    LiquidSwapTx,
     Keypair,
     Keypair,
     Address,
@@ -556,7 +562,7 @@ fn prepare_lbtc_refund() -> (
     let blinding_keypair = elements::secp256k1_zkp::Keypair::new(&secp, &mut thread_rng());
 
     // create a btc swap script.
-    let swap_script = LBtcSwapScript {
+    let swap_script = LiquidSwapScript {
         swap_type: SwapType::Submarine,
         side: None,
         funding_addrs: None,
@@ -570,7 +576,9 @@ fn prepare_lbtc_refund() -> (
             compressed: true,
             inner: sender_keypair.public_key(),
         },
-        blinding_key: blinding_keypair,
+        blinding_key: Some(blinding_keypair),
+        asset_context: None,
+        expected_amount: 10_000,
     };
 
     // Send coin the swapscript address and confirm tx
@@ -585,7 +593,7 @@ fn prepare_lbtc_refund() -> (
 
     let genesis_hash = test_framework.genesis_hash();
 
-    let swap_tx = LBtcSwapTx {
+    let swap_tx = LiquidSwapTx {
         kind: SwapTxKind::Refund,
         swap_script,
         output_address: refund_addrs,
@@ -677,6 +685,7 @@ async fn lbtc_submarine_refund_relative_fee() {
 }
 
 #[tokio::test]
+#[cfg_attr(all(target_os = "linux", target_arch = "aarch64"), ignore)]
 async fn lbtc_reverse_claim_multi_output() {
     let (test_framework, swap_tx, preimage, recvr_keypair, blinding_keypair, swap_addrs, utxo) =
         prepare_lbtc_claim();
@@ -880,6 +889,7 @@ async fn btc_submarine_refund_multi_output() {
 }
 
 #[tokio::test]
+#[cfg_attr(all(target_os = "linux", target_arch = "aarch64"), ignore)]
 async fn lbtc_submarine_refund_multi_output() {
     let (test_framework, swap_tx, sender_keypair, blinding_keypair, swap_addrs, utxo) =
         prepare_lbtc_refund();

@@ -34,9 +34,10 @@ pub use elements::{
 };
 pub use lightning_invoice::Bolt11Invoice;
 
+#[allow(deprecated)]
+pub use swaps::liquid::{LBtcSwapScript, LBtcSwapTx};
 pub use swaps::{
     bitcoin::{BtcSwapScript, BtcSwapTx},
-    boltz,
-    liquid::{LBtcSwapScript, LBtcSwapTx},
+    boltz, corridor, kaleido, liquid::{decode_swap_output, LiquidAssetContext, LiquidSwapScript, LiquidSwapTx},
 };
 pub use util::fees;

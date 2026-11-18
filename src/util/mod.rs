@@ -4,7 +4,16 @@ use std::time::Duration;
 pub mod bolt12;
 pub mod ec;
 pub mod fees;
+/// A local HTTP stub for Esplora client tests. Native-only: it binds a TCP
+/// listener.
+#[cfg(all(test, not(all(target_family = "wasm", target_os = "unknown"))))]
+pub(crate) mod http_stub;
 pub mod invoice;
+/// The skip-or-fail decision every live third-party test shares. Native-only:
+/// the tests that use it are native-only for the reasons given in
+/// `swaps::boltz`'s test module.
+#[cfg(all(test, not(all(target_arch = "wasm32", target_os = "unknown"))))]
+pub(crate) mod live_test;
 #[cfg(feature = "lnurl")]
 pub mod lnurl;
 pub mod secrets;
@@ -42,6 +51,21 @@ pub(crate) fn ensure_rustls_crypto_provider() {
 
 #[cfg(all(feature = "ws", target_family = "wasm", target_os = "unknown"))]
 pub(crate) fn ensure_rustls_crypto_provider() {}
+
+/// Seconds since the Unix epoch, on every target.
+pub fn unix_now() -> u64 {
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
+    #[cfg(all(target_family = "wasm", target_os = "unknown"))]
+    {
+        (js_sys::Date::now() / 1000.0) as u64
+    }
+}
 
 pub async fn sleep(duration: Duration) {
     #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]

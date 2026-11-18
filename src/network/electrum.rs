@@ -1,6 +1,6 @@
 // use electrum_client::raw_client::RawClient;
 
-use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
+use super::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputSpend, OutputStatus};
 use crate::error::Error;
 use bitcoin::hashes::Hash as _;
 use bitcoin::{Address, ScriptBuf, Transaction, Txid};
@@ -59,6 +59,14 @@ impl ElectrumBitcoinClient {
                 true,
                 DEFAULT_ELECTRUM_TIMEOUT,
             ),
+            // Mutinynet publishes an Esplora API but no public Electrum server,
+            // and pointing at a vanilla-signet server would silently query a
+            // different chain. Refuse rather than guess.
+            BitcoinChain::BitcoinSignet => Err(Error::Protocol(
+                "no default Electrum server for signet — pass an explicit URL \
+                 to ElectrumBitcoinClient::new, or use EsploraBitcoinClient"
+                    .to_string(),
+            )),
             BitcoinChain::BitcoinRegtest => Self::new(
                 network,
                 regtest_url.unwrap_or(DEFAULT_REGTEST_NODE),
@@ -159,9 +167,77 @@ impl BitcoinClient for ElectrumBitcoinClient {
         Ok(self.inner.transaction_broadcast(signed_tx)?)
     }
 
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        tip_height(&self.inner)
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        script_pubkey: &bitcoin::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        let history = self.inner.script_get_history(script_pubkey)?;
+        let Some(block_height) = history_height(&history, &outpoint.txid) else {
+            return Ok(None);
+        };
+        let txs = self
+            .inner
+            .batch_transaction_get(&history.iter().map(|h| h.tx_hash).collect::<Vec<_>>())?;
+        let spend = txs
+            .iter()
+            .find(|tx| {
+                tx.input
+                    .iter()
+                    .any(|input| input.previous_output == *outpoint)
+            })
+            .map(|tx| spend_state(&history, &tx.compute_txid()))
+            .unwrap_or(OutputSpend::Unspent);
+        Ok(Some(OutputStatus {
+            block_height,
+            spend,
+        }))
+    }
+
     fn network(&self) -> BitcoinChain {
         self.network
     }
+}
+
+/// The raw subscription, not `block_headers_subscribe`: that one parses the
+/// header as a Bitcoin header, and an Elements header (dynamic federation
+/// fields, no nonce) fails that parse with "data not consumed entirely".
+/// Only the height is needed here, on either chain.
+fn tip_height(client: &electrum_client::Client) -> Result<u32, Error> {
+    let header = client.block_headers_subscribe_raw()?;
+    u32::try_from(header.height).map_err(|_| {
+        Error::Generic(format!(
+            "Electrum tip height {} overflows u32",
+            header.height
+        ))
+    })
+}
+
+/// How a spend found in the history stands: confirmed if the history gives
+/// its transaction a block height.
+fn spend_state(history: &[GetHistoryRes], spending_txid: &Txid) -> OutputSpend {
+    match history_height(history, spending_txid) {
+        Some(Some(_)) => OutputSpend::SpentConfirmed,
+        _ => OutputSpend::SpentUnconfirmed,
+    }
+}
+
+/// Electrum reports a transaction's inclusion through the history of a script
+/// it touches: `height > 0` is the block, `0` is the mempool and `-1` is the
+/// mempool with unconfirmed parents. `None` when the history does not list it.
+fn history_height(history: &[GetHistoryRes], txid: &Txid) -> Option<Option<u32>> {
+    history
+        .iter()
+        .find(|entry| entry.tx_hash == *txid)
+        .map(|entry| {
+            u32::try_from(entry.height)
+                .ok()
+                .filter(|height| *height > 0)
+        })
 }
 
 pub struct ElectrumLiquidClient {
@@ -216,33 +292,40 @@ impl ElectrumLiquidClient {
 
 #[macros::async_trait]
 impl LiquidClient for ElectrumLiquidClient {
-    async fn get_address_utxo(
+    async fn get_address_utxos(
         &self,
         address: &elements::Address,
-    ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error> {
-        let history = self.inner.script_get_history(bitcoin::Script::from_bytes(
-            address.to_unconfidential().script_pubkey().as_bytes(),
-        ))?;
-        if history.is_empty() {
-            return Err(Error::Protocol("No Transaction History".to_string()));
-        }
-        let bitcoin_txid = if let Some(last) = history.last() {
-            last.tx_hash
-        } else {
-            return Err(Error::Protocol(
-                "Unexpected empty history after check".to_string(),
-            ));
-        };
-        let raw_tx = self.inner.transaction_get_raw(&bitcoin_txid)?;
-        let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
-        for (vout, output) in tx.clone().output.into_iter().enumerate() {
-            if output.script_pubkey == address.script_pubkey() {
-                let outpoint_0 = elements::OutPoint::new(tx.txid(), vout as u32);
+    ) -> Result<Vec<(elements::OutPoint, elements::TxOut)>, Error> {
+        let script = address.to_unconfidential().script_pubkey();
+        let history = self
+            .inner
+            .script_get_history(bitcoin::Script::from_bytes(script.as_bytes()))?;
+        let mut transactions = Vec::with_capacity(history.len());
 
-                return Ok(Some((outpoint_0, output)));
+        for entry in history {
+            let raw_tx = self.inner.transaction_get_raw(&entry.tx_hash)?;
+            transactions.push(elements::encode::deserialize::<elements::Transaction>(
+                &raw_tx,
+            )?);
+        }
+
+        let spent_outputs = transactions
+            .iter()
+            .flat_map(|tx| tx.input.iter().map(|input| input.previous_output))
+            .collect::<HashSet<_>>();
+        let mut outputs = Vec::new();
+
+        for tx in transactions {
+            let txid = tx.txid();
+            for (vout, output) in tx.output.into_iter().enumerate() {
+                let outpoint = elements::OutPoint::new(txid, vout as u32);
+                if output.script_pubkey == script && !spent_outputs.contains(&outpoint) {
+                    outputs.push((outpoint, output));
+                }
             }
         }
-        Ok(None)
+
+        Ok(outputs)
     }
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error> {
@@ -265,6 +348,41 @@ impl LiquidClient for ElectrumLiquidClient {
             .to_string())
     }
 
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        tip_height(&self.inner)
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &elements::OutPoint,
+        script_pubkey: &elements::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        let history = self
+            .inner
+            .script_get_history(bitcoin::Script::from_bytes(script_pubkey.as_bytes()))?;
+        let txid = Txid::from_byte_array(outpoint.txid.to_byte_array());
+        let Some(block_height) = history_height(&history, &txid) else {
+            return Ok(None);
+        };
+        let mut spend = OutputSpend::Unspent;
+        for entry in &history {
+            let raw_tx = self.inner.transaction_get_raw(&entry.tx_hash)?;
+            let tx = elements::encode::deserialize::<elements::Transaction>(&raw_tx)?;
+            if tx
+                .input
+                .iter()
+                .any(|input| input.previous_output == *outpoint)
+            {
+                spend = spend_state(&history, &entry.tx_hash);
+                break;
+            }
+        }
+        Ok(Some(OutputStatus {
+            block_height,
+            spend,
+        }))
+    }
+
     fn network(&self) -> LiquidChain {
         self.network
     }
@@ -275,6 +393,8 @@ mod tests {
 
     use super::*;
     use crate::network::BitcoinChain::BitcoinTestnet;
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    use crate::util::live_test::{live, LIVE_API_TIMEOUT};
     use bitcoin::absolute::LockTime;
     use bitcoin::blockdata::transaction::Transaction;
     use bitcoin::transaction::Version;
@@ -282,13 +402,63 @@ mod tests {
     use electrum_client::ElectrumApi;
     use electrum_client::GetHistoryRes;
 
+    /// Mutinynet has no public Electrum server. Refusing beats silently
+    /// pointing at a vanilla-signet server, which serves a different chain.
+    #[test]
+    fn signet_has_no_default_electrum_server() {
+        assert!(ElectrumBitcoinClient::default(BitcoinChain::BitcoinSignet, None).is_err());
+    }
+
+    /// The default mainnet servers still speak a protocol this crate can use.
+    ///
+    /// Live, so it skips rather than fails when a server is simply not there —
+    /// see [`live`] for why those two outcomes are not the same thing. It is
+    /// the reachability of *our defaults* that is under test, so it goes
+    /// through `default` rather than naming the hosts a second time.
+    ///
+    /// `default` already bounds this with [`DEFAULT_ELECTRUM_TIMEOUT`] — the
+    /// whole connect, across every address the name resolves to, and then each
+    /// read and write — so a dead host fails fast here without the test
+    /// arranging a bound of its own. That holds only while the constant stays
+    /// inside the live budget, which is what the assertion below pins.
+    ///
+    /// Native-only, like every other live test in this crate: the reasons are
+    /// in `swaps::boltz`'s test module, and `electrum_client` has no wasm
+    /// backend to run against in any case.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
     #[test]
     fn test_electrum_default_clients() {
-        let electrum_client = ElectrumBitcoinClient::default(BitcoinChain::Bitcoin, None).unwrap();
-        assert!(electrum_client.inner.ping().is_ok());
+        const _: () = assert!(
+            DEFAULT_ELECTRUM_TIMEOUT as u64 <= LIVE_API_TIMEOUT.as_secs(),
+            "a default Electrum timeout above the live budget would let this \
+             test hang on a dead host instead of skipping"
+        );
 
-        let electrum_client = ElectrumLiquidClient::default(LiquidChain::Liquid, None).unwrap();
-        assert!(electrum_client.inner.ping().is_ok());
+        // Two independent halves rather than an early return: a Bitcoin server
+        // having a bad minute must not take the Liquid check down with it.
+        if let Some(client) = live(
+            ElectrumBitcoinClient::default(BitcoinChain::Bitcoin, None),
+            DEFAULT_MAINNET_NODE,
+            "ElectrumBitcoinClient::default",
+        ) {
+            live(
+                client.inner.ping().map_err(Error::from),
+                DEFAULT_MAINNET_NODE,
+                "bitcoin ping",
+            );
+        }
+
+        if let Some(client) = live(
+            ElectrumLiquidClient::default(LiquidChain::Liquid, None),
+            DEFAULT_LIQUID_MAINNET_NODE,
+            "ElectrumLiquidClient::default",
+        ) {
+            live(
+                client.inner.ping().map_err(Error::from),
+                DEFAULT_LIQUID_MAINNET_NODE,
+                "liquid ping",
+            );
+        }
     }
 
     #[test]
@@ -308,6 +478,40 @@ mod tests {
         let numblocks = "blockchain.numblocks.subscribe";
         let blockheight = electrum_client.inner.raw_call(numblocks, []).unwrap();
         println!("blockheight: {blockheight}");
+    }
+
+    /// Electrum's history heights: positive is a block, zero and negative are
+    /// the mempool, and an absent entry means the server never saw the tx.
+    #[test]
+    fn history_height_maps_electrum_conventions() {
+        let txid = |byte: u8| {
+            Txid::from_raw_hash(
+                <bitcoin::hashes::sha256d::Hash as bitcoin::hashes::Hash>::from_byte_array(
+                    [byte; 32],
+                ),
+            )
+        };
+        let history = vec![
+            GetHistoryRes {
+                height: 120,
+                tx_hash: txid(1),
+                fee: None,
+            },
+            GetHistoryRes {
+                height: 0,
+                tx_hash: txid(2),
+                fee: None,
+            },
+            GetHistoryRes {
+                height: -1,
+                tx_hash: txid(3),
+                fee: None,
+            },
+        ];
+        assert_eq!(history_height(&history, &txid(1)), Some(Some(120)));
+        assert_eq!(history_height(&history, &txid(2)), Some(None));
+        assert_eq!(history_height(&history, &txid(3)), Some(None));
+        assert_eq!(history_height(&history, &txid(4)), None);
     }
 
     #[test]

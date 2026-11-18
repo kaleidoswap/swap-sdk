@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "provenance": {
+    "makerRevision": "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0",
+    "rgbLibRevision": "96f039d975cf2a83712c3c0a90e703621d445425",
+    "rgbInvoicingVersion": "0.11.1-rc.11",
+    "capture": "maker-api axum router; isolated PostgreSQL; mock node, chain and wallet; real rgb-lib recipient encoder",
+    "network": "regtest",
+    "assetPrecision": 6,
+    "assetIssued": false
+  },
+  "recipients": [
+    {
+      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+      "network": "bc",
+      "recipientId": "bc:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
+    },
+    {
+      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+      "network": "tb3",
+      "recipientId": "tb3:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
+    },
+    {
+      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+      "network": "tb4",
+      "recipientId": "tb4:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
+    },
+    {
+      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+      "network": "sb",
+      "recipientId": "sb:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
+    },
+    {
+      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+      "network": "sbc",
+      "recipientId": "sbc:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
+    },
+    {
+      "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
+      "network": "bcrt",
+      "recipientId": "bcrt:wvout:BaBknI_h-nISYfrx-3wFLr75-jse_7Cw-nkgDe28-CM6Dc2e-8xzQ0FA"
+    },
+    {
+      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+      "network": "bc",
+      "recipientId": "bc:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
+    },
+    {
+      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+      "network": "tb3",
+      "recipientId": "tb3:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
+    },
+    {
+      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+      "network": "tb4",
+      "recipientId": "tb4:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
+    },
+    {
+      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+      "network": "sb",
+      "recipientId": "sb:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
+    },
+    {
+      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+      "network": "sbc",
+      "recipientId": "sbc:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
+    },
+    {
+      "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
+      "network": "bcrt",
+      "recipientId": "bcrt:wvout:BX6GxGsX-kvZRKsH-y1jfUpk-V3sivpP-PlrExEU-Sac8dOT-1MB8ffQ"
+    }
+  ],
+  "takerClaim": {
+    "outpoint": "1111111111111111111111111111111111111111111111111111111111111111:0",
+    "destinationScript": "512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "psbt": "cHNidP8BAGkCAAAAARERERERERERERERERERERERERERERERERERERERERERAAAAAAD9////AgAAAAAAAAAAAmoAIgIAAAAAAAAiUSB5vmZ++dy7rFWgYpXOhwsHApv82y3OKNlZ8oFbFvgXmAAAAAAAAQEr8QUAAAAAAAAiUSB+hsRrF5L2USrB8tY31KZFd7Ir6Tz5axMRFEmnPHTk9QAAAA=="
+  },
+  "feeModel": {
+    "claimVsize": 195,
+    "claimFeeRate": 5,
+    "reverseHtlcSat": 1521,
+    "claimPayoutSat": 546,
+    "makerClaimVsize": 294,
+    "makerLockVsize": 312,
+    "submarineMinerFeeSat": 470,
+    "reverseLockFeeSat": 1560
+  }
+}

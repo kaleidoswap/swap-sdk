@@ -1,15 +1,26 @@
 use crate::error::Error;
-use crate::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
+use crate::network::{
+    BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputSpend, OutputStatus,
+};
 use bitcoin::ScriptBuf;
 use elements::hex::DisplayHex;
 use elements::pset::serialize::Serialize;
 use reqwest::Response;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::time::Duration;
 
 pub const DEFAULT_MAINNET_NODE: &str = "https://blockstream.info/api";
 pub const DEFAULT_TESTNET_NODE: &str = "https://blockstream.info/testnet/api";
+/// **KaleidoSwap's own** Esplora for the signet our maker settles on
+/// ([Mutinynet](https://mutinynet.com)). Signets are defined by their
+/// challenge, so this is not interchangeable with a vanilla-signet explorer —
+/// it indexes specifically the chain the maker settles on.
+///
+/// Note the API lives at the root here, not under `/api` as on
+/// blockstream.info.
+pub const DEFAULT_SIGNET_NODE: &str = "https://esplora.signet.kaleidoswap.com";
 pub const DEFAULT_REGTEST_NODE: &str = "http://localhost:4002/api";
 pub const DEFAULT_LIQUID_MAINNET_NODE: &str = "https://blockstream.info/liquid/api";
 pub const DEFAULT_LIQUID_TESTNET_NODE: &str = "https://blockstream.info/liquidtestnet/api";
@@ -17,6 +28,7 @@ pub const DEFAULT_LIQUID_REGTEST_NODE: &str = "http://localhost:4003/api";
 
 pub const DEFAULT_ESPLORA_TIMEOUT_SECS: u64 = 30;
 
+#[derive(Clone)]
 pub struct EsploraBitcoinClient {
     client: reqwest::Client,
     base_url: String,
@@ -51,12 +63,47 @@ impl EsploraBitcoinClient {
             BitcoinChain::BitcoinTestnet => {
                 Self::new(network, DEFAULT_TESTNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
             }
+            BitcoinChain::BitcoinSignet => {
+                Self::new(network, DEFAULT_SIGNET_NODE, DEFAULT_ESPLORA_TIMEOUT_SECS)
+            }
             BitcoinChain::BitcoinRegtest => Self::new(
                 network,
                 regtest_url.unwrap_or(DEFAULT_REGTEST_NODE),
                 DEFAULT_ESPLORA_TIMEOUT_SECS,
             ),
         }
+    }
+
+    /// Whether this Esplora has `txid`, in its mempool or in a block.
+    pub async fn has_tx(&self, txid: &bitcoin::Txid) -> Result<bool, Error> {
+        fetch_has_tx(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &txid.to_string(),
+        )
+        .await
+    }
+
+    /// `GET /fee-estimates`: fee rates in sat/vB by confirmation target in
+    /// blocks. Entries that are not a positive, finite rate are left out.
+    pub async fn fee_estimates(&self) -> Result<BTreeMap<u32, f64>, Error> {
+        fetch_fee_estimates(&self.client, &self.base_url, self.timeout).await
+    }
+
+    /// The transactions that spend an output paying `address`.
+    pub async fn spends_of_address(
+        &self,
+        address: &bitcoin::Address,
+    ) -> Result<Vec<AddressSpend>, Error> {
+        fetch_address_spends(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &address.to_string(),
+            &address.script_pubkey().to_hex_string(),
+        )
+        .await
     }
 
     fn extract_address_utxos(
@@ -169,16 +216,36 @@ impl BitcoinClient for EsploraBitcoinClient {
             .send()
             .await
             .map_err(|e| Error::Esplora(e.to_string()))?;
+        let status = response.status();
         let raw_text = response.text().await?;
-        let txid = bitcoin::Txid::from_str(&raw_text)
-            .map_err(|e| Error::Esplora(format!("Failed to parse txid {raw_text}: {e}")))?;
-        Ok(txid)
+        parse_broadcast_response::<bitcoin::Txid>(status, &raw_text)
     }
+
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        fetch_tip_height(&self.client, &self.base_url, self.timeout).await
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        _script_pubkey: &bitcoin::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        fetch_output_status(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &outpoint.txid.to_string(),
+            outpoint.vout,
+        )
+        .await
+    }
+
     fn network(&self) -> BitcoinChain {
         self.network
     }
 }
 
+#[derive(Clone)]
 pub struct EsploraLiquidClient {
     client: reqwest::Client,
     base_url: String,
@@ -205,6 +272,38 @@ impl EsploraLiquidClient {
         }
     }
 
+    /// Whether this Esplora has `txid`, in its mempool or in a block.
+    pub async fn has_tx(&self, txid: &elements::Txid) -> Result<bool, Error> {
+        fetch_has_tx(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &txid.to_string(),
+        )
+        .await
+    }
+
+    /// `GET /fee-estimates`: fee rates in sat/vB by confirmation target in
+    /// blocks. Entries that are not a positive, finite rate are left out.
+    pub async fn fee_estimates(&self) -> Result<BTreeMap<u32, f64>, Error> {
+        fetch_fee_estimates(&self.client, &self.base_url, self.timeout).await
+    }
+
+    /// The transactions that spend an output paying `address`.
+    pub async fn spends_of_address(
+        &self,
+        address: &elements::Address,
+    ) -> Result<Vec<AddressSpend>, Error> {
+        fetch_address_spends(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &address.to_string(),
+            &elements::hex::DisplayHex::to_lower_hex_string(address.script_pubkey().as_bytes()),
+        )
+        .await
+    }
+
     pub fn default(network: LiquidChain, regtest_url: Option<&str>) -> Self {
         match network {
             LiquidChain::Liquid => Self::new(
@@ -228,33 +327,31 @@ impl EsploraLiquidClient {
 
 #[macros::async_trait]
 impl LiquidClient for EsploraLiquidClient {
-    async fn get_address_utxo(
+    async fn get_address_utxos(
         &self,
         address: &elements::Address,
-    ) -> Result<Option<(elements::OutPoint, elements::TxOut)>, Error> {
+    ) -> Result<Vec<(elements::OutPoint, elements::TxOut)>, Error> {
         let utxos_url = format!("{}/address/{}/utxo", self.base_url, address);
         let utxos_response = get_with_retry(&self.client, &utxos_url, self.timeout).await?;
         let utxos: Vec<Utxo> = serde_json::from_str(&utxos_response.text().await?)?;
+        let mut outputs = Vec::new();
 
-        let txid = &utxos
-            .last()
-            .ok_or(Error::Protocol(
-                "Esplora could not find a Liquid UTXO for script".to_string(),
-            ))?
-            .txid;
-
-        let raw_tx_url = format!("{}/tx/{}/raw", self.base_url, txid);
-        let raw_tx_response = get_with_retry(&self.client, &raw_tx_url, self.timeout).await?;
-        let raw_tx = raw_tx_response.bytes().await?;
-        let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
-        for (vout, output) in tx.clone().output.into_iter().enumerate() {
-            if output.script_pubkey == address.script_pubkey() {
-                let outpoint_0 = elements::OutPoint::new(tx.txid(), vout as u32);
-
-                return Ok(Some((outpoint_0, output)));
+        for utxo in utxos {
+            let raw_tx_url = format!("{}/tx/{}/raw", self.base_url, utxo.txid);
+            let raw_tx_response = get_with_retry(&self.client, &raw_tx_url, self.timeout).await?;
+            let raw_tx = raw_tx_response.bytes().await?;
+            let tx: elements::Transaction = elements::encode::deserialize(&raw_tx)?;
+            if let Some(output) = tx.output.get(utxo.vout as usize) {
+                if output.script_pubkey == address.script_pubkey() {
+                    outputs.push((
+                        elements::OutPoint::new(tx.txid(), utxo.vout),
+                        output.clone(),
+                    ));
+                }
             }
         }
-        Ok(None)
+
+        Ok(outputs)
     }
 
     async fn get_genesis_hash(&self) -> Result<elements::BlockHash, Error> {
@@ -283,11 +380,240 @@ impl LiquidClient for EsploraLiquidClient {
             .send()
             .await
             .map_err(|e| Error::Esplora(e.to_string()))?;
-        Ok(response.text().await?)
+        let status = response.status();
+        let raw_text = response.text().await?;
+        let txid = parse_broadcast_response::<elements::Txid>(status, &raw_text)?;
+        Ok(txid.to_string())
     }
+
+    async fn get_tip_height(&self) -> Result<u32, Error> {
+        fetch_tip_height(&self.client, &self.base_url, self.timeout).await
+    }
+
+    async fn get_output_status(
+        &self,
+        outpoint: &elements::OutPoint,
+        _script_pubkey: &elements::Script,
+    ) -> Result<Option<OutputStatus>, Error> {
+        fetch_output_status(
+            &self.client,
+            &self.base_url,
+            self.timeout,
+            &outpoint.txid.to_string(),
+            outpoint.vout,
+        )
+        .await
+    }
+
     fn network(&self) -> LiquidChain {
         self.network
     }
+}
+
+/// `GET /blocks/tip/height`: a bare decimal height.
+async fn fetch_tip_height(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+) -> Result<u32, Error> {
+    let url = format!("{base_url}/blocks/tip/height");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Tip height request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    parse_tip_height(&body)
+}
+
+async fn fetch_fee_estimates(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+) -> Result<BTreeMap<u32, f64>, Error> {
+    let url = format!("{base_url}/fee-estimates");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Fee estimates request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    parse_fee_estimates(&body)
+}
+
+/// The body of `GET /fee-estimates`, an object of target → sat/vB. Keys that
+/// are not a block count and rates that are not positive and finite are
+/// dropped; a body that is not such an object is an error.
+fn parse_fee_estimates(body: &str) -> Result<BTreeMap<u32, f64>, Error> {
+    let raw: BTreeMap<String, serde_json::Value> = serde_json::from_str(body)
+        .map_err(|e| Error::Esplora(format!("Failed to parse fee estimates: {e}")))?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(target, rate)| {
+            let target = target.parse::<u32>().ok().filter(|t| *t > 0)?;
+            let rate = rate.as_f64().filter(|r| r.is_finite() && *r > 0.0)?;
+            Some((target, rate))
+        })
+        .collect())
+}
+
+fn parse_tip_height(body: &str) -> Result<u32, Error> {
+    body.trim()
+        .parse::<u32>()
+        .map_err(|e| Error::Esplora(format!("Failed to parse tip height {body:?}: {e}")))
+}
+
+/// `GET /tx/:txid`, which answers 404 for a transaction the server has
+/// neither in its mempool nor in a block. `/tx/:txid/status` cannot tell:
+/// it answers an unknown txid as unconfirmed.
+async fn fetch_has_tx(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+    txid: &str,
+) -> Result<bool, Error> {
+    let response = get_with_retry(client, &format!("{base_url}/tx/{txid}"), timeout).await?;
+    let status = response.status();
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(false);
+    }
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Transaction lookup failed ({status}): {}",
+            response.text().await?.trim()
+        )));
+    }
+    Ok(true)
+}
+
+/// A transaction that spends an output paying a given address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddressSpend {
+    pub txid: String,
+    /// The hex scripts its outputs pay, in output order.
+    pub output_scripts: Vec<String>,
+}
+
+/// The transactions among `GET /address/:address/txs` with an input whose
+/// previous output pays `script_hex`.
+async fn fetch_address_spends(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+    address: &str,
+    script_hex: &str,
+) -> Result<Vec<AddressSpend>, Error> {
+    let url = format!("{base_url}/address/{address}/txs");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Address history request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    let txs: Vec<AddressTx> = serde_json::from_str(&body)?;
+    Ok(txs
+        .into_iter()
+        .filter(|tx| {
+            tx.vin.iter().any(|input| {
+                input
+                    .prevout
+                    .as_ref()
+                    .is_some_and(|prevout| prevout.scriptpubkey.eq_ignore_ascii_case(script_hex))
+            })
+        })
+        .map(|tx| AddressSpend {
+            txid: tx.txid,
+            output_scripts: tx.vout.into_iter().map(|out| out.scriptpubkey).collect(),
+        })
+        .collect())
+}
+
+/// `GET /tx/:txid` and `GET /tx/:txid/outspend/:vout`, combined into one
+/// [`OutputStatus`].
+///
+/// Presence and inclusion come from `/tx/:txid`, which answers 404 for a
+/// transaction the server has never seen; that is `None`. `/tx/:txid/status`
+/// cannot be used for this, since it answers an unknown txid as unconfirmed.
+/// An output index the transaction does not have is an error, since the
+/// caller named a specific output.
+async fn fetch_output_status(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+    txid: &str,
+    vout: u32,
+) -> Result<Option<OutputStatus>, Error> {
+    let tx_url = format!("{base_url}/tx/{txid}");
+    let response = get_with_retry(client, &tx_url, timeout).await?;
+    let http_status = response.status();
+    let body = response.text().await?;
+    if http_status == reqwest::StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !http_status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Transaction request failed ({http_status}): {}",
+            body.trim()
+        )));
+    }
+    let tx: TxWithStatus = serde_json::from_str(&body)?;
+    if vout as usize >= tx.vout.len() {
+        return Err(Error::Esplora(format!(
+            "Transaction {txid} has no output {vout} (it has {})",
+            tx.vout.len()
+        )));
+    }
+
+    let outspend_url = format!("{base_url}/tx/{txid}/outspend/{vout}");
+    let response = get_with_retry(client, &outspend_url, timeout).await?;
+    let http_status = response.status();
+    let body = response.text().await?;
+    if !http_status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Output spend request failed ({http_status}): {}",
+            body.trim()
+        )));
+    }
+    let outspend: OutSpend = serde_json::from_str(&body)?;
+    Ok(Some(output_status_from(&tx.status, &outspend)))
+}
+
+fn output_status_from(tx_status: &TxStatus, outspend: &OutSpend) -> OutputStatus {
+    OutputStatus {
+        // A source that reports `confirmed` without a height is not giving
+        // evidence of inclusion; treat it as unconfirmed.
+        block_height: tx_status.block_height.filter(|_| tx_status.confirmed),
+        spend: match (outspend.spent, &outspend.status) {
+            (false, _) => OutputSpend::Unspent,
+            (true, Some(status)) if status.confirmed => OutputSpend::SpentConfirmed,
+            (true, _) => OutputSpend::SpentUnconfirmed,
+        },
+    }
+}
+
+/// Esplora answers a rejected broadcast with a non-2xx status and the node's
+/// error text as the body, so the status must be checked before the body is
+/// read as a txid.
+fn parse_broadcast_response<T: FromStr>(status: reqwest::StatusCode, body: &str) -> Result<T, Error>
+where
+    T::Err: std::fmt::Display,
+{
+    let body = body.trim();
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Broadcast rejected ({status}): {body}"
+        )));
+    }
+    T::from_str(body).map_err(|e| Error::Esplora(format!("Failed to parse txid {body}: {e}")))
 }
 
 async fn get_with_retry(
@@ -395,12 +721,70 @@ pub struct Status {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Utxo {
     pub txid: String,
+    pub vout: u32,
+}
+
+/// A transaction as `GET /address/:address/txs` lists it, reduced to what
+/// [`fetch_address_spends`] reads.
+#[derive(Debug, Deserialize)]
+struct AddressTx {
+    txid: String,
+    vin: Vec<AddressTxIn>,
+    vout: Vec<AddressTxOut>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddressTxIn {
+    #[serde(default)]
+    prevout: Option<AddressTxOut>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AddressTxOut {
+    #[serde(default)]
+    scriptpubkey: String,
+}
+
+/// A transaction as `GET /tx/:txid` returns it, reduced to what
+/// [`fetch_output_status`] reads.
+#[derive(Debug, Deserialize)]
+struct TxWithStatus {
+    status: TxStatus,
+    vout: Vec<serde_json::Value>,
+}
+
+/// The `status` object of `GET /tx/:txid`.
+#[derive(Debug, Deserialize, Clone)]
+struct TxStatus {
+    confirmed: bool,
+    #[serde(default)]
+    block_height: Option<u32>,
+}
+
+/// `GET /tx/:txid/outspend/:vout`.
+#[derive(Debug, Deserialize, Clone)]
+struct OutSpend {
+    spent: bool,
+    #[serde(default)]
+    status: Option<Status>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::str::FromStr;
+
+    /// The signet default must be our own Esplora for the maker's chain
+    /// (Mutinynet) — never a testnet3 or vanilla-signet explorer, and never a
+    /// third party for the network we operate.
+    #[test]
+    fn signet_default_points_at_kaleidoswap_esplora() {
+        let client = EsploraBitcoinClient::default(BitcoinChain::BitcoinSignet, None);
+        assert_eq!(client.base_url, DEFAULT_SIGNET_NODE);
+        assert_eq!(client.base_url, "https://esplora.signet.kaleidoswap.com");
+        assert_eq!(client.network, BitcoinChain::BitcoinSignet);
+        assert_ne!(client.base_url, DEFAULT_TESTNET_NODE);
+    }
 
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
@@ -422,6 +806,223 @@ mod tests {
             esplora_client.get_genesis_hash().await.unwrap().to_string(),
             "1466275836220db2944ca059a3a10ef6fd2ea684b0688d2c379296888a206003"
         );
+    }
+
+    #[macros::test_all]
+    fn fee_estimates_keep_only_usable_entries() {
+        let parsed =
+            parse_fee_estimates(r#"{"1": 12.5, "2": 10, "6": 0, "x": 3, "144": -1, "25": 1.01}"#)
+                .unwrap();
+        assert_eq!(
+            parsed.into_iter().collect::<Vec<_>>(),
+            vec![(1, 12.5), (2, 10.0), (25, 1.01)]
+        );
+        assert!(parse_fee_estimates("{}").unwrap().is_empty());
+        assert!(parse_fee_estimates("<html>").is_err());
+        assert!(parse_fee_estimates("[1, 2]").is_err());
+    }
+
+    #[macros::test_all]
+    fn tip_height_parses_bare_decimal_only() {
+        assert_eq!(parse_tip_height("812345\n").unwrap(), 812345);
+        assert_eq!(parse_tip_height("0").unwrap(), 0);
+        assert!(parse_tip_height("").is_err());
+        assert!(parse_tip_height("<html>").is_err());
+        assert!(parse_tip_height("-1").is_err());
+    }
+
+    /// Inclusion needs a height: a `confirmed` flag with no `block_height` is
+    /// not evidence, and any spend, confirmed or in the mempool, is a conflict.
+    #[macros::test_all]
+    fn output_status_requires_a_height_and_flags_any_spend() {
+        let confirmed: TxStatus = serde_json::from_str(
+            r#"{"confirmed":true,"block_height":100,"block_hash":"x","block_time":1}"#,
+        )
+        .unwrap();
+        let mempool: TxStatus = serde_json::from_str(r#"{"confirmed":false}"#).unwrap();
+        let odd: TxStatus = serde_json::from_str(r#"{"confirmed":true}"#).unwrap();
+        let unspent: OutSpend = serde_json::from_str(r#"{"spent":false}"#).unwrap();
+        let spent_in_mempool: OutSpend = serde_json::from_str(
+            r#"{"spent":true,"txid":"abcd","vin":0,"status":{"confirmed":false}}"#,
+        )
+        .unwrap();
+
+        let spent_in_block: OutSpend = serde_json::from_str(
+            r#"{"spent":true,"txid":"abcd","vin":0,"status":{"confirmed":true,"block_height":101}}"#,
+        )
+        .unwrap();
+
+        let status = output_status_from(&confirmed, &unspent);
+        assert_eq!(status.block_height, Some(100));
+        assert_eq!(status.spend, OutputSpend::Unspent);
+        assert_eq!(status.confirmations(100), 1);
+        assert_eq!(status.confirmations(105), 6);
+        assert_eq!(status.confirmations(99), 1);
+
+        let status = output_status_from(&mempool, &spent_in_mempool);
+        assert_eq!(status.block_height, None);
+        assert_eq!(status.spend, OutputSpend::SpentUnconfirmed);
+        assert_eq!(status.confirmations(1_000), 0);
+
+        assert_eq!(
+            output_status_from(&confirmed, &spent_in_block).spend,
+            OutputSpend::SpentConfirmed
+        );
+
+        assert_eq!(output_status_from(&odd, &unspent).block_height, None);
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    mod output_status {
+        use super::*;
+        use crate::util::http_stub::stub_esplora;
+
+        fn client(routes: Vec<(String, u16, String)>) -> EsploraBitcoinClient {
+            EsploraBitcoinClient::new(BitcoinChain::BitcoinSignet, &stub_esplora(routes), 5)
+        }
+
+        fn outpoint(txid: &str, vout: u32) -> bitcoin::OutPoint {
+            bitcoin::OutPoint {
+                txid: bitcoin::Txid::from_str(txid).unwrap(),
+                vout,
+            }
+        }
+
+        fn tx_body(txid: &str, status: &str, outputs: usize) -> String {
+            let vout = vec![r#"{"scriptpubkey":"0014ff","value":1000}"#; outputs].join(",");
+            format!(r#"{{"txid":"{txid}","status":{status},"vout":[{vout}]}}"#)
+        }
+
+        /// Esplora answers an unknown txid as unconfirmed on `/status` and
+        /// unspent on `/outspend`; only `/tx/:txid` says it does not know it.
+        #[macros::async_test]
+        async fn output_status_is_none_for_a_transaction_the_server_never_saw() {
+            let txid = "aa".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}/status"),
+                    200,
+                    r#"{"confirmed":false}"#.into(),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/0"),
+                    200,
+                    r#"{"spent":false}"#.into(),
+                ),
+            ]);
+            let status = client
+                .get_output_status(&outpoint(&txid, 0), bitcoin::Script::new())
+                .await
+                .unwrap();
+            assert_eq!(status, None);
+        }
+
+        #[macros::async_test]
+        async fn output_status_of_a_mempool_transaction_has_no_height() {
+            let txid = "bb".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}"),
+                    200,
+                    tx_body(&txid, r#"{"confirmed":false}"#, 2),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/1"),
+                    200,
+                    r#"{"spent":false}"#.into(),
+                ),
+            ]);
+            let status = client
+                .get_output_status(&outpoint(&txid, 1), bitcoin::Script::new())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(status.block_height, None);
+            assert_eq!(status.spend, OutputSpend::Unspent);
+        }
+
+        #[macros::async_test]
+        async fn output_status_of_a_confirmed_transaction_carries_its_height() {
+            let txid = "cc".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}"),
+                    200,
+                    tx_body(
+                        &txid,
+                        r#"{"confirmed":true,"block_height":812345,"block_hash":"x","block_time":1}"#,
+                        1,
+                    ),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/0"),
+                    200,
+                    r#"{"spent":true,"txid":"abcd","vin":0,"status":{"confirmed":false}}"#.into(),
+                ),
+            ]);
+            let status = client
+                .get_output_status(&outpoint(&txid, 0), bitcoin::Script::new())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(status.block_height, Some(812345));
+            assert_eq!(status.spend, OutputSpend::SpentUnconfirmed);
+        }
+
+        #[macros::async_test]
+        async fn output_status_errors_on_an_output_the_transaction_does_not_have() {
+            let txid = "dd".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}"),
+                    200,
+                    tx_body(&txid, r#"{"confirmed":false}"#, 2),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/2"),
+                    200,
+                    r#"{"spent":false}"#.into(),
+                ),
+            ]);
+            let err = client
+                .get_output_status(&outpoint(&txid, 2), bitcoin::Script::new())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, Error::Esplora(_)), "{err:?}");
+            assert!(err.message().contains("no output 2"), "{err:?}");
+        }
+
+        #[macros::async_test]
+        async fn output_status_reports_a_server_error() {
+            let txid = "ee".repeat(32);
+            let client = client(vec![(format!("/tx/{txid}"), 500, "boom".into())]);
+            let err = client
+                .get_output_status(&outpoint(&txid, 0), bitcoin::Script::new())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, Error::Esplora(_)), "{err:?}");
+        }
+    }
+
+    #[macros::test_all]
+    fn broadcast_response_rejects_error_status() {
+        let txid = "1111111111111111111111111111111111111111111111111111111111111111";
+        let ok = parse_broadcast_response::<elements::Txid>(reqwest::StatusCode::OK, txid).unwrap();
+        assert_eq!(ok.to_string(), txid);
+
+        let body = "sendrawtransaction RPC error: bad-txns-inputs-missing-or-spent";
+        let err =
+            parse_broadcast_response::<elements::Txid>(reqwest::StatusCode::BAD_REQUEST, body)
+                .unwrap_err();
+        assert!(err.message().contains("bad-txns-inputs-missing-or-spent"));
+
+        // A 200 whose body is not a txid is not a broadcast either.
+        assert!(parse_broadcast_response::<elements::Txid>(reqwest::StatusCode::OK, body).is_err());
+        assert!(parse_broadcast_response::<bitcoin::Txid>(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+            txid
+        )
+        .is_err());
     }
 
     #[macros::test_all]

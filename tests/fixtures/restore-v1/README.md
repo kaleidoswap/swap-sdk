@@ -1,0 +1,1 @@
+The BOLT12 invoice is the existing parse example from `src/util/bolt12.rs`, reused with its payment hash to verify refund script recovery. Its expiry/network are irrelevant to reconstructing a previously funded refund script; this is not a live payable invoice or settlement test.
