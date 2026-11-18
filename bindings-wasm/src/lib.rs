@@ -1,0 +1,3307 @@
+//! WebAssembly bindings for the KaleidoSwap SDK.
+//!
+//! Exposes the Boltz swap surface and the swap key-management surface to
+//! JavaScript/TypeScript via `wasm-bindgen`. Request/response values cross to JS
+//! as plain objects through `serde-wasm-bindgen`; swap DTO declarations are
+//! generated from their Rust/serde definitions and embedded below.
+//!
+//! Build with `wasm-pack build` (see `make wasm-pack-build`), which emits a JS
+//! package with generated `.d.ts` under `bindings-wasm/pkg/`.
+
+use std::sync::Arc;
+use wasm_bindgen::prelude::*;
+
+// Public DTO declarations share the same serde-derived source as native Rust.
+#[wasm_bindgen(typescript_custom_section)]
+const SWAP_TYPES: &str = include_str!("swap_types.ts");
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CreateSubmarineRequest")]
+    pub type CreateSubmarineRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateReverseRequest")]
+    pub type CreateReverseRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateChainRequest")]
+    pub type CreateChainRequestJs;
+    #[wasm_bindgen(typescript_type = "CreateSubmarineResponse")]
+    pub type CreateSubmarineResponseJs;
+    #[wasm_bindgen(typescript_type = "CreateReverseResponse")]
+    pub type CreateReverseResponseJs;
+    #[wasm_bindgen(typescript_type = "CreateChainResponse")]
+    pub type CreateChainResponseJs;
+    #[wasm_bindgen(typescript_type = "GetSwapResponse")]
+    pub type GetSwapResponseJs;
+    #[wasm_bindgen(typescript_type = "SwapRestoreResponse[]")]
+    pub type SwapRestoreResponsesJs;
+    #[wasm_bindgen(typescript_type = "SwapRestoreIndexResponse")]
+    pub type SwapRestoreIndexResponseJs;
+}
+
+fn to_typed_js<T: serde::Serialize, J: JsCast>(value: &T) -> Result<J, JsValue> {
+    Ok(to_js(value)?.unchecked_into())
+}
+
+// ---- Errors -----------------------------------------------------------------
+//
+// Every rejection produced after an argument reaches Rust is a JS `Error`
+// carrying a stable `code`, never a bare string. Values rejected earlier by
+// wasm-bindgen's generated ABI glue (for example a Number supplied for a `u64` /
+// JS `bigint`) remain native JavaScript errors and do not carry this code.
+
+/// Code for input these bindings reject before, or instead of, reaching the core
+/// SDK: a mistyped argument, an unparseable hex/enum value, or a request object
+/// serde could not deserialize. Core failures keep their own code ([`core_err`]).
+const INVALID_ARGUMENT: &str = "InvalidArgument";
+
+/// Code for a failure on our side of the boundary rather than the caller's.
+const INTERNAL: &str = "Internal";
+
+/// Tag an `Error` with the `code` callers branch on, mirroring it into `name` so
+/// the code is visible in a stringified error too.
+fn set_code(error: &js_sys::Error, code: &str) {
+    error.set_name(code);
+    let _ = js_sys::Reflect::set(
+        error.as_ref(),
+        &JsValue::from_str("code"),
+        &JsValue::from_str(code),
+    );
+}
+
+fn coded_err(code: &str, message: &str) -> JsValue {
+    let error = js_sys::Error::new(message);
+    set_code(&error, code);
+    error.into()
+}
+
+/// The caller's input is unusable. The message names the offending argument or
+/// field, so the rejection is actionable without reading SDK source.
+fn arg_err<E: std::fmt::Display>(e: E) -> JsValue {
+    coded_err(INVALID_ARGUMENT, &e.to_string())
+}
+
+/// Something failed on our side of the boundary — not the caller's input.
+fn internal_err<E: std::fmt::Display>(e: E) -> JsValue {
+    coded_err(INTERNAL, &e.to_string())
+}
+
+fn to_js<T: serde::Serialize>(v: &T) -> Result<JsValue, JsValue> {
+    // Serialize 64-bit integers as JS BigInt so u64 amounts cross the boundary
+    // losslessly instead of being rounded through an f64. This matches
+    // wasm-bindgen's own u64 <-> bigint mapping in direct signatures;
+    // deserialization (from_js) accepts both Number and BigInt, so request
+    // objects may use either.
+    //
+    // Serialize Rust maps as plain JS objects rather than `Map`. Without this,
+    // the JS shape of a response follows the Rust type that produced it —
+    // structs become objects, `HashMap`s become `Map`s — so one response changes
+    // access style partway down. The pairs and nodes responses are a struct
+    // wrapping a `HashMap<String, _>`, which made `pairs.BTC` a property read
+    // while `pairs.BTC["L-BTC"]` was silently `undefined` and needed `.get()`.
+    // Every map crossing this boundary is keyed by `String`, so no key is lost in
+    // the conversion, and one uniform object shape is what this crate's docs and
+    // the hand-written TS types on top of it already declare.
+    let ser = serde_wasm_bindgen::Serializer::new()
+        .serialize_large_number_types_as_bigints(true)
+        .serialize_maps_as_objects(true);
+    v.serialize(&ser).map_err(internal_err)
+}
+
+fn from_js<T: serde::de::DeserializeOwned>(v: JsValue) -> Result<T, JsValue> {
+    serde_wasm_bindgen::from_value(v).map_err(|e| {
+        // serde-wasm-bindgen's error already *is* a JS `Error` naming the missing
+        // or mistyped field. Tag that object in place; converting it through
+        // `Display` instead would fold its own "Error: " prefix into the message.
+        let value: JsValue = e.into();
+        if let Some(error) = value.dyn_ref::<js_sys::Error>() {
+            set_code(error, INVALID_ARGUMENT);
+            return value;
+        }
+        arg_err(format!("{value:?}"))
+    })
+}
+
+// The card uses the maker's snake_case wire names and decimal amount strings.
+// Keep the direct client method typed, as well as the TypeScript facade.
+#[wasm_bindgen(typescript_custom_section)]
+const CORRIDOR_CARD_TYPES: &str = r#"
+/** Unverified: sig has NOT been checked against discovery_pubkey. */
+export interface CorridorCard {
+  version: number;
+  name: string;
+  discovery_pubkey: string;
+  transports: { nostr: { relays: string[] } };
+  markets: CorridorCardMarket[];
+  /** Unverified signature; does not establish authenticity or trust. */
+  sig: string;
+}
+
+export interface CorridorCardAsset {
+  id: string;
+  name: string;
+  ticker: string;
+  decimals: number;
+}
+
+export interface CorridorCardMarket {
+  pair: string;
+  base_asset: CorridorCardAsset;
+  quote_asset: CorridorCardAsset;
+  quote_corridor: string;
+  fee_bps: number;
+  /** Decimal strings in the asset's smallest unit, matching the maker wire. */
+  min_base_amount: string;
+  max_base_amount: string;
+  min_quote_amount: string;
+  max_quote_amount: string;
+}
+
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "CorridorCard | null")]
+    pub type CorridorCardResult;
+}
+
+// ---- rgb-lib swap messages ---------------------------------------------------
+//
+// rgb-lib's offer, request, proposal and completion cross as JSON text. As JS
+// objects their 64-bit fields (seal blindings among them) would either become
+// `bigint`, which `JSON.stringify` refuses, or lose precision in `JSON.parse`.
+
+/// Serialize `v` for JS with its `field`, an rgb-lib message, as JSON text.
+fn rgb_message_to_js<T: serde::Serialize>(v: &T, field: &str) -> Result<JsValue, JsValue> {
+    let mut value = serde_json::to_value(v).map_err(internal_err)?;
+    if let Some(message) = value.get_mut(field) {
+        *message = serde_json::Value::String(message.to_string());
+    }
+    to_js(&value)
+}
+
+/// Parse an rgb-lib message argument given as JSON text.
+fn rgb_message_arg(v: StringArg, name: &str) -> Result<serde_json::Value, JsValue> {
+    let text = str_arg(v, name)?;
+    serde_json::from_str(&text).map_err(|e| arg_err(format!("argument `{name}` is not JSON: {e}")))
+}
+
+// ---- String arguments -------------------------------------------------------
+
+#[wasm_bindgen]
+extern "C" {
+    /// A `string` argument taken as an unconverted JS value.
+    ///
+    /// wasm-bindgen marshals a `String` parameter in its generated JS glue,
+    /// *before* any Rust code runs: `passStringToWasm0` reads `arg.length` and
+    /// `arg.charCodeAt` and hands the result to the wasm allocator. Given a
+    /// non-string — the usual cause being arguments passed in the wrong order —
+    /// that computes a bogus length and traps inside the allocator with
+    /// `RuntimeError: memory access out of bounds`, which tells the caller
+    /// nothing and cannot be caught as an `Error`.
+    ///
+    /// Taking the value as an extern type instead passes it through untouched
+    /// (`addHeapObject`), so [`str_arg`] can reject it by name. `typescript_type`
+    /// keeps the generated `.d.ts` signature `string`, and the type itself is not
+    /// emitted into the TS surface.
+    #[wasm_bindgen(typescript_type = "string")]
+    pub type StringArg;
+    /// Keep local collateral caps as raw JS values until range validation.
+    #[wasm_bindgen(typescript_type = "bigint")]
+    pub type BigIntArg;
+    /// Transaction encoding is independent of the network used to broadcast.
+    #[wasm_bindgen(typescript_type = "\"bitcoin\" | \"liquid\"")]
+    pub type TransactionChainArg;
+}
+
+/// Convert a required string argument, naming it if it is not a string.
+fn str_arg(v: StringArg, param: &str) -> Result<String, JsValue> {
+    JsValue::from(v)
+        .as_string()
+        .ok_or_else(|| arg_err(format!("argument `{param}` must be a string")))
+}
+
+/// Convert an optional string argument. `null`/`undefined` stay `None`.
+fn opt_str_arg(v: Option<StringArg>, param: &str) -> Result<Option<String>, JsValue> {
+    v.map(|v| str_arg(v, param)).transpose()
+}
+
+fn opt_u64_arg(v: Option<BigIntArg>, param: &str) -> Result<Option<u64>, JsValue> {
+    v.map(|v| {
+        let invalid = || {
+            arg_err(format!(
+                "argument `{param}` must be a nonnegative bigint within 64 bits"
+            ))
+        };
+        let value = JsValue::from(v)
+            .dyn_into::<js_sys::BigInt>()
+            .map_err(|_| invalid())?;
+        u64::try_from(value).map_err(|_| invalid())
+    })
+    .transpose()
+}
+
+/// Resolve a Lightning address or encoded LNURL-pay request to a fixed-amount
+/// BOLT11 invoice. amountSat is a positive bigint in whole satoshis. Contacts
+/// the provider and its advertised callback; does not pay or create a swap.
+#[wasm_bindgen(js_name = resolveLightningAddress)]
+pub async fn resolve_lightning_address(
+    address: StringArg,
+    amount_sat: BigIntArg,
+) -> Result<String, JsValue> {
+    let address = str_arg(address, "address")?;
+    let amount_sat = opt_u64_arg(Some(amount_sat), "amountSat")?
+        .filter(|amount| *amount > 0 && amount.checked_mul(1_000).is_some())
+        .ok_or_else(|| arg_err("amountSat must be positive and fit in millisatoshis"))?;
+    kaleidorg_swap_sdk::util::lnurl::resolve_lightning_address(&address, amount_sat)
+        .await
+        .map_err(core_err)
+}
+
+// ============================================================================
+// Swap key management (client-side crypto). This is the browser entry point for
+// deriving per-swap keys and preimages; swap-script/tx construction is exposed
+// incrementally on top of these.
+// ============================================================================
+
+use kaleidorg_swap_sdk::network::Network;
+use kaleidorg_swap_sdk::util::secrets::{Preimage, SwapMasterKey};
+
+/// A derived swap key, returned to JS as `{ publicKey, secretKey }` (hex).
+#[derive(serde::Serialize)]
+struct DerivedKey {
+    #[serde(rename = "publicKey")]
+    public_key: String,
+    #[serde(rename = "secretKey")]
+    secret_key: String,
+}
+
+/// A derived preimage and its hashes, returned to JS as
+/// `{ preimage, sha256, hash160 }` (hex). A named struct rather than an ad-hoc
+/// `serde_json::json!` value: `json!`'s object variant is a map, so it reached JS
+/// as a `Map` while its neighbour [`DerivedKey`] arrived as a plain object, and
+/// `preimage.sha256` read `undefined` against the `DerivedPreimage` interface the
+/// TS SDK declares. Nothing about a preimage has dynamic keys.
+#[derive(serde::Serialize)]
+struct DerivedPreimage {
+    preimage: String,
+    sha256: String,
+    hash160: String,
+}
+
+/// Wraps [`SwapMasterKey`] for JS: BIP85-derived swap keys from a wallet mnemonic.
+#[wasm_bindgen]
+pub struct WasmSwapMasterKey {
+    inner: SwapMasterKey,
+}
+
+#[wasm_bindgen]
+impl WasmSwapMasterKey {
+    /// Derive the swap master key from a wallet mnemonic (BIP85 index 26589).
+    /// `network` is one of "mainnet" | "testnet" | "regtest".
+    #[wasm_bindgen(js_name = fromWalletMnemonic)]
+    pub fn from_wallet_mnemonic(
+        wallet_mnemonic: StringArg,
+        passphrase: Option<StringArg>,
+        network: StringArg,
+    ) -> Result<WasmSwapMasterKey, JsValue> {
+        let wallet_mnemonic = str_arg(wallet_mnemonic, "walletMnemonic")?;
+        let passphrase = opt_str_arg(passphrase, "passphrase")?;
+        let network = str_arg(network, "network")?;
+        let inner = SwapMasterKey::new(
+            &wallet_mnemonic,
+            passphrase.as_deref(),
+            parse_network(&network)?,
+        )
+        .map_err(core_err)?;
+        Ok(WasmSwapMasterKey { inner })
+    }
+
+    /// Reconstruct from the swap (rescue) mnemonic directly.
+    #[wasm_bindgen(js_name = fromSwapMnemonic)]
+    pub fn from_swap_mnemonic(
+        mnemonic: StringArg,
+        passphrase: Option<StringArg>,
+        network: StringArg,
+    ) -> Result<WasmSwapMasterKey, JsValue> {
+        let mnemonic = str_arg(mnemonic, "mnemonic")?;
+        let passphrase = opt_str_arg(passphrase, "passphrase")?;
+        let network = str_arg(network, "network")?;
+        let inner = SwapMasterKey::from_mnemonic(
+            &mnemonic,
+            passphrase.as_deref(),
+            parse_network(&network)?,
+        )
+        .map_err(core_err)?;
+        Ok(WasmSwapMasterKey { inner })
+    }
+
+    /// The BIP85-derived swap (rescue) mnemonic.
+    #[wasm_bindgen(js_name = swapMnemonic)]
+    pub fn swap_mnemonic(&self) -> String {
+        self.inner.mnemonic.to_string()
+    }
+
+    /// The master xpub to register with the swap-restore API.
+    #[wasm_bindgen(js_name = masterXpub)]
+    pub fn master_xpub(&self) -> String {
+        self.inner.get_master_xpub().to_string()
+    }
+
+    /// Derive the swap keypair at `index`, returned as `{ publicKey, secretKey }`.
+    #[wasm_bindgen(js_name = deriveSwapKey)]
+    pub fn derive_swap_key(&self, index: u64) -> Result<JsValue, JsValue> {
+        let kp = self.inner.derive_swapkey(index).map_err(core_err)?;
+        to_js(&DerivedKey {
+            public_key: kp.public_key().to_string(),
+            secret_key: kp.secret_key().display_secret().to_string(),
+        })
+    }
+
+    /// Derive the deterministic preimage for the swap at `index`
+    /// (`sha256(privateKey)`), returned as `{ preimage, sha256, hash160 }` hex.
+    #[wasm_bindgen(js_name = derivePreimage)]
+    pub fn derive_preimage(&self, index: u64) -> Result<JsValue, JsValue> {
+        let kp = self.inner.derive_swapkey(index).map_err(core_err)?;
+        let p = Preimage::from_swap_key(&kp);
+        // `Preimage::bytes` is optional in general — a preimage rebuilt from its
+        // hash alone has none — but `from_swap_key` always fills it, so this
+        // cannot be hit from here. Report it rather than unwrapping: the `json!`
+        // value this replaced would have quietly emitted `preimage: null` against
+        // a declared `string`, and an error is the honest form of "no preimage".
+        let preimage = p
+            .to_string()
+            .ok_or_else(|| internal_err("derived preimage has no bytes"))?;
+        to_js(&DerivedPreimage {
+            preimage,
+            sha256: p.sha256.to_string(),
+            hash160: p.hash160.to_string(),
+        })
+    }
+}
+
+/// A swap signer over a swap mnemonic held in memory, in the shape the
+/// KaleidoSwap `signer` option takes. Hex in, hex out; a MuSig2 session is
+/// `{ pubkeys: [hex, hex], tweak, sighash }`.
+#[wasm_bindgen]
+pub struct WasmMnemonicSigner {
+    master: SwapMasterKey,
+    nonces: kaleidorg_swap_sdk::swaps::signing::MusigNonces,
+}
+
+#[derive(serde::Deserialize)]
+struct JsMusigSession {
+    pubkeys: Vec<String>,
+    tweak: String,
+    sighash: String,
+}
+
+fn parse_hex32(hex: &str, what: &str) -> Result<[u8; 32], JsValue> {
+    hex_decode_bytes(hex)
+        .ok()
+        .and_then(|b| <[u8; 32]>::try_from(b).ok())
+        .ok_or_else(|| arg_err(format!("{what} must be 32 bytes of hex")))
+}
+
+fn parse_musig_session(
+    value: JsValue,
+) -> Result<kaleidorg_swap_sdk::swaps::signing::MusigSession, JsValue> {
+    let session: JsMusigSession = serde_wasm_bindgen::from_value(value).map_err(arg_err)?;
+    let [a, b] = <[String; 2]>::try_from(session.pubkeys)
+        .map_err(|_| arg_err("a MuSig2 session has two public keys"))?;
+    let key = |hex: &str| {
+        kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey::from_str(hex).map_err(arg_err)
+    };
+    Ok(kaleidorg_swap_sdk::swaps::signing::MusigSession {
+        pubkeys: [key(&a)?, key(&b)?],
+        tweak: parse_hex32(&session.tweak, "tweak")?,
+        sighash: parse_hex32(&session.sighash, "sighash")?,
+    })
+}
+
+fn parse_public_nonce(
+    hex: &str,
+) -> Result<kaleidorg_swap_sdk::kaleidoswap::musig::PublicNonce, JsValue> {
+    kaleidorg_swap_sdk::kaleidoswap::musig::PublicNonce::from_str(hex)
+        .map_err(|e| arg_err(format!("public nonce: {e:?}")))
+}
+
+#[wasm_bindgen]
+impl WasmMnemonicSigner {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        mnemonic: StringArg,
+        passphrase: Option<StringArg>,
+        network: StringArg,
+    ) -> Result<WasmMnemonicSigner, JsValue> {
+        let mnemonic = str_arg(mnemonic, "mnemonic")?;
+        let passphrase = opt_str_arg(passphrase, "passphrase")?;
+        let network = str_arg(network, "network")?;
+        let master = SwapMasterKey::from_mnemonic(
+            &mnemonic,
+            passphrase.as_deref(),
+            parse_network(&network)?,
+        )
+        .map_err(core_err)?;
+        Ok(WasmMnemonicSigner {
+            master,
+            nonces: Default::default(),
+        })
+    }
+
+    fn keys(&self, index: u64) -> Result<Keypair, JsValue> {
+        self.master.derive_swapkey(index).map_err(core_err)
+    }
+
+    /// The compressed public key of swap `index`.
+    #[wasm_bindgen(js_name = publicKey)]
+    pub fn public_key(&self, index: u64) -> Result<String, JsValue> {
+        Ok(self.keys(index)?.public_key().to_string())
+    }
+
+    /// The preimage of swap `index`, as `{ preimage, sha256, hash160 }` hex.
+    #[wasm_bindgen(js_name = derivePreimage)]
+    pub fn derive_preimage(&self, index: u64) -> Result<JsValue, JsValue> {
+        let p = Preimage::from_swap_key(&self.keys(index)?);
+        let preimage = p
+            .to_string()
+            .ok_or_else(|| internal_err("derived preimage has no bytes"))?;
+        to_js(&DerivedPreimage {
+            preimage,
+            sha256: p.sha256.to_string(),
+            hash160: p.hash160.to_string(),
+        })
+    }
+
+    /// A BIP340 signature by the untweaked key of swap `index` over a
+    /// 32-byte Taproot script-path sighash.
+    #[wasm_bindgen(js_name = signSchnorr)]
+    pub fn sign_schnorr(&self, index: u64, sighash: StringArg) -> Result<String, JsValue> {
+        let sighash = parse_hex32(&str_arg(sighash, "sighash")?, "sighash")?;
+        Ok(
+            kaleidorg_swap_sdk::swaps::signing::sign_schnorr(&self.keys(index)?, sighash)
+                .to_string(),
+        )
+    }
+
+    /// Starts a MuSig2 signature for `session`: generates and keeps a secret
+    /// nonce and returns the public nonce.
+    #[wasm_bindgen(js_name = musigNonce)]
+    pub fn musig_nonce(&self, index: u64, session: JsValue) -> Result<String, JsValue> {
+        let session = parse_musig_session(session)?;
+        let nonce = self
+            .nonces
+            .generate(&self.keys(index)?, &session)
+            .map_err(core_err)?;
+        Ok(nonce.serialize().to_lower_hex_string())
+    }
+
+    /// Finishes it: the partial signature, spending the secret nonce behind
+    /// `ourNonce`.
+    #[wasm_bindgen(js_name = musigPartialSign)]
+    pub fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: JsValue,
+        our_nonce: StringArg,
+        their_nonce: StringArg,
+    ) -> Result<String, JsValue> {
+        let session = parse_musig_session(session)?;
+        let partial = self
+            .nonces
+            .sign(
+                &self.keys(index)?,
+                &session,
+                &parse_public_nonce(&str_arg(our_nonce, "ourNonce")?)?,
+                &parse_public_nonce(&str_arg(their_nonce, "theirNonce")?)?,
+            )
+            .map_err(core_err)?;
+        Ok(partial.serialize().to_lower_hex_string())
+    }
+}
+
+fn parse_network(s: &str) -> Result<Network, JsValue> {
+    match s.to_lowercase().as_str() {
+        "mainnet" => Ok(Network::Mainnet),
+        "testnet" => Ok(Network::Testnet),
+        "signet" => Ok(Network::Signet),
+        "regtest" => Ok(Network::Regtest),
+        other => Err(arg_err(format!("unknown network: {other}"))),
+    }
+}
+
+// ============================================================================
+// Boltz swap API client — the taker's query / create / status surface.
+//
+// Async reqwest + serde DTOs. Note: the Boltz swap DTOs are Rust-defined (no
+// OpenAPI spec), so their TS types are currently `any` on the JS side — a typed
+// TS surface for these would need a schema-generation step (e.g. schemars) or
+// hand-written interfaces.
+// ============================================================================
+
+use kaleidorg_swap_sdk::atomic;
+use kaleidorg_swap_sdk::boltz::{
+    BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
+};
+use kaleidorg_swap_sdk::corridor;
+use kaleidorg_swap_sdk::kaleido::{
+    ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
+    KaleidoOrgClientOptions, OrgKey,
+};
+
+fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
+    let error = js_sys::Error::new(&e.message());
+    set_code(&error, &e.name());
+    error.into()
+}
+
+/// Resolve a Boltz asset identifier to its chain and currency before posting a
+/// create request, so an unsupported asset cannot leave an orphan server swap.
+fn asset_from_boltz(
+    s: &str,
+    network: &str,
+) -> Result<
+    (
+        kaleidorg_swap_sdk::network::Chain,
+        kaleidorg_swap_sdk::network::Currency,
+    ),
+    JsValue,
+> {
+    use kaleidorg_swap_sdk::network::{Chain, Currency};
+
+    let net = parse_network(network)?;
+    match s {
+        "BTC" => Ok((Chain::Bitcoin(net.into()), Currency::Btc)),
+        "USDT-RGB" => Ok((Chain::Bitcoin(net.into()), Currency::UsdtRgb)),
+        "L-BTC" => Ok((Chain::Liquid(net.into()), Currency::LBtc)),
+        "L-USDT" => Ok((Chain::Liquid(net.into()), Currency::LUsdt)),
+        // Named rather than falling through: the maker does publish this
+        // symbol, so a caller reading the catalogue arrives here with a route
+        // it was shown. The refusal has to say where that route actually lives.
+        "ARKD" => Err(arg_err(
+            "ARKD is bitcoin on Arkade, and this SDK cannot build or verify an \
+             Arkade VHTLC through the Boltz-shaped create routes. Use the Intents \
+             corridor instead: quoteLightningSend() / quoteLightningReceive() on \
+             this client for the quote, and @kaleidorg/swap-sdk/arkade to fund or \
+             claim the lockup",
+        )),
+        other => Err(arg_err(format!("unsupported Boltz asset '{other}'"))),
+    }
+}
+
+/// Require an explicit local contract pin before any RGB create request.
+fn rgb_contract_before_create(
+    from: kaleidorg_swap_sdk::network::Currency,
+    to: kaleidorg_swap_sdk::network::Currency,
+    reverse: bool,
+    contract_id: Option<&str>,
+) -> Result<Option<&str>, JsValue> {
+    use kaleidorg_swap_sdk::network::Currency;
+    if from != Currency::UsdtRgb && to != Currency::UsdtRgb {
+        return Ok(None);
+    }
+    let expected = if reverse {
+        (Currency::Btc, Currency::UsdtRgb)
+    } else {
+        (Currency::UsdtRgb, Currency::Btc)
+    };
+    if (from, to) != expected {
+        return Err(arg_err("unsupported USDT-RGB swap direction"));
+    }
+    match contract_id {
+        Some(id) if !id.trim().is_empty() => Ok(Some(id)),
+        _ => Err(arg_err(
+            "USDT-RGB swaps require rgbContractId before creation",
+        )),
+    }
+}
+
+/// A fresh Intents-corridor `rfq_id`: 32 random bytes, hex. Generate once per
+/// negotiation and carry it — every status read is keyed by it.
+#[wasm_bindgen(js_name = newRfqId)]
+pub fn new_rfq_id() -> String {
+    corridor::new_rfq_id()
+}
+
+#[cfg(test)]
+mod boltz_asset_tests {
+    use super::*;
+    use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
+
+    /// `ARKD` is a symbol the maker publishes, so a caller reading the
+    /// catalogue arrives here holding a route it was shown. The refusal has
+    /// to name where that route actually lives, not just that it is refused.
+    #[test]
+    fn arkd_is_refused_with_a_pointer_to_the_corridor() {
+        let err = asset_from_boltz("ARKD", "signet").unwrap_err();
+        let message = js_sys::Reflect::get(&err, &JsValue::from_str("message"))
+            .ok()
+            .and_then(|m| m.as_string())
+            .unwrap_or_default();
+        assert!(message.contains("Intents corridor"), "{message}");
+        assert!(message.contains("quoteLightningReceive"), "{message}");
+        assert!(message.contains("@kaleidorg/swap-sdk/arkade"), "{message}");
+    }
+
+    #[test]
+    fn lusdt_resolves_to_liquid_chain_and_distinct_currency() {
+        let (chain, currency) = asset_from_boltz("L-USDT", "regtest").unwrap();
+
+        assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidRegtest));
+        assert_eq!(currency, Currency::LUsdt);
+    }
+
+    /// `"signet"` must parse (it is the KaleidoSwap maker's network) and fan out
+    /// to signet chain access — never testnet3, which encodes addresses
+    /// identically and so mismatches without erroring.
+    #[test]
+    fn signet_resolves_to_signet_chain() {
+        let (chain, currency) = asset_from_boltz("BTC", "signet").unwrap();
+
+        assert_eq!(chain, Chain::Bitcoin(BitcoinChain::BitcoinSignet));
+        assert_eq!(currency, Currency::Btc);
+
+        // Liquid has no signet, so the L-BTC side pairs with Liquid testnet.
+        let (chain, _) = asset_from_boltz("L-BTC", "signet").unwrap();
+        assert_eq!(chain, Chain::Liquid(LiquidChain::LiquidTestnet));
+    }
+}
+
+/// `{ makerUrl, apiKey, timeoutSecs? }` for
+/// [`BoltzClient::for_kaleido_maker`]. A named struct rather than positional
+/// arguments: two adjacent strings, one of them a secret, is exactly the
+/// signature callers transpose.
+struct KaleidoMakerOptions {
+    maker_url: String,
+    api_key: String,
+    timeout_secs: Option<u64>,
+    allow_browser: bool,
+}
+
+/// The properties [`KaleidoMakerOptions`] reads, for the unknown-key check.
+const KALEIDO_MAKER_OPTION_KEYS: [&str; 4] = ["makerUrl", "apiKey", "timeoutSecs", "allowBrowser"];
+
+impl KaleidoMakerOptions {
+    /// Read the options object by hand, without `from_js`.
+    ///
+    /// `from_js` reports a type mismatch by handing back serde's message, and
+    /// serde renders the offending **value** — so
+    /// `forKaleidoMaker(process.env.KALEIDOSWAP_API_KEY)`, the exact transposed
+    /// call the named-options shape exists to catch, would throw
+    /// `invalid type: string "kld_live_…"` and put the organization key
+    /// verbatim into whatever caught it. `ApiKey::parse` is careful never to
+    /// echo its input; that care is worth nothing if the value can be echoed
+    /// before it ever reaches the parser.
+    ///
+    /// So every error below names a property and never its contents.
+    fn from_js_options(options: JsValue) -> Result<Self, JsValue> {
+        let shape = "forKaleidoMaker expects an options object \
+                     `{ makerUrl, apiKey, timeoutSecs? }`";
+        if !options.is_object() || js_sys::Array::is_array(&options) {
+            return Err(arg_err(shape));
+        }
+        let options: js_sys::Object = options.unchecked_into();
+
+        // Unknown properties are rejected rather than ignored. The near misses
+        // are `apikey` and `timeout`, and silently ignoring the latter means a
+        // client the caller believes is bounded runs with no timeout at all.
+        // Property names are the caller's own literals, so naming them is safe.
+        let unknown: Vec<String> = js_sys::Object::keys(&options)
+            .iter()
+            .filter_map(|key| key.as_string())
+            .filter(|key| !KALEIDO_MAKER_OPTION_KEYS.contains(&key.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(arg_err(format!(
+                "unknown option{} {} — {shape}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+            )));
+        }
+
+        Ok(Self {
+            maker_url: required_string_option(&options, "makerUrl")?,
+            api_key: required_string_option(&options, "apiKey")?,
+            timeout_secs: timeout_secs_option(&options)?,
+            allow_browser: bool_option(&options, "allowBrowser")?,
+        })
+    }
+}
+
+/// `{ makerUrl, orgKey, timeoutSecs? }` for [`BoltzClient::for_kaleido_org`].
+struct KaleidoOrgOptions {
+    maker_url: String,
+    org_key: String,
+    timeout_secs: Option<u64>,
+}
+
+/// The properties [`KaleidoOrgOptions`] reads, for the unknown-key check.
+const KALEIDO_ORG_OPTION_KEYS: [&str; 3] = ["makerUrl", "orgKey", "timeoutSecs"];
+
+impl KaleidoOrgOptions {
+    /// Read the options object by hand, the same way and for the same reason
+    /// as [`KaleidoMakerOptions::from_js_options`]: an `apiKey` passed here by
+    /// mistake must not be echoed by a serde error.
+    fn from_js_options(options: JsValue) -> Result<Self, JsValue> {
+        let shape = "forKaleidoOrg expects an options object \
+                     `{ makerUrl, orgKey, timeoutSecs? }`";
+        if !options.is_object() || js_sys::Array::is_array(&options) {
+            return Err(arg_err(shape));
+        }
+        let options: js_sys::Object = options.unchecked_into();
+
+        // An `apiKey` here is a caller holding both kinds of attribution. The
+        // maker refuses a request carrying both, so one client never sends
+        // both; saying which constructor takes it beats "unknown option".
+        if js_sys::Reflect::has(&options, &JsValue::from_str("apiKey")).unwrap_or(false) {
+            return Err(arg_err(
+                "forKaleidoOrg takes an organization key, not an API key — a client \
+                 attributes its swaps one way or the other, never both. Use \
+                 forKaleidoMaker for a `kld_` key",
+            ));
+        }
+        let unknown: Vec<String> = js_sys::Object::keys(&options)
+            .iter()
+            .filter_map(|key| key.as_string())
+            .filter(|key| !KALEIDO_ORG_OPTION_KEYS.contains(&key.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            return Err(arg_err(format!(
+                "unknown option{} {} — {shape}",
+                if unknown.len() == 1 { "" } else { "s" },
+                unknown.join(", "),
+            )));
+        }
+
+        Ok(Self {
+            maker_url: required_string_option(&options, "makerUrl")?,
+            org_key: required_string_option(&options, "orgKey")?,
+            timeout_secs: timeout_secs_option(&options)?,
+        })
+    }
+}
+
+/// The global interfaces that only a worker exposes.
+///
+/// `ServiceWorkerGlobalScope` and `SharedWorkerGlobalScope` both inherit
+/// `WorkerGlobalScope`, so the first name alone covers every worker a browser
+/// starts; the other two are listed so a runtime that exposes only the
+/// specific interface is still caught.
+const WORKER_SCOPE_INTERFACES: [&str; 3] = [
+    "WorkerGlobalScope",
+    "ServiceWorkerGlobalScope",
+    "SharedWorkerGlobalScope",
+];
+
+/// Whether this looks like a browser: a page, a worker, or an extension.
+///
+/// One wasm artifact serves both Node and the browser, so there is no
+/// build-time split to make this decision at. `document` divides a page from
+/// Node, but not every browser context has one: an MV3 extension's service
+/// worker and any Web Worker run without a `document`, and an extension is
+/// exactly the bundle a store reviewer or a user can unpack. So a context
+/// also counts as a browser when it exposes a worker scope interface, or when
+/// it is an extension (`chrome.runtime.id`, or `browser.runtime.id` in
+/// Firefox). Plain Node has none of these.
+fn in_browser() -> bool {
+    let global: JsValue = js_sys::global().into();
+    let has = |name: &str| js_sys::Reflect::has(&global, &JsValue::from_str(name)).unwrap_or(false);
+    has("document")
+        || WORKER_SCOPE_INTERFACES.into_iter().any(has)
+        || ["chrome", "browser"]
+            .into_iter()
+            .any(|namespace| extension_runtime_id(&global, namespace).is_truthy())
+}
+
+/// `globalThis[namespace].runtime.id`, or `undefined` anywhere along the way.
+///
+/// A web page in Chrome can have `chrome` and even `chrome.runtime` (for an
+/// extension that lists the page as externally connectable), but only an
+/// extension's own contexts have an `id` there.
+fn extension_runtime_id(global: &JsValue, namespace: &str) -> JsValue {
+    ["runtime", "id"]
+        .into_iter()
+        .fold(property(global, namespace), |value, name| {
+            property(&value, name)
+        })
+}
+
+/// `target[name]`, or `undefined` when `target` is not an object or the read
+/// throws.
+fn property(target: &JsValue, name: &str) -> JsValue {
+    if !target.is_object() {
+        return JsValue::UNDEFINED;
+    }
+    js_sys::Reflect::get(target, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED)
+}
+
+/// An optional boolean property, defaulting to `false`.
+fn bool_option(options: &js_sys::Object, name: &str) -> Result<bool, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(false);
+    }
+    value
+        .as_bool()
+        .ok_or_else(|| arg_err(format!("option `{name}` must be a boolean")))
+}
+
+/// A required string property, named but never quoted back.
+fn required_string_option(options: &js_sys::Object, name: &str) -> Result<String, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str(name)).map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Err(arg_err(format!("option `{name}` is required")));
+    }
+    value
+        .as_string()
+        .ok_or_else(|| arg_err(format!("option `{name}` must be a string")))
+}
+
+/// The optional `timeoutSecs`, as a whole non-negative number of seconds.
+///
+/// A `bigint` is accepted alongside a `number`: the rest of this surface takes
+/// 64-bit values as `bigint`, and a caller who reaches for one here should not
+/// be told their timeout is not a number.
+///
+/// The upper bound is not decoration. `as` on a float is a *saturating* cast, so
+/// without it `timeoutSecs: 1e20` would be accepted as `u64::MAX` — a timeout
+/// tokio clamps to a deadline that never arrives, leaving a client the caller
+/// believes is bounded running with none at all. That is the failure the
+/// unknown-option check above exists to prevent, and a caller who spelled the
+/// property right should not hit it. No value this accepts is silently changed:
+/// every one below the bound casts exactly.
+fn timeout_secs_option(options: &js_sys::Object) -> Result<Option<u64>, JsValue> {
+    let value = js_sys::Reflect::get(options, &JsValue::from_str("timeoutSecs"))
+        .map_err(internal_err_js)?;
+    if value.is_undefined() || value.is_null() {
+        return Ok(None);
+    }
+    if let Some(seconds) = value.as_f64() {
+        // `u64::MAX as f64` rounds *up* to 2^64, so the comparison has to be
+        // strict: every f64 strictly below it is within u64 and casts exactly.
+        if seconds.is_finite()
+            && seconds >= 0.0
+            && seconds.fract() == 0.0
+            && seconds < u64::MAX as f64
+        {
+            return Ok(Some(seconds as u64));
+        }
+    } else if let Some(seconds) = value.dyn_ref::<js_sys::BigInt>() {
+        // `try_from` already refuses anything outside u64, so a `bigint` is
+        // never truncated either.
+        if let Ok(seconds) = u64::try_from(seconds.clone()) {
+            return Ok(Some(seconds));
+        }
+    }
+    Err(arg_err(
+        "option `timeoutSecs` must be a whole number of seconds, not negative, \
+         and within 64 bits",
+    ))
+}
+
+/// A failure on our side of the boundary, from a `JsValue` that is already an
+/// exception rather than a `Display` value.
+fn internal_err_js(_: JsValue) -> JsValue {
+    coded_err(INTERNAL, "reading the options object threw")
+}
+
+/// Async client for the Boltz swap API.
+#[wasm_bindgen]
+pub struct BoltzClient {
+    inner: BoltzApiClientV2,
+}
+
+#[wasm_bindgen]
+impl BoltzClient {
+    /// `new BoltzClient(baseUrl, timeoutSecs?)`
+    #[wasm_bindgen(constructor)]
+    pub fn new(base_url: StringArg, timeout_secs: Option<u64>) -> Result<BoltzClient, JsValue> {
+        Ok(BoltzClient {
+            inner: BoltzApiClientV2::new(
+                str_arg(base_url, "baseUrl")?,
+                timeout_secs.map(std::time::Duration::from_secs),
+            ),
+        })
+    }
+
+    /// Client pointed at the default **KaleidoSwap maker** for a network
+    /// ("signet" | "regtest").
+    ///
+    /// "signet" is the KaleidoSwap maker and settles on Mutinynet — pair it with
+    /// signet chain access, not testnet3. Rejects "testnet" (we run no testnet3
+    /// maker — signet is our testing network) and "mainnet" (no mainnet maker is
+    /// live yet) instead of falling back to a third party; to reach any other
+    /// maker, pass an explicit base URL to the constructor.
+    #[wasm_bindgen(js_name = forNetwork)]
+    pub fn for_network(network: StringArg) -> Result<BoltzClient, JsValue> {
+        let network = str_arg(network, "network")?;
+        Ok(BoltzClient {
+            inner: BoltzApiClientV2::default(parse_network(&network)?).map_err(core_err)?,
+        })
+    }
+
+    /// `BoltzClient.forKaleidoMaker({ makerUrl, apiKey, timeoutSecs? })` — a
+    /// client that attributes the swaps it creates to a partner organization.
+    ///
+    /// `apiKey` is the organization key from the partner panel, a `kld_test_…`
+    /// or `kld_live_…` value. It answers "which partner organization created
+    /// this swap?" and nothing else: it authorizes no claim, no refund, no fund
+    /// movement and no panel access. The per-swap `swapAuth` credential the
+    /// maker returns on create stays separate and unchanged.
+    ///
+    /// The key is bound to `makerUrl` and is never sent anywhere else — not to
+    /// Esplora, not to a second maker. `makerUrl` must be `https` unless it is a
+    /// loopback address, because a bearer credential over plain HTTP is readable
+    /// by anything on the path. A value that cannot be a key is rejected here
+    /// rather than reaching the maker as a `401`, which is the same answer a
+    /// revoked key gets.
+    ///
+    /// # Do not use this in a browser
+    ///
+    /// The key is a permanent organization credential with no origin binding and
+    /// no per-key rate limit. Bundled into browser JavaScript it is visible to
+    /// every visitor, who can then attribute their own swaps to — or exhaust the
+    /// limits of — an organization that is not theirs, and nothing in the bundle
+    /// can prevent it. **This release supports server and native integrations
+    /// only:** call this from Node, keep the key in server-side configuration,
+    /// and leave the browser bundle on the unauthenticated `BoltzClient`
+    /// constructor. A browser here includes Web, shared and service workers and
+    /// browser extensions, none of which has a `document`; see [`in_browser`].
+    ///
+    /// Redirects are declined here as on the server: the core issues every
+    /// maker `fetch` with `redirect: "error"`, so a `3xx` away from the maker
+    /// fails the request without being followed and no header reaches the
+    /// host it named.
+    #[wasm_bindgen(js_name = forKaleidoMaker)]
+    pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
+        let options = KaleidoMakerOptions::from_js_options(options)?;
+        if !options.allow_browser && in_browser() {
+            // §7 of the attribution design says server and native only for the
+            // first release, and until now that was said in documentation
+            // while the constructor happily ran in a page. Refusing makes the
+            // code enforce what the docs promise; `allowBrowser: true` is
+            // there for a deliberate exception, so the decision is at least
+            // written down at the call site.
+            return Err(arg_err(
+                "refusing to build an attributed client in a browser (a page, \
+                 a worker or an extension): the organization API key is a \
+                 permanent credential with no origin binding and no per-key \
+                 rate limit, so a key in a browser bundle is visible to anyone \
+                 who loads or unpacks it. Call this from Node with the key in \
+                 server-side configuration, or pass `allowBrowser: true` if you \
+                 have accepted that exposure.",
+            ));
+        }
+        let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
+            maker_url: options.maker_url,
+            api_key: ApiKey::parse(&options.api_key).map_err(core_err)?,
+            timeout: options.timeout_secs.map(std::time::Duration::from_secs),
+        })
+        .map_err(core_err)?;
+        Ok(BoltzClient {
+            inner: client.into_inner(),
+        })
+    }
+
+    /// `BoltzClient.forKaleidoOrg({ makerUrl, orgKey, timeoutSecs? })` — a
+    /// client that attributes the swaps it creates to a partner organization
+    /// by its public organization key.
+    ///
+    /// `orgKey` is the 64-hex x-only public key the organization registered in
+    /// the partner panel. It is public, which is the point: this constructor
+    /// works in a page, a Web Worker, an extension service worker and Node
+    /// alike, with nothing to hide in any of them. The key is a label, never a
+    /// credential — it buys the caller no rate limit, discount or access of its
+    /// own — and it goes out in `X-Kaleido-Org-Key` on swap creation only, to
+    /// `makerUrl` only, which must be `https` unless it is a loopback address.
+    ///
+    /// In a browser the maker's edge must allow `X-Kaleido-Org-Key` in CORS for
+    /// a page on another origin to send it; an extension's host permissions
+    /// make that moot.
+    #[wasm_bindgen(js_name = forKaleidoOrg)]
+    pub fn for_kaleido_org(options: JsValue) -> Result<BoltzClient, JsValue> {
+        let options = KaleidoOrgOptions::from_js_options(options)?;
+        let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
+            maker_url: options.maker_url,
+            org_key: OrgKey::parse(&options.org_key).map_err(core_err)?,
+            timeout: options.timeout_secs.map(std::time::Duration::from_secs),
+        })
+        .map_err(core_err)?;
+        Ok(BoltzClient {
+            inner: client.into_inner(),
+        })
+    }
+
+    /// The organization key this client attributes its swaps to, as 64
+    /// lowercase hex, or `undefined` for a client built without one.
+    #[wasm_bindgen(getter, js_name = orgKey)]
+    pub fn org_key(&self) -> Option<String> {
+        self.inner.org_key().map(|key| key.to_string())
+    }
+
+    /// The environment the configured organization key is scoped to — `"test"`
+    /// or `"live"` — or `undefined` for an unauthenticated client.
+    ///
+    /// Worth asserting at start-up: a `kld_test_…` key against a production
+    /// maker is refused by the maker, and this says so before any swap is
+    /// attempted.
+    #[wasm_bindgen(getter, js_name = apiKeyEnvironment)]
+    pub fn api_key_environment(&self) -> Option<String> {
+        self.inner
+            .api_key()
+            .map(|key| key.environment().to_string())
+    }
+
+    /// The configured organization key's public identifier — the same one the
+    /// partner panel shows. Safe to log; the secret half is not reachable from
+    /// JS at all.
+    #[wasm_bindgen(getter, js_name = apiKeyId)]
+    pub fn api_key_id(&self) -> Option<String> {
+        self.inner.api_key().map(|key| key.key_id().to_string())
+    }
+
+    // ---- Rates / limits ----------------------------------------------------
+
+    #[wasm_bindgen(js_name = feeEstimation)]
+    pub async fn fee_estimation(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_fee_estimation().await.map_err(core_err)?)
+    }
+    pub async fn height(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_height().await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = submarinePairs)]
+    pub async fn submarine_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_submarine_pairs().await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = reversePairs)]
+    pub async fn reverse_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_reverse_pairs().await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = chainPairs)]
+    pub async fn chain_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_chain_pairs().await.map_err(core_err)?)
+    }
+
+    // ---- Arkade Intents corridor (`/v1`) -----------------------------------
+    //
+    // Payloads cross in the corridor's own snake_case vocabulary, not the
+    // camelCase of the Boltz DTOs above: a quote from here is structurally the
+    // `RfqQuote` that `@arkade-os/swap`'s `assertFundable`,
+    // `verifyLockupAddress` and `deriveLightningReceive` take, so a caller can
+    // hand it straight across without a field-by-field rename. 64-bit amounts
+    // and timestamps arrive as `bigint`, like every other u64 at this boundary.
+
+    /// The origin the corridor hangs off — this client's `/v2` base with the
+    /// suffix removed. Throws for a base that does not end in `/v2`.
+    #[wasm_bindgen(getter, js_name = corridorUrl)]
+    pub fn corridor_url(&self) -> Result<String, JsValue> {
+        self.inner.corridor_root().map_err(core_err)
+    }
+
+    /// Fetch the signed discovery document. Null means no live card (404).
+    /// Signature verification and trust decisions remain the caller's responsibility.
+    #[wasm_bindgen(js_name = corridorCard)]
+    pub async fn corridor_card(&self) -> Result<CorridorCardResult, JsValue> {
+        match self.inner.corridor_card().await.map_err(core_err)? {
+            Some(card) => Ok(to_js(&card)?.unchecked_into()),
+            None => Ok(JsValue::NULL.unchecked_into()),
+        }
+    }
+
+    /// Exact unverified card JSON for lossless verification. 404 is undefined.
+    /// Hash the maker's compact ordered JSON without sig, preserving all fields.
+    #[wasm_bindgen(js_name = corridorCardRaw)]
+    pub async fn corridor_card_raw(&self) -> Result<Option<String>, JsValue> {
+        self.inner.corridor_card_raw().await.map_err(core_err)
+    }
+
+    /// `POST /v1/swap` with an envelope already built. Resolves to an
+    /// `rfq_quote` **or** an `rfq_refusal` — read `type`; a refusal is the
+    /// maker's answer, not a failure.
+    #[wasm_bindgen(js_name = requestRfq)]
+    pub async fn request_rfq(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: corridor::RfqRequest = from_js(request)?;
+        to_js(&self.inner.request_rfq(&request).await.map_err(core_err)?)
+    }
+
+    /// Quote `arkade:BTC->lightning:BTC`: the trader funds an Arkade lockup for
+    /// the maker to pay the invoice from.
+    #[wasm_bindgen(js_name = quoteLightningSend)]
+    pub async fn quote_lightning_send(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: corridor::LightningSendRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .quote_lightning_send(&request)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
+    /// Quote `lightning:BTC->arkade:BTC`: the maker mints a hold invoice and
+    /// locks on Arkade once it is paid, for the trader to claim.
+    #[wasm_bindgen(js_name = quoteLightningReceive)]
+    pub async fn quote_lightning_receive(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: corridor::LightningReceiveRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .quote_lightning_receive(&request)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
+    /// `GET /v1/rfq/{rfqId}`. Resolves to `null` for an id the maker never
+    /// issued. Poll until `state` is terminal (`settled`, `refused`,
+    /// `expired`, `refunded`, `stuck`).
+    #[wasm_bindgen(js_name = rfqStatus)]
+    pub async fn rfq_status(&self, rfq_id: StringArg) -> Result<JsValue, JsValue> {
+        let rfq_id = str_arg(rfq_id, "rfqId")?;
+        match self.inner.rfq_status(&rfq_id).await.map_err(core_err)? {
+            Some(status) => to_js(&status),
+            None => Ok(JsValue::NULL),
+        }
+    }
+
+    // ---- Create swaps ------------------------------------------------------
+
+    // `network` ("mainnet" | "testnet" | "regtest") is used to validate the
+    // returned lockup address/tree against the request before the caller funds
+    // it — mirroring the checks the native bindings run.
+    //
+    // `lusdtAssetId` pins the L-USDT asset locally, like `rgbContractId` pins
+    // the RGB contract: it is never sent to the maker. Liquid mainnet defaults
+    // to the canonical USDt and refuses any other value; testnet and regtest
+    // require it. The pair card is only cross-checked against it.
+
+    #[wasm_bindgen(js_name = createSubmarineSwap)]
+    pub async fn create_submarine_swap(
+        &self,
+        network: StringArg,
+        req: CreateSubmarineRequestJs,
+        rgb_contract_id: Option<StringArg>,
+        rgb_max_htlc_sat: Option<BigIntArg>,
+        lusdt_asset_id: Option<StringArg>,
+    ) -> Result<CreateSubmarineResponseJs, JsValue> {
+        let network = str_arg(network, "network")?;
+        let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
+        let rgb_max_htlc_sat = opt_u64_arg(rgb_max_htlc_sat, "rgbMaxHtlcSat")?;
+        let lusdt_asset_id = opt_str_arg(lusdt_asset_id, "lusdtAssetId")?;
+        let req: CreateSubmarineRequest = from_js(req.into())?;
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
+        let rgb_contract_id = rgb_contract_before_create(
+            from_currency,
+            to_currency,
+            false,
+            rgb_contract_id.as_deref(),
+        )?;
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context =
+            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
+                from_chain,
+                to_chain,
+                from_currency,
+                to_currency,
+                lusdt_asset_id.as_deref(),
+            )
+            .map_err(core_err)?
+            {
+                Some(trusted) => {
+                    let pair_card = self
+                        .inner
+                        .get_submarine_pairs()
+                        .await
+                        .map_err(core_err)?
+                        .expected_liquid_asset_context(from_currency, to_currency)
+                        .map_err(core_err)?;
+                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+                }
+                None => None,
+            };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match req.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_submarine_pairs()
+                .await
+                .map_err(core_err)?
+                .accepted(&req.from, &req.to, Some(hash))
+                .map_err(core_err)?
+                .cloned(),
+            None => None,
+        };
+        let resp = self.inner.post_swap_req(&req).await.map_err(core_err)?;
+        if let Some(contract_id) = rgb_contract_id {
+            let Chain::Bitcoin(chain) = from_chain else {
+                unreachable!("RGB is Bitcoin only")
+            };
+            resp.validate_rgb_with_max_htlc_sat(
+                &req.invoice,
+                &req.refund_public_key,
+                chain,
+                contract_id,
+                rgb_max_htlc_sat
+                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+            )
+            .map_err(core_err)?;
+        } else {
+            resp.validate_with_currency_and_asset_context(
+                &req.invoice,
+                &req.refund_public_key,
+                from_chain,
+                Some(from_currency),
+                expected_asset_context,
+            )
+            .map_err(core_err)?;
+        }
+        resp.validate_amounts(&req.invoice, accepted_pair.as_ref())
+            .map_err(core_err)?;
+        to_typed_js(&resp)
+    }
+    #[wasm_bindgen(js_name = createReverseSwap)]
+    pub async fn create_reverse_swap(
+        &self,
+        network: StringArg,
+        req: CreateReverseRequestJs,
+        rgb_contract_id: Option<StringArg>,
+        lusdt_asset_id: Option<StringArg>,
+    ) -> Result<CreateReverseResponseJs, JsValue> {
+        let network = str_arg(network, "network")?;
+        let rgb_contract_id = opt_str_arg(rgb_contract_id, "rgbContractId")?;
+        let lusdt_asset_id = opt_str_arg(lusdt_asset_id, "lusdtAssetId")?;
+        let req: CreateReverseRequest = from_js(req.into())?;
+        let claim_pk = req.claim_public_key;
+        let to = req.to.clone();
+        let preimage_hash = req.preimage_hash;
+        let invoice = req.invoice.clone();
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&to, &network)?;
+        let rgb_contract_id = rgb_contract_before_create(
+            from_currency,
+            to_currency,
+            true,
+            rgb_contract_id.as_deref(),
+        )?;
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context =
+            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
+                from_chain,
+                to_chain,
+                from_currency,
+                to_currency,
+                lusdt_asset_id.as_deref(),
+            )
+            .map_err(core_err)?
+            {
+                Some(trusted) => {
+                    let pair_card = self
+                        .inner
+                        .get_reverse_pairs()
+                        .await
+                        .map_err(core_err)?
+                        .expected_liquid_asset_context(from_currency, to_currency)
+                        .map_err(core_err)?;
+                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+                }
+                None => None,
+            };
+        // Validate the returned tree/address regardless of request form: derive
+        // the payment hash from `preimage_hash` or, in the invoice form, from the
+        // invoice itself. Never hand back an unvalidated response to fund.
+        let preimage = if let Some(hash) = preimage_hash {
+            kaleidorg_swap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
+                .map_err(core_err)?
+        } else if let Some(inv) = &invoice {
+            kaleidorg_swap_sdk::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
+        } else {
+            return Err(arg_err(
+                "reverse swap request needs preimageHash or invoice",
+            ));
+        };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match req.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_reverse_pairs()
+                .await
+                .map_err(core_err)?
+                .accepted(&req.from, &req.to, Some(hash))
+                .map_err(core_err)?
+                .cloned(),
+            None => None,
+        };
+        let resp = self
+            .inner
+            .post_reverse_req(req.clone())
+            .await
+            .map_err(core_err)?;
+        if let Some(contract_id) = rgb_contract_id {
+            let Chain::Bitcoin(chain) = to_chain else {
+                unreachable!("RGB is Bitcoin only")
+            };
+            resp.validate_rgb(&preimage, &claim_pk, chain, contract_id)
+                .map_err(core_err)?;
+        } else {
+            resp.validate_with_source_and_asset_context(
+                &preimage,
+                &claim_pk,
+                from_chain,
+                to_chain,
+                Some(to_currency),
+                expected_asset_context,
+            )
+            .map_err(core_err)?;
+        }
+        resp.validate_amounts(&req, accepted_pair.as_ref())
+            .map_err(core_err)?;
+        to_typed_js(&resp)
+    }
+    #[wasm_bindgen(js_name = createChainSwap)]
+    pub async fn create_chain_swap(
+        &self,
+        network: StringArg,
+        req: CreateChainRequestJs,
+        lusdt_asset_id: Option<StringArg>,
+    ) -> Result<CreateChainResponseJs, JsValue> {
+        let network = str_arg(network, "network")?;
+        let lusdt_asset_id = opt_str_arg(lusdt_asset_id, "lusdtAssetId")?;
+        let req: CreateChainRequest = from_js(req.into())?;
+        // Both keys are required so the returned lockup script/tree can be
+        // checked against the request — never hand back an unvalidated
+        // response to fund (same guarantee as the reverse path). Reject (and
+        // resolve the chains) *before* posting, so a bad request can't create
+        // an orphan swap server-side.
+        let (claim_pk, refund_pk) = match (req.claim_public_key, req.refund_public_key) {
+            (Some(claim_pk), Some(refund_pk)) => (claim_pk, refund_pk),
+            _ => {
+                return Err(arg_err(
+                    "chain swap request needs claimPublicKey and refundPublicKey",
+                ))
+            }
+        };
+        let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
+        let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
+        if from_currency == kaleidorg_swap_sdk::network::Currency::UsdtRgb
+            || to_currency == kaleidorg_swap_sdk::network::Currency::UsdtRgb
+        {
+            return Err(arg_err("USDT-RGB chain swaps are unsupported"));
+        }
+        // The pin resolves before any I/O, so a missing one never creates a
+        // swap; the maker's pair card is then only cross-checked against it.
+        let expected_asset_context =
+            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
+                from_chain,
+                to_chain,
+                from_currency,
+                to_currency,
+                lusdt_asset_id.as_deref(),
+            )
+            .map_err(core_err)?
+            {
+                Some(trusted) => {
+                    let pair_card = self
+                        .inner
+                        .get_chain_pairs()
+                        .await
+                        .map_err(core_err)?
+                        .expected_liquid_asset_context(from_currency, to_currency)
+                        .map_err(core_err)?;
+                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+                }
+                None => None,
+            };
+        let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
+            (kaleidorg_swap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
+            (_, kaleidorg_swap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
+            _ => (None, None),
+        };
+        // A pinned pairHash binds the response to the card the caller
+        // accepted; a card the maker has since replaced is refused.
+        let accepted_pair = match req.pair_hash.as_deref() {
+            Some(hash) => self
+                .inner
+                .get_chain_pairs()
+                .await
+                .map_err(core_err)?
+                .accepted(&req.from, &req.to, Some(hash))
+                .map_err(core_err)?
+                .cloned(),
+            None => None,
+        };
+        let preimage_hash = req.preimage_hash;
+        let resp = self
+            .inner
+            .post_chain_req(req.clone())
+            .await
+            .map_err(core_err)?;
+        resp.validate_with_currency_and_asset_context(
+            &claim_pk,
+            &refund_pk,
+            from_chain,
+            to_chain,
+            &preimage_hash,
+            Some(from_currency),
+            Some(to_currency),
+            from_asset_context,
+            to_asset_context,
+        )
+        .map_err(core_err)?;
+        resp.validate_amounts(&req, accepted_pair.as_ref())
+            .map_err(core_err)?;
+        to_typed_js(&resp)
+    }
+
+    // ---- Status / lookups --------------------------------------------------
+
+    #[wasm_bindgen(js_name = submarineTx)]
+    pub async fn submarine_tx(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
+        to_js(&self.inner.get_submarine_tx(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = reverseTx)]
+    pub async fn reverse_tx(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
+        to_js(&self.inner.get_reverse_tx(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = chainTxs)]
+    pub async fn chain_txs(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
+        to_js(&self.inner.get_chain_txs(&id).await.map_err(core_err)?)
+    }
+    #[wasm_bindgen(js_name = submarinePreimage)]
+    pub async fn submarine_preimage(&self, id: StringArg) -> Result<JsValue, JsValue> {
+        let id = str_arg(id, "id")?;
+        to_js(
+            &self
+                .inner
+                .get_submarine_preimage(&id)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+    /// The maker's raw, **unvalidated** BIP21 for an invoice's magic-routing
+    /// hint. Only the address is signed; the amount, scheme and asset are
+    /// whatever the maker sent. Pay what `checkMrh` returns instead.
+    #[wasm_bindgen(js_name = mrhBip21)]
+    pub async fn mrh_bip21(&self, invoice: StringArg) -> Result<JsValue, JsValue> {
+        let invoice = str_arg(invoice, "invoice")?;
+        to_js(&self.inner.get_mrh_bip21(&invoice).await.map_err(core_err)?)
+    }
+    /// `checkMrh(invoice, chain, network)` — the validated magic-routing
+    /// destination `{ address, amountSat }` for `invoice` on `chain`
+    /// (`"bitcoin"` or `"liquid"`) and `network`, or `undefined` when the
+    /// invoice carries no hint. Paying `amountSat` to `address` on-chain
+    /// settles the invoice and skips the swap entirely.
+    ///
+    /// Checks the maker's signature over the address, that the BIP21 scheme,
+    /// address and asset belong to the chain, and that the amount is positive
+    /// and at most the invoice amount (it may be smaller: the maker deducts
+    /// its fees). The invoice must carry an amount.
+    #[wasm_bindgen(js_name = checkMrh)]
+    pub async fn check_mrh(
+        &self,
+        invoice: StringArg,
+        chain: StringArg,
+        network: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let invoice = str_arg(invoice, "invoice")?;
+        let chain = build_chain(&str_arg(chain, "chain")?, &str_arg(network, "network")?)?;
+        match magic_routing::check_mrh(&self.inner, &invoice, chain)
+            .await
+            .map_err(core_err)?
+        {
+            Some(destination) => to_js(&destination),
+            None => Ok(JsValue::UNDEFINED),
+        }
+    }
+    /// `GET /v2/swap/atomic/pairs` — the atomic BTC <-> USDT-RGB rate cards.
+    #[wasm_bindgen(js_name = atomicPairs)]
+    pub async fn atomic_pairs(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.atomic_pairs().await.map_err(core_err)?)
+    }
+
+    /// Quote an atomic swap and verify it against `request` and
+    /// `expectations` at `nowSecs`. The quote's `offer` is rgb-lib's
+    /// `OnchainSwapOffer` as JSON text, for the wallet's `accept_swap_offer`.
+    #[wasm_bindgen(js_name = atomicQuote)]
+    pub async fn atomic_quote(
+        &self,
+        request: JsValue,
+        expectations: JsValue,
+        now_secs: u64,
+    ) -> Result<JsValue, JsValue> {
+        let request: atomic::AtomicQuoteRequest = from_js(request)?;
+        let expect: atomic::AtomicQuoteExpectations = from_js(expectations)?;
+        let quote = self
+            .inner
+            .atomic_quote(&request, &expect, now_secs)
+            .await
+            .map_err(core_err)?;
+        rgb_message_to_js(&quote, "offer")
+    }
+
+    /// Post the wallet's `OnchainSwapRequest` (JSON text). Resolves with the
+    /// maker's unsigned `OnchainSwapProposal` as JSON text in `proposal`.
+    ///
+    /// `walletOutpoints` is every `{ txid, vout }` the wallet holds (rgb-lib's
+    /// `list_unspents`). A proposal listing any of them as the maker's is
+    /// refused: rgb-lib before kaleidoswap/rgb-lib#18 would sign it away.
+    #[wasm_bindgen(js_name = atomicRequest)]
+    pub async fn atomic_request(
+        &self,
+        swap_id: StringArg,
+        request_json: StringArg,
+        wallet_outpoints: JsValue,
+    ) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let request = rgb_message_arg(request_json, "requestJson")?;
+        let wallet: Vec<atomic::AtomicOutpoint> = from_js(wallet_outpoints)
+            .map_err(|_| arg_err("walletOutpoints must be an array of { txid, vout }"))?;
+        atomic::check_wallet_outpoints(&request, &wallet).map_err(|e| arg_err(e.message()))?;
+        let proposal = self
+            .inner
+            .atomic_request(&swap_id, &request, &wallet)
+            .await
+            .map_err(core_err)?;
+        // Not through `rgb_message_to_js`: its JSON detour would turn the
+        // `u32` `vout`s into BigInts.
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Proposal<'a> {
+            id: &'a str,
+            status: &'a str,
+            proposal: String,
+            maker_inputs: &'a [atomic::AtomicOutpoint],
+        }
+        to_js(&Proposal {
+            id: &proposal.id,
+            status: &proposal.status,
+            proposal: proposal.proposal.to_string(),
+            maker_inputs: &proposal.maker_inputs,
+        })
+    }
+
+    /// Post the wallet's signed `OnchainSwapCompletion` (JSON text). The
+    /// maker signs last and broadcasts; the finalized completion comes back
+    /// as JSON text in `completion`, for `accept_swap_transfers`.
+    #[wasm_bindgen(js_name = atomicComplete)]
+    pub async fn atomic_complete(
+        &self,
+        swap_id: StringArg,
+        completion_json: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let completion = rgb_message_arg(completion_json, "completionJson")?;
+        let done = self
+            .inner
+            .atomic_complete(&swap_id, &completion)
+            .await
+            .map_err(core_err)?;
+        rgb_message_to_js(&done, "completion")
+    }
+
+    /// `GET /v2/swap/atomic/{id}` — where an atomic swap stands.
+    #[wasm_bindgen(js_name = atomicSwap)]
+    pub async fn atomic_swap(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        to_js(&self.inner.atomic_swap(&swap_id).await.map_err(core_err)?)
+    }
+    pub async fn swap(&self, swap_id: StringArg) -> Result<GetSwapResponseJs, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        to_typed_js(&self.inner.get_swap(&swap_id).await.map_err(core_err)?)
+    }
+    pub async fn quote(&self, swap_id: StringArg) -> Result<JsValue, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        to_js(&self.inner.get_quote(&swap_id).await.map_err(core_err)?)
+    }
+    /// Request an authenticated cooperative signature for a colored RGB refund.
+    #[wasm_bindgen(js_name = getRgbRefundPartialSig)]
+    pub async fn get_rgb_refund_partial_sig(
+        &self,
+        swap_id: StringArg,
+        request: JsValue,
+        swap_auth: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        let request: RgbCooperativeRefundRequest = from_js(request)?;
+        to_js(
+            &self
+                .inner
+                .get_rgb_refund_partial_sig(&id, &request, &auth)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
+    /// Accept a chain-swap re-quote at `amountSat`.
+    ///
+    /// `swapAuth` is the per-swap credential the KaleidoSwap maker returned as
+    /// `swapAuth` on the create response. Accepting commits the maker's payout,
+    /// so the maker authorizes it with that credential rather than with the
+    /// swap id — which is not a secret. Omit it only for a maker that issues
+    /// none (upstream Boltz); against KaleidoSwap the call is rejected with
+    /// `401 invalid_swap_auth` and no other route resolves the re-quote, so the
+    /// swap runs out its refund path instead.
+    ///
+    /// Persist `swapAuth` with the swap when you create it. Signed recovery can re-issue
+    /// it — `swapRestore` authenticates with an XPUB alone and does not return
+    /// it.
+    #[wasm_bindgen(js_name = acceptQuote)]
+    pub async fn accept_quote(
+        &self,
+        swap_id: StringArg,
+        amount_sat: u64,
+        swap_auth: Option<StringArg>,
+    ) -> Result<(), JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let swap_auth = opt_str_arg(swap_auth, "swapAuth")?;
+        self.inner
+            .accept_quote(&swap_id, amount_sat, swap_auth.as_deref())
+            .await
+            .map_err(core_err)
+    }
+    pub async fn nodes(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.get_nodes().await.map_err(core_err)?)
+    }
+
+    // ---- Recovery ----------------------------------------------------------
+
+    /// Recover a credential by signing with the restored per-swap taker key.
+    #[wasm_bindgen(js_name = recoverSwapAuth)]
+    pub async fn recover_swap_auth(
+        &self,
+        swap_id: StringArg,
+        keys_secret_hex: StringArg,
+    ) -> Result<String, JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        self.inner
+            .recover_swap_auth(&swap_id, &keys)
+            .await
+            .map_err(core_err)
+    }
+
+    /// Discover swaps from an xpub. Pass `"m"` as `derivationPath` when using
+    /// `WasmSwapMasterKey.masterXpub()`; the maker's omitted-path default is
+    /// intended for a root xpub and will not match this account's child keys.
+    #[wasm_bindgen(js_name = swapRestore)]
+    pub async fn swap_restore(
+        &self,
+        xpub: StringArg,
+        derivation_path: Option<StringArg>,
+        gap_limit: Option<u32>,
+    ) -> Result<SwapRestoreResponsesJs, JsValue> {
+        let xpub = str_arg(xpub, "xpub")?;
+        let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
+        to_typed_js(
+            &self
+                .inner
+                .post_swap_restore(&xpub, derivation_path, gap_limit)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+    /// Find the highest known key index. Use the same explicit `"m"` path as
+    /// `swapRestore` for account xpubs. Results are bounded by the gap limit.
+    #[wasm_bindgen(js_name = swapRestoreIndex)]
+    pub async fn swap_restore_index(
+        &self,
+        xpub: StringArg,
+        derivation_path: Option<StringArg>,
+        gap_limit: Option<u32>,
+    ) -> Result<SwapRestoreIndexResponseJs, JsValue> {
+        let xpub = str_arg(xpub, "xpub")?;
+        let derivation_path = opt_str_arg(derivation_path, "derivationPath")?;
+        to_typed_js(
+            &self
+                .inner
+                .post_swap_restore_index(&xpub, derivation_path, gap_limit)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+}
+
+// ============================================================================
+// Swap-script + claim/refund transaction construction (client-side crypto).
+//
+// wasm-bindgen async methods can't take `&ExportedType` args (the Future would
+// outlive the JS-side borrow), so construct/broadcast take primitives + a params
+// object and rebuild the chain/boltz clients internally. Per-swap keys come from
+// `WasmSwapMasterKey.deriveSwapKey` (returns { publicKey, secretKey } hex).
+// ============================================================================
+
+use kaleidorg_swap_sdk::bitcoin::hex::DisplayHex as _;
+use kaleidorg_swap_sdk::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
+use kaleidorg_swap_sdk::bitcoin::PublicKey;
+use kaleidorg_swap_sdk::boltz::{
+    ChainSwapDetails, CreateChainResponse, CreateReverseResponse, CreateSubmarineResponse, Side,
+};
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidorg_swap_sdk::network::Chain;
+use kaleidorg_swap_sdk::swaps::liquid::{
+    FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
+};
+use kaleidorg_swap_sdk::swaps::magic_routing;
+use kaleidorg_swap_sdk::swaps::rgb::{
+    ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
+    PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,
+    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbSpendFunding as CoreRgbSpendFunding,
+};
+use kaleidorg_swap_sdk::swaps::{
+    BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
+    LiquidPsetParams as CoreLiquidPsetParams, RgbPsbtParams as CoreRgbPsbtParams,
+    SwapScript as CoreSwapScript, SwapTransactionParams, TransactionOptions,
+};
+use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
+use std::str::FromStr as _;
+
+// Name the argument these parse. The upstream messages say nothing about which
+// input they came from, and some say nothing at all: a public key that is
+// well-formed hex of the right length but not a point on the curve renders as the
+// bare string "string error".
+
+fn parse_pubkey_arg(hex: &str, param: &str) -> Result<PublicKey, JsValue> {
+    PublicKey::from_str(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex public key: {e}")))
+}
+
+fn parse_secret_key_arg(hex: &str, param: &str) -> Result<SecretKey, JsValue> {
+    SecretKey::from_str(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex secret key: {e}")))
+}
+
+fn parse_preimage_arg(hex: &str, param: &str) -> Result<CorePreimage, JsValue> {
+    CorePreimage::from_str(hex)
+        .map_err(|e| arg_err(format!("argument `{param}` is not a hex preimage: {e}")))
+}
+
+fn build_chain(kind: &str, network: &str) -> Result<Chain, JsValue> {
+    let net = parse_network(network)?;
+    match kind.to_lowercase().as_str() {
+        "bitcoin" | "btc" => Ok(Chain::Bitcoin(net.into())),
+        "liquid" | "lbtc" | "l-btc" => Ok(Chain::Liquid(net.into())),
+        other => Err(arg_err(format!("unknown chain kind: {other}"))),
+    }
+}
+
+fn build_fee(sat_per_vb: Option<f64>, absolute_sat: Option<u64>) -> Result<Fee, JsValue> {
+    match (sat_per_vb, absolute_sat) {
+        (Some(r), None) => Ok(Fee::Relative(r)),
+        (None, Some(a)) => Ok(Fee::Absolute(a)),
+        _ => Err(arg_err(
+            "provide exactly one of feeSatPerVb or feeAbsoluteSat",
+        )),
+    }
+}
+
+fn build_chain_client(
+    network: &str,
+    bitcoin_esplora_url: &Option<String>,
+    liquid_esplora_url: &Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<CoreChainClient, JsValue> {
+    let net = parse_network(network)?;
+    let timeout = timeout_secs.unwrap_or(30);
+    let mut cc = CoreChainClient::new();
+    if let Some(url) = bitcoin_esplora_url {
+        cc = cc.with_bitcoin(EsploraBitcoinClient::new(net.into(), url, timeout));
+    }
+    if let Some(url) = liquid_esplora_url {
+        cc = cc.with_liquid(EsploraLiquidClient::new(net.into(), url, timeout));
+    }
+    Ok(cc)
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Parameters for building a claim/refund transaction (a plain JS object).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TxParams {
+    output_address: String,
+    swap_id: String,
+    /// Per-swap key secret (hex), e.g. from `deriveSwapKey(index).secretKey`.
+    keys_secret_hex: String,
+    boltz_base_url: String,
+    #[serde(default)]
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    #[serde(default)]
+    bitcoin_esplora_url: Option<String>,
+    #[serde(default)]
+    liquid_esplora_url: Option<String>,
+    #[serde(default)]
+    esplora_timeout_secs: Option<u64>,
+    #[serde(default)]
+    fee_sat_per_vb: Option<f64>,
+    #[serde(default)]
+    fee_absolute_sat: Option<u64>,
+    #[serde(default = "default_true")]
+    cooperative: bool,
+    #[serde(default)]
+    swap_auth: Option<String>,
+    #[serde(default)]
+    claim_lockup: Option<ClaimLockup>,
+    #[serde(default, flatten)]
+    claim_policy: ClaimPolicyParams,
+}
+
+/// Claim policy fields shared by `TxParams` and `LiquidPsetParams`: what the
+/// chain source must show before a claim reveals the preimage.
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ClaimPolicyParams {
+    #[serde(default)]
+    min_confirmations: Option<u32>,
+    #[serde(default)]
+    allow_zero_conf: Option<bool>,
+    #[serde(default)]
+    claim_safety_margin_blocks: Option<u32>,
+    #[serde(default)]
+    allow_conflicting_spend: Option<bool>,
+}
+
+impl ClaimPolicyParams {
+    fn apply(&self, options: TransactionOptions) -> TransactionOptions {
+        let defaults = kaleidorg_swap_sdk::swaps::ClaimPolicy::default();
+        options.with_claim_policy(kaleidorg_swap_sdk::swaps::ClaimPolicy {
+            min_confirmations: self.min_confirmations.unwrap_or(defaults.min_confirmations),
+            allow_zero_conf: self.allow_zero_conf.unwrap_or(defaults.allow_zero_conf),
+            claim_safety_margin_blocks: self.claim_safety_margin_blocks,
+            allow_conflicting_spend: self
+                .allow_conflicting_spend
+                .unwrap_or(defaults.allow_conflicting_spend),
+        })
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct ClaimLockup {
+    chain: String,
+    hex: String,
+    txid: String,
+}
+
+impl ClaimLockup {
+    fn transaction(&self) -> Result<CoreBtcLikeTransaction, JsValue> {
+        let tx = match self.chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&self.hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&self.hex),
+            _ => return Err(arg_err("claimLockup.chain must be bitcoin or liquid")),
+        }
+        .map_err(core_err)?;
+        let txid = match &tx {
+            CoreBtcLikeTransaction::Bitcoin(tx) => tx.compute_txid().to_string(),
+            CoreBtcLikeTransaction::Liquid(tx) => tx.txid().to_string(),
+        };
+        if txid != self.txid {
+            return Err(arg_err("claimLockup hex does not match its trusted txid"));
+        }
+        Ok(tx)
+    }
+}
+
+impl TxParams {
+    fn claim_options(&self, options: TransactionOptions) -> Result<TransactionOptions, JsValue> {
+        let options = self.claim_policy.apply(options);
+        match &self.claim_lockup {
+            Some(lockup) => Ok(options.with_existing_lockup_tx(lockup.transaction()?)),
+            None => Ok(options),
+        }
+    }
+    fn keypair(&self) -> Result<Keypair, JsValue> {
+        Self::keypair_from(&self.keys_secret_hex, "keysSecretHex")
+    }
+    fn keypair_from(secret_hex: &str, param: &str) -> Result<Keypair, JsValue> {
+        let sk = parse_secret_key_arg(secret_hex, param)?;
+        Ok(Keypair::from_secret_key(&Secp256k1::new(), &sk))
+    }
+    fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
+        build_chain_client(
+            &self.network,
+            &self.bitcoin_esplora_url,
+            &self.liquid_esplora_url,
+            self.esplora_timeout_secs,
+        )
+    }
+    fn boltz(&self) -> kaleidorg_swap_sdk::boltz::BoltzApiClientV2 {
+        kaleidorg_swap_sdk::boltz::BoltzApiClientV2::new(
+            self.boltz_base_url.clone(),
+            self.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        )
+    }
+}
+
+/// Parameters for preparing a caller-funded Liquid PSET (a plain JS object).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LiquidPsetParams {
+    output_address: String,
+    swap_id: String,
+    max_fee: u64,
+    quoted_fee_cap: u64,
+    boltz_base_url: String,
+    #[serde(default)]
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    liquid_esplora_url: String,
+    #[serde(default)]
+    esplora_timeout_secs: Option<u64>,
+    /// Optional serialized Liquid lockup transaction.
+    #[serde(default)]
+    lockup_tx_hex: Option<String>,
+    #[serde(default, flatten)]
+    claim_policy: ClaimPolicyParams,
+}
+
+impl LiquidPsetParams {
+    fn options(&self) -> Result<Option<TransactionOptions>, JsValue> {
+        let options = self.claim_policy.apply(TransactionOptions::default());
+        Ok(Some(match &self.lockup_tx_hex {
+            Some(hex) => options
+                .with_lockup_tx(CoreBtcLikeTransaction::from_hex_liquid(hex).map_err(core_err)?),
+            None => options,
+        }))
+    }
+
+    fn chain_client(&self) -> Result<CoreChainClient, JsValue> {
+        build_chain_client(
+            &self.network,
+            &None,
+            &Some(self.liquid_esplora_url.clone()),
+            self.esplora_timeout_secs,
+        )
+    }
+
+    fn boltz(&self) -> kaleidorg_swap_sdk::boltz::BoltzApiClientV2 {
+        kaleidorg_swap_sdk::boltz::BoltzApiClientV2::new(
+            self.boltz_base_url.clone(),
+            self.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        )
+    }
+}
+
+/// Funding mode of an RGB PSBT, represented by a discriminated JS object.
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum RgbSpendFunding {
+    #[serde(rename_all = "camelCase")]
+    HtlcValue {
+        fee_rate_sat_vb: u64,
+    },
+    CallerInputs,
+}
+
+impl From<RgbSpendFunding> for CoreRgbSpendFunding {
+    fn from(funding: RgbSpendFunding) -> Self {
+        match funding {
+            RgbSpendFunding::HtlcValue { fee_rate_sat_vb } => Self::HtlcValue { fee_rate_sat_vb },
+            RgbSpendFunding::CallerInputs => Self::CallerInputs,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RgbPsbtParams {
+    output_address: String,
+    funding: RgbSpendFunding,
+    max_fee: u64,
+    swap_id: String,
+    boltz_base_url: String,
+    boltz_timeout_secs: Option<u64>,
+    network: String,
+    bitcoin_esplora_url: String,
+    esplora_timeout_secs: Option<u64>,
+    lockup_tx_hex: String,
+}
+
+/// A reconstructed swap script; builds the claim/refund transactions.
+#[wasm_bindgen]
+pub struct SwapScript {
+    inner: CoreSwapScript,
+}
+
+#[wasm_bindgen]
+impl SwapScript {
+    /// Rebuild from a swapRestore entry and the key derived at its keyIndex.
+    /// Chain swaps require `side` ("lockup" | "claim"); omit it otherwise.
+    #[wasm_bindgen(js_name = fromRestored)]
+    pub fn from_restored(
+        restored_swap: JsValue,
+        our_pubkey_hex: StringArg,
+        network: StringArg,
+        side: Option<StringArg>,
+    ) -> Result<SwapScript, JsValue> {
+        let network = parse_network(&str_arg(network, "network")?)?;
+        let pk = parse_pubkey_arg(&str_arg(our_pubkey_hex, "ourPubkeyHex")?, "ourPubkeyHex")?;
+        let side = opt_str_arg(side, "side")?
+            .map(|side| match side.as_str() {
+                "lockup" => Ok(Side::Lockup),
+                "claim" => Ok(Side::Claim),
+                other => Err(arg_err(format!("unknown side: {other}"))),
+            })
+            .transpose()?;
+        let restored = from_js(restored_swap)?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::from_restored(network, &restored, pk, side).map_err(core_err)?,
+        })
+    }
+
+    /// Reconstruct from a submarine-swap create response.
+    /// `chainKind` is "bitcoin" | "liquid"; `ourPubkeyHex` is the refund pubkey.
+    #[wasm_bindgen(js_name = fromSubmarine)]
+    pub fn from_submarine(
+        chain_kind: StringArg,
+        network: StringArg,
+        response: JsValue,
+        our_pubkey_hex: StringArg,
+    ) -> Result<SwapScript, JsValue> {
+        let chain_kind = str_arg(chain_kind, "chainKind")?;
+        let network = str_arg(network, "network")?;
+        let our_pubkey_hex = str_arg(our_pubkey_hex, "ourPubkeyHex")?;
+        let chain = build_chain(&chain_kind, &network)?;
+        let resp: CreateSubmarineResponse = from_js(response)?;
+        let pk = parse_pubkey_arg(&our_pubkey_hex, "ourPubkeyHex")?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::submarine_from_swap_resp(chain, &resp, pk).map_err(core_err)?,
+        })
+    }
+
+    /// Reconstruct from a reverse-swap create response (`ourPubkeyHex` = claim pubkey).
+    #[wasm_bindgen(js_name = fromReverse)]
+    pub fn from_reverse(
+        chain_kind: StringArg,
+        network: StringArg,
+        response: JsValue,
+        our_pubkey_hex: StringArg,
+    ) -> Result<SwapScript, JsValue> {
+        let chain_kind = str_arg(chain_kind, "chainKind")?;
+        let network = str_arg(network, "network")?;
+        let our_pubkey_hex = str_arg(our_pubkey_hex, "ourPubkeyHex")?;
+        let chain = build_chain(&chain_kind, &network)?;
+        let resp: CreateReverseResponse = from_js(response)?;
+        let pk = parse_pubkey_arg(&our_pubkey_hex, "ourPubkeyHex")?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::reverse_from_swap_resp(chain, &resp, pk).map_err(core_err)?,
+        })
+    }
+
+    /// Reconstruct from chain-swap details. `side` is "lockup" | "claim".
+    #[wasm_bindgen(js_name = fromChain)]
+    pub fn from_chain(
+        chain_kind: StringArg,
+        network: StringArg,
+        side: StringArg,
+        chain_swap_details: JsValue,
+        our_pubkey_hex: StringArg,
+    ) -> Result<SwapScript, JsValue> {
+        let chain_kind = str_arg(chain_kind, "chainKind")?;
+        let network = str_arg(network, "network")?;
+        let side = str_arg(side, "side")?;
+        let our_pubkey_hex = str_arg(our_pubkey_hex, "ourPubkeyHex")?;
+        let chain = build_chain(&chain_kind, &network)?;
+        let side = match side.to_lowercase().as_str() {
+            "lockup" => Side::Lockup,
+            "claim" => Side::Claim,
+            other => return Err(arg_err(format!("unknown side: {other}"))),
+        };
+        let details: ChainSwapDetails = from_js(chain_swap_details)?;
+        let pk = parse_pubkey_arg(&our_pubkey_hex, "ourPubkeyHex")?;
+        Ok(SwapScript {
+            inner: CoreSwapScript::chain_from_swap_resp(chain, side, details, pk)
+                .map_err(core_err)?,
+        })
+    }
+
+    /// Build the claim transaction. `preimageHex` is the swap preimage
+    /// (e.g. `derivePreimage(index).preimage`); `params` is a `TxParams` object.
+    ///
+    /// Note: for **chain-swap** claims set `params.cooperative = false`. This is
+    /// the script-spend path. `TxParams` cannot carry the lockup script and
+    /// refund key that a cooperative chain claim signs against, so reach the
+    /// cheaper MuSig2 keyspend through `constructCooperativeClaim` rather than
+    /// through this method. Submarine and reverse cooperative claims need
+    /// nothing extra and work with the default `cooperative = true`.
+    #[wasm_bindgen(js_name = constructClaim)]
+    pub async fn construct_claim(
+        &self,
+        preimage_hex: StringArg,
+        params: JsValue,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let preimage_hex = str_arg(preimage_hex, "preimageHex")?;
+        let p: TxParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let preimage = parse_preimage_arg(&preimage_hex, "preimageHex")?;
+        let tx_params = SwapTransactionParams {
+            keys: p.keypair()?,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            options: Some({
+                let options =
+                    p.claim_options(TransactionOptions::default().with_cooperative(p.cooperative))?;
+                match &p.swap_auth {
+                    Some(auth) => options.with_swap_auth(auth.clone()),
+                    None => options,
+                }
+            }),
+        };
+        let tx = self
+            .inner
+            .construct_claim(&preimage, tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+
+    /// Build a **cooperative** chain-swap claim (MuSig2 keyspend).
+    ///
+    /// `lockupScript` is our own lockup side, i.e.
+    /// `SwapScript.fromChain(chainKind, network, "lockup", lockupDetails, ourPubkey)`
+    /// — the cooperative path signs a temporary refund against it to obtain the
+    /// server's signature for the claim, which is why `constructClaim` alone
+    /// cannot do this and documents `cooperative = false` for chain swaps.
+    ///
+    /// `refundKeysSecretHex` is the swap's **refund** key, the counterpart of the
+    /// `refundPublicKey` the swap was created with. It is a separate argument from
+    /// `params.keysSecretHex` (the claim key) because a chain swap carries two
+    /// independent keys, and the temporary refund is partial-signed with this one.
+    /// Passing the claim key here when the two differ yields a partial signature
+    /// the server rejects.
+    ///
+    /// The keyspend witness is much smaller than the script path's, and
+    /// `feeSatPerVb` is applied to it correctly — the fee is computed against a
+    /// stubbed cooperative witness, so a rate needs no adjustment for this path.
+    ///
+    /// `params.cooperative` is rejected if set to `false`: this method is the
+    /// cooperative path by construction, and honoring the flag is what
+    /// `constructClaim` is for.
+    #[wasm_bindgen(js_name = constructCooperativeClaim)]
+    pub async fn construct_cooperative_claim(
+        &self,
+        preimage_hex: StringArg,
+        params: JsValue,
+        lockup_script: &SwapScript,
+        refund_keys_secret_hex: StringArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let preimage_hex = str_arg(preimage_hex, "preimageHex")?;
+        let refund_keys_secret_hex = str_arg(refund_keys_secret_hex, "refundKeysSecretHex")?;
+        let p: TxParams = from_js(params)?;
+        if !p.cooperative {
+            return Err(arg_err(
+                "constructCooperativeClaim cannot honor cooperative = false; \
+                 use constructClaim for a script-path chain claim",
+            ));
+        }
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let preimage = parse_preimage_arg(&preimage_hex, "preimageHex")?;
+        let keys = p.keypair()?;
+        let refund_keys = TxParams::keypair_from(&refund_keys_secret_hex, "refundKeysSecretHex")?;
+        let tx_params = SwapTransactionParams {
+            keys,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            options: Some(
+                p.claim_options(
+                    TransactionOptions::default()
+                        .with_chain_claim(refund_keys, lockup_script.inner.clone()),
+                )?,
+            ),
+        };
+        let tx = self
+            .inner
+            .construct_claim(&preimage, tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+
+    /// Build the refund transaction (after the timelock, or cooperatively).
+    #[wasm_bindgen(js_name = constructRefund)]
+    pub async fn construct_refund(&self, params: JsValue) -> Result<BtcLikeTransaction, JsValue> {
+        let p: TxParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let tx_params = SwapTransactionParams {
+            keys: p.keypair()?,
+            output_address: p.output_address.clone(),
+            fee: build_fee(p.fee_sat_per_vb, p.fee_absolute_sat)?,
+            swap_id: p.swap_id.clone(),
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            options: Some({
+                let options = TransactionOptions::default().with_cooperative(p.cooperative);
+                match p.swap_auth {
+                    Some(auth) => options.with_swap_auth(auth),
+                    None => options,
+                }
+            }),
+        };
+        let tx = self
+            .inner
+            .construct_refund(tx_params)
+            .await
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction { inner: tx })
+    }
+
+    /// Prepare an RGB reverse claim. The RGB wallet must color it before signing.
+    #[wasm_bindgen(js_name = prepareRgbClaim)]
+    pub async fn prepare_rgb_claim(&self, params: JsValue) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, true, false).await
+    }
+
+    /// Prepare an RGB submarine refund, optionally funded by wallet BTC inputs.
+    #[wasm_bindgen(js_name = prepareRgbRefund)]
+    pub async fn prepare_rgb_refund(&self, params: JsValue) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, false, false).await
+    }
+
+    #[wasm_bindgen(js_name = prepareRgbCooperativeRefund)]
+    pub async fn prepare_rgb_cooperative_refund(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedRgbSpend, JsValue> {
+        self.prepare_rgb_spend(params, false, true).await
+    }
+
+    /// Prepare an L-USDT claim PSET. The returned object pins the swap intent
+    /// and must be retained until `finalizeClaim` is called.
+    #[wasm_bindgen(js_name = prepareLiquidClaim)]
+    pub async fn prepare_liquid_claim(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedLiquidSpend, JsValue> {
+        let p: LiquidPsetParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let options = p.options()?;
+        let prepared = self
+            .inner
+            .prepare_liquid_claim(CoreLiquidPsetParams {
+                output_address: p.output_address,
+                max_fee: p.max_fee,
+                quoted_fee_cap: p.quoted_fee_cap,
+                swap_id: p.swap_id,
+                chain_client: &chain_client,
+                boltz_api: &boltz,
+                options,
+            })
+            .await
+            .map_err(core_err)?;
+        Ok(PreparedLiquidSpend { inner: prepared })
+    }
+
+    /// Prepare an L-USDT refund PSET.
+    #[wasm_bindgen(js_name = prepareLiquidRefund)]
+    pub async fn prepare_liquid_refund(
+        &self,
+        params: JsValue,
+    ) -> Result<PreparedLiquidSpend, JsValue> {
+        let p: LiquidPsetParams = from_js(params)?;
+        let chain_client = p.chain_client()?;
+        let boltz = p.boltz();
+        let options = p.options()?;
+        let prepared = self
+            .inner
+            .prepare_liquid_refund(CoreLiquidPsetParams {
+                output_address: p.output_address,
+                max_fee: p.max_fee,
+                quoted_fee_cap: p.quoted_fee_cap,
+                swap_id: p.swap_id,
+                chain_client: &chain_client,
+                boltz_api: &boltz,
+                options,
+            })
+            .await
+            .map_err(core_err)?;
+        Ok(PreparedLiquidSpend { inner: prepared })
+    }
+}
+
+impl SwapScript {
+    async fn prepare_rgb_spend(
+        &self,
+        params: JsValue,
+        claim: bool,
+        cooperative: bool,
+    ) -> Result<PreparedRgbSpend, JsValue> {
+        let p: RgbPsbtParams = from_js(params)?;
+        let chain_client = build_chain_client(
+            &p.network,
+            &Some(p.bitcoin_esplora_url),
+            &None,
+            p.esplora_timeout_secs,
+        )?;
+        let boltz = BoltzApiClientV2::new(
+            p.boltz_base_url,
+            p.boltz_timeout_secs.map(std::time::Duration::from_secs),
+        );
+        let lockup_tx = CoreBtcLikeTransaction::from_hex_bitcoin(&p.lockup_tx_hex)
+            .map_err(core_err)?
+            .as_bitcoin()
+            .cloned()
+            .expect("Bitcoin decoder returns a Bitcoin transaction");
+        let params = CoreRgbPsbtParams {
+            output_address: p.output_address,
+            funding: p.funding.into(),
+            max_fee: p.max_fee,
+            swap_id: p.swap_id,
+            chain_client: &chain_client,
+            boltz_api: &boltz,
+            lockup_tx,
+        };
+        let inner = if claim {
+            self.inner.prepare_rgb_claim(params).await
+        } else if cooperative {
+            self.inner.prepare_rgb_cooperative_refund(params).await
+        } else {
+            self.inner.prepare_rgb_refund(params).await
+        }
+        .map_err(core_err)?;
+        Ok(PreparedRgbSpend { inner })
+    }
+}
+
+/// Immutable RGB spend intent: funding is frozen before RGB coloring.
+#[wasm_bindgen]
+pub struct PreparedRgbSpend {
+    inner: CorePreparedRgbSpend,
+}
+
+#[wasm_bindgen]
+impl PreparedRgbSpend {
+    pub fn template(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.template())
+    }
+
+    /// Return a new spend that pins the wallet's funded, still uncolored PSBT.
+    pub fn fund(&self, funded_psbt: StringArg) -> Result<PreparedRgbSpend, JsValue> {
+        let funded_psbt = str_arg(funded_psbt, "fundedPsbt")?;
+        Ok(Self {
+            inner: self.inner.fund(&funded_psbt).map_err(core_err)?,
+        })
+    }
+
+    #[wasm_bindgen(js_name = beginCooperativeRefund)]
+    pub fn begin_cooperative_refund(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+        swap_id: StringArg,
+    ) -> Result<RgbCooperativeRefund, JsValue> {
+        let colored = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let id = str_arg(swap_id, "swapId")?;
+        let session = self
+            .inner
+            .begin_cooperative_refund(colored, &keys, &id)
+            .map_err(core_err)?;
+        let request = session.request();
+        Ok(RgbCooperativeRefund {
+            inner: Some(session),
+            request,
+        })
+    }
+
+    #[wasm_bindgen(js_name = finalizeClaim)]
+    pub fn finalize_claim(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+        preimage_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let colored: ColoredRgbPsbt = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let preimage = str_arg(preimage_hex, "preimageHex")?;
+        let preimage = parse_preimage_arg(&preimage, "preimageHex")?;
+        finalized_rgb_to_js(
+            self.inner
+                .finalize_claim(colored, &keys, &preimage)
+                .map_err(core_err)?,
+        )
+    }
+
+    #[wasm_bindgen(js_name = finalizeRefund)]
+    pub fn finalize_refund(
+        &self,
+        colored_psbt: JsValue,
+        keys_secret_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let colored: ColoredRgbPsbt = from_js(colored_psbt)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        finalized_rgb_to_js(
+            self.inner
+                .finalize_refund(colored, &keys)
+                .map_err(core_err)?,
+        )
+    }
+}
+
+/// One-use MuSig2 session; secret nonces never cross the JS boundary.
+#[wasm_bindgen]
+pub struct RgbCooperativeRefund {
+    inner: Option<CoreRgbCooperativeRefund>,
+    request: RgbCooperativeRefundRequest,
+}
+
+#[wasm_bindgen]
+impl RgbCooperativeRefund {
+    pub fn request(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.request)
+    }
+
+    pub fn complete(
+        &mut self,
+        response: JsValue,
+        keys_secret_hex: StringArg,
+    ) -> Result<JsValue, JsValue> {
+        let response: RgbCooperativeRefundResponse = from_js(response)?;
+        let secret = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let keys = TxParams::keypair_from(&secret, "keysSecretHex")?;
+        let session = self
+            .inner
+            .take()
+            .ok_or_else(|| JsValue::from_str("RGB signing session already consumed"))?;
+        finalized_rgb_to_js(session.complete(response, &keys).map_err(core_err)?)
+    }
+}
+
+fn finalized_rgb_to_js(spend: CoreFinalizedRgbSpend) -> Result<JsValue, JsValue> {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Metadata {
+        psbt: String,
+        swap_input_index: u32,
+    }
+    let result = to_js(&Metadata {
+        psbt: spend.psbt.to_string(),
+        swap_input_index: spend.swap_input_index,
+    })?;
+    let transaction = spend
+        .transaction
+        .map(|tx| {
+            JsValue::from(BtcLikeTransaction {
+                inner: CoreBtcLikeTransaction::bitcoin(tx),
+            })
+        })
+        .unwrap_or(JsValue::NULL);
+    js_sys::Reflect::set(&result, &JsValue::from_str("transaction"), &transaction)
+        .map_err(|e| internal_err(format!("RGB finalized transaction: {e:?}")))?;
+    Ok(result)
+}
+
+/// Immutable L-USDT spend intent returned by `prepareLiquidClaim` or
+/// `prepareLiquidRefund`.
+#[wasm_bindgen]
+pub struct PreparedLiquidSpend {
+    inner: CorePreparedLiquidSpend,
+}
+
+#[wasm_bindgen]
+impl PreparedLiquidSpend {
+    /// Return the base64 PSET template and its pinned asset/amount/fee metadata.
+    pub fn template(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.template())
+    }
+
+    /// Validate the funded PSET and add only the swap input's claim witness.
+    #[wasm_bindgen(js_name = finalizeClaim)]
+    pub fn finalize_claim(
+        &self,
+        funded_pset: JsValue,
+        keys_secret_hex: StringArg,
+        preimage_hex: StringArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let keys_secret_hex = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let preimage_hex = str_arg(preimage_hex, "preimageHex")?;
+        let funded: FundedLiquidPset = from_js(funded_pset)?;
+        let secret = parse_secret_key_arg(&keys_secret_hex, "keysSecretHex")?;
+        let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let preimage = parse_preimage_arg(&preimage_hex, "preimageHex")?;
+        let tx = self
+            .inner
+            .finalize_claim(funded, &keys, &preimage)
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::liquid(tx),
+        })
+    }
+
+    /// Validate the funded PSET and add only the swap input's refund witness.
+    #[wasm_bindgen(js_name = finalizeRefund)]
+    pub fn finalize_refund(
+        &self,
+        funded_pset: JsValue,
+        keys_secret_hex: StringArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let keys_secret_hex = str_arg(keys_secret_hex, "keysSecretHex")?;
+        let funded: FundedLiquidPset = from_js(funded_pset)?;
+        let secret = parse_secret_key_arg(&keys_secret_hex, "keysSecretHex")?;
+        let keys = Keypair::from_secret_key(&Secp256k1::new(), &secret);
+        let tx = self
+            .inner
+            .finalize_refund(funded, &keys)
+            .map_err(core_err)?;
+        Ok(BtcLikeTransaction {
+            inner: CoreBtcLikeTransaction::liquid(tx),
+        })
+    }
+}
+
+/// A signed Bitcoin/Liquid transaction produced by claim/refund construction.
+#[wasm_bindgen]
+pub struct BtcLikeTransaction {
+    inner: CoreBtcLikeTransaction,
+}
+
+#[wasm_bindgen]
+impl BtcLikeTransaction {
+    /// Rebuild a saved transaction without signing, changing fees or broadcasting.
+    /// Pass the chain saved with the hex; the encoding is never auto-detected.
+    /// Keep the original network and Esplora endpoint for a later `broadcast`.
+    #[wasm_bindgen(js_name = fromHex)]
+    pub fn from_hex(
+        hex: StringArg,
+        chain: TransactionChainArg,
+    ) -> Result<BtcLikeTransaction, JsValue> {
+        let hex = str_arg(hex, "hex")?;
+        let chain = JsValue::from(chain)
+            .as_string()
+            .ok_or_else(|| arg_err("argument `chain` must be 'bitcoin' or 'liquid'"))?;
+        let inner = match chain.as_str() {
+            "bitcoin" => CoreBtcLikeTransaction::from_hex_bitcoin(&hex),
+            "liquid" => CoreBtcLikeTransaction::from_hex_liquid(&hex),
+            _ => return Err(arg_err("argument `chain` must be 'bitcoin' or 'liquid'")),
+        }
+        .map_err(|error| {
+            arg_err(format!(
+                "argument `hex` is not a valid {chain} transaction: {error}"
+            ))
+        })?;
+        let restored = Self { inner };
+        // Refuse encodings that the parser would normalize. Safe rebroadcast
+        // requires the serialized bytes (including witnesses) to stay identical.
+        if !hex.eq_ignore_ascii_case(&restored.hex()) {
+            return Err(arg_err(
+                "argument `hex` must use canonical transaction encoding",
+            ));
+        }
+        Ok(restored)
+    }
+
+    /// The transaction serialized as hex.
+    pub fn hex(&self) -> String {
+        match &self.inner {
+            CoreBtcLikeTransaction::Bitcoin(tx) => {
+                kaleidorg_swap_sdk::bitcoin::consensus::serialize(tx).to_lower_hex_string()
+            }
+            CoreBtcLikeTransaction::Liquid(tx) => {
+                kaleidorg_swap_sdk::elements::encode::serialize(tx).to_lower_hex_string()
+            }
+        }
+    }
+
+    /// The transaction id.
+    pub fn txid(&self) -> String {
+        match &self.inner {
+            CoreBtcLikeTransaction::Bitcoin(tx) => tx.compute_txid().to_string(),
+            CoreBtcLikeTransaction::Liquid(tx) => tx.txid().to_string(),
+        }
+    }
+
+    /// Broadcast via an Esplora backend, returning the txid.
+    pub async fn broadcast(
+        &self,
+        network: StringArg,
+        bitcoin_esplora_url: Option<StringArg>,
+        liquid_esplora_url: Option<StringArg>,
+        esplora_timeout_secs: Option<u64>,
+    ) -> Result<String, JsValue> {
+        let network = str_arg(network, "network")?;
+        let bitcoin_esplora_url = opt_str_arg(bitcoin_esplora_url, "bitcoinEsploraUrl")?;
+        let liquid_esplora_url = opt_str_arg(liquid_esplora_url, "liquidEsploraUrl")?;
+        let cc = build_chain_client(
+            &network,
+            &bitcoin_esplora_url,
+            &liquid_esplora_url,
+            esplora_timeout_secs,
+        )?;
+        cc.broadcast_tx(&self.inner).await.map_err(core_err)
+    }
+}
+
+// ============================================================================
+// WebSocket swap-status stream.
+//
+// JS usage:
+//   const ws = new BoltzWsApi(wsUrl);
+//   ws.runWsLoop();                       // do NOT await — runs in background
+//   const updates = ws.updates();
+//   await ws.subscribeSwap(swapId);
+//   for (;;) { const status = await updates.next(); ... }
+//
+// `runWsLoop` is a *sync* method returning a Promise: it clones the inner Arc and
+// hands it to future_to_promise, so it does not hold a `&self` borrow across the
+// (never-resolving) loop — otherwise wasm-bindgen would reject any other call on
+// the same object while the loop is pending.
+// ============================================================================
+
+use kaleidorg_swap_sdk::boltz::{BoltzWsApi as CoreBoltzWsApi, BoltzWsConfig, SwapStatus};
+use tokio::sync::{broadcast, Mutex as TokioMutex};
+
+/// Boltz WebSocket status stream.
+#[wasm_bindgen]
+pub struct BoltzWsApi {
+    inner: Arc<CoreBoltzWsApi>,
+}
+
+#[wasm_bindgen]
+impl BoltzWsApi {
+    /// `new BoltzWsApi(wsUrl)` — e.g. `wss://maker.signet.kaleidoswap.com/v2/ws`
+    /// (or `wss://api.boltz.exchange/v2/ws` for Boltz).
+    #[wasm_bindgen(constructor)]
+    pub fn new(ws_url: StringArg) -> Result<BoltzWsApi, JsValue> {
+        Ok(BoltzWsApi {
+            inner: Arc::new(CoreBoltzWsApi::new(
+                str_arg(ws_url, "wsUrl")?,
+                BoltzWsConfig::default(),
+            )),
+        })
+    }
+
+    /// Start the reconnecting WS loop in the background. Returns a Promise that
+    /// resolves only on shutdown — do NOT await it in normal use.
+    #[wasm_bindgen(js_name = runWsLoop)]
+    pub fn run_ws_loop(&self) -> js_sys::Promise {
+        let inner = self.inner.clone();
+        wasm_bindgen_futures::future_to_promise(async move {
+            inner.run_ws_loop().await;
+            Ok(JsValue::UNDEFINED)
+        })
+    }
+
+    /// Subscribe to status updates for a swap id.
+    #[wasm_bindgen(js_name = subscribeSwap)]
+    pub async fn subscribe_swap(&self, swap_id: StringArg) -> Result<(), JsValue> {
+        let swap_id = str_arg(swap_id, "swapId")?;
+        self.inner.subscribe_swap(&swap_id).await.map_err(core_err)
+    }
+
+    /// Whether the loop currently holds a live socket.
+    ///
+    /// `runWsLoop` reconnects rather than returning, which is what you want
+    /// for a long watch — but it means a dropped connection is invisible from
+    /// JS: updates simply stop arriving, indistinguishable from a quiet swap.
+    /// This is the signal that tells the two apart.
+    #[wasm_bindgen(js_name = isConnected)]
+    pub async fn is_connected(&self) -> bool {
+        self.inner.is_connected().await
+    }
+
+    /// Stop `runWsLoop`: close the socket and stop reconnecting. Its promise
+    /// then resolves. `free()` cannot do this while the loop runs, because
+    /// the loop holds the stream too; without `close()` a Node process
+    /// watching a swap never exits. A closed stream stays closed.
+    #[wasm_bindgen(js_name = close)]
+    pub async fn shutdown(&self) {
+        self.inner.shutdown().await
+    }
+
+    /// A cursor over swap-status updates (see `BoltzWsUpdates.next`).
+    pub fn updates(&self) -> BoltzWsUpdates {
+        BoltzWsUpdates {
+            inner: TokioMutex::new(self.inner.updates()),
+        }
+    }
+}
+
+/// Cursor over the swap-status broadcast; await `next()` repeatedly.
+#[wasm_bindgen]
+pub struct BoltzWsUpdates {
+    inner: TokioMutex<broadcast::Receiver<SwapStatus>>,
+}
+
+#[wasm_bindgen]
+impl BoltzWsUpdates {
+    /// Resolve with the next `SwapStatus`, or reject if the stream lagged/closed.
+    pub async fn next(&self) -> Result<JsValue, JsValue> {
+        let mut rx = self.inner.lock().await;
+        let status = rx.recv().await.map_err(internal_err)?;
+        to_js(&status)
+    }
+}
+
+/// Refuse to pay a reverse swap whose lockup timeout is mature or within
+/// `minHeadroomBlocks` of `currentHeight`. `currentHeight` is the lockup
+/// chain's tip from a trusted source (`esploraTipHeight`), never the maker's
+/// `height()`. Security review 2026-10-28, finding 2.
+#[wasm_bindgen(js_name = validateReverseTimeoutHeadroom)]
+pub fn validate_reverse_timeout_headroom(
+    response: CreateReverseResponseJs,
+    current_height: u32,
+    min_headroom_blocks: u32,
+) -> Result<(), JsValue> {
+    let response: CreateReverseResponse = from_js(response.into())?;
+    response
+        .validate_timeout_headroom(current_height, min_headroom_blocks)
+        .map_err(core_err)
+}
+
+/// Refuse to fund a chain swap whose claim leg (`toChain`, the server's lock)
+/// is within `minClaimHeadroomBlocks` of its timeout at `toHeight`, or whose
+/// lockup leg on `fromChain` does not outlast it. `fromChain`/`toChain` are
+/// `"bitcoin"` or `"liquid"`; both heights come from trusted chain sources.
+#[wasm_bindgen(js_name = validateChainTimeoutHeadroom)]
+pub fn validate_chain_timeout_headroom(
+    response: CreateChainResponseJs,
+    network: StringArg,
+    from_chain: StringArg,
+    from_height: u32,
+    to_chain: StringArg,
+    to_height: u32,
+    min_claim_headroom_blocks: u32,
+) -> Result<(), JsValue> {
+    let response: CreateChainResponse = from_js(response.into())?;
+    let network = str_arg(network, "network")?;
+    let from_chain = build_chain(&str_arg(from_chain, "fromChain")?, &network)?;
+    let to_chain = build_chain(&str_arg(to_chain, "toChain")?, &network)?;
+    response
+        .validate_timeout_headroom(
+            from_chain,
+            from_height,
+            to_chain,
+            to_height,
+            min_claim_headroom_blocks,
+        )
+        .map_err(core_err)
+}
+
+// ============================================================================
+// KaleidoSwap — the high-level surface. `quote`, `start`, `resume` over the
+// core phase machine (`kaleidorg_swap_sdk::kaleidoswap`); this section only
+// carries values across the boundary.
+//
+// The store and the signer are JS objects the application provides:
+//   store  = { get(id) -> record | undefined, put(record), list() -> record[],
+//              nextIndex() -> bigint | number }   (each may return a Promise)
+//   signer = { publicKey(index) -> hex, derivePreimage(index) -> { preimage },
+//              signSchnorr(index, sighash) -> hex,
+//              musigNonce(index, session) -> hex,
+//              musigPartialSign(index, session, ourNonce, theirNonce) -> hex }
+// Records cross the store as plain JSON-compatible objects (numbers, no
+// bigint) so `JSON.stringify` and IndexedDB both take them unchanged.
+// ============================================================================
+
+use kaleidorg_swap_sdk::kaleidoswap as hl;
+
+/// wasm32-unknown-unknown is single-threaded; a `JsValue` never leaves the
+/// thread that made it. The core traits ask for `Send + Sync` because the
+/// native build is multi-threaded, and this is the one place that promise is
+/// made for a JS handle.
+struct JsHandle(JsValue);
+unsafe impl Send for JsHandle {}
+unsafe impl Sync for JsHandle {}
+
+async fn call_js(target: &JsValue, method: &str, args: &[JsValue]) -> Result<JsValue, String> {
+    let f = js_sys::Reflect::get(target, &JsValue::from_str(method))
+        .ok()
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+        .ok_or_else(|| format!("{method} is not a function on the provided object"))?;
+    let array = js_sys::Array::new();
+    for a in args {
+        array.push(a);
+    }
+    let out = js_sys::Reflect::apply(&f, target, &array).map_err(|e| format!("{method}: {e:?}"))?;
+    let out = if out.has_type::<js_sys::Promise>() {
+        wasm_bindgen_futures::JsFuture::from(js_sys::Promise::from(out))
+            .await
+            .map_err(|e| format!("{method}: {e:?}"))?
+    } else {
+        out
+    };
+    Ok(out)
+}
+
+fn plain_record(record: &hl::SwapRecord) -> Result<JsValue, String> {
+    // A plain JS object, numbers and no `bigint`: `serde_json::Value`'s maps
+    // would otherwise cross as `Map`s, which `JSON.stringify` writes as `{}`
+    // and which have no `.id`. Every number in a record is a sat amount, a
+    // block height, an index or a Unix time — all inside 2^53.
+    let value = serde_json::to_value(record).map_err(|e| e.to_string())?;
+    let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    serde::Serialize::serialize(&value, &ser).map_err(|e| e.to_string())
+}
+
+fn record_from_plain(value: JsValue) -> Result<hl::SwapRecord, String> {
+    let value: serde_json::Value =
+        serde_wasm_bindgen::from_value(value).map_err(|e| e.to_string())?;
+    serde_json::from_value(value).map_err(|e| e.to_string())
+}
+
+fn hl_store_err(e: impl std::fmt::Display) -> hl::SwapError {
+    hl::SwapError::new(hl::SwapErrorCode::StoreFailed, e.to_string())
+}
+
+fn hl_signer_err(e: impl std::fmt::Display) -> hl::SwapError {
+    hl::SwapError::new(hl::SwapErrorCode::SwapFailed, e.to_string())
+}
+
+struct JsStore(JsHandle);
+
+#[async_trait::async_trait(?Send)]
+impl hl::SwapStore for JsStore {
+    async fn get(&self, id: &str) -> Result<Option<hl::SwapRecord>, hl::SwapError> {
+        let out = call_js(&self.0 .0, "get", &[JsValue::from_str(id)])
+            .await
+            .map_err(hl_store_err)?;
+        if out.is_undefined() || out.is_null() {
+            return Ok(None);
+        }
+        record_from_plain(out).map(Some).map_err(hl_store_err)
+    }
+    async fn put(&self, record: &hl::SwapRecord) -> Result<(), hl::SwapError> {
+        let value = plain_record(record).map_err(hl_store_err)?;
+        call_js(&self.0 .0, "put", &[value])
+            .await
+            .map_err(hl_store_err)?;
+        Ok(())
+    }
+    async fn list(&self) -> Result<Vec<hl::SwapRecord>, hl::SwapError> {
+        let out = call_js(&self.0 .0, "list", &[])
+            .await
+            .map_err(hl_store_err)?;
+        let array = out
+            .dyn_into::<js_sys::Array>()
+            .map_err(|_| hl_store_err("list() must return an array"))?;
+        array
+            .iter()
+            .map(|v| record_from_plain(v).map_err(hl_store_err))
+            .collect()
+    }
+    async fn next_index(&self) -> Result<u64, hl::SwapError> {
+        let out = call_js(&self.0 .0, "nextIndex", &[])
+            .await
+            .map_err(hl_store_err)?;
+        if let Some(n) = out.as_f64() {
+            // 2^53 - 1: above it a number no longer names one integer, so an
+            // index that large must come as a bigint.
+            if n >= 0.0 && n.fract() == 0.0 && n <= 9_007_199_254_740_991.0 {
+                return Ok(n as u64);
+            }
+        }
+        if let Ok(big) = out.clone().dyn_into::<js_sys::BigInt>() {
+            if let Ok(n) = u64::try_from(big) {
+                return Ok(n);
+            }
+        }
+        Err(hl_store_err(
+            "nextIndex() must return a nonnegative integer",
+        ))
+    }
+}
+
+struct JsSigner(JsHandle);
+
+fn string_field(value: &JsValue, field: &str) -> Result<String, String> {
+    js_sys::Reflect::get(value, &JsValue::from_str(field))
+        .ok()
+        .and_then(|v| v.as_string())
+        .ok_or_else(|| format!("missing string field {field}"))
+}
+
+fn js_session(session: &hl::MusigSession) -> Result<JsValue, String> {
+    let value = serde_json::json!({
+        "pubkeys": session.pubkeys.iter().map(|k| k.to_string()).collect::<Vec<_>>(),
+        "tweak": session.tweak.to_lower_hex_string(),
+        "sighash": session.sighash.to_lower_hex_string(),
+    });
+    let ser = serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    serde::Serialize::serialize(&value, &ser).map_err(|e| e.to_string())
+}
+
+async fn js_string(signer: &JsSigner, method: &str, args: &[JsValue]) -> Result<String, String> {
+    call_js(&signer.0 .0, method, args)
+        .await?
+        .as_string()
+        .ok_or_else(|| format!("{method}() must return a hex string"))
+}
+
+#[async_trait::async_trait(?Send)]
+impl hl::SwapSigner for JsSigner {
+    async fn public_key(
+        &self,
+        index: u64,
+    ) -> Result<kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey, hl::SwapError> {
+        let hex = js_string(self, "publicKey", &[JsValue::from(index)])
+            .await
+            .map_err(hl_signer_err)?;
+        kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey::from_str(&hex).map_err(hl_signer_err)
+    }
+    async fn derive_preimage(&self, index: u64) -> Result<CorePreimage, hl::SwapError> {
+        let out = call_js(&self.0 .0, "derivePreimage", &[JsValue::from(index)])
+            .await
+            .map_err(hl_signer_err)?;
+        let hex = string_field(&out, "preimage").map_err(hl_signer_err)?;
+        let bytes = hex_decode_bytes(&hex).map_err(hl_signer_err)?;
+        CorePreimage::from_vec(bytes).map_err(|e| hl_signer_err(format!("{e:?}")))
+    }
+    async fn sign_schnorr(
+        &self,
+        index: u64,
+        sighash: [u8; 32],
+    ) -> Result<kaleidorg_swap_sdk::bitcoin::secp256k1::schnorr::Signature, hl::SwapError> {
+        let args = [
+            JsValue::from(index),
+            JsValue::from_str(&sighash.to_lower_hex_string()),
+        ];
+        let hex = js_string(self, "signSchnorr", &args)
+            .await
+            .map_err(hl_signer_err)?;
+        kaleidorg_swap_sdk::bitcoin::secp256k1::schnorr::Signature::from_str(&hex)
+            .map_err(hl_signer_err)
+    }
+    async fn musig_nonce(
+        &self,
+        index: u64,
+        session: &hl::MusigSession,
+    ) -> Result<hl::musig::PublicNonce, hl::SwapError> {
+        let args = [
+            JsValue::from(index),
+            js_session(session).map_err(hl_signer_err)?,
+        ];
+        let hex = js_string(self, "musigNonce", &args)
+            .await
+            .map_err(hl_signer_err)?;
+        hl::musig::PublicNonce::from_str(&hex).map_err(|e| hl_signer_err(format!("{e:?}")))
+    }
+    async fn musig_partial_sign(
+        &self,
+        index: u64,
+        session: &hl::MusigSession,
+        our_nonce: &hl::musig::PublicNonce,
+        their_nonce: &hl::musig::PublicNonce,
+    ) -> Result<hl::musig::PartialSignature, hl::SwapError> {
+        let args = [
+            JsValue::from(index),
+            js_session(session).map_err(hl_signer_err)?,
+            JsValue::from_str(&our_nonce.serialize().to_lower_hex_string()),
+            JsValue::from_str(&their_nonce.serialize().to_lower_hex_string()),
+        ];
+        let hex = js_string(self, "musigPartialSign", &args)
+            .await
+            .map_err(hl_signer_err)?;
+        hl::musig::PartialSignature::from_str(&hex).map_err(|e| hl_signer_err(format!("{e:?}")))
+    }
+}
+
+fn hex_decode_bytes(hex: &str) -> Result<Vec<u8>, String> {
+    if !hex.len().is_multiple_of(2) {
+        return Err("odd-length hex".into());
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).map_err(|e| e.to_string()))
+        .collect()
+}
+
+fn hl_err(e: hl::SwapError) -> JsValue {
+    let error = js_sys::Error::new(&e.message);
+    let code = serde_json::to_value(e.code)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| format!("{:?}", e.code));
+    set_code(&error, &code);
+    if let Some(id) = &e.swap_id {
+        let _ = js_sys::Reflect::set(
+            error.as_ref(),
+            &JsValue::from_str("swapId"),
+            &JsValue::from_str(id),
+        );
+    }
+    error.into()
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KaleidoSwapJsOptions {
+    network: String,
+    maker_url: Option<String>,
+    bitcoin_esplora_url: Option<String>,
+    liquid_esplora_url: Option<String>,
+    poll_interval_ms: Option<u64>,
+    fee_sat_per_vb: Option<f64>,
+    fee_policy: Option<hl::FeePolicy>,
+    quote_ttl_ms: Option<u64>,
+    maker_timeout_ms: Option<u64>,
+    reverse_timeout_headroom: Option<hl::ReverseTimeoutHeadroom>,
+}
+
+/// Refuses a key of the nested option `name` that is not one of `known`:
+/// serde-wasm-bindgen reads only a struct's declared fields, so a
+/// misspelled one would otherwise pass as "keep the default".
+fn check_option_keys(options: &JsValue, name: &str, known: &[&str]) -> Result<(), JsValue> {
+    let value =
+        js_sys::Reflect::get(options, &JsValue::from_str(name)).unwrap_or(JsValue::UNDEFINED);
+    if !value.is_object() {
+        return Ok(());
+    }
+    for key in js_sys::Object::keys(value.unchecked_ref::<js_sys::Object>()).iter() {
+        let key = key.as_string().unwrap_or_default();
+        if !known.contains(&key.as_str()) {
+            return Err(arg_err(format!(
+                "{name}.{key} is not an option; expected one of {}",
+                known.join(", ")
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// `new KaleidoSwap({ network, store, signer, makerUrl?, bitcoinEsploraUrl?,
+/// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, feePolicy?: { targetBlocks?,
+/// bitcoinMinSatPerVb?, bitcoinMaxSatPerVb?, liquidMinSatPerVb?,
+/// liquidMaxSatPerVb?, maxFeePercent? }, quoteTtlMs?, makerTimeoutMs?,
+/// reverseTimeoutHeadroom?: { bitcoinBlocks?, liquidBlocks? } })`.
+#[wasm_bindgen]
+pub struct KaleidoSwap {
+    inner: Arc<hl::KaleidoSwap>,
+}
+
+#[wasm_bindgen]
+impl KaleidoSwap {
+    #[wasm_bindgen(constructor)]
+    pub fn new(options: JsValue) -> Result<KaleidoSwap, JsValue> {
+        let store = js_sys::Reflect::get(&options, &JsValue::from_str("store"))
+            .map_err(|_| arg_err("options.store is required"))?;
+        let signer = js_sys::Reflect::get(&options, &JsValue::from_str("signer"))
+            .map_err(|_| arg_err("options.signer is required"))?;
+        if !store.is_object() {
+            return Err(arg_err(
+                "options.store must be an object with get/put/list/nextIndex",
+            ));
+        }
+        if !signer.is_object() {
+            return Err(arg_err(
+                "options.signer must be an object with publicKey/derivePreimage/signSchnorr/musigNonce/musigPartialSign",
+            ));
+        }
+        check_option_keys(
+            &options,
+            "reverseTimeoutHeadroom",
+            &["bitcoinBlocks", "liquidBlocks"],
+        )?;
+        check_option_keys(
+            &options,
+            "feePolicy",
+            &[
+                "targetBlocks",
+                "bitcoinMinSatPerVb",
+                "bitcoinMaxSatPerVb",
+                "liquidMinSatPerVb",
+                "liquidMaxSatPerVb",
+                "maxFeePercent",
+            ],
+        )?;
+        let parsed: KaleidoSwapJsOptions = from_js(options)?;
+        let inner = hl::KaleidoSwap::new(hl::KaleidoSwapOptions {
+            network: parse_network(&parsed.network)?,
+            store: Arc::new(JsStore(JsHandle(store))),
+            signer: Arc::new(JsSigner(JsHandle(signer))),
+            maker_url: parsed.maker_url,
+            bitcoin_esplora_url: parsed.bitcoin_esplora_url,
+            liquid_esplora_url: parsed.liquid_esplora_url,
+            poll_interval: parsed
+                .poll_interval_ms
+                .map(std::time::Duration::from_millis),
+            fee_sat_per_vb: parsed.fee_sat_per_vb,
+            fee_policy: parsed.fee_policy,
+            quote_ttl: parsed.quote_ttl_ms.map(std::time::Duration::from_millis),
+            maker_timeout: parsed
+                .maker_timeout_ms
+                .map(std::time::Duration::from_millis),
+            reverse_timeout_headroom: parsed.reverse_timeout_headroom,
+        })
+        .map_err(hl_err)?;
+        Ok(KaleidoSwap {
+            inner: Arc::new(inner),
+        })
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn network(&self) -> String {
+        format!("{:?}", self.inner.network()).to_lowercase()
+    }
+
+    /// `{ kind: "quote", … } | { kind: "refusal", … }`; amounts are bigint.
+    pub async fn quote(&self, request: JsValue) -> Result<JsValue, JsValue> {
+        let request: hl::QuoteRequest = from_js(request)?;
+        to_js(&self.inner.quote(request).await.map_err(hl_err)?)
+    }
+
+    pub async fn start(&self, quote: JsValue, options: JsValue) -> Result<Swap, JsValue> {
+        let quote: hl::Quote = from_js(quote)?;
+        let options: hl::StartOptions = if options.is_undefined() || options.is_null() {
+            hl::StartOptions::default()
+        } else {
+            from_js(options)?
+        };
+        let swap = self.inner.start(&quote, options).await.map_err(hl_err)?;
+        Ok(Swap {
+            inner: Arc::new(swap),
+        })
+    }
+
+    pub async fn swap(&self, id: StringArg) -> Result<Swap, JsValue> {
+        let id = str_arg(id, "id")?;
+        let swap = self.inner.swap(&id).await.map_err(hl_err)?;
+        Ok(Swap {
+            inner: Arc::new(swap),
+        })
+    }
+
+    /// `{ resumed: Swap[], settled, refunded, failed: record[], errors: { id, code, message }[] }`.
+    pub async fn resume(&self) -> Result<JsValue, JsValue> {
+        let report = self.inner.resume().await.map_err(hl_err)?;
+        let out = js_sys::Object::new();
+        let resumed = js_sys::Array::new();
+        for swap in report.resumed {
+            resumed.push(&JsValue::from(Swap {
+                inner: Arc::new(swap),
+            }));
+        }
+        let records = |items: Vec<hl::SwapRecord>| -> Result<js_sys::Array, JsValue> {
+            let array = js_sys::Array::new();
+            for r in &items {
+                array.push(&plain_record(r).map_err(internal_err)?);
+            }
+            Ok(array)
+        };
+        js_sys::Reflect::set(&out, &"resumed".into(), &resumed).map_err(internal_err_js)?;
+        js_sys::Reflect::set(
+            &out,
+            &"settled".into(),
+            &JsValue::from(records(report.settled)?),
+        )
+        .map_err(internal_err_js)?;
+        js_sys::Reflect::set(
+            &out,
+            &"refunded".into(),
+            &JsValue::from(records(report.refunded)?),
+        )
+        .map_err(internal_err_js)?;
+        js_sys::Reflect::set(
+            &out,
+            &"failed".into(),
+            &JsValue::from(records(report.failed)?),
+        )
+        .map_err(internal_err_js)?;
+        let errors = js_sys::Array::new();
+        for failure in &report.errors {
+            let item = js_sys::Object::new();
+            let code = serde_json::to_value(failure.error.code)
+                .ok()
+                .and_then(|v| v.as_str().map(str::to_string))
+                .unwrap_or_default();
+            for (key, value) in [
+                ("id", failure.id.as_str()),
+                ("code", code.as_str()),
+                ("message", failure.error.message.as_str()),
+            ] {
+                js_sys::Reflect::set(&item, &key.into(), &JsValue::from_str(value))
+                    .map_err(internal_err_js)?;
+            }
+            errors.push(&item);
+        }
+        js_sys::Reflect::set(&out, &"errors".into(), &errors).map_err(internal_err_js)?;
+        Ok(out.into())
+    }
+}
+
+/// A swap in flight. `phase`, `action` and `record` read the handle's last
+/// view; `tick`, `watch`, `settled` and `refund` move it.
+#[wasm_bindgen]
+pub struct Swap {
+    inner: Arc<hl::Swap>,
+}
+
+#[wasm_bindgen]
+impl Swap {
+    #[wasm_bindgen(getter)]
+    pub fn id(&self) -> String {
+        self.inner.id()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn protocol(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.protocol())
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn phase(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.phase())
+    }
+
+    /// `{ invoice?, fundingAddress?, fundingAmount?, bip21?, zeroConfLimit? }`.
+    #[wasm_bindgen(getter)]
+    pub fn action(&self) -> Result<JsValue, JsValue> {
+        to_js(&self.inner.action())
+    }
+
+    /// The record as the handle last saw it — the same shape the store holds.
+    pub fn record(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.record()).map_err(internal_err)
+    }
+
+    pub async fn tick(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.tick().await.map_err(hl_err)?).map_err(internal_err)
+    }
+
+    pub async fn refund(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.refund().await.map_err(hl_err)?).map_err(internal_err)
+    }
+
+    /// Resolves with the record on `settled`; rejects with a coded error on
+    /// any other terminal phase. `onPhase(phase)` fires on every change.
+    pub async fn watch(&self, on_phase: Option<js_sys::Function>) -> Result<JsValue, JsValue> {
+        let listener = on_phase.map(|f| JsHandle(f.into()));
+        let record = self
+            .inner
+            .watch(|phase| {
+                if let Some(JsHandle(f)) = &listener {
+                    if let Ok(f) = f.clone().dyn_into::<js_sys::Function>() {
+                        let _ = f.call1(&JsValue::NULL, &JsValue::from_str(phase.as_str()));
+                    }
+                }
+            })
+            .await
+            .map_err(hl_err)?;
+        plain_record(&record).map_err(internal_err)
+    }
+
+    pub async fn settled(&self) -> Result<JsValue, JsValue> {
+        plain_record(&self.inner.settled().await.map_err(hl_err)?).map_err(internal_err)
+    }
+}

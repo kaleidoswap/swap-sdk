@@ -1,0 +1,101 @@
+{
+  "name": "@kaleidorg/swap-sdk",
+  "version": "0.15.0",
+  "description": "KaleidoSwap swap SDK \u2014 Boltz-protocol atomic swaps (submarine/reverse/chain) for the browser over WebAssembly",
+  "type": "module",
+  "main": "dist/index.node.js",
+  "types": "dist/index.node.d.ts",
+  "browser": "./dist/index.js",
+  "exports": {
+    ".": {
+      "browser": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "node": {
+        "types": "./dist/index.node.d.ts",
+        "default": "./dist/index.node.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./arkade": {
+      "types": "./dist/arkade/index.d.ts",
+      "import": "./dist/arkade/index.js",
+      "default": "./dist/arkade/index.js"
+    },
+    "./pay-through": {
+      "types": "./dist/pay-through.d.ts",
+      "import": "./dist/pay-through.js",
+      "default": "./dist/pay-through.js"
+    },
+    "./chain-data": {
+      "types": "./dist/chain-data.d.ts",
+      "import": "./dist/chain-data.js",
+      "default": "./dist/chain-data.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "vendor",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kaleidoswap/swap-sdk.git",
+    "directory": "typescript-sdk"
+  },
+  "homepage": "https://github.com/kaleidoswap/swap-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/kaleidoswap/swap-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "vendor:wasm": "rm -rf vendor && mkdir -p vendor && cp ../bindings-wasm/pkg/bindings_wasm.js ../bindings-wasm/pkg/bindings_wasm.d.ts ../bindings-wasm/pkg/bindings_wasm_bg.wasm ../bindings-wasm/pkg/bindings_wasm_bg.wasm.d.ts vendor/",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:live": "node --test --test-concurrency=1 --test-timeout=900000 test/live/*.live.test.mjs",
+    "prepack": "npm run vendor:wasm && npm run build",
+    "build": "tsc",
+    "smoke:package": "node scripts/smoke-package.mjs",
+    "smoke:browser-package": "node scripts/smoke-browser-package.mjs"
+  },
+  "peerDependencies": {
+    "@arkade-os/sdk": ">=0.5.0 <0.6.0",
+    "@arkade-os/swap": ">=0.1.0 <0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@arkade-os/sdk": {
+      "optional": true
+    },
+    "@arkade-os/swap": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arkade-os/sdk": "0.5.5",
+    "@arkade-os/swap": "0.1.5",
+    "@eslint/js": "10.0.1",
+    "@types/node": "^22.20.1",
+    "eslint": "10.8.0",
+    "globals": "17.8.0",
+    "prettier": "3.9.6",
+    "typescript": "^5",
+    "typescript-eslint": "8.65.0"
+  }
+}

@@ -56,6 +56,7 @@ path = "examples/advanced/multiout_battletest.rs"
 [workspace]
 members = [
     "bindings",
+    "bindings-wasm",
     "macros",
 ]
 
