@@ -7,6 +7,14 @@
 // HTTP-only clients need without loading WASM.
 
 /**
+ * The header the maker answers swap creations and price reads with: `none` or
+ * `api_key`. On a create it names the attribution the swap was stored with; on
+ * a price read, whose price it answered with. A browser can read it only where
+ * the maker's edge exposes it. See {@link MakerAttribution}.
+ */
+export const ATTRIBUTION_HEADER = "X-Kaleido-Attribution";
+
+/**
  * What the maker answered in `X-Kaleido-Attribution`, on a price read or a
  * create:
  *
@@ -15,11 +23,10 @@
  *   client with a key, the maker did not recognise it (unknown, revoked, or
  *   for the other environment). That is not an error, so an app with a
  *   rotated key keeps swapping; read this to notice it;
- * - `"org_key"`: a swap stored for an organization key (deprecated).
  *
  * Any other value a newer maker sends is passed through as is.
  */
-export type MakerAttribution = "none" | "api_key" | "org_key" | (string & {});
+export type MakerAttribution = "none" | "api_key" | (string & {});
 
 /**
  * Read `X-Kaleido-Attribution` from a response's headers, or `null` when it is
@@ -29,7 +36,7 @@ export type MakerAttribution = "none" | "api_key" | "org_key" | (string & {});
 export function readAttribution(headers: {
   get(name: string): string | null;
 }): MakerAttribution | null {
-  const value = headers.get("X-Kaleido-Attribution");
+  const value = headers.get(ATTRIBUTION_HEADER);
   return value === null ? null : value.trim();
 }
 

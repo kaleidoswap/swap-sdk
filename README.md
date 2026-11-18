@@ -273,13 +273,6 @@ on both native constructors and in the browser, where the SDK issues every
 maker `fetch` itself with `redirect: "error"`. A value that cannot be a key is
 rejected locally.
 
-### Organization keys (deprecated)
-
-`KaleidoOrgClient`, `SwapClient.kaleido_org`, `createKaleidoOrgClient`,
-`forKaleidoOrg` and the `orgKey` options attribute swaps with an organization's
-64-hex public key in `X-Kaleido-Org-Key`. They predate public `kld_` keys and
-are deprecated: use the `kld_` key, which also carries the partner fee. A
-client carries one or the other, never both.
 
 ## Repository structure
 

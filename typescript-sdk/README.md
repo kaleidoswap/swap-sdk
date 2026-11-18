@@ -859,14 +859,6 @@ origin a `Location` named. The browser reports a refused redirect, a CORS
 failure and a network error as one and the same `TypeError`, so the error names
 all three.
 
-### Organization keys (deprecated)
-
-`createKaleidoOrgClient`, `SwapClient.forKaleidoOrg`, and the `orgKey` options
-of `PayThroughClient` and `kaleidoswapHttpTransport` attribute swaps with an
-organization's 64-hex public key in `X-Kaleido-Org-Key`, on swap creation only.
-They predate public `kld_` keys and are deprecated: use the `kld_` key, which
-also carries the partner fee.
-
 ## `swapAuth` — persist it with the swap
 
 Every create response from the KaleidoSwap maker carries a `swapAuth`: a
