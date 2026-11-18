@@ -5,6 +5,7 @@ pub mod fees;
 pub mod kaleido;
 pub mod liquid;
 pub mod magic_routing;
+mod restore;
 pub mod rgb;
 pub mod signing;
 #[cfg(feature = "ws")]
