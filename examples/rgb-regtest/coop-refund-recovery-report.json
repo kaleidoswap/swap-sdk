@@ -1,0 +1,22 @@
+{
+  "protocol": "rgb-coop-refund-v1",
+  "network": "regtest",
+  "swapId": "01M4B1KXJBJ2PRYE2CEF04E5N9",
+  "amount": 102017086,
+  "beforeRgb": 897982914,
+  "afterRgb": 897982914,
+  "refund": {
+    "txid": "f236cd07f415457361646a3a939fefa5d5999825151691822d04177f62066e2e",
+    "inputCount": 2,
+    "witnessLength": 1,
+    "feeSat": 2000,
+    "payoutSat": 1000,
+    "locktime": 0,
+    "hasRgbCommitment": true,
+    "preimageMatches": null
+  },
+  "proofTamperingRejected": true,
+  "authRejected": true,
+  "responseReplay": true,
+  "clientSessionConsumed": true
+}

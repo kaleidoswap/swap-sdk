@@ -1,0 +1,225 @@
+{
+  "network": "regtest",
+  "assetId": "rgb:f0fNt9Hj-jyLhP4v-J5bS~WY-FTnk5Bo-FAsnnRZ-Ab8FjwM",
+  "rgbDecimals": 6,
+  "flows": {
+    "submarine": {
+      "rgbQuoted": 102017086,
+      "rgbActualTransition": 102017086,
+      "unaccountedRgbUnits": 0,
+      "pricing": {
+        "historicalTick": 5,
+        "pairHashVerified": true,
+        "recomputedDeposit": 102017086,
+        "invoiceSat": 100000,
+        "grossSat": 101507,
+        "serviceFeeSat": 507,
+        "networkAllowanceSat": 1000,
+        "depositRoundingUpCardUnits": 56,
+        "cardUnitsPerContractUnit": 100,
+        "quoteDifferenceUnits": 0
+      },
+      "lightning": {
+        "sender": "maker",
+        "receiver": "taker",
+        "senderAmountMsat": 100000000,
+        "receiverAmountMsat": 100000000,
+        "senderStatus": 1,
+        "receiverRecordStatus": 1,
+        "routingFeePaidMsat": 0,
+        "settledAmountMsat": 100000000
+      },
+      "bitcoinLock": {
+        "txid": "91d1fb5bfed9da7455d79baf32339bf50aae9e5f6f24d82676cb9c78e0b41923",
+        "inputSat": 3605,
+        "outputSat": 3210,
+        "minerFeeSat": 395,
+        "confirmed": true,
+        "unaccountedSat": 0
+      },
+      "bitcoinSpend": {
+        "txid": "2ae6570764bf539cb76b54423b67730c401f878df323ae10d711ac5724446f4a",
+        "inputSat": 980433,
+        "outputSat": 978963,
+        "minerFeeSat": 1470,
+        "confirmed": true,
+        "unaccountedSat": 0
+      }
+    },
+    "submarineRefund": {
+      "rgbQuoted": 102017086,
+      "rgbActualTransition": 102017086,
+      "unaccountedRgbUnits": 0,
+      "pricing": {
+        "historicalTick": 67,
+        "pairHashVerified": true,
+        "recomputedDeposit": 102017086,
+        "invoiceSat": 100000,
+        "grossSat": 101507,
+        "serviceFeeSat": 507,
+        "networkAllowanceSat": 1000,
+        "depositRoundingUpCardUnits": 50,
+        "cardUnitsPerContractUnit": 100,
+        "quoteDifferenceUnits": 0
+      },
+      "lightning": {
+        "sender": "maker",
+        "receiver": "taker",
+        "senderAmountMsat": 100000000,
+        "receiverAmountMsat": 100000000,
+        "senderStatus": 2,
+        "receiverRecordStatus": 0,
+        "routingFeePaidMsat": null,
+        "settledAmountMsat": 0
+      },
+      "bitcoinLock": {
+        "txid": "25422efcc5844ab7d46c55600485828e6f86a75e30adf11bcf2e5aed77b512e8",
+        "inputSat": 2210,
+        "outputSat": 1815,
+        "minerFeeSat": 395,
+        "confirmed": true,
+        "unaccountedSat": 0
+      },
+      "bitcoinSpend": {
+        "txid": "b0e9e88ef9331ef49c824b4e3734943916dd7f2a7a64f23f4aa53d001af1a760",
+        "inputSat": 980433,
+        "outputSat": 978433,
+        "minerFeeSat": 2000,
+        "confirmed": true,
+        "unaccountedSat": 0
+      }
+    },
+    "reverse": {
+      "rgbQuoted": 95936905,
+      "rgbActualTransition": 95936905,
+      "unaccountedRgbUnits": 0,
+      "pricing": {
+        "historicalTick": 137,
+        "pairHashVerified": true,
+        "invoiceSat": 100000,
+        "grossContractUnitsFloor": 99500000,
+        "serviceFeeContractUnitsCeil": 497500,
+        "networkAllowanceContractUnitsCeil": 3065596,
+        "recomputedPayout": 95936905,
+        "payoutRoundingDownCardUnits": 12,
+        "cardUnitsPerContractUnit": 100,
+        "quoteDifferenceUnits": 0,
+        "roundedBreakdownDifferenceUnits": 1
+      },
+      "lightning": {
+        "sender": "taker",
+        "receiver": "maker",
+        "senderAmountMsat": 100000000,
+        "receiverAmountMsat": 100000000,
+        "senderStatus": 1,
+        "receiverRecordStatus": 1,
+        "routingFeePaidMsat": 0,
+        "settledAmountMsat": 100000000
+      },
+      "bitcoinLock": {
+        "txid": "f46fa8220ae30fe4209c840ff06fd23ed73b750302e8d2407c4c49fc2071271a",
+        "inputSat": 6000,
+        "outputSat": 4724,
+        "minerFeeSat": 1276,
+        "confirmed": true,
+        "unaccountedSat": 0
+      },
+      "bitcoinSpend": {
+        "txid": "ddd9e7fffb87c515e13c998b5b8849ec2d855dabc5520911fa701dd43f61602a",
+        "inputSat": 1521,
+        "outputSat": 546,
+        "minerFeeSat": 975,
+        "confirmed": true,
+        "unaccountedSat": 0
+      }
+    },
+    "reverseRefund": {
+      "rgbQuoted": 95936905,
+      "rgbActualTransition": 95936905,
+      "unaccountedRgbUnits": 0,
+      "pricing": {
+        "historicalTick": 137,
+        "pairHashVerified": true,
+        "invoiceSat": 100000,
+        "grossContractUnitsFloor": 99500000,
+        "serviceFeeContractUnitsCeil": 497500,
+        "networkAllowanceContractUnitsCeil": 3065596,
+        "recomputedPayout": 95936905,
+        "payoutRoundingDownCardUnits": 12,
+        "cardUnitsPerContractUnit": 100,
+        "quoteDifferenceUnits": 0,
+        "roundedBreakdownDifferenceUnits": 1
+      },
+      "lightning": {
+        "sender": "taker",
+        "receiver": "maker",
+        "senderAmountMsat": 100000000,
+        "receiverAmountMsat": 100000000,
+        "senderStatus": 2,
+        "receiverRecordStatus": 0,
+        "routingFeePaidMsat": null,
+        "settledAmountMsat": 0
+      },
+      "bitcoinLock": {
+        "txid": "a1bd4efb2397406d46d61924639c5ac74c448dc531bc3da7e5aafd03cc8f03e5",
+        "inputSat": 4203,
+        "outputSat": 2927,
+        "minerFeeSat": 1276,
+        "confirmed": true,
+        "unaccountedSat": 0
+      },
+      "bitcoinSpend": {
+        "txid": "f3b343d60bf032c41f5f5d93fc6a3ea943f7ae5622b79d8fc2b7165e45314dae",
+        "inputSat": 979484,
+        "outputSat": 978079,
+        "minerFeeSat": 1405,
+        "confirmed": true,
+        "unaccountedSat": 0
+      }
+    }
+  },
+  "lightningChannelBalances": {
+    "maker": {
+      "totalClaimableSat": 2000000,
+      "closeBalances": [
+        {
+          "claimableSat": 2000000,
+          "commitmentFeeSat": 0,
+          "htlcRoundingLossMsat": 0
+        }
+      ],
+      "outboundCapacityMsat": 1960000000,
+      "inboundCapacityMsat": 1959340000
+    },
+    "taker": {
+      "totalClaimableSat": 1999056,
+      "closeBalances": [
+        {
+          "claimableSat": 1999056,
+          "commitmentFeeSat": 284,
+          "htlcRoundingLossMsat": 0
+        }
+      ],
+      "outboundCapacityMsat": 1959340000,
+      "inboundCapacityMsat": 1960000000
+    },
+    "channelFundingSat": 4000000,
+    "claimablePlusCommitmentFeesSat": 3999340,
+    "anchorOutputsSat": 660,
+    "unaccountedSat": 0,
+    "unresolvedHtlcs": 0
+  },
+  "walletBalances": {
+    "maker": 1006080181,
+    "taker": 897982914,
+    "reverse": 95936905,
+    "total": 2000000000
+  },
+  "unaccountedRgbUnits": 0,
+  "notes": [
+    "Each quoted RGB amount exactly matches the actual committed transition and final spendable wallet allocation.",
+    "Bitcoin miner fees and the quoted spread/service/network allowances are costs, not missing RGB.",
+    "Reverse fee components round up separately while payout rounds down: their displayed sum exceeds floor(gross) by one contract unit in this run.",
+    "Failed Lightning inbound records remain pending in node bookkeeping; payer records are failed, no unresolved HTLCs remain, and the entire channel value reconciles including commitment fees and two anchor outputs. Null routing fee on failed payments is unavailable, not asserted zero."
+  ]
+}

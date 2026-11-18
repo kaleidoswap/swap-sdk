@@ -1,0 +1,44 @@
+{
+  "makerRevision": "49c6ce2e9554eea0d819fd3bbd267af6db45b1c0",
+  "rgbLibRevision": "96f039d975cf2a83712c3c0a90e703621d445425",
+  "network": "regtest",
+  "priceFeed": "deterministic BTC/USDT 100000 + 0.000001 per tick",
+  "assetId": "rgb:q9bwK22h-gKCD3S6-PfNkOH3-ZGvK7jt-JH1IcqP-bdEw0OA",
+  "issued": 2000000000,
+  "submarine": {
+    "id": "01M48QH56750B68XRBQEBN71D1",
+    "lockTxid": "61ba3e807dc1cc3d60d239e6e7d3645c22419e5f61511875aec3f1864a9111c7",
+    "amount": 102017086,
+    "status": "transaction.claimed",
+    "lightningPaymentSucceeded": true
+  },
+  "refund": {
+    "id": "01M48QK90BXDHH3W5519HPNEEA",
+    "lockTxid": "9cc4c84c74492018f5b4631c28fa2d3743aabc5e3a213790b530a61a2a426491",
+    "refundTxid": "4b3e39bd43d9c8a282eecbfee6dd8f07e2b77e51e8c2c7f169253fee951307ea",
+    "amount": 102017086,
+    "earlyRejectReason": "non-final",
+    "feeInputs": 1,
+    "rgbBalanceRestored": true
+  },
+  "reverse": {
+    "id": "01M48QP5Q9G80FGRR9K0FXX8DM",
+    "lockTxid": "2c2841e9d2a41580f87162f8230429773c06ab598af1ec79d8c2cf8bc585d01f",
+    "claimTxid": "2f428a4ae8b43187992137f8a8faf916c6dbed1587e8080b4008c567aa41e876",
+    "amount": 95936905,
+    "htlcSat": 1521,
+    "feeSat": 975,
+    "payoutSat": 546,
+    "walletBtcBefore": 0,
+    "inputCount": 1,
+    "status": "invoice.settled",
+    "lightningPaymentSucceeded": true
+  },
+  "settledBalances": {
+    "maker": 1006080181,
+    "taker": 897982914,
+    "reverse": 95936905,
+    "total": 2000000000
+  },
+  "completedAtUnix": 1791294672
+}
