@@ -1,3 +1,4 @@
+pub mod atomic;
 pub mod bitcoin;
 pub mod boltz;
 pub mod corridor;
