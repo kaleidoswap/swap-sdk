@@ -1,15 +1,15 @@
 use bitcoin::hashes::sha256;
 use bitcoin::key::PublicKey;
-use boltz_client::boltz::{
+use kaleidorg_swap_sdk::boltz::{
     self, BoltzWsConfig, ChainSwapDetails, CreateChainResponse, CreateReverseResponse, Side,
 };
-use boltz_client::boltz::{
+use kaleidorg_swap_sdk::boltz::{
     ChannelInfo, FailureReasonIncorrectAmounts, SubSwapStates, SwapStatus, TransactionInfo,
 };
-use boltz_client::error::Error as CoreError;
-use boltz_client::network::{Chain, Network};
-use boltz_client::swaps::boltz::*;
-use boltz_client::util::secrets::Preimage;
+use kaleidorg_swap_sdk::error::Error as CoreError;
+use kaleidorg_swap_sdk::network::{Chain, Network};
+use kaleidorg_swap_sdk::swaps::boltz::*;
+use kaleidorg_swap_sdk::util::secrets::Preimage;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -214,9 +214,9 @@ pub struct SwapStatus {
     pub id: String,
     pub status: String,
     pub zero_conf_rejected: Option<bool>,
-    pub transaction: Option<boltz_client::boltz::TransactionInfo>,
+    pub transaction: Option<kaleidorg_swap_sdk::boltz::TransactionInfo>,
     pub failure_reason: Option<String>,
-    pub failure_details: Option<boltz_client::boltz::FailureReasonIncorrectAmounts>,
+    pub failure_details: Option<kaleidorg_swap_sdk::boltz::FailureReasonIncorrectAmounts>,
     pub channel_info: Option<ChannelInfo>,
 }
 

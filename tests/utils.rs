@@ -1,8 +1,8 @@
 use bitcoin::base64;
 use bitcoin::base64::Engine;
 #[cfg(feature = "ws")]
-use boltz_client::boltz::BoltzWsApi;
-use boltz_client::network::{BitcoinChain, Chain, LiquidChain};
+use kaleidorg_swap_sdk::boltz::BoltzWsApi;
+use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, LiquidChain};
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use futures::FutureExt;
 use reqwest::Client;

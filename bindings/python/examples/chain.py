@@ -1,16 +1,16 @@
-import boltz_client
+import kaleidorg_swap_sdk
 import asyncio
 from datetime import datetime
 
-electrum_btc = boltz_client.ClientConnection.ELECTRUM(
-    boltz_client.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
+    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = boltz_client.ClientConnection.ELECTRUM(
-    boltz_client.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
+    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-network = boltz_client.Network.REGTEST
-chain_client = boltz_client.ChainClient(
-    boltz_client.ClientConfig(
+network = kaleidorg_swap_sdk.Network.REGTEST
+chain_client = kaleidorg_swap_sdk.ChainClient(
+    kaleidorg_swap_sdk.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -18,10 +18,10 @@ chain_client = boltz_client.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    boltz_api = boltz_client.BoltzApiClientV2.default(network)
+    boltz_api = kaleidorg_swap_sdk.BoltzApiClientV2.default(network)
 
-    btc_chain = boltz_client.btc_chain_from_network(network)
-    lbtc_chain = boltz_client.lbtc_chain_from_network(network)
+    btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
+    lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)
 
     from_chain = btc_chain
     to_chain = lbtc_chain
@@ -30,8 +30,8 @@ async def main():
     ws_client = boltz_api.ws()
 
     # Generate a new key pair for the swap
-    claim_keys = boltz_client.KeyPair()
-    refund_keys = boltz_client.KeyPair()
+    claim_keys = kaleidorg_swap_sdk.KeyPair()
+    refund_keys = kaleidorg_swap_sdk.KeyPair()
 
     # Get the amount to swap from user
     amount = int(input("Enter amount in sats to swap: "))
@@ -40,10 +40,10 @@ async def main():
     )
 
     # Generate a preimage for the swap
-    preimage = boltz_client.Preimage()
+    preimage = kaleidorg_swap_sdk.Preimage()
 
     # Create a chain swap request
-    request = boltz_client.CreateChainRequest(
+    request = kaleidorg_swap_sdk.CreateChainRequest(
         _from=from_chain,
         to=to_chain,
         preimage_hash=preimage.sha256(),
@@ -69,16 +69,16 @@ async def main():
 
     asyncio.create_task(ws_client.run_ws_loop())
 
-    lockup_script = boltz_client.SwapScript.from_chain(
+    lockup_script = kaleidorg_swap_sdk.SwapScript.from_chain(
         chain=from_chain,
-        side=boltz_client.Side.LOCKUP,
+        side=kaleidorg_swap_sdk.Side.LOCKUP,
         chain_swap_details=response.lockup_details,
         our_pubkey=refund_keys.public(),
     )
 
-    claim_script = boltz_client.SwapScript.from_chain(
+    claim_script = kaleidorg_swap_sdk.SwapScript.from_chain(
         chain=to_chain,
-        side=boltz_client.Side.CLAIM,
+        side=kaleidorg_swap_sdk.Side.CLAIM,
         chain_swap_details=response.claim_details,
         our_pubkey=claim_keys.public(),
     )
@@ -114,15 +114,15 @@ async def main():
             # Construct and broadcast claim transaction
             print("\n=== Constructing Claim Transaction ===")
 
-            claim_params = boltz_client.SwapTransactionParams(
+            claim_params = kaleidorg_swap_sdk.SwapTransactionParams(
                 output_address=claim_address,
-                fee=boltz_client.Fee.ABSOLUTE(200),
+                fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                 swap_id=swap_id,
                 keys=claim_keys,
                 chain_client=chain_client,
-                boltz_client=boltz_api,
-                options=boltz_client.TransactionOptions(
-                    chain_claim=boltz_client.ChainClaim(
+                kaleidorg_swap_sdk=boltz_api,
+                options=kaleidorg_swap_sdk.TransactionOptions(
+                    chain_claim=kaleidorg_swap_sdk.ChainClaim(
                         keys=refund_keys, lockup_script=lockup_script
                     )
                 ),
@@ -148,13 +148,13 @@ async def main():
 
             refund_address = input("Enter refund address: ")
 
-            refund_params = boltz_client.SwapTransactionParams(
+            refund_params = kaleidorg_swap_sdk.SwapTransactionParams(
                 output_address=refund_address,
-                fee=boltz_client.Fee.ABSOLUTE(200),
+                fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
                 swap_id=swap_id,
                 keys=refund_keys,
                 chain_client=chain_client,
-                boltz_client=boltz_api,
+                kaleidorg_swap_sdk=boltz_api,
             )
 
             refund_tx = await lockup_script.construct_refund(refund_params)

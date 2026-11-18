@@ -1,10 +1,10 @@
 use bitcoin::secp256k1::SecretKey;
 use bitcoin::{key::rand::thread_rng, secp256k1::Keypair, PublicKey};
-use boltz_client::boltz::BoltzWsConfig;
-use boltz_client::fees::Fee;
-use boltz_client::network::Network;
-use boltz_client::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
-use boltz_client::{
+use kaleidorg_swap_sdk::boltz::BoltzWsConfig;
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::Network;
+use kaleidorg_swap_sdk::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
+use kaleidorg_swap_sdk::{
     network::Chain,
     swaps::{
         boltz::CreateReverseRequest,
@@ -122,7 +122,7 @@ async fn swap(chain: Chain, chain_client: &ChainClient, multi_output: bool) {
         fee: Fee::Absolute(absolute_fee),
         output_address: claim_address.clone(),
         chain_client,
-        boltz_client: &boltz_api_v2,
+        kaleidorg_swap_sdk: &boltz_api_v2,
         options: Some(options),
     };
 
@@ -255,9 +255,9 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
 /// Electrum client.
 #[cfg(feature = "electrum")]
 mod hidden_lockup {
-    use boltz_client::error::Error;
-    use boltz_client::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
-    use boltz_client::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
+    use kaleidorg_swap_sdk::error::Error;
+    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+    use kaleidorg_swap_sdk::network::{BitcoinChain, BitcoinClient, LiquidChain, LiquidClient};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
@@ -341,7 +341,7 @@ mod hidden_lockup {
 /// lockup; once the client sees it, the same claim goes through.
 #[cfg(feature = "electrum")]
 async fn claim_waits_for_own_lockup(chain: Chain) {
-    use boltz_client::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
     use hidden_lockup::{HiddenBitcoin, HiddenLiquid};
     use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -412,7 +412,7 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
         fee: Fee::Absolute(200),
         output_address: claim_address,
         chain_client: &chain_client,
-        boltz_client: &boltz_api_v2,
+        kaleidorg_swap_sdk: &boltz_api_v2,
         options: None,
     };
 
@@ -434,7 +434,7 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
             Err(e) if attempts < 10 => {
                 log::debug!("Lockup not indexed yet: {e:?}");
                 attempts += 1;
-                boltz_client::util::sleep(super::WAIT_TIME).await;
+                kaleidorg_swap_sdk::util::sleep(super::WAIT_TIME).await;
             }
             Err(e) => panic!("claim failed once the lockup was visible: {e:?}"),
         }

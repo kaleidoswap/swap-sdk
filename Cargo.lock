@@ -260,8 +260,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bitcoin",
- "boltz-client",
  "elements",
+ "kaleidorg-swap-sdk",
  "serde_json",
  "serial_test",
  "thiserror 1.0.69",
@@ -456,66 +456,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8894febbff9f758034a5b8e12d87918f56dfc64a8e1fe757d65e29041538d93"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "boltz-client"
-version = "0.5.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "bip39",
- "bip85_extended",
- "bitcoin",
- "bitcoind",
- "boltz-client-macros 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "electrum-client",
- "elements",
- "elementsd",
- "env_logger",
- "futures",
- "futures-util",
- "getrandom 0.2.17",
- "gloo-timers",
- "hex",
- "js-sys",
- "lightning",
- "lightning-invoice",
- "lnurl-rs",
- "log",
- "reqwest",
- "rustls 0.23.46",
- "secp256k1 0.33.1",
- "serde",
- "serde_json",
- "serial_test",
- "tokio",
- "tokio-tungstenite-wasm",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-bindgen-test",
- "web-sys",
-]
-
-[[package]]
-name = "boltz-client-macros"
-version = "1.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "boltz-client-macros"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4bae3bbd82eb8c315b3b120d7cb1a8adef85003216315c42e23abead43ae3835"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -1540,6 +1480,55 @@ dependencies = [
  "minreq",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "kaleidorg-swap-sdk"
+version = "0.5.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bip39",
+ "bip85_extended",
+ "bitcoin",
+ "bitcoind",
+ "electrum-client",
+ "elements",
+ "elementsd",
+ "env_logger",
+ "futures",
+ "futures-util",
+ "getrandom 0.2.17",
+ "gloo-timers",
+ "hex",
+ "js-sys",
+ "kaleidorg-swap-sdk-macros",
+ "lightning",
+ "lightning-invoice",
+ "lnurl-rs",
+ "log",
+ "reqwest",
+ "rustls 0.23.46",
+ "secp256k1 0.33.1",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tokio",
+ "tokio-tungstenite-wasm",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
+]
+
+[[package]]
+name = "kaleidorg-swap-sdk-macros"
+version = "1.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

@@ -18,15 +18,15 @@ use std::time::Duration;
 use bitcoin::key::rand::thread_rng;
 use bitcoin::secp256k1::{Keypair, Secp256k1};
 use bitcoin::PublicKey;
-use boltz_client::boltz::{
+use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateChainResponse, CreateReverseRequest,
     CreateReverseResponse, Side, BOLTZ_MAINNET_URL_V2,
 };
-use boltz_client::fees::Fee;
-use boltz_client::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use boltz_client::network::{BitcoinChain, Chain, LiquidChain};
-use boltz_client::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
-use boltz_client::util::secrets::Preimage;
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, LiquidChain};
+use kaleidorg_swap_sdk::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
+use kaleidorg_swap_sdk::util::secrets::Preimage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -98,7 +98,7 @@ fn validate_address(chain: Chain, address: &str) {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    boltz_client::util::setup_logger();
+    kaleidorg_swap_sdk::util::setup_logger();
     let args: Vec<String> = std::env::args().collect();
 
     match args.get(1).map(String::as_str) {
@@ -302,7 +302,7 @@ async fn main() {
                     fee: Fee::Absolute(state.claim_fee_sat),
                     output_address: refund_address,
                     chain_client: &client,
-                    boltz_client: &api,
+                    kaleidorg_swap_sdk: &api,
                     options: None,
                 })
                 .await
@@ -411,7 +411,7 @@ async fn wait_and_claim_chain(state: ChainState) {
             fee: Fee::Absolute(state.claim_fee_sat),
             output_address: state.primary_address.clone(),
             chain_client: &client,
-            boltz_client: &api,
+            kaleidorg_swap_sdk: &api,
             options: Some(
                 TransactionOptions::default()
                     .with_chain_claim(refund_keys, lockup_script.clone())
@@ -523,7 +523,7 @@ async fn wait_and_claim(state: State) {
             fee: Fee::Absolute(state.claim_fee_sat),
             output_address: state.primary_address.clone(),
             chain_client: &client,
-            boltz_client: &api,
+            kaleidorg_swap_sdk: &api,
             options: Some(
                 TransactionOptions::default()
                     .with_cooperative(cooperative)

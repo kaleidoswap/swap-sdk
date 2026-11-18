@@ -1,18 +1,18 @@
 use crate::boltz::Error;
 
 #[derive(uniffi::Object)]
-pub struct Preimage(pub(crate) boltz_client::util::secrets::Preimage);
+pub struct Preimage(pub(crate) kaleidorg_swap_sdk::util::secrets::Preimage);
 
 #[uniffi::export]
 impl Preimage {
     #[uniffi::constructor]
     pub fn new() -> Self {
-        Self(boltz_client::util::secrets::Preimage::random())
+        Self(kaleidorg_swap_sdk::util::secrets::Preimage::random())
     }
 
     #[uniffi::constructor]
     pub fn from_bytes(vec: Vec<u8>) -> Result<Self, Error> {
-        Ok(Self(boltz_client::util::secrets::Preimage::from_vec(vec)?))
+        Ok(Self(kaleidorg_swap_sdk::util::secrets::Preimage::from_vec(vec)?))
     }
 
     #[uniffi::method]

@@ -5,11 +5,11 @@ use crate::util::Preimage;
 use bitcoin::hex::DisplayHex;
 use bitcoin::key::{rand, Keypair, PublicKey};
 use bitcoin::secp256k1::SecretKey;
-use boltz_client::boltz::ChainSwapDetails;
-use boltz_client::boltz::{CreateReverseResponse, CreateSubmarineResponse, Side};
-use boltz_client::fees::Fee;
-use boltz_client::network::Chain;
-use boltz_client::swaps::{self as swaps_bitcoin};
+use kaleidorg_swap_sdk::boltz::ChainSwapDetails;
+use kaleidorg_swap_sdk::boltz::{CreateReverseResponse, CreateSubmarineResponse, Side};
+use kaleidorg_swap_sdk::fees::Fee;
+use kaleidorg_swap_sdk::network::Chain;
+use kaleidorg_swap_sdk::swaps::{self as swaps_bitcoin};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ pub struct SwapTransactionParams {
     pub swap_id: String,
     pub keys: Arc<KeyPair>,
     pub chain_client: Arc<ChainClient>,
-    pub boltz_client: Arc<BoltzApiClientV2>,
+    pub kaleidorg_swap_sdk: Arc<BoltzApiClientV2>,
     #[uniffi(default = None)]
     pub options: Option<TransactionOptions>,
 }
@@ -47,7 +47,7 @@ impl<'a> From<&'a SwapTransactionParams> for swaps_bitcoin::SwapTransactionParam
                 options
             }),
             chain_client: &params.chain_client.0,
-            boltz_client: &params.boltz_client.inner,
+            kaleidorg_swap_sdk: &params.kaleidorg_swap_sdk.inner,
         }
     }
 }
