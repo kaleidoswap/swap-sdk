@@ -113,7 +113,7 @@ use zeroize::Zeroizing;
 use crate::error::Error;
 use crate::swaps::boltz::BoltzApiClientV2;
 
-/// The header the organization API key travels in, as a `Bearer` credential.
+/// The header the partner key travels in, as a `Bearer` credential.
 ///
 /// The standard `Authorization` header on purpose, and not a custom one: HTTP
 /// clients strip `Authorization` when a redirect leaves the host it was
@@ -129,7 +129,7 @@ use crate::swaps::boltz::BoltzApiClientV2;
 /// counts as the maker, so a scheme-only hop says *revoke the key*.
 pub const API_KEY_HEADER: &str = "Authorization";
 
-/// The prefix every KaleidoSwap organization API key carries.
+/// The prefix every KaleidoSwap partner key carries.
 pub const API_KEY_PREFIX: &str = "kld";
 
 /// The environment a key is scoped to.
@@ -313,7 +313,7 @@ impl ApiKey {
 
     fn malformed(why: &str) -> Error {
         Error::Protocol(format!(
-            "not a KaleidoSwap organization API key: {why}. Keys look like \
+            "not a KaleidoSwap partner key: {why}. Keys look like \
              `kld_test_<key_id>_<secret>` and are issued in the partner panel"
         ))
     }
@@ -359,7 +359,7 @@ impl ApiKey {
         ));
         let mut value = HeaderValue::from_str(&bearer).map_err(|_| {
             Error::Protocol(format!(
-                "organization API key {} cannot be sent as an {API_KEY_HEADER} value",
+                "partner key {} cannot be sent as an {API_KEY_HEADER} value",
                 self.redacted()
             ))
         })?;
@@ -736,7 +736,7 @@ impl KaleidoMakerClient {
         let url = reqwest::Url::parse(maker_url)?;
         let Some(host) = url.host_str() else {
             return Err(Error::Protocol(format!(
-                "maker URL {maker_url} names no host — the organization API key is \
+                "maker URL {maker_url} names no host — the partner key is \
                  bound to one origin and there is nothing here to bind it to"
             )));
         };
@@ -744,7 +744,7 @@ impl KaleidoMakerClient {
             return Err(Error::Protocol(format!(
                 "maker URL for {host} carries a username or password — those become \
                  an Authorization header of their own, which would displace the \
-                 organization API key and leave the swap unattributed. Put the \
+                 partner key and leave the swap unattributed. Put the \
                  credentials in your own reqwest client instead"
             )));
         }

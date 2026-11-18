@@ -844,3 +844,47 @@ test("a partner fee that is not a safe amount fails the create", async () => {
     /fees\.partner/,
   );
 });
+
+test("the maker's partner-key refusals surface as PayThroughApiError codes", async () => {
+  for (const [status, code] of [
+    [400, "pair_hash_mismatch"],
+    [400, "extra_fees_unsupported"],
+    [401, "partner_auth_invalid"],
+  ]) {
+    const client = clientReturning(
+      { error: code, details: "refused" },
+      { status },
+      { apiKey: PARTNER_KEY },
+    );
+    await assert.rejects(
+      client.create({ destination: "bcrt1test", invoiceAmount: 100000 }),
+      (error) =>
+        error instanceof PayThroughApiError &&
+        error.status === status &&
+        error.code === code &&
+        error.details === "refused",
+      code,
+    );
+    // A refusal sets no attribution: there was no answer to keep.
+    assert.equal(client.lastAttribution, null, code);
+  }
+});
+
+test("pay-through never sends a per-request fee", async () => {
+  let sent;
+  const client = new PayThroughClient({
+    makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
+    apiKey: PARTNER_KEY,
+    fetch: async (_url, init) => {
+      sent = JSON.parse(init.body);
+      return Response.json(created, { status: 201 });
+    },
+  });
+  await client.create({
+    destination: "bcrt1test",
+    invoiceAmount: 100000,
+    extraFees: { id: "x", percentage: 0.5 },
+  });
+  assert.equal("extraFees" in sent, false);
+});

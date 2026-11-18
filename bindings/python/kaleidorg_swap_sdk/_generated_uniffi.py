@@ -805,12 +805,12 @@ def _uniffi_check_api_checksums(lib):
         )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_environment()
-        != 22094
+        != 26157
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id() != 33793:
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id() != 62478:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -17868,7 +17868,7 @@ class SwapClientProtocol(typing.Protocol):
         self,
     ):
         """
-        The environment the configured organization key is scoped to — `"test"`
+        The environment the configured partner key is scoped to — `"test"`
         or `"live"` — or `None` for an unauthenticated client.
 
         Worth asserting at start-up: a `kld_test_…` key against a production
@@ -17882,7 +17882,7 @@ class SwapClientProtocol(typing.Protocol):
         self,
     ):
         """
-        The configured organization key's public identifier — the same one the
+        The configured partner key's public identifier — the same one the
         partner panel shows. Safe to log and to name in a support request; the
         secret half is not reachable from here.
         """
@@ -18348,7 +18348,7 @@ class SwapClient:
         self,
     ) -> "typing.Optional[str]":
         """
-        The environment the configured organization key is scoped to — `"test"`
+        The environment the configured partner key is scoped to — `"test"`
         or `"live"` — or `None` for an unauthenticated client.
 
         Worth asserting at start-up: a `kld_test_…` key against a production
@@ -18367,7 +18367,7 @@ class SwapClient:
         self,
     ) -> "typing.Optional[str]":
         """
-        The configured organization key's public identifier — the same one the
+        The configured partner key's public identifier — the same one the
         partner panel shows. Safe to log and to name in a support request; the
         secret half is not reachable from here.
         """

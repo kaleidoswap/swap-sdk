@@ -689,7 +689,7 @@ impl KaleidoMakerOptions {
     /// serde renders the offending **value** — so
     /// `forKaleidoMaker(process.env.KALEIDOSWAP_API_KEY)`, the exact transposed
     /// call the named-options shape exists to catch, would throw
-    /// `invalid type: string "kld_live_…"` and put the organization key
+    /// `invalid type: string "kld_live_…"` and put the partner key
     /// verbatim into whatever caught it. `ApiKey::parse` is careful never to
     /// echo its input; that care is worth nothing if the value can be echoed
     /// before it ever reaches the parser.
@@ -1048,7 +1048,7 @@ impl BoltzClient {
         self.inner.org_key().map(|key| key.to_string())
     }
 
-    /// The environment the configured organization key is scoped to — `"test"`
+    /// The environment the configured partner key is scoped to — `"test"`
     /// or `"live"` — or `undefined` for an unauthenticated client.
     ///
     /// Worth asserting at start-up: a `kld_test_…` key against a production
@@ -1061,7 +1061,7 @@ impl BoltzClient {
             .map(|key| key.environment().to_string())
     }
 
-    /// The configured organization key's public identifier — the same one the
+    /// The configured partner key's public identifier — the same one the
     /// partner panel shows. Safe to log; the secret half is not reachable from
     /// JS at all.
     #[wasm_bindgen(getter, js_name = apiKeyId)]

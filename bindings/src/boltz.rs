@@ -185,7 +185,7 @@ impl SwapClient {
         self.inner.org_key().map(|key| key.to_string())
     }
 
-    /// The environment the configured organization key is scoped to — `"test"`
+    /// The environment the configured partner key is scoped to — `"test"`
     /// or `"live"` — or `None` for an unauthenticated client.
     ///
     /// Worth asserting at start-up: a `kld_test_…` key against a production
@@ -198,7 +198,7 @@ impl SwapClient {
             .map(|key| key.environment().to_string())
     }
 
-    /// The configured organization key's public identifier — the same one the
+    /// The configured partner key's public identifier — the same one the
     /// partner panel shows. Safe to log and to name in a support request; the
     /// secret half is not reachable from here.
     #[uniffi::method]

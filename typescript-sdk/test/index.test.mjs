@@ -296,7 +296,7 @@ test("the wasm instance stays usable after a rejected call", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// Partner attribution: the organization API key.
+// Partner attribution: the partner `kld_` key.
 // ---------------------------------------------------------------------------
 
 const API_KEY = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz";

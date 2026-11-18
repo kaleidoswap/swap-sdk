@@ -714,7 +714,7 @@ fn redirect_strips_api_key(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
         || sent_to.port_or_known_default() != came_from.port_or_known_default()
 }
 
-/// What a caller should do about the organization API key after a redirect off
+/// What a caller should do about the partner key after a redirect off
 /// the maker. See [`BoltzApiClientV2::reject_credential_leaking_redirect`].
 ///
 /// Neither branch claims more than the SDK can see, which is the origin the
@@ -728,7 +728,7 @@ fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
     if redirect_strips_api_key(sent_to, came_from) {
         return format!(
             "; the response came back from a different host or port, so a direct hop \
-             there dropped {API_KEY_HEADER} and the organization API key did not \
+             there dropped {API_KEY_HEADER} and the partner key did not \
              travel — but nothing this response says came from the maker. If the \
              maker answered with a chain of redirects rather than one, an earlier hop \
              could have changed only the scheme and kept the key: this SDK sees only \
@@ -737,7 +737,7 @@ fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
         );
     }
     "; the redirect changed only the scheme, which native HTTP clients do not treat \
-     as cross-origin — assume the organization API key reached that host, in the \
+     as cross-origin — assume the partner key reached that host, in the \
      clear if the hop was to http, and revoke it"
         .to_string()
 }
@@ -1179,7 +1179,7 @@ impl BoltzApiClientV2 {
         }
     }
 
-    /// Bind a partner organization API key to this client.
+    /// Bind a partner key to this client.
     ///
     /// Crate-private: a key may only be paired with a URL [`KaleidoMakerClient`]
     /// has already vetted, which is what makes "this client sends the key" and
@@ -1203,7 +1203,7 @@ impl BoltzApiClientV2 {
         self
     }
 
-    /// The partner organization API key this client carries, if any. The key's
+    /// The partner key this client carries, if any. The key's
     /// secret is not reachable through it — see [`ApiKey`].
     pub fn api_key(&self) -> Option<&ApiKey> {
         match &self.attribution {
@@ -1274,7 +1274,7 @@ impl BoltzApiClientV2 {
 
     /// Returns the WebSocket URL for the Boltz server.
     ///
-    /// The organization API key is not carried on it. `/v2/ws` publishes swap
+    /// The partner key is not carried on it. `/v2/ws` publishes swap
     /// status for ids the subscriber already holds and creates nothing, so there
     /// is nothing on it to attribute — and the WebSocket client this SDK uses
     /// sends no custom headers on the handshake in the browser regardless.
@@ -1366,7 +1366,7 @@ impl BoltzApiClientV2 {
     }
 
     /// The credential headers a request just went out with: the per-swap
-    /// `swapAuth` when the caller passed one, and the organization API key when
+    /// `swapAuth` when the caller passed one, and the partner key when
     /// this client carries one.
     fn credentials_sent(&self, swap_auth: Option<&str>) -> Vec<&'static str> {
         let mut sent = Vec::new();
@@ -1727,7 +1727,7 @@ impl BoltzApiClientV2 {
         }
     }
 
-    /// Attach the partner organization API key — and only to the exact origin
+    /// Attach the partner key — and only to the exact origin
     /// it was configured for.
     ///
     /// The key names an organization to the KaleidoSwap maker and to nobody
@@ -1751,7 +1751,7 @@ impl BoltzApiClientV2 {
         let target = reqwest::Url::parse(url)?;
         if !same_origin(&configured, &target) {
             return Err(Error::Protocol(format!(
-                "refusing to send organization API key {} to {} — it is bound to {}",
+                "refusing to send partner key {} to {} — it is bound to {}",
                 api_key.redacted(),
                 target.host_str().unwrap_or(url),
                 configured.host_str().unwrap_or(&self.base_url),
@@ -1866,7 +1866,7 @@ impl BoltzApiClientV2 {
     //
     // A sibling of the `/v2` routes above, not a child: `POST /v1/swap` and
     // `GET /v1/rfq/{id}` hang off the maker's origin. Everything a `/v2`
-    // request carries rides along — the organization API key (the maker
+    // request carries rides along — the partner key (the maker
     // attributes `/v1/swap` exactly like `/v2/swap/*`), the timeout, the
     // redirect guard — because the origin is the same one the key is bound to.
 
@@ -6340,6 +6340,56 @@ mod tests {
             client.clone().last_attribution(),
             Some(MakerAttribution::Unattributed)
         );
+    }
+
+    /// The maker's partner-key refusals reach the caller as data it can act
+    /// on: the status and the maker's error code, and in the high-level layer
+    /// `MakerRejected` rather than an unreachable maker. `pair_hash_mismatch`
+    /// is a keyed create carrying an anonymous card's hash,
+    /// `extra_fees_unsupported` a per-request fee the maker does not take,
+    /// `partner_auth_invalid` a malformed `Authorization`.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn partner_key_refusals_surface_as_typed_maker_rejections() {
+        use crate::kaleidoswap::{SwapError, SwapErrorCode};
+
+        for (status, code) in [
+            ("400 Bad Request", "pair_hash_mismatch"),
+            ("400 Bad Request", "extra_fees_unsupported"),
+            ("401 Unauthorized", "partner_auth_invalid"),
+        ] {
+            let body = format!(r#"{{"error":"{code}","details":"refused"}}"#);
+            let (base_url, maker) = capture_one_request_answering(
+                format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
+                     Content-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .into_bytes(),
+            );
+            let client = BoltzApiClientV2::new(base_url, None).with_api_key(
+                "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t"
+                    .parse::<crate::kaleido::ApiKey>()
+                    .unwrap(),
+            );
+            let error = client
+                .post_json::<Value>("swap/reverse", serde_json::json!({}))
+                .await
+                .unwrap_err();
+            maker.join().unwrap();
+            match &error {
+                Error::HTTPStatusNotSuccess(got, value) => {
+                    assert_eq!(got.as_str(), &status[..3], "{code}");
+                    assert_eq!(value["error"], code, "{code}");
+                }
+                other => panic!("{code}: expected HTTPStatusNotSuccess, got {other:?}"),
+            }
+            let swap_error = SwapError::from_core(error, None);
+            assert_eq!(swap_error.code, SwapErrorCode::MakerRejected, "{code}");
+            assert!(swap_error.message.contains(code), "{}", swap_error.message);
+            // A refused create sets no attribution: there was no answer to keep.
+            assert_eq!(client.last_attribution(), None, "{code}");
+        }
     }
 
     /// The partner line is the floor the maker charges, never more than the

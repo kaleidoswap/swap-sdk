@@ -27,7 +27,8 @@ sends it on pricing and creation and exposes the partner fee line.
   `partnerPercentage` (the partner's part of `percentage`, which already
   includes it; `SubmarineFees`, `ReverseFees` and `ChainFees` gain
   `partner()`), `KaleidoSwap` quotes carry `fees.partner` (`from − to =
-  maker + partner + miner`), and pay-through creates carry `fees.partner`
+  maker + partner + miner`; the partner line is floored as the maker charges
+  it, and the maker's line rounds exactly as it does without a key), and pay-through creates carry `fees.partner`
   (`0` when the maker omits it). The partner fee comes only from the key;
   there is no per-request fee option.
 - The `X-Kaleido-Attribution` answer is returned as data, not only logged:

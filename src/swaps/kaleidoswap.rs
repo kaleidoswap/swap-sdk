@@ -1910,6 +1910,22 @@ fn percent_fee(amount: u64, percent: f64) -> u64 {
     scaled.div_ceil(1_000_000) as u64
 }
 
+/// A card's service fee on `amount`, as `(maker, partner)`.
+///
+/// `percent` is the card's `percentage`, which includes the partner fee, and
+/// `partner_percent` its `partnerPercentage`. The maker charges the two
+/// separately, `floor(P × amount) + floor(E × amount)`, so they are computed
+/// separately here too: the maker's part rounded up as for an anonymous quote,
+/// so a quote never understates what the swap costs, and the partner's part
+/// exactly. A partner percentage the card's own percentage cannot hold is no
+/// partner fee.
+fn split_service_fee(amount: u64, percent: f64, partner_percent: Option<f64>) -> (u64, u64) {
+    let partner_percent = partner_percent.filter(|p| p.is_finite() && *p > 0.0 && *p <= percent);
+    let partner = partner_fee_part(u64::MAX, amount, partner_percent);
+    let own = percent_fee(amount, percent - partner_percent.unwrap_or(0.0));
+    (own, partner)
+}
+
 fn miner_fee_total(fees: &PairMinerFees) -> u64 {
     fees.lockup + fees.claim
 }
@@ -3063,9 +3079,9 @@ impl KaleidoSwap {
         } else {
             amount
         };
-        let maker_fee = percent_fee(from_amount, percent);
-        let partner_fee = partner_fee_part(maker_fee, from_amount, card.fees.partner_percentage);
-        let to_amount = from_amount.saturating_sub(maker_fee + miner);
+        let (own_fee, partner_fee) =
+            split_service_fee(from_amount, percent, card.fees.partner_percentage);
+        let to_amount = from_amount.saturating_sub(own_fee + partner_fee + miner);
         let limits = Limits {
             min: card.limits.minimal,
             max: card.limits.maximal,
@@ -3080,7 +3096,7 @@ impl KaleidoSwap {
             from_amount,
             to_amount,
             fees: Fees {
-                maker: maker_fee - partner_fee,
+                maker: own_fee,
                 miner,
                 partner: partner_fee,
             },
@@ -3131,9 +3147,9 @@ impl KaleidoSwap {
             return Ok(QuoteAnswer::Refusal(refusal));
         }
         let miner = card.fees.miner_fees;
-        let maker_fee = percent_fee(to_amount, percent);
-        let partner_fee = partner_fee_part(maker_fee, to_amount, card.fees.partner_percentage);
-        let from_amount = to_amount + maker_fee + miner;
+        let (own_fee, partner_fee) =
+            split_service_fee(to_amount, percent, card.fees.partner_percentage);
+        let from_amount = to_amount + own_fee + partner_fee + miner;
         let limits = Limits {
             min: card.limits.minimal,
             max: card.limits.maximal,
@@ -3148,7 +3164,7 @@ impl KaleidoSwap {
             from_amount,
             to_amount,
             fees: Fees {
-                maker: maker_fee - partner_fee,
+                maker: own_fee,
                 miner,
                 partner: partner_fee,
             },
@@ -4252,6 +4268,27 @@ mod tests {
             q.from_amount - q.to_amount,
             q.fees.maker + q.fees.partner + q.fees.miner
         );
+    }
+
+    /// The two lines are rounded the way the maker charges them: the
+    /// partner's part floored, the maker's own part rounded up exactly as it is
+    /// without a key. Rounding their sum up instead would overstate a keyed
+    /// quote by a satoshi more than an anonymous one.
+    #[test]
+    fn the_service_fee_splits_into_lines_rounded_like_the_maker_charges() {
+        // 0.5 % + 0.1 % of 12 345: ceil(61.725) = 62 and floor(12.345) = 12.
+        assert_eq!(split_service_fee(12_345, 0.6, Some(0.1)), (62, 12));
+        // Without a partner fee the maker's line is the anonymous one.
+        assert_eq!(split_service_fee(12_345, 0.5, None), (62, 0));
+        assert_eq!(
+            split_service_fee(12_345, 0.5, None).0,
+            percent_fee(12_345, 0.5)
+        );
+        // A partner percentage above the card's own is not trusted.
+        assert_eq!(split_service_fee(12_345, 0.5, Some(0.6)), (62, 0));
+        for bogus in [Some(0.0), Some(-0.1), Some(f64::NAN)] {
+            assert_eq!(split_service_fee(50_000, 0.6, bogus), (300, 0), "{bogus:?}");
+        }
     }
 
     #[macros::async_test_all]
