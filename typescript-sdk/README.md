@@ -775,94 +775,82 @@ use a higher spend rate and wallet BTC inputs when needed. A maker fee quote
 does not guarantee confirmation before the timeout. Contract-id chunk dashes
 are cosmetic; pin a valid id from your trusted wallet or asset registry.
 
-## Partner attribution — `createKaleidoOrgClient`
+## Partner attribution and the partner fee — `createKaleidoMakerClient`
 
-A web page, extension or app attributes the swaps it creates with the
-organization's public **organization key**: the 64-hex x-only public key the
-organization registered in the partner panel. It is public, so it is safe in a
-bundle, and this works in a page, a Web Worker, an extension service worker,
-React Native and Node alike.
-
-```ts
-import { init, createKaleidoOrgClient } from "@kaleidorg/swap-sdk";
-
-await init();
-const client = createKaleidoOrgClient({
-  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
-  orgKey: import.meta.env.VITE_KALEIDOSWAP_ORG_KEY,
-});
-
-client.orgKey; // the key, as 64 lowercase hex
-```
-
-The key is a **label, never a credential**: anyone can copy it, so it buys the
-caller no rate limit, discount or access of its own. It goes out in
-`X-Kaleido-Org-Key` on swap creation only, to `makerUrl` only, which must be
-`https` unless it is a loopback address. A value that is not a point on the
-curve is rejected here rather than reaching the maker as
-`400 org_key_malformed`. When the maker answers a creation with
-`X-Kaleido-Attribution` other than `org_key` (organization keys switched off on
-that maker, say), the swap still goes ahead and the SDK logs a warning. A page
-on another origin needs the maker's edge to allow `X-Kaleido-Org-Key` in CORS;
-an extension's host permissions make that moot.
-
-The HTTP-only entry points take the same key:
-
-```ts
-new PayThroughClient({ makerUrl, orgKey }); // on POST /v2/swap/pay
-kaleidoswapHttpTransport(makerUrl, { orgKey }); // on POST /v1/swap
-```
-
-## Partner attribution from a server — `createKaleidoMakerClient`
-
-A server can instead use an **organization API key** from the KaleidoSwap partner panel — a
-`kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
-production. Without one, `SwapClient` behaves exactly as before and creates
+A partner's key from the KaleidoSwap partner panel — `kld_test_…` for signet
+and staging, `kld_live_…` for mainnet and production — attributes the swaps a
+client creates to the partner and carries the partner's fee, set on the key in
+the panel. Without one, `SwapClient` behaves exactly as before: public price,
 unattributed swaps.
+
+The key is a **public partner identifier**: ship it in the bundle as a build
+constant. It works in a page, a Web, shared or service worker, a browser
+extension, React Native and Node alike. It never gives a lower price, higher
+limits or a rate-limit budget of its own, so anyone who reads it out of the
+bundle gains nothing.
 
 ```ts
 import { init, createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
 
+// Public: safe to commit and to bundle.
+const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
+
 await init();
 const client = createKaleidoMakerClient({
-  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
-  apiKey: process.env.KALEIDOSWAP_API_KEY!,
+  makerUrl: "https://maker.kaleidoswap.com/v2",
+  apiKey: KALEIDOSWAP_PARTNER_KEY,
 });
 
-client.apiKeyEnvironment; // "test"
+client.apiKeyEnvironment; // "live"
 client.apiKeyId; // the key id the partner panel shows
 ```
 
 The result is an ordinary `SwapClient` — every route works the same way — that
-sends the key as `Authorization: Bearer …` on requests to `makerUrl`, and only
-to `makerUrl`. The key answers _which partner organization created this swap?_
-and nothing else: it authorizes no claim, no refund, no fund movement and no
-panel access. The per-swap `swapAuth` below stays separate and unchanged.
+sends the key as `Authorization: Bearer …` on every request to `makerUrl`, and
+only to `makerUrl`. That includes the pair cards: a keyed card's
+`fees.percentage` already includes the partner fee (`fees.partnerPercentage` is
+that fee) and its `pairHash` covers it, so compute amounts from `percentage` as
+before and pass the keyed card's hash to the create.
 
-`makerUrl` must be `https` unless it is a loopback address, since a bearer
-credential over plain HTTP is readable by anything on the path. A value that
-cannot be a key is rejected here rather than reaching the maker as a `401` —
-which is the same answer a revoked key gets, so a local typo would otherwise
-read as a suspended organization. There is no accessor for the secret half:
-`apiKeyId` and `apiKeyEnvironment` are all JS can read back.
+The partner fee comes only from the key. There is no per-request fee option,
+and the SDK sends no Boltz `extraFees`.
 
-> **This throws in a browser.** An organization key is permanent until revoked,
-> with no origin binding and no per-key rate limit, so a key in a bundle is
-> visible to every visitor — who can then attribute their own swaps to, or
-> exhaust the limits of, an organization that is not theirs. This release
-> supports **server and native integrations only**, and because one wasm
-> artifact serves both runtimes the check is a runtime one: a page, a Web,
-> shared or service worker, and a browser extension (`chrome.runtime.id`) are
-> all refused unless you pass `allowBrowser: true`. Call this from Node, keep the
-> key in server-side configuration, and use `createKaleidoOrgClient` in browser
-> code.
+The other entry points take the same key:
 
-> **Scrub the key in error reporters that capture locals.** It crosses the wasm
-> boundary as a plain `string`, so it is a function argument on a stack frame
-> for the length of the call. The SDK keeps it out of its own errors, logs and
-> `toString`, but a reporter configured to capture local variables — Sentry's
-> `includeLocalVariables`, and its equivalents — reads it off the frame
-> regardless. Drop `apiKey` in your before-send hook.
+```ts
+const kaleido = await createKaleidoSwap({
+  network,
+  store,
+  signer,
+  apiKey: KALEIDOSWAP_PARTNER_KEY,
+});
+// quote.fees: { maker, miner, partner }
+
+new PayThroughClient({
+  makerUrl,
+  lightningNetwork,
+  apiKey: KALEIDOSWAP_PARTNER_KEY,
+});
+// created.fees: { protocol, network, swap, partner }
+```
+
+**What the maker answered.** A key the maker does not recognise — unknown,
+revoked, or for the other environment — is not an error: the maker answers with
+the public price and creates the swap unattributed, so an app with a rotated
+key keeps swapping. `client.lastAttribution` (and `kaleido.lastAttribution`,
+`payThrough.lastAttribution`, a pay-through create's `attribution`) is what the
+maker answered in `X-Kaleido-Attribution`: `"api_key"` when it priced or stored
+the request for the key's partner, `"none"` when it did not recognise the key.
+A page on another origin can read it only where the maker's edge exposes the
+header.
+
+The key authorizes nothing: no claim, no refund, no fund movement and no panel
+access. The per-swap `swapAuth` below stays separate and unchanged.
+
+`makerUrl` must be `https` unless it is a loopback address, since over plain
+HTTP anything on the path could strip or replace the key. A value that cannot
+be a key is rejected here. `allowBrowser` is still accepted and has no effect
+for today's keys; it is kept for a future secret, server-only key kind.
 
 Redirects are declined under `fetch` as on a server. The SDK issues every maker
 request with `redirect: "error"`, so a `3xx` away from the maker fails the call
@@ -870,6 +858,14 @@ without being followed: neither the key nor a per-swap `swapAuth` reaches the
 origin a `Location` named. The browser reports a refused redirect, a CORS
 failure and a network error as one and the same `TypeError`, so the error names
 all three.
+
+### Organization keys (deprecated)
+
+`createKaleidoOrgClient`, `SwapClient.forKaleidoOrg`, and the `orgKey` options
+of `PayThroughClient` and `kaleidoswapHttpTransport` attribute swaps with an
+organization's 64-hex public key in `X-Kaleido-Org-Key`, on swap creation only.
+They predate public `kld_` keys and are deprecated: use the `kld_` key, which
+also carries the partner fee.
 
 ## `swapAuth` — persist it with the swap
 

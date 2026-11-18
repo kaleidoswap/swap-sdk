@@ -506,7 +506,8 @@ export interface PreparedLightningReceive {
  * Pass `orgKey` — the 64-hex public key an organization registered in the
  * partner panel — to attribute the swaps this transport creates. It goes out in
  * `X-Kaleido-Org-Key` on `POST /v1/swap` to this maker only; status reads carry
- * nothing. It is public, so it is safe in an app bundle.
+ * nothing. It is public, so it is safe in an app bundle. `orgKey` is
+ * deprecated, like every organization key.
  */
 export function kaleidoswapHttpTransport(
   makerUrl: string,

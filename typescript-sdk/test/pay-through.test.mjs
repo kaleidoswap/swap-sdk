@@ -46,6 +46,14 @@ const created = {
   expiresAt: 1800000000,
 };
 
+/** What `create` returns for `created`: a maker without a partner fee omits
+ * the line, which reads as 0, and sent no attribution header. */
+const createdResult = {
+  ...created,
+  fees: { ...created.fees, partner: 0 },
+  attribution: null,
+};
+
 function clientReturning(body, init = { status: 201 }, options = {}) {
   return new PayThroughClient({
     makerUrl: "https://maker.example/v2",
@@ -122,7 +130,7 @@ test("pay-through create sends only the known fields and accepts matching terms"
     invoiceAmount: 100000,
     unexpected: "dropped",
   });
-  assert.deepEqual(response, created);
+  assert.deepEqual(response, createdResult);
   await assert.rejects(
     client.create({
       destination: "bcrt1test",
@@ -214,7 +222,7 @@ test("pay-through retries a lost create response with the persisted key after a 
   });
   assert.deepEqual(
     recovered,
-    created,
+    createdResult,
     "recover the original invoice and swapAuth",
   );
   assert.equal(attempts, 2);
@@ -274,7 +282,7 @@ for (const failure of ["timeout", "gateway 502", "lost response body"]) {
     const recovered = await new PayThroughClient(options).create(request, {
       idempotencyKey,
     });
-    assert.deepEqual(recovered, created);
+    assert.deepEqual(recovered, createdResult);
     assert.equal(attempts, 2);
     assert.equal(creations, 1);
   });
@@ -361,7 +369,7 @@ test("pay-through can reuse its key after a temporary preflight rejection", asyn
   );
   assert.equal(attempts, 1, "retrying is the caller's decision");
   const recovered = await client.create(request, { idempotencyKey });
-  assert.deepEqual(recovered, created);
+  assert.deepEqual(recovered, createdResult);
   assert.equal(attempts, 2);
 });
 
@@ -681,7 +689,10 @@ test("caller can retry in-flight with the unchanged key and recover the original
       e.code === PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT,
   );
   assert.equal(calls, 1, "no automatic loop");
-  assert.deepEqual(await client.create(request, { idempotencyKey }), created);
+  assert.deepEqual(
+    await client.create(request, { idempotencyKey }),
+    createdResult,
+  );
   assert.equal(calls, 2);
   assert.deepEqual(
     [
@@ -755,5 +766,81 @@ test("pay-through refuses a malformed org key and an org key beside an API key",
         apiKey: "kld_test_abc_secret",
       }),
     /not both/,
+  );
+});
+
+const PARTNER_KEY = "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
+
+test("a partner key works outside a server runtime and is sent on every request", async (t) => {
+  // Look like a browser page: no Node, Deno or Bun.
+  const versions = Object.getOwnPropertyDescriptor(process, "versions");
+  Object.defineProperty(process, "versions", { value: {}, configurable: true });
+  t.after(() => Object.defineProperty(process, "versions", versions));
+
+  const seen = [];
+  const client = new PayThroughClient({
+    makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
+    apiKey: PARTNER_KEY,
+    fetch: async (url, init) => {
+      seen.push({ url, authorization: init.headers.Authorization });
+      if (url.endsWith("/version")) {
+        return Response.json({ capabilities: [] });
+      }
+      return Response.json(
+        { ...created, fees: { ...created.fees, partner: 100 } },
+        { status: 201, headers: { "X-Kaleido-Attribution": "api_key" } },
+      );
+    },
+  });
+  assert.equal(client.lastAttribution, null);
+  await client.supportsIdempotency();
+  const swap = await client.create({
+    destination: "bcrt1test",
+    invoiceAmount: 100000,
+  });
+  assert.deepEqual(seen, [
+    {
+      url: "https://maker.example/v2/version",
+      authorization: `Bearer ${PARTNER_KEY}`,
+    },
+    {
+      url: "https://maker.example/v2/swap/pay",
+      authorization: `Bearer ${PARTNER_KEY}`,
+    },
+  ]);
+  assert.deepEqual(swap.fees, {
+    protocol: 0,
+    network: 500,
+    swap: 500,
+    partner: 100,
+  });
+  assert.equal(swap.attribution, "api_key");
+  assert.equal(client.lastAttribution, "api_key");
+});
+
+test("an unrecognised partner key is reported as data, not an error", async () => {
+  const client = clientReturning(
+    created,
+    { status: 201, headers: { "X-Kaleido-Attribution": "none" } },
+    { apiKey: PARTNER_KEY },
+  );
+  const swap = await client.create({
+    destination: "bcrt1test",
+    invoiceAmount: 100000,
+  });
+  assert.equal(swap.attribution, "none");
+  assert.equal(swap.fees.partner, 0);
+  assert.equal(client.lastAttribution, "none");
+});
+
+test("a partner fee that is not a safe amount fails the create", async () => {
+  const client = clientReturning({
+    ...created,
+    fees: { ...created.fees, partner: -1 },
+  });
+  await assert.rejects(
+    client.create({ destination: "bcrt1test", invoiceAmount: 100000 }),
+    /fees\.partner/,
   );
 });

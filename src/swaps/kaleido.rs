@@ -1,4 +1,4 @@
-//! KaleidoSwap partner attribution: the organization API key and the client
+//! KaleidoSwap partner attribution: the partner's `kld_` key and the client
 //! that carries it.
 //!
 //! A partner organization gets a key from the KaleidoSwap Platform panel and
@@ -6,59 +6,86 @@
 //! organization, and stores that organization with the swap, so the partner can
 //! later see statistics for the swaps they originated.
 //!
-//! The key is **attribution only**. It answers *"which partner organization
-//! created this swap?"* and nothing else — it authorizes no claim, no refund, no
-//! fund movement, no panel access and no administrative operation. The per-swap
-//! credential the maker issues as `swapAuth` is what answers *"is this caller
-//! allowed to decide the outcome of this specific swap?"*, and the two stay
-//! separate: see [`SWAP_AUTH_HEADER`].
+//! # The key is a public partner identifier
+//!
+//! A `kld_<env>_<key_id>_<secret>` key identifies a partner; it is not a
+//! secret. Ship it inside the app as a build constant: a browser page, a Web,
+//! shared or service worker, a browser extension, a mobile or desktop app, or a
+//! server. Anyone who unpacks the app can read it, and that is fine, because a
+//! key never buys its holder anything:
+//!
+//! - it attributes the swap to the partner;
+//! - it carries the partner's fee, set on the key in the panel, which the maker
+//!   adds on top of its own price and reports as a separate `partner` fee line
+//!   (`partner_percentage` on a rate card's fees, `partner` on a quote's);
+//! - it never gives a lower price, higher limits or a rate-limit budget of its
+//!   own, so copying it gains nothing.
+//!
+//! The partner fee comes only from the key: no request field sets it, and the
+//! SDK sends no per-request fee of its own.
+//!
+//! Send the key on every price read and every create, not only on the create.
+//! A keyed caller's rate card (`/pairs`) already includes the partner fee in
+//! `fees.percentage` and carries its own `pairHash`, so amounts computed from
+//! an anonymous card and created with a key fail the create with
+//! `pair_hash_mismatch`. [`KaleidoMakerClient`] does this for you: the key goes
+//! out on every request to the configured maker, and to no other host.
+//!
+//! A key the maker does not recognise (unknown, revoked, or for the other
+//! environment) is not an error: the maker answers with the public price and
+//! leaves the swap unattributed, and says so in [`ATTRIBUTION_HEADER`]. The
+//! client keeps that answer as data: see
+//! [`BoltzApiClientV2::last_attribution`].
+//!
+//! The key authorizes nothing. It answers *"which partner brought this
+//! swap?"* — no claim, no refund, no fund movement, no panel access and no
+//! administrative operation. The per-swap credential the maker issues as
+//! `swapAuth` is what answers *"is this caller allowed to decide the outcome
+//! of this specific swap?"*, and the two stay separate: see
+//! [`SWAP_AUTH_HEADER`].
 //!
 //! [`SWAP_AUTH_HEADER`]: crate::boltz::SWAP_AUTH_HEADER
 //! [`BoltzApiClientV2`]: crate::boltz::BoltzApiClientV2
+//! [`BoltzApiClientV2::last_attribution`]: crate::boltz::BoltzApiClientV2::last_attribution
 //!
 //! ```no_run
 //! use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 //!
+//! /// The partner's key, built into the app.
+//! const KALEIDOSWAP_PARTNER_KEY: &str = "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
+//!
 //! # async fn run() -> Result<(), kaleidorg_swap_sdk::error::Error> {
 //! let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
 //!     maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
-//!     api_key: std::env::var("KALEIDOSWAP_API_KEY").unwrap().parse::<ApiKey>()?,
+//!     api_key: KALEIDOSWAP_PARTNER_KEY.parse::<ApiKey>()?,
 //!     timeout: None,
 //! })?;
 //!
 //! // Every maker route is reachable through the deref to the generic client.
 //! let pairs = client.get_submarine_pairs().await?;
 //! # let _ = pairs;
+//! // Whose price the maker answered with: `api_key`, or `none` for a key it
+//! // did not recognise.
+//! let _attribution = client.last_attribution();
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! # Browsers are out of scope
+//! # A secret key kind, later
 //!
-//! A key configured here is a permanent organization credential. Embedded in
-//! browser JavaScript it is visible to every visitor, who can then attribute
-//! their swaps to — or exhaust the rate limits of — an organization that is not
-//! theirs. **This release supports server and native integrations only.** Build
-//! the key into a backend that talks to the maker on the browser's behalf, and
-//! leave the browser bundle on the unauthenticated
-//! [`BoltzApiClientV2`].
+//! Every key Platform issues today is public ([`ApiKeyKind::Public`]). A
+//! secret, server-only kind may follow; the SDK keeps its refusal to run such a
+//! key in a browser or an app ready for it, and applies it to that kind only.
 //!
-//! # Organization keys: attribution for client-side software
+//! # Organization keys (deprecated)
 //!
-//! An app, browser extension or web page cannot keep an API key secret, so it
-//! attributes its swaps with an [`OrgKey`] instead: the organization's x-only
-//! secp256k1 public key, registered in the partner panel with a signature that
-//! proves the organization holds the private half. [`KaleidoOrgClient`] sends it
-//! in [`ORG_KEY_HEADER`] on the swap-creation routes and nowhere else.
-//!
-//! The org key is a **label, not a credential**. Anyone can copy it, so it
-//! buys the caller nothing: no rate-limit budget of its own, no discount, no
-//! access in the maker's partner-keys-only mode. That is why it is safe to ship
-//! in a client, and why it cannot replace an [`ApiKey`] on a server that needs
-//! one of those. The private key is used only to claim a revshare payout on
-//! the partner's own machine; nothing in this SDK asks for it.
+//! [`KaleidoOrgClient`] attributes swaps with an [`OrgKey`], the organization's
+//! x-only secp256k1 public key, in [`ORG_KEY_HEADER`]. It predates public
+//! `kld_` keys and is deprecated: use [`KaleidoMakerClient`] with the `kld_`
+//! key, which also carries the partner fee.
 //!
 //! ```no_run
+//! # #![allow(deprecated)]
 //! use kaleidorg_swap_sdk::kaleido::{KaleidoOrgClient, KaleidoOrgClientOptions, OrgKey};
 //!
 //! # fn run() -> Result<(), kaleidorg_swap_sdk::error::Error> {
@@ -135,7 +162,29 @@ impl Display for ApiKeyEnvironment {
     }
 }
 
-/// A parsed KaleidoSwap organization API key: `kld_<env>_<key_id>_<secret>`.
+/// What a `kld_` key may be shipped in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum ApiKeyKind {
+    /// A public partner identifier: it attributes swaps and carries the
+    /// partner's fee, and never a lower price or higher limits. Safe in a
+    /// browser, an extension, a mobile or desktop app and a server alike.
+    /// Every key Platform issues today is public.
+    Public,
+    /// A server-only key. Platform issues none yet; the SDK refuses to build
+    /// a client for one in a browser or an app ([`Self::requires_server`]).
+    Secret,
+}
+
+impl ApiKeyKind {
+    /// Whether a key of this kind must stay on a server. `false` for
+    /// [`Self::Public`]: those keys are meant to ship inside apps.
+    pub fn requires_server(&self) -> bool {
+        matches!(self, Self::Secret)
+    }
+}
+
+/// A parsed KaleidoSwap partner key: `kld_<env>_<key_id>_<secret>`.
 ///
 /// Parsing is structural, not a validity check — only the Platform knows whether
 /// a well-formed key is active, and only the maker's introspection call can say
@@ -143,15 +192,18 @@ impl Display for ApiKeyEnvironment {
 /// here, naming itself, instead of arriving as a `401` that reads exactly like a
 /// revoked key or a suspended organization.
 ///
-/// The secret never leaves this type: there is no accessor for it, no `Display`,
-/// no `Serialize`, and [`Debug`] renders [`Self::redacted`].
+/// Every key Platform issues today is a public partner identifier
+/// ([`ApiKeyKind::Public`]), safe to build into an app; see the
+/// [module docs][self]. The last segment is still kept out of logs: there is
+/// no accessor for it, no `Display`, no `Serialize`, and [`Debug`] renders
+/// [`Self::redacted`]. Nothing is gained by printing it, and a future secret
+/// key kind shares the format.
 ///
 /// It is held in [`Zeroizing`], which wipes the stored copy and the per-request
 /// buffer on drop. That bounds the exposure rather than ending it: the
 /// `HeaderValue` each request carries, the buffer hyper encodes it into, and the
 /// string the caller handed to [`Self::parse`] are all outside this type and
-/// none of them are wiped. Treat a process that has sent one authenticated
-/// request as a process with the key in its heap.
+/// none of them are wiped.
 #[derive(Clone)]
 pub struct ApiKey {
     environment: ApiKeyEnvironment,
@@ -271,6 +323,13 @@ impl ApiKey {
         self.environment
     }
 
+    /// What kind of key this is: [`ApiKeyKind::Public`] for every key
+    /// Platform issues today. The format carries no kind, so a key parsed here
+    /// is public until Platform issues a secret kind the SDK can tell apart.
+    pub fn kind(&self) -> ApiKeyKind {
+        ApiKeyKind::Public
+    }
+
     /// The key's public identifier — the segment Platform also shows in the
     /// panel, safe to log and to name in a support request.
     pub fn key_id(&self) -> &str {
@@ -352,18 +411,74 @@ impl Debug for ApiKey {
 /// secret to strip on redirect.
 pub const ORG_KEY_HEADER: &str = "X-Kaleido-Org-Key";
 
-/// The header the maker answers every swap creation with: `none`, `api_key` or
-/// `org_key`, naming the attribution the swap was actually stored with.
+/// The header the maker answers swap creations and price reads with: `none`,
+/// `api_key` or `org_key`.
 ///
-/// A maker that has organization keys switched off ignores [`ORG_KEY_HEADER`]
-/// and answers `none`; [`KaleidoOrgClient`] logs a warning when that happens,
-/// so a dropped attribution shows up in the integrator's logs rather than as a
-/// gap in their statistics weeks later. In a browser the header is readable
-/// only where the maker's edge exposes it, and its absence is not reported.
+/// On a create it names the attribution the swap was actually stored with; on
+/// a price read (a rate card or a quote) it says whose price the maker
+/// answered with: `api_key` for the partner key's price, `none` for the public
+/// price. A key the maker does not recognise (unknown, revoked, or for the
+/// other environment) gets `none` and the public price rather than an error,
+/// so an app with a rotated key keeps swapping.
+///
+/// Every client keeps the last value it saw, as a [`MakerAttribution`]:
+/// [`BoltzApiClientV2::last_attribution`]. A client with a key also logs a
+/// warning when a create comes back with anything other than its own kind of
+/// attribution. In a browser the header is readable only where the maker's
+/// edge exposes it, and its absence is not reported.
+///
+/// [`BoltzApiClientV2::last_attribution`]: crate::boltz::BoltzApiClientV2::last_attribution
 pub const ATTRIBUTION_HEADER: &str = "X-Kaleido-Attribution";
+
+/// What the maker said in [`ATTRIBUTION_HEADER`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum MakerAttribution {
+    /// `none`: the public price, or a swap stored without a partner. For a
+    /// client with a key this means the maker did not recognise it: unknown,
+    /// revoked, or for the other environment.
+    Unattributed,
+    /// `api_key`: the partner key's price, or a swap stored for that partner.
+    ApiKey,
+    /// `org_key`: a swap stored for an organization key (deprecated).
+    OrgKey,
+    /// A value this SDK does not know yet, kept verbatim.
+    Other(String),
+}
+
+impl MakerAttribution {
+    /// Read a header value. Never fails: an unknown value is kept as
+    /// [`Self::Other`].
+    pub fn parse(value: &str) -> Self {
+        match value.trim() {
+            "none" => Self::Unattributed,
+            "api_key" => Self::ApiKey,
+            "org_key" => Self::OrgKey,
+            other => Self::Other(other.to_string()),
+        }
+    }
+
+    /// The header value, as the maker sent it.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Unattributed => "none",
+            Self::ApiKey => "api_key",
+            Self::OrgKey => "org_key",
+            Self::Other(other) => other,
+        }
+    }
+}
+
+impl Display for MakerAttribution {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 /// A KaleidoSwap organization key: the BIP-340 x-only public key a partner
 /// registered in the panel, as 32 bytes.
+///
+/// Only [`KaleidoOrgClient`] sends one, and that client is deprecated: a
+/// `kld_` [`ApiKey`] is now public too, and carries the partner fee.
 ///
 /// The opposite of [`ApiKey`] on purpose. It is public, so it prints, compares,
 /// serializes and goes in logs and config files like any other identifier, and
@@ -490,21 +605,24 @@ impl<'de> Deserialize<'de> for OrgKey {
 pub struct KaleidoMakerClientOptions {
     /// The maker's `/v2` base URL — and the only origin the key is ever sent to.
     pub maker_url: String,
-    /// The organization API key from the partner panel.
+    /// The partner's `kld_` key from the partner panel. Public: build it into
+    /// the app.
     pub api_key: ApiKey,
     /// Per-request timeout. `None` leaves it to the HTTP stack.
     pub timeout: Option<Duration>,
 }
 
-/// A [`BoltzApiClientV2`] that attributes the swaps it creates to a partner
-/// organization.
+/// A [`BoltzApiClientV2`] that sends a partner's `kld_` key to the maker, so
+/// the swaps it creates are attributed to the partner and priced with the
+/// partner's fee.
 ///
-/// A separate type rather than a flag on the generic client, because the key
-/// changes what the client may be pointed at: it is bound to one origin at
-/// construction and refuses to travel anywhere else, so a
+/// The key goes out on every request to the configured maker: the rate cards
+/// and quotes as well as the creates, so the amounts and the `pairHash` a swap
+/// is created with come from the partner's own card. It is bound to one origin
+/// at construction and refuses to travel anywhere else, so a
 /// [`BoltzApiClientV2`] built for Boltz, Esplora or a second maker cannot end up
-/// carrying it. See the [module docs][self] for what the key does and does not
-/// authorize, and why browsers are out of scope.
+/// carrying it. Works in a browser, a worker, an extension, an app and a
+/// server alike: the key is public. See the [module docs][self].
 ///
 /// Every maker route is available through [`Deref`], so this is a drop-in for the
 /// generic client:
@@ -566,11 +684,11 @@ impl KaleidoMakerClient {
     /// [`reqwest::redirect::Policy::none`] itself and leaves every other setting
     /// on the builder untouched.
     ///
-    /// The browser is the one place this cannot help. `fetch` owns redirect
-    /// handling and wasm-bindgen can set no policy on it, so there the hop is
-    /// reported after the fact by
-    /// [`BoltzApiClientV2::reject_credential_leaking_redirect`] rather than
-    /// declined — see the [module docs][self] for why browsers are out of scope.
+    /// In the browser `fetch` owns redirect handling and wasm-bindgen can set
+    /// no policy on it; there the SDK issues every maker `fetch` with
+    /// `redirect: "error"` itself, and
+    /// [`BoltzApiClientV2::reject_credential_leaking_redirect`] reports a hop
+    /// after the fact.
     ///
     /// [`SWAP_AUTH_HEADER`]: crate::boltz::SWAP_AUTH_HEADER
     /// [`BoltzApiClientV2::reject_credential_leaking_redirect`]: crate::boltz::BoltzApiClientV2
@@ -598,12 +716,12 @@ impl KaleidoMakerClient {
 
     /// Reject a maker URL a key must not be sent to.
     ///
-    /// `https`, or `http` to a loopback host. A bearer credential over plain
-    /// HTTP is readable by anything on the path, and a permanent organization
-    /// key read once is a key that has to be revoked — so a plain-HTTP maker
-    /// fails here rather than after the key is already on the wire. Loopback is
-    /// exempt because that is the regtest harness, where the "network" is a
-    /// socket on the same machine.
+    /// `https`, or `http` to a loopback host. The key is public, so this is
+    /// not about secrecy: over plain HTTP anything on the path can strip or
+    /// replace it, and the swap is priced and attributed for somebody else or
+    /// for nobody with no sign of it on either end. Loopback is exempt because
+    /// that is the regtest harness, where the "network" is a socket on the same
+    /// machine.
     ///
     /// A URL carrying userinfo is refused too, and that one is not about
     /// eavesdropping. `reqwest` turns `https://user:pw@host/v2` into an
@@ -634,9 +752,9 @@ impl KaleidoMakerClient {
             "https" => Ok(()),
             "http" if is_loopback(host) => Ok(()),
             "http" => Err(Error::Protocol(format!(
-                "refusing to send an organization API key to {maker_url} over plain \
-                 HTTP — anything on the path could read it, and the key is permanent \
-                 until revoked. Use https, or the unauthenticated BoltzApiClientV2"
+                "refusing to send a partner key to {maker_url} over plain HTTP — \
+                 anything on the path could strip or replace it. Use https, or the \
+                 unattributed BoltzApiClientV2"
             ))),
             scheme => Err(Error::Protocol(format!(
                 "maker URL {maker_url} is {scheme}, and the SDK speaks http(s)"
@@ -652,6 +770,12 @@ impl KaleidoMakerClient {
     /// The configured key's public identifier.
     pub fn api_key_id(&self) -> &str {
         self.api_key_ref().key_id()
+    }
+
+    /// The configured key's kind: [`ApiKeyKind::Public`] for every key
+    /// Platform issues today.
+    pub fn api_key_kind(&self) -> ApiKeyKind {
+        self.api_key_ref().kind()
     }
 
     /// The generic client underneath, for code that takes one by reference.
@@ -679,6 +803,7 @@ impl Deref for KaleidoMakerClient {
 }
 
 /// How to build a [`KaleidoOrgClient`].
+#[deprecated(note = "the `kld_` key is a public partner identifier: use KaleidoMakerClientOptions")]
 #[derive(Debug, Clone)]
 pub struct KaleidoOrgClientOptions {
     /// The maker's `/v2` base URL — the only origin the key is sent to.
@@ -702,12 +827,17 @@ pub struct KaleidoOrgClientOptions {
 /// A separate type from [`KaleidoMakerClient`] rather than a second key on it,
 /// so one client never carries both. The maker refuses a request with both
 /// (`400 attribution_conflict`).
+///
+/// Deprecated: the `kld_` key is a public partner identifier that ships in
+/// any app and also carries the partner fee. Use [`KaleidoMakerClient`].
+#[deprecated(note = "the `kld_` key is a public partner identifier: use KaleidoMakerClient")]
 #[derive(Debug, Clone)]
 pub struct KaleidoOrgClient {
     inner: BoltzApiClientV2,
     org_key: OrgKey,
 }
 
+#[allow(deprecated)]
 impl KaleidoOrgClient {
     /// Build a client that attributes its swaps on `options.maker_url` to
     /// `options.org_key`.
@@ -795,6 +925,7 @@ impl KaleidoOrgClient {
     }
 }
 
+#[allow(deprecated)]
 impl Deref for KaleidoOrgClient {
     type Target = BoltzApiClientV2;
 
@@ -820,6 +951,7 @@ fn is_loopback(host: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -1223,6 +1355,11 @@ mod tests {
 
         assert_eq!(client.api_key_environment(), ApiKeyEnvironment::Test);
         assert_eq!(client.api_key_id(), "01KZZYB138E7C3HZX7Q1YBGAQG");
+        // Every key Platform issues today is a public partner identifier, so
+        // nothing about it keeps the client out of a browser or an app.
+        assert_eq!(client.api_key_kind(), ApiKeyKind::Public);
+        assert!(!client.api_key_kind().requires_server());
+        assert!(ApiKeyKind::Secret.requires_server());
         // Deref reaches the maker routes.
         assert_eq!(
             client.get_ws_url(),

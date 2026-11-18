@@ -211,75 +211,64 @@ async def main():
 asyncio.run(main())
 ```
 
-## Partner attribution from an app (organization keys)
+## Partner attribution and the partner fee
 
-An app attributes its swaps with the organization's public **organization
-key**: the 64-hex x-only public key the organization registered in the partner
-panel. It is public, so it is safe to ship inside a mobile or desktop app.
+A partner's key from the KaleidoSwap partner panel — `kld_test_…` for signet and
+staging, `kld_live_…` for mainnet and production — attributes the swaps a
+client creates to the partner and carries the partner's fee, set on the key in
+the panel. Without one, `SwapClient` behaves exactly as before: public price,
+unattributed swaps.
+
+The key is a **public partner identifier**: ship it in the app or the service as
+a build constant. It never gives a lower price, higher limits or a rate-limit
+budget of its own, so anyone who copies it gains nothing.
 
 ```python
 import kaleidorg_swap_sdk
 
-client = kaleidorg_swap_sdk.SwapClient.kaleido_org(
-    "https://maker.signet.kaleidoswap.com/v2",
-    ORG_KEY,  # 64 hex, from the partner panel
-    None,  # timeout in seconds
-)
-
-client.org_key()  # the key, as 64 lowercase hex
-```
-
-The key is a label, never a credential: it buys the caller no rate limit,
-discount or access of its own. It goes out in `X-Kaleido-Org-Key` on swap
-creation only, to that maker URL only, which must be `https` unless it is a
-loopback address. A value that is not a point on the curve is rejected here
-rather than reaching the maker as `400 org_key_malformed`. A client holds an
-organization key or an API key, never both.
-
-## Partner attribution from a server (organization API keys)
-
-A server can instead use an **organization API key** from the KaleidoSwap partner panel — a
-`kld_test_…` key for signet and staging, `kld_live_…` for mainnet and
-production. Without one, `SwapClient` behaves exactly as before and
-creates unattributed swaps.
-
-```python
-import os
-import kaleidorg_swap_sdk
+# Public: safe to commit and to ship.
+KALEIDOSWAP_PARTNER_KEY = "kld_live_…"
 
 client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
-    "https://maker.signet.kaleidoswap.com/v2",
-    os.environ["KALEIDOSWAP_API_KEY"],
+    "https://maker.kaleidoswap.com/v2",
+    KALEIDOSWAP_PARTNER_KEY,
     None,  # timeout in seconds
 )
 
-client.api_key_environment()  # "test"
+client.api_key_environment()  # "live"
 client.api_key_id()           # the key id the partner panel shows
 ```
 
-> **Scrub the key in error reporters that capture locals.** It crosses the
-> binding as a plain `str`, so it is a function argument on a stack frame for
-> the length of the call. The SDK keeps it out of its own errors, logs and
-> `repr`, but anything that renders frame locals — `pytest --showlocals`,
-> Sentry's `with_locals`, some logging formatters — reads it off the frame
-> regardless. Scrub it in your reporter's before-send hook.
-
 The result is an ordinary client — every swap route works the same way — that
-sends the key as `Authorization: Bearer …` to that maker URL, and only to that
-maker URL. The key answers *which partner organization created this swap?* and
-nothing else: it authorizes no claim, no refund, no fund movement and no panel
+sends the key as `Authorization: Bearer …` on every request to that maker URL,
+and only to that maker URL. That includes the pair cards: a keyed card's
+`fees.percentage` already includes the partner fee (`fees.partner_percentage`
+is that fee) and its `pair_hash` covers it, so compute amounts from
+`percentage` as before and create with the keyed card's hash. The high-level
+`KaleidoSwap` takes the same key as `KaleidoSwapOptions(api_key=…)`, and its
+quotes show the partner fee as `fees.partner`.
+
+The partner fee comes only from the key: there is no per-request fee option.
+
+**What the maker answered.** A key the maker does not recognise — unknown,
+revoked, or for the other environment — is not an error: the maker answers with
+the public price and creates the swap unattributed, so an app with a rotated
+key keeps swapping. `client.last_attribution()` and
+`KaleidoSwap.last_attribution()` return what the maker answered in
+`X-Kaleido-Attribution`: `"api_key"` when it priced or stored the request for
+the key's partner, `"none"` when it did not recognise the key.
+
+The key authorizes nothing: no claim, no refund, no fund movement and no panel
 access. The per-swap `swap_auth` credential the maker returns on create stays
-separate and unchanged.
+separate and unchanged. The URL must be `https` unless it is a loopback
+address, since over plain HTTP anything on the path could strip or replace the
+key. A value that cannot be a key is rejected here.
 
-The URL must be `https` unless it is a loopback address, since a bearer
-credential over plain HTTP is readable by anything on the path. A value that
-cannot be a key is rejected here rather than reaching the maker as a `401` —
-which is the same answer a revoked key gets. There is no accessor for the secret
-half: `api_key_id()` and `api_key_environment()` are all the client will tell
-you, and UniFFI renders no string form of the object at all.
+### Organization keys (deprecated)
 
-Keep the key in server-side configuration. It is permanent until revoked, so
-never ship it inside a mobile or desktop application, where every user holds it.
+`SwapClient.kaleido_org` attributes swaps with an organization's 64-hex public
+key in `X-Kaleido-Org-Key`. It predates public `kld_` keys and is deprecated:
+use `kaleido_maker` with the `kld_` key, which also carries the partner fee.
 
 ## Swap Types
 

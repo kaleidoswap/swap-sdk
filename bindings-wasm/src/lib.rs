@@ -542,6 +542,8 @@ use kaleidorg_swap_sdk::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
 use kaleidorg_swap_sdk::corridor;
+// The organization-key client is deprecated, and still exported.
+#[allow(deprecated)]
 use kaleidorg_swap_sdk::kaleido::{
     ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
     KaleidoOrgClientOptions, OrgKey,
@@ -667,8 +669,9 @@ mod boltz_asset_tests {
 
 /// `{ makerUrl, apiKey, timeoutSecs? }` for
 /// [`BoltzClient::for_kaleido_maker`]. A named struct rather than positional
-/// arguments: two adjacent strings, one of them a secret, is exactly the
-/// signature callers transpose.
+/// arguments: two adjacent strings is exactly the signature callers
+/// transpose. `allowBrowser` is still read, and only matters for a secret key
+/// kind, which Platform does not issue yet.
 struct KaleidoMakerOptions {
     maker_url: String,
     api_key: String,
@@ -792,6 +795,9 @@ const WORKER_SCOPE_INTERFACES: [&str; 3] = [
 ];
 
 /// Whether this looks like a browser: a page, a worker, or an extension.
+///
+/// Used only to refuse a secret key kind in a browser (`ApiKeyKind::Secret`); every
+/// key Platform issues today is public and runs anywhere.
 ///
 /// One wasm artifact serves both Node and the browser, so there is no
 /// build-time split to make this decision at. `document` divides a page from
@@ -939,32 +945,34 @@ impl BoltzClient {
     }
 
     /// `BoltzClient.forKaleidoMaker({ makerUrl, apiKey, timeoutSecs? })` — a
-    /// client that attributes the swaps it creates to a partner organization.
+    /// client that sends a partner's `kld_` key, so the swaps it creates are
+    /// attributed to the partner and priced with the partner's fee.
     ///
-    /// `apiKey` is the organization key from the partner panel, a `kld_test_…`
-    /// or `kld_live_…` value. It answers "which partner organization created
-    /// this swap?" and nothing else: it authorizes no claim, no refund, no fund
-    /// movement and no panel access. The per-swap `swapAuth` credential the
-    /// maker returns on create stays separate and unchanged.
+    /// `apiKey` is the partner's key from the partner panel, a `kld_test_…` or
+    /// `kld_live_…` value. It is a public partner identifier: ship it in the
+    /// bundle as a build constant. It works in a page, a Web, shared or service
+    /// worker, a browser extension, React Native and Node alike. It attributes
+    /// swaps and carries the partner's fee, and never gives a lower price or
+    /// higher limits, so a copy of it gains nobody anything. It authorizes no
+    /// claim, no refund, no fund movement and no panel access; the per-swap
+    /// `swapAuth` credential the maker returns on create stays separate.
     ///
-    /// The key is bound to `makerUrl` and is never sent anywhere else — not to
+    /// The key goes out on every request to `makerUrl` — the pair cards as well
+    /// as the creates, so amounts and the `pairHash` come from the partner's own
+    /// card, whose `fees.percentage` includes the partner fee and whose
+    /// `fees.partnerPercentage` is that fee — and never anywhere else: not to
     /// Esplora, not to a second maker. `makerUrl` must be `https` unless it is a
-    /// loopback address, because a bearer credential over plain HTTP is readable
-    /// by anything on the path. A value that cannot be a key is rejected here
-    /// rather than reaching the maker as a `401`, which is the same answer a
-    /// revoked key gets.
+    /// loopback address, because over plain HTTP anything on the path could
+    /// strip or replace the key. A value that cannot be a key is rejected here.
     ///
-    /// # Do not use this in a browser
+    /// A key the maker does not recognise (unknown, revoked or for the other
+    /// environment) is not an error: the maker answers with the public price,
+    /// unattributed. Read `lastAttribution` to notice it. In a browser the
+    /// maker's edge must expose `X-Kaleido-Attribution` for it to be readable.
     ///
-    /// The key is a permanent organization credential with no origin binding and
-    /// no per-key rate limit. Bundled into browser JavaScript it is visible to
-    /// every visitor, who can then attribute their own swaps to — or exhaust the
-    /// limits of — an organization that is not theirs, and nothing in the bundle
-    /// can prevent it. **This release supports server and native integrations
-    /// only:** call this from Node, keep the key in server-side configuration,
-    /// and leave the browser bundle on the unauthenticated `BoltzClient`
-    /// constructor. A browser here includes Web, shared and service workers and
-    /// browser extensions, none of which has a `document`; see [`in_browser`].
+    /// `allowBrowser` is accepted and changes nothing for today's keys; it is
+    /// kept for a future secret, server-only key kind, which this refuses in a
+    /// browser unless it is set.
     ///
     /// Redirects are declined here as on the server: the core issues every
     /// maker `fetch` with `redirect: "error"`, so a `3xx` away from the maker
@@ -973,26 +981,23 @@ impl BoltzClient {
     #[wasm_bindgen(js_name = forKaleidoMaker)]
     pub fn for_kaleido_maker(options: JsValue) -> Result<BoltzClient, JsValue> {
         let options = KaleidoMakerOptions::from_js_options(options)?;
-        if !options.allow_browser && in_browser() {
-            // §7 of the attribution design says server and native only for the
-            // first release, and until now that was said in documentation
-            // while the constructor happily ran in a page. Refusing makes the
-            // code enforce what the docs promise; `allowBrowser: true` is
-            // there for a deliberate exception, so the decision is at least
-            // written down at the call site.
+        let api_key = ApiKey::parse(&options.api_key).map_err(core_err)?;
+        // Every key Platform issues today is public and meant to ship in a
+        // bundle, so this never fires for one. It stays for a secret,
+        // server-only key kind: that one must not end up where every visitor
+        // can read it, and `allowBrowser: true` is the written-down exception.
+        if api_key.kind().requires_server() && !options.allow_browser && in_browser() {
             return Err(arg_err(
-                "refusing to build an attributed client in a browser (a page, \
-                 a worker or an extension): the organization API key is a \
-                 permanent credential with no origin binding and no per-key \
-                 rate limit, so a key in a browser bundle is visible to anyone \
-                 who loads or unpacks it. Call this from Node with the key in \
-                 server-side configuration, or pass `allowBrowser: true` if you \
-                 have accepted that exposure.",
+                "refusing to build a client with a secret partner key in a \
+                 browser (a page, a worker or an extension): a key in a browser \
+                 bundle is visible to anyone who loads or unpacks it. Call this \
+                 from Node with the key in server-side configuration, or pass \
+                 `allowBrowser: true` if you have accepted that exposure.",
             ));
         }
         let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
             maker_url: options.maker_url,
-            api_key: ApiKey::parse(&options.api_key).map_err(core_err)?,
+            api_key,
             timeout: options.timeout_secs.map(std::time::Duration::from_secs),
         })
         .map_err(core_err)?;
@@ -1004,6 +1009,9 @@ impl BoltzClient {
     /// `BoltzClient.forKaleidoOrg({ makerUrl, orgKey, timeoutSecs? })` — a
     /// client that attributes the swaps it creates to a partner organization
     /// by its public organization key.
+    ///
+    /// @deprecated The `kld_` key is now a public partner identifier that ships
+    /// in any bundle and also carries the partner fee: use `forKaleidoMaker`.
     ///
     /// `orgKey` is the 64-hex x-only public key the organization registered in
     /// the partner panel. It is public, which is the point: this constructor
@@ -1017,6 +1025,7 @@ impl BoltzClient {
     /// a page on another origin to send it; an extension's host permissions
     /// make that moot.
     #[wasm_bindgen(js_name = forKaleidoOrg)]
+    #[allow(deprecated)]
     pub fn for_kaleido_org(options: JsValue) -> Result<BoltzClient, JsValue> {
         let options = KaleidoOrgOptions::from_js_options(options)?;
         let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
@@ -1032,6 +1041,8 @@ impl BoltzClient {
 
     /// The organization key this client attributes its swaps to, as 64
     /// lowercase hex, or `undefined` for a client built without one.
+    ///
+    /// @deprecated Organization keys are deprecated: see `forKaleidoOrg`.
     #[wasm_bindgen(getter, js_name = orgKey)]
     pub fn org_key(&self) -> Option<String> {
         self.inner.org_key().map(|key| key.to_string())
@@ -1056,6 +1067,19 @@ impl BoltzClient {
     #[wasm_bindgen(getter, js_name = apiKeyId)]
     pub fn api_key_id(&self) -> Option<String> {
         self.inner.api_key().map(|key| key.key_id().to_string())
+    }
+
+    /// What the maker last answered in `X-Kaleido-Attribution`, on a pair card
+    /// or a create: `"api_key"` when it priced or stored the request for this
+    /// client's partner key, `"none"` when it did not recognise the key
+    /// (unknown, revoked or for the other environment) and answered with the
+    /// public price, unattributed. `undefined` until a response carried it,
+    /// which in a browser needs the maker's edge to expose the header.
+    #[wasm_bindgen(getter, js_name = lastAttribution)]
+    pub fn last_attribution(&self) -> Option<String> {
+        self.inner
+            .last_attribution()
+            .map(|attribution| attribution.as_str().to_string())
     }
 
     // ---- Rates / limits ----------------------------------------------------
@@ -3057,6 +3081,7 @@ struct KaleidoSwapJsOptions {
     quote_ttl_ms: Option<u64>,
     maker_timeout_ms: Option<u64>,
     reverse_timeout_headroom: Option<hl::ReverseTimeoutHeadroom>,
+    api_key: Option<String>,
 }
 
 /// Refuses a key of the nested option `name` that is not one of `known`:
@@ -3084,7 +3109,9 @@ fn check_option_keys(options: &JsValue, name: &str, known: &[&str]) -> Result<()
 /// liquidEsploraUrl?, pollIntervalMs?, feeSatPerVb?, feePolicy?: { targetBlocks?,
 /// bitcoinMinSatPerVb?, bitcoinMaxSatPerVb?, liquidMinSatPerVb?,
 /// liquidMaxSatPerVb?, maxFeePercent? }, quoteTtlMs?, makerTimeoutMs?,
-/// reverseTimeoutHeadroom?: { bitcoinBlocks?, liquidBlocks? } })`.
+/// reverseTimeoutHeadroom?: { bitcoinBlocks?, liquidBlocks? }, apiKey? })`.
+/// `apiKey` is a partner's public `kld_` key: quotes then carry the partner
+/// fee as `fees.partner`, and swaps are attributed to the partner.
 #[wasm_bindgen]
 pub struct KaleidoSwap {
     inner: Arc<hl::KaleidoSwap>,
@@ -3131,6 +3158,12 @@ impl KaleidoSwap {
             store: Arc::new(JsStore(JsHandle(store))),
             signer: Arc::new(JsSigner(JsHandle(signer))),
             maker_url: parsed.maker_url,
+            api_key: parsed
+                .api_key
+                .as_deref()
+                .map(ApiKey::parse)
+                .transpose()
+                .map_err(core_err)?,
             bitcoin_esplora_url: parsed.bitcoin_esplora_url,
             liquid_esplora_url: parsed.liquid_esplora_url,
             poll_interval: parsed
@@ -3153,6 +3186,16 @@ impl KaleidoSwap {
     #[wasm_bindgen(getter)]
     pub fn network(&self) -> String {
         format!("{:?}", self.inner.network()).to_lowercase()
+    }
+
+    /// What the maker last answered in `X-Kaleido-Attribution`: `"api_key"`
+    /// when it priced or stored the request for `apiKey`'s partner, `"none"`
+    /// when it did not recognise the key and answered with the public price.
+    #[wasm_bindgen(getter, js_name = lastAttribution)]
+    pub fn last_attribution(&self) -> Option<String> {
+        self.inner
+            .last_attribution()
+            .map(|attribution| attribution.as_str().to_string())
     }
 
     /// `{ kind: "quote", … } | { kind: "refusal", … }`; amounts are bigint.

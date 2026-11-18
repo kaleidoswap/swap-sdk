@@ -404,24 +404,18 @@ test("the options object names the field that is wrong", () => {
     (error) => isKaleidoSwapError(error) && /timeout/.test(error.message),
   );
 
-  // A document context is a browser, and an organization key in a page is
-  // visible to every visitor. §7 of the attribution design says server and
-  // native only for this release, and this is what makes the code say it too.
+  // A document context builds too: the kld_ key is a public partner
+  // identifier, meant to ship in a page. `allowBrowser` is still read, and
+  // still has to be a boolean.
   const hadDocument = "document" in globalThis;
   globalThis.document = {};
   try {
-    assert.throws(
-      () =>
-        SwapClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
-      (error) => isKaleidoSwapError(error) && /browser/.test(error.message),
+    assert.ok(
+      SwapClient.forKaleidoMaker({
+        makerUrl: MAKER_URL,
+        apiKey: API_KEY,
+      }) instanceof SwapClient,
     );
-    // The error must not quote the key it just refused.
-    assert.throws(
-      () =>
-        SwapClient.forKaleidoMaker({ makerUrl: MAKER_URL, apiKey: API_KEY }),
-      (error) => !error.message.includes(API_KEY),
-    );
-    // Deliberate exceptions stay possible, and have to be written down.
     assert.ok(
       SwapClient.forKaleidoMaker({
         makerUrl: MAKER_URL,
@@ -506,11 +500,11 @@ function withGlobals(globals, body) {
   }
 }
 
-// `document` is not the only sign of a browser. An MV3 extension's service
-// worker and any Web Worker have no `document`, and the guard used to look for
-// nothing else — so the client built silently in exactly the runtime an
-// extension uses, with the key sitting in a bundle anyone can unpack.
-test("forKaleidoMaker is refused in workers and extensions, and runs in Node", () => {
+// The kld_ key is a public partner identifier, so the client builds in every
+// browser context an app ships in: a page, any worker, an extension. The
+// refusal that used to fire here is kept in the binding for a future secret,
+// server-only key kind, which no key parses as today.
+test("forKaleidoMaker builds in pages, workers, extensions and Node", () => {
   const options = { makerUrl: MAKER_URL, apiKey: API_KEY };
   const scope = function () {};
   const browserContexts = {
@@ -530,14 +524,12 @@ test("forKaleidoMaker is refused in workers and extensions, and runs in Node", (
 
   for (const [context, globals] of Object.entries(browserContexts)) {
     withGlobals(globals, () => {
-      assert.throws(
-        () => SwapClient.forKaleidoMaker(options),
-        (error) =>
-          isKaleidoSwapError(error) &&
-          /browser/.test(error.message) &&
-          !error.message.includes(API_KEY),
-        `forKaleidoMaker should be refused in ${context}`,
+      const client = SwapClient.forKaleidoMaker(options);
+      assert.ok(
+        client instanceof SwapClient,
+        `forKaleidoMaker should build in ${context}`,
       );
+      assert.equal(client.lastAttribution, undefined);
       assert.ok(
         SwapClient.forKaleidoMaker({
           ...options,
