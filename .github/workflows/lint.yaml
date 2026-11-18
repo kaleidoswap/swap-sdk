@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-      - master
+      - trunk
   pull_request:
 
 name: lint
@@ -18,10 +18,12 @@ jobs:
         uses: actions/checkout@v3
       - name: Install toolchain
         run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-      - name: Install the latest version of uv
+      # A concrete version avoids setup-uv's extra GitHub "latest release"
+      # API lookup, which can fail before any lint command runs.
+      - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "latest"
+          version: "0.11.16"
       - name: Set profile
         run: rustup set profile minimal
       - name: Add rustfmt
@@ -32,6 +34,16 @@ jobs:
         run: rustup target add wasm32-unknown-unknown
       - name: Check fmt
         run: cargo fmt --all -- --check
+      - name: Validate public SDK versions
+        run: make validate-versions
+      - name: Check binding parity
+        run: make check-binding-parity
+      - name: Check maker and upstream compatibility boundary
+        run: make check-compatibility-boundary
+      - name: Validate release automation
+        run: |
+          make check-release-workflow
+          make test-release-automation
       - name: Clippy
         run: make cargo-clippy
       - name: Clippy wasm

@@ -1,0 +1,91 @@
+on:
+  push:
+    branches:
+      - trunk
+    paths:
+      - "src/**"
+      - "bindings/**"
+      - "packages/react-native/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/actions/react-native-build/**"
+      - ".github/workflows/build-bindings-react-native.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "bindings/**"
+      - "packages/react-native/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/actions/react-native-build/**"
+      - ".github/workflows/build-bindings-react-native.yml"
+  workflow_dispatch:
+
+name: build react native bindings
+
+# Path-filtered rather than run on every PR: this cross-compiles the swap engine
+# for seven targets and is the slowest job in the repository. A change that
+# cannot affect the native module does not need to pay for it.
+
+concurrency:
+  group: rn-bindings-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22.23.1"
+  RUST_VERSION: "1.100.0"
+
+jobs:
+  build:
+    name: Build iOS and Android bindings
+    # macOS: the iOS half needs Xcode, and running both halves on one runner
+    # keeps the generated C++/TypeScript consistent between them — `ubrn`
+    # regenerates it per platform build.
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The same steps the release build runs, so a green check here means the
+      # release job will get the same archives.
+      - name: Build the native archives and generate the turbo module
+        uses: ./.github/actions/react-native-build
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          rust-toolchain: ${{ env.RUST_VERSION }}
+
+      # `prepack` refuses an incomplete module and `prepare` builds `lib/`, so a
+      # dry pack is the packaging check without producing a tarball to mistake
+      # for a release artifact.
+      - name: Pack the npm tarball without publishing it
+        working-directory: packages/react-native
+        run: npm pack --dry-run
+
+      - name: Upload Android binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: react-native-android-artifacts
+          path: packages/react-native/android-artifacts.zip
+          retention-days: 5
+
+      - name: Upload iOS binaries
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: react-native-ios-artifacts
+          path: packages/react-native/ios-artifacts.zip
+          retention-days: 5
+
+      - name: Upload generated sources
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: react-native-generated
+          path: |
+            packages/react-native/cpp/generated
+            packages/react-native/src/generated
+            packages/react-native/android/generated
+            packages/react-native/native-artifacts.json
+          retention-days: 5

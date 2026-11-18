@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""Download published SDK artifacts and match them to the sealed release bundle."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any, TypeVar
+
+from release_metadata import (
+    LINUX_X86_64_WHEEL,
+    NATIVE_ARCHIVES,
+    NPM_PACKAGE_COUNT,
+    PACKAGE_COUNT,
+    npm_package,
+    npm_tarball_name,
+    react_native_npm_package,
+)
+
+NPM_REGISTRY = "https://registry.npmjs.org"
+PYTHON_PACKAGE = "kaleidorg_swap_sdk"
+PYPI_REGISTRY = "https://pypi.org/pypi"
+USER_AGENT = "kaleidoswap-release-verifier"
+
+# Everything PyPI publishes: every wheel plus the sdist.
+PYTHON_ARTIFACT_COUNT = PACKAGE_COUNT - NPM_PACKAGE_COUNT - len(NATIVE_ARCHIVES) - 1
+
+# npm answers a freshly published version with 404 until it has finished
+# processing the upload -- `npm publish` says so itself ("may take a few minutes
+# to become available"), and how long it takes scales with the tarball. The
+# 0.8.0 release was verified with a flat 12 x 10s budget, gave up 113s after a
+# publish that was otherwise perfect, and took the GitHub release down with it,
+# so this budget is set well past any propagation delay seen so far: eleven
+# attempts backing off 10s -> 60s, about eight minutes in total.
+NPM_ATTEMPTS = 11
+NPM_DELAY = 10.0
+NPM_MAX_DELAY = 60.0
+# PyPI may return a successful but incomplete inventory immediately after a
+# multi-file upload. Spend the same bounded metadata budget waiting for missing
+# files; unexpected files and checksum mismatches remain fatal.
+PYPI_ATTEMPTS = 8
+PYPI_DELAY = 5.0
+PYPI_MAX_DELAY = 20.0
+
+# Fetching the artifact itself is the step right after the metadata read, and
+# it used to be a single unguarded attempt: metadata propagates, the CDN
+# serving the tarball 503s or drops the connection mid-body, and the whole
+# release gate fails the same way the 0.8.0 outage did, one step later. The
+# tarball URL came out of metadata that has already resolved, so a fault here
+# is a CDN catching up rather than a version waiting to appear -- a shorter
+# budget than propagation needs, but no longer a single attempt. It is spent
+# once per npm package and once per PyPI artifact, so it is counted into both
+# verifiers' job timeouts.
+DOWNLOAD_ATTEMPTS = 4
+DOWNLOAD_DELAY = 5.0
+DOWNLOAD_MAX_DELAY = 20.0
+
+# How long one metadata read may hang before it counts as a failed attempt.
+# This is not incidental: a registry that stops answering costs the job
+# `attempts x REQUEST_TIMEOUT` on top of the backoff above, for each package,
+# and that total is what has to fit inside verify-npm's timeout. Metadata is a
+# few kB, so a read that has not landed in 15s is not going to.
+REQUEST_TIMEOUT = 15
+# The same bound for a body read. Artifacts are megabytes rather than
+# kilobytes, and this caps a single stalled read rather than the transfer, so
+# it is more generous -- but it is still bounded, and counted the same way.
+DOWNLOAD_TIMEOUT = 60
+
+# 404 is the propagation case above -- and on an artifact URL the same answer
+# means the CDN edge has not picked the file up yet. The rest are the registry
+# asking to be tried again rather than reporting anything about this release;
+# every other status (401, 403, 451 ...) describes a problem that will still be
+# true in eight minutes, so waiting out the budget on one only hides it.
+RETRYABLE_STATUSES = frozenset({404, 408, 429})
+
+T = TypeVar("T")
+
+
+class TruncatedBody(Exception):
+    """A body that ended before the bytes Content-Length promised."""
+
+
+class IncompleteInventory(ValueError):
+    """Registry metadata has not yet listed every sealed Python artifact."""
+
+
+def retryable_status(code: int) -> bool:
+    return code in RETRYABLE_STATUSES or 500 <= code < 600
+
+
+def backoff(delay: float, max_delay: float, attempts: int) -> list[float]:
+    """The pause before each retry: `delay`, doubling, capped at `max_delay`."""
+    pauses: list[float] = []
+    pause = delay
+    for _ in range(max(attempts - 1, 0)):
+        pauses.append(pause)
+        pause = min(pause * 2, max_delay)
+    return pauses
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch(
+    url: str,
+    consume: Callable[[Any], T],
+    *,
+    what: str,
+    headers: dict[str, str],
+    timeout: int,
+    attempts: int,
+    delay: float,
+    max_delay: float | None = None,
+) -> T:
+    """Read `url`, waiting out an answer that only says "not yet".
+
+    One helper for both registry reads: the metadata that tells us where the
+    artifact is, and the artifact itself. Every attempt reports what it got.
+    The failure this replaces said only that metadata "was unavailable", which
+    reads the same whether the version had not propagated yet, the registry was
+    down, or the credential was wrong -- and diagnosing the 0.8.0 release meant
+    going to the publisher's log to tell them apart.
+    """
+    pauses = backoff(delay, delay if max_delay is None else max_delay, attempts)
+    waited = 0.0
+    for attempt in range(1, attempts + 1):
+        request = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                value = consume(response)
+            if attempt > 1:
+                print(
+                    f"{what.capitalize()} arrived after {waited:.0f}s "
+                    f"of backoff: {url}",
+                    file=sys.stderr,
+                )
+            return value
+        except urllib.error.HTTPError as error:
+            reason = f"HTTP {error.code}"
+            fatal = not retryable_status(error.code)
+            failure: Exception = error
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+            TruncatedBody,
+            IncompleteInventory,
+        ) as error:
+            reason = str(error)
+            fatal = False
+            failure = error
+        if fatal:
+            raise ValueError(f"registry returned {reason} for {url}") from failure
+        if attempt == attempts:
+            raise ValueError(
+                f"{what} was unavailable after {attempts} attempts "
+                f"over {waited:.0f}s of backoff, last {reason}: {url}"
+            ) from failure
+        pause = pauses[attempt - 1]
+        print(
+            f"Waiting for {what} ({reason}, attempt {attempt}/{attempts}), "
+            f"retrying in {pause:.0f}s: {url}",
+            file=sys.stderr,
+        )
+        time.sleep(pause)
+        waited += pause
+    raise AssertionError("unreachable")
+
+
+def request_json(
+    url: str,
+    attempts: int,
+    delay: float,
+    *,
+    max_delay: float | None = None,
+    validate: Callable[[dict], None] | None = None,
+) -> dict:
+    """Read registry JSON, waiting out a version that has yet to propagate."""
+
+    def read(response: Any) -> dict:
+        payload = json.load(response)
+        if not isinstance(payload, dict):
+            raise ValueError(f"registry response is not an object: {url}")
+        if validate is not None:
+            validate(payload)
+        return payload
+
+    return fetch(
+        url,
+        read,
+        what="registry metadata",
+        headers={"Accept": "application/json", "User-Agent": USER_AGENT},
+        timeout=REQUEST_TIMEOUT,
+        attempts=attempts,
+        delay=delay,
+        max_delay=max_delay,
+    )
+
+
+def download(
+    url: str,
+    destination: Path,
+    *,
+    attempts: int = DOWNLOAD_ATTEMPTS,
+    delay: float = DOWNLOAD_DELAY,
+    max_delay: float = DOWNLOAD_MAX_DELAY,
+) -> None:
+    """Fetch a published artifact, waiting out a transient registry answer.
+
+    The bytes land on a temporary path and are renamed only once the whole body
+    has arrived, and a body that stops short of its Content-Length counts as a
+    failed attempt rather than a file. The caller hashes whatever is on disk, so
+    a half-written artifact would otherwise surface as a checksum mismatch --
+    which reads like tampering rather than a dropped connection -- and a stale
+    partial file must never be left behind for a later step to pick up.
+    """
+    partial = destination.with_name(f"{destination.name}.part")
+
+    def save(response: Any) -> None:
+        declared = response.headers.get("Content-Length")
+        expected = int(declared) if declared and declared.strip().isdigit() else None
+        written = 0
+        with partial.open("wb") as file:
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                written += file.write(chunk)
+        if expected is not None and written != expected:
+            raise TruncatedBody(f"body ended after {written} of {expected} bytes")
+
+    try:
+        fetch(
+            url,
+            save,
+            what="published artifact",
+            headers={"User-Agent": USER_AGENT},
+            timeout=DOWNLOAD_TIMEOUT,
+            attempts=attempts,
+            delay=delay,
+            max_delay=max_delay,
+        )
+        partial.replace(destination)
+    finally:
+        partial.unlink(missing_ok=True)
+
+
+def load_manifest(bundle: Path, version: str) -> dict[str, dict]:
+    with (bundle / "release-manifest.json").open(encoding="utf-8") as file:
+        manifest = json.load(file)
+    if manifest.get("version") != version:
+        raise ValueError("release manifest version mismatch")
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, list):
+        raise ValueError("release manifest artifacts must be a list")
+    entries = {entry["file"]: entry for entry in artifacts}
+    if len(entries) != len(artifacts):
+        raise ValueError("release manifest artifact names must be unique")
+    return entries
+
+
+def verify_download(path: Path, expected: dict) -> None:
+    if path.stat().st_size != expected.get("size"):
+        raise ValueError(f"published artifact size mismatch: {path.name}")
+    if sha256(path) != expected.get("sha256"):
+        raise ValueError(f"published artifact checksum mismatch: {path.name}")
+
+
+def npm_metadata_url(registry: str, package: str, version: str) -> str:
+    encoded = urllib.parse.quote(package, safe="")
+    return f"{registry.rstrip('/')}/{encoded}/{version}"
+
+
+def download_npm(
+    entries: dict[str, dict],
+    output: Path,
+    version: str,
+    *,
+    registry: str,
+    attempts: int,
+    delay: float,
+    max_delay: float | None = None,
+    package: str | None = None,
+) -> Path:
+    package = npm_package() if package is None else package
+    expected_name = npm_tarball_name(version, package)
+    expected = entries.get(expected_name)
+    if expected is None:
+        raise ValueError(f"release manifest has no npm artifact: {expected_name}")
+    metadata = request_json(
+        npm_metadata_url(registry, package, version),
+        attempts,
+        delay,
+        max_delay=max_delay,
+    )
+    if metadata.get("name") != package or metadata.get("version") != version:
+        raise ValueError("npm registry package identity mismatch")
+    tarball_url = metadata.get("dist", {}).get("tarball")
+    if not isinstance(tarball_url, str):
+        raise ValueError("npm registry metadata has no tarball URL")
+    destination = output / expected_name
+    download(tarball_url, destination)
+    verify_download(destination, expected)
+    print(f"Verified published npm artifact: {destination.name}")
+    return destination
+
+
+def pypi_metadata_url(registry: str, package: str, version: str) -> str:
+    encoded = urllib.parse.quote(package, safe="")
+    return f"{registry.rstrip('/')}/{encoded}/{version}/json"
+
+
+def download_python_index(
+    entries: dict[str, dict],
+    output: Path,
+    version: str,
+    *,
+    registry: str,
+    attempts: int,
+    delay: float,
+    max_delay: float | None = None,
+) -> tuple[Path, Path]:
+    expected = {
+        name: entry
+        for name, entry in entries.items()
+        if name.endswith(".whl") or name.endswith(".tar.gz")
+    }
+
+    def validate_inventory(metadata: dict) -> None:
+        if metadata.get("info", {}).get("version") != version:
+            raise ValueError("PyPI package version mismatch")
+        urls = metadata.get("urls")
+        if not isinstance(urls, list):
+            raise ValueError("PyPI registry metadata has no artifact list")
+        published = {entry.get("filename"): entry for entry in urls}
+        unexpected = set(published) - set(expected)
+        if unexpected or len(published) != len(urls):
+            raise ValueError(
+                "PyPI artifact inventory contains unexpected or duplicate files"
+            )
+        for name in published:
+            digest = published[name].get("digests", {}).get("sha256")
+            if digest != expected[name].get("sha256"):
+                raise ValueError(f"PyPI checksum mismatch: {name}")
+        missing = set(expected) - set(published)
+        if missing:
+            raise IncompleteInventory(
+                "PyPI artifact inventory is incomplete; missing: "
+                + ", ".join(sorted(missing))
+            )
+
+    metadata = request_json(
+        pypi_metadata_url(registry, PYTHON_PACKAGE, version),
+        attempts,
+        delay,
+        max_delay=max_delay,
+        validate=validate_inventory,
+    )
+    published = {entry["filename"]: entry for entry in metadata["urls"]}
+
+    # Download and hash *every* artifact. The digest comparison above trusts
+    # PyPI's self-reported metadata, so a registry or intermediary serving
+    # correct metadata with tampered bytes would pass it. Only re-hashing the
+    # downloaded file proves the published bytes are the sealed bytes.
+    destinations: list[Path] = []
+    for name in sorted(expected):
+        url = published[name].get("url")
+        if not isinstance(url, str):
+            raise ValueError(f"PyPI artifact has no download URL: {name}")
+        destination = output / name
+        download(url, destination)
+        verify_download(destination, expected[name])
+        destinations.append(destination)
+        print(f"Verified published PyPI artifact: {destination.name}")
+    if len(destinations) != PYTHON_ARTIFACT_COUNT:
+        raise ValueError(
+            f"expected {PYTHON_ARTIFACT_COUNT} Python artifacts, "
+            f"byte-verified {len(destinations)}"
+        )
+
+    # The smoke tests need one installable wheel for this runner plus the sdist.
+    wheels = [path for path in destinations if LINUX_X86_64_WHEEL.search(path.name)]
+    sdists = [path for path in destinations if path.name.endswith(".tar.gz")]
+    if len(wheels) != 1 or len(sdists) != 1:
+        raise ValueError(
+            "could not select exactly one Linux wheel and one sdist for the "
+            f"smoke tests (wheels={len(wheels)}, sdists={len(sdists)})"
+        )
+    return wheels[0], sdists[0]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("bundle", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--npm", action="store_true")
+    parser.add_argument("--pypi", action="store_true")
+    # The two registries propagate on different scales, so neither default is
+    # shared. Left unset, each side gets the budget its own registry needs.
+    parser.add_argument("--attempts", type=int)
+    parser.add_argument("--delay", type=float)
+    parser.add_argument("--max-delay", type=float)
+    parser.add_argument("--npm-registry", default=NPM_REGISTRY)
+    parser.add_argument("--pypi-registry", default=PYPI_REGISTRY)
+    args = parser.parse_args()
+    try:
+        if args.npm == args.pypi:
+            raise ValueError("select exactly one of --npm or --pypi")
+        if args.npm:
+            attempts, delay, max_delay = NPM_ATTEMPTS, NPM_DELAY, NPM_MAX_DELAY
+        else:
+            attempts, delay, max_delay = PYPI_ATTEMPTS, PYPI_DELAY, PYPI_MAX_DELAY
+        attempts = attempts if args.attempts is None else args.attempts
+        delay = delay if args.delay is None else args.delay
+        if attempts < 1 or delay < 0:
+            raise ValueError("attempts must be positive and delay cannot be negative")
+        if args.max_delay is None:
+            # Raising --delay past the default cap asks for a longer first
+            # pause, not for a cap the caller never mentioned to reject it.
+            max_delay = max(max_delay, delay)
+        else:
+            max_delay = args.max_delay
+            if max_delay < delay:
+                raise ValueError("max delay cannot be shorter than the first delay")
+        args.output.mkdir(parents=True, exist_ok=False)
+        entries = load_manifest(args.bundle, args.version)
+        if args.npm:
+            for package in (npm_package(), react_native_npm_package()):
+                download_npm(
+                    entries,
+                    args.output,
+                    args.version,
+                    registry=args.npm_registry,
+                    attempts=attempts,
+                    delay=delay,
+                    max_delay=max_delay,
+                    package=package,
+                )
+        else:
+            download_python_index(
+                entries,
+                args.output,
+                args.version,
+                registry=args.pypi_registry,
+                attempts=attempts,
+                delay=delay,
+                max_delay=max_delay,
+            )
+    except (
+        OSError,
+        urllib.error.URLError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,543 @@
+# Releasing the KaleidoSwap SDK
+
+The Rust crate, Python distribution, and npm package use one public version.
+The first release line for this repository is `0.1.0`, and stable release tags
+use the form `vX.Y.Z`.
+
+The public package names, migrated to the `kaleidorg` identity:
+
+- Rust crate: `kaleidorg-swap-sdk`
+- Python distribution: `kaleidorg_swap_sdk` (normalized by PyPI to
+  `kaleidorg-swap-sdk`)
+- Python import: `kaleidorg_swap_sdk`
+- npm package: `@kaleidorg/swap-sdk`
+
+## Version commands
+
+Show every version source:
+
+```sh
+make versions
+```
+
+Update every public package and lockfile:
+
+```sh
+make sync-version VERSION=X.Y.Z
+```
+
+`Cargo.lock`, the Python `uv.lock`, and the npm `package-lock.json` are committed
+so release inputs are reproducible.
+
+Validate that all version sources agree:
+
+```sh
+make validate-versions
+```
+
+Validate a proposed release tag:
+
+```sh
+make validate-release-version TAG=vX.Y.Z
+```
+
+Normal pull-request CI runs the version consistency check. The tag release
+workflow additionally verifies that the tag commit is reachable from `trunk`,
+builds and smoke-tests all artifacts before publishing, and publishes the
+already-tested artifacts without rebuilding them.
+
+## Release architecture
+
+A `v*` tag starts `.github/workflows/release.yaml`. That production-only
+wrapper calls the read-only `.github/workflows/release-build.yaml` artifact
+graph, then owns the protected publisher and GitHub-release jobs. The preflight
+rejects a malformed tag, version drift, a commit that is not reachable from
+`trunk`, an occupied enabled-registry version, or an invalid publisher flag.
+
+The workflow builds five native Python wheels, one Python sdist, and one npm
+tarball. The `release-ready` job downloads those exact files, validates the
+complete inventory, repeats clean-install smoke tests, and generates checksums
+and release metadata. Registry jobs can only download the resulting validated
+bundle; they never check out source or rebuild a package.
+
+The two repository variables below control the available publishers:
+
+| Variable | Registry | Default |
+|---|---|---|
+| `NPM_PUBLISH_ENABLED` | npm | `false` |
+| `PYPI_PUBLISH_ENABLED` | PyPI | `false` |
+
+An absent variable behaves as `false`. Set a variable to `true` only after its
+API token is present on the `release` environment and independently reviewed.
+The workflow rejects any value other than the literal `true` or `false`.
+
+Both are ordinary repository variables that the production workflow reads
+directly (`release.yaml`, `vars.NPM_PUBLISH_ENABLED` / `vars.PYPI_PUBLISH_ENABLED`).
+Neither is hardcoded, and neither distinguishes production from any other
+context — so a `v*` tag publishes to whichever registries are `true` at the
+moment it runs. Read the current values before tagging:
+
+```sh
+gh api repos/kaleidoswap/swap-sdk/actions/variables \
+  --jq '.variables[] | "\(.name) = \(.value)"'
+```
+
+The only thing standing between a pushed tag and a permanent publish is the
+`release` environment's required reviewers, and an org admin can bypass those.
+The GitHub release sits behind the same review: nothing about a version is
+public until a reviewer approves it.
+An npm publish cannot be undone. Never use a tag to test the pipeline — use the
+non-publishing rehearsal below.
+
+Both publisher jobs:
+
+- depend on the common `release-ready` gate, and on nothing else (see
+  "Publication order");
+- use the protected GitHub `release` environment;
+- for npm only, receive job-scoped `id-token: write` — required for provenance,
+  and asserted against `publishConfig.provenance`. The PyPI job requests no OIDC
+  scope, because PEP 740 attestations need Trusted Publishing and would be
+  unused privilege here. Every other job remains unable to request a token;
+- re-verify the sealed bundle's SHA-256 checksums before publishing;
+- publish the exact validated archive without `--skip-existing`;
+- authenticate with an API token drawn from the protected `release`
+  environment, never from repository-level secrets, and never with basic auth.
+
+`scripts/check_release_workflow.py` enforces that: only `NPM_TOKEN` and
+`PYPI_TOKEN` may be referenced, only from a job declaring
+`environment: release`, and never from the read-only build or rehearsal
+workflows. A `username:` key is rejected outright.
+
+Before publishing, the npm job runs `npm whoami` to prove the credential
+authenticates. An npm publish cannot be cleanly undone, so a bad token must fail
+on a read-only call rather than half-way through the release.
+
+The npm job pins the npm CLI, proves its credential with `npm whoami`, then
+publishes the validated `.tgz`. npm emits provenance for a public package from
+this public repository. The PyPI job uses the immutable-pinned PyPA publisher
+action to upload the exact wheels and sdist. It does **not** attach PEP 740
+attestations: those require Trusted Publishing, and the action silently ignores
+the `attestations` input when a password is set, so it is pinned to `false`.
+
+## Publication order
+
+The GitHub release is published from the sealed ten-file bundle and finalized
+changelog **before** either registry. `@kaleidorg/swap-sdk-react-native`'s
+`postinstall` downloads its iOS and Android archives from the GitHub release for
+its own version, so a package that reaches npm before that release exists
+resolves, installs, and then fails in `postinstall`. An npm publish cannot be
+undone, only superseded. Publishing the release first inverts the failure: a
+registry publish that fails after it leaves a release with no package, which is
+recoverable, rather than a package with no release, which is not.
+
+**One approval releases everything.** `publish-github-release`, `publish-npm`
+and `publish-pypi` all use the `release` environment and all depend on
+`release-ready` alone. They reach the environment together and wait for one
+review, and approving it starts all three. That is why the release-first order
+is not a `needs:` edge. GitHub asks for a new approval on each job that reaches
+a protected environment, so a registry job that started only after the release
+job finished would ask again. The time between the two approvals would be a
+public release with no package behind it. That is how v0.9.0 sat for half an hour with
+its GitHub release public and its npm and PyPI jobs still waiting.
+
+Each registry job holds its publish in a **Wait for the complete GitHub release**
+step instead. It polls the release for its tag for up to ten minutes, and
+continues only once the release is public and carries every file in the sealed
+bundle. `gh release create` makes a release public before it uploads its assets,
+so a public release alone is not enough. Each attempt logs what it got: the
+HTTP error, or how many of the bundle files are uploaded. A 401 or 403 fails
+at once, because waiting will not fix a token or permission problem. If the
+release job fails, the registry jobs time out and publish nothing. `scripts/check_release_workflow.py` fails if
+either registry job loses that step, runs it after publishing, or gains a
+`needs:` edge that would split the approval.
+
+The production jobs run in this order, and `scripts/check_release_workflow.py`
+fails when this list and the workflow's `needs:` graph disagree. Steps 3 to 5
+start together once approved, and the wait step keeps 4 and 5 behind 3:
+
+1. `release-activation`
+2. `release-ready`
+3. `publish-github-release`
+4. `publish-npm`
+5. `publish-pypi`
+6. `verify-npm`
+7. `verify-pypi`
+8. `registry-publish-complete`
+9. `verify-react-native-install`
+
+Production activation requires npm publishing to be enabled, but it enforces
+intent, not outcome: a publisher that fails after the release job leaves a
+GitHub-only release for that tag. PyPI is independently gated. After each
+enabled publisher succeeds, a separate read-only job downloads the registry
+package, matches its bytes and complete inventory against
+`release-manifest.json`, and repeats clean-consumer smoke tests.
+`verify-react-native-install` runs last, after both the release and the registry
+gate, because it is the only step that runs `postinstall` for real against the
+published package.
+
+## Non-publishing release rehearsal
+
+Both `.github/workflows/release.yaml` and
+`.github/workflows/release-rehearsal.yaml` call the same read-only
+`.github/workflows/release-build.yaml` artifact graph. The rehearsal passes
+`rehearsal: true` and an empty `release_tag`, so preflight derives the intended
+tag from the committed manifests and no workflow file carries a version
+literal. It does not copy or approximate the release build. The
+rehearsal:
+
+- validates the intended tag against all version sources;
+- requires the untagged rehearsal commit to be based on `trunk`;
+- validates the publisher flags without requiring the version to still be
+  unclaimed, so the rehearsal keeps passing after that version ships;
+- builds the same five wheels, sdist, npm tarball, and fresh WASM bindings;
+- clean-installs the exact Python artifacts and npm tarball;
+- initializes the exact npm tarball in both clean Node and headless Firefox
+  consumers;
+- generates and re-verifies `SHA256SUMS`, `release-manifest.json`, and
+  `release.spdx.json`;
+- verifies that the intended GitHub release contains exactly seven packages
+  and three metadata files.
+
+The reusable build workflow contains no publisher, protected environment,
+`id-token: write`, or `contents: write` declaration. Both OIDC publisher jobs,
+the registry-completion gate, and GitHub release creation exist only in the
+tag-triggered production wrapper. The rehearsal caller has only
+`contents: read`; GitHub therefore cannot grant its graph registry or deployment
+authority, regardless of repository publisher variables.
+
+A pull request automatically runs the successful rehearsal when release,
+binding, or TypeScript packaging inputs change. After this workflow exists on
+`trunk`, an operator can run the successful case explicitly:
+
+```sh
+gh workflow run release-rehearsal.yaml \
+  --repo kaleidoswap/swap-sdk \
+  --ref trunk \
+  -f failure_case=none
+```
+
+The manual workflow also exposes four deliberate failure cases:
+
+| `failure_case` | Expected stopping point |
+|---|---|
+| `malformed-tag` | preflight tag-format validation |
+| `version-mismatch` | preflight manifest/tag version validation |
+| `missing-wheel` | common release-ready inventory gate |
+| `npm-smoke` | clean npm consumer test before artifact upload |
+
+For example:
+
+```sh
+gh workflow run release-rehearsal.yaml \
+  --repo kaleidoswap/swap-sdk \
+  --ref trunk \
+  -f failure_case=missing-wheel
+```
+
+An unhappy-path run is successful evidence only when the workflow fails at its
+documented stopping point, no `release-bundle-*` artifact is produced, no
+deployment approval is requested, and no registry or GitHub release changes.
+Do not rerun a deliberate failure as though it were an infrastructure failure.
+
+For a successful run, download the `release-bundle-rehearsal-*` artifact and
+retain it with the workflow URL. Its manifest binds every filename and SHA-256
+to the rehearsed source commit and intended tag. The rehearsal never publishes:
+the exact wheels and sdist are already clean-installed from the workflow bundle,
+and no registry credential is reachable from the rehearsal graph.
+
+## Protected GitHub release boundary
+
+The repository `release` environment is configured with:
+
+- required reviewers `Arshia-r-m`, `bitwalt`, and `darbon`;
+- self-review prevention, so the tag pusher cannot approve their own
+  deployment;
+- a selected-tag deployment policy matching only `v*`.
+
+GitHub enables administrator bypass when an environment is created through its
+API, and does not expose that toggle through the environment REST endpoint.
+Before enabling either registry variable, a signed-in repository administrator
+must open **Settings → Environments → release**, clear **Allow administrators
+to bypass configured protection rules**, save, and verify:
+
+```sh
+gh api repos/kaleidoswap/swap-sdk/environments/release \
+  --jq '.can_admins_bypass'
+```
+
+The result must be `false`. Administrator bypass is currently still enabled, so
+this UI-only hardening step is a release-activation blocker.
+
+The repository tag ruleset named `Protect release tags` restricts creation,
+updates, and deletion of matching `v*` tags to the three repository
+administrators above. These repository settings are external state and must be
+audited before every release.
+
+The `trunk` branch must require pull requests, at least one independent
+approval, resolved conversations, current required checks, and protection
+against force pushes and deletion. Administrators are subject to the same
+rules. Do not push a release tag until the protection API confirms those
+settings.
+
+## Registry credential setup
+
+Publishing authenticates with API tokens held as **`release` environment
+secrets**. This is a deliberate tradeoff over OIDC trusted publishing: it avoids
+depending on registry-side publisher bootstrap, at the cost of storing long-lived
+credentials. See the changelog entry "registry publishing uses stored API tokens"
+for the invariants that replace the no-credential property.
+
+Both secrets live on the `release` environment, never at repository level, so
+they are unreachable except from a job that environment gates.
+`scripts/check_release_workflow.py` enforces that.
+
+### npm — `NPM_TOKEN`
+
+`@kaleidorg/swap-sdk` did not exist on npm when this pipeline was built, and
+npm configures trusted publishing from an existing package's settings, so a
+brand-new package could not be created by OIDC alone — which is the practical
+reason this pipeline uses a token. The package now exists, so that constraint is
+spent: migrating to trusted publishing is possible whenever someone wants to
+retire the stored credential.
+
+1. An owner of the `@kaleidorg` scope creates an **automation** token with
+   publish rights (granular access tokens scoped to this package are preferable
+   to a legacy classic token).
+2. Store it as `NPM_TOKEN` on the `release` environment. Never at repository
+   level, never in a file, never in logs.
+3. Verify it before relying on it — read-only, no publish:
+
+   ```sh
+   NPM_TOKEN=<token> npm whoami --registry https://registry.npmjs.org
+   ```
+
+   The `publish-npm` job runs the same check before publishing, so a bad token
+   fails there rather than part-way through an irreversible release.
+4. Set `NPM_PUBLISH_ENABLED=true`.
+
+npm provenance still applies: `publishConfig.provenance` is `true` in
+`typescript-sdk/package.json`, and npm derives provenance from the workflow's
+OIDC token independently of how it authenticates. That is the only reason
+`publish-npm` holds `id-token: write`, and the workflow checker asserts the
+linkage — dropping the manifest field fails the gate rather than silently leaving
+an unused privilege.
+
+### PyPI — `PYPI_TOKEN`
+
+1. A PyPI account with upload rights for `kaleidorg-swap-sdk` creates an API
+   token. The project now exists, so scope the token to it rather than to the
+   whole account — the account-scoped token the first upload required should not
+   still be in use.
+2. Store it as `PYPI_TOKEN` on the `release` environment.
+3. Set `PYPI_PUBLISH_ENABLED=true`.
+
+PyPI has **no read-only way to validate an upload token**, so unlike npm there is
+no pre-flight. A bad `PYPI_TOKEN` fails at upload — after npm has already
+published. See "Partial-publication recovery" below; note that PyPI never frees a
+version number, so a spent `0.1.0` cannot be reused.
+
+PEP 740 attestations are **not** produced. They require Trusted Publishing, and
+the PyPA action silently ignores `attestations: true` when a password is set, so
+that input is pinned to `false` and the PyPI job requests no OIDC scope.
+
+## Release activation checklist
+
+The tag is the irreversible release trigger. Run this checklist only after the
+release pull request has merged to `trunk`.
+
+Every command below reads `VERSION` and `TAG`, so set them once and the rest of
+the checklist is copy-pasteable. Take the version from the committed manifests
+rather than retyping it — `release_version.py current` is the same value the
+release preflight derives, and it fails if the six sources disagree:
+
+```sh
+VERSION="$(python3 scripts/release_version.py current)"
+TAG="v$VERSION"
+```
+
+1. Confirm the final changelog, manifests, and lockfiles:
+
+   ```sh
+   git switch trunk
+   git pull --ff-only origin trunk
+   make validate-release-readiness TAG="$TAG"
+   ```
+
+2. Confirm `@kaleidorg/swap-sdk@$VERSION` and
+   `kaleidorg_swap_sdk==$VERSION` are still absent from npm and PyPI:
+
+   ```sh
+   NPM_PUBLISH_ENABLED=false \
+   PYPI_PUBLISH_ENABLED=false \
+   python3 scripts/check_registry_availability.py "$VERSION" --check-pypi
+   ```
+
+3. Confirm `trunk` branch protection, the active `Protect release tags`
+   ruleset, the `v*` release-environment policy, required reviewers, and
+   `can_admins_bypass: false`.
+4. Have a second maintainer confirm `NPM_TOKEN` is present on the `release`
+   environment and scoped to publish `@kaleidorg/swap-sdk`. Set
+   `NPM_PUBLISH_ENABLED=true`; production activation deliberately fails while
+   this variable is false.
+5. To publish Python, confirm `PYPI_TOKEN` is present on the `release`
+   environment and set `PYPI_PUBLISH_ENABLED=true`. Otherwise leave it `false`
+   and the Python artifacts ship only as GitHub release assets.
+6. Have an administrator create and push the annotated tag:
+
+   ```sh
+   git tag -a "$TAG" -m "KaleidoSwap SDK $TAG"
+   git push origin "$TAG"
+   ```
+
+7. A required reviewer other than the tag pusher approves the `release`
+   environment. Do not use administrator bypass. The review appears once the
+   build and validation jobs pass. One approval releases the GitHub release,
+   npm and PyPI together, and nothing is public before it.
+8. Monitor the tag workflow through artifact construction, GitHub release
+   publication, OIDC registry publication, registry download/hash verification,
+   clean Node/Firefox and Python consumer tests, and the final React Native
+   install smoke test.
+9. Download and independently verify the ten GitHub release assets:
+
+   ```sh
+   mkdir "release-$TAG"
+   gh release download "$TAG" \
+     --repo kaleidoswap/swap-sdk \
+     --dir "release-$TAG"
+   python3 scripts/verify_release_bundle.py "release-$TAG" \
+     --version "$VERSION" \
+     --tag "$TAG" \
+     --commit "$(git rev-list -n 1 "$TAG")"
+   ```
+
+10. Retain the workflow URL, registry URLs, `SHA256SUMS`,
+    `release-manifest.json`, and `release.spdx.json` in the release record.
+
+## Partial-publication recovery
+
+External registries cannot participate in an atomic transaction. If one
+publisher succeeds and another fails:
+
+1. Do not rerun the entire workflow and do not use `--skip-existing`.
+2. Preserve the workflow run, validated release bundle, `SHA256SUMS`, and
+   `release-manifest.json`.
+3. Check each registry and record which exact filenames and hashes were
+   accepted.
+4. If the failed registry accepted no files, rerun failed jobs only. GitHub
+   leaves the successful publisher and the already-published GitHub release
+   untouched, and retries the failed publisher, its post-publication verifier,
+   the completion gate, and the React Native install check. This works because
+   release artifact names are attempt-independent, so the retried jobs download
+   the same sealed bundle the first attempt validated. Never rerun *all* jobs:
+   the build jobs would try to re-upload artifact names that already exist and
+   fail, which is the intended protection against silently rebuilding a
+   published version.
+5. If PyPI accepted only part of the Python file set, that version is spent:
+   PyPI does not allow re-uploading a filename, and yanking does not free it.
+   Prepare a coordinated patch version rather than attempting to complete the
+   partial upload, and never mix files from separate workflow attempts.
+6. If npm accepted the tarball, treat that version as immutable. Complete only
+   the missing registry from the same validated bundle or prepare a coordinated
+   patch release; never rebuild or overwrite the npm version.
+7. The GitHub release is already published, because both publishers wait for
+   it before publishing. A partial registry failure therefore leaves a published release,
+   marked `--latest`, for a version one or both registries do not have. Do not
+   delete it to "undo" the release: its archives are what the React Native
+   package's `postinstall` fetches, so deleting them leaves every install of
+   that version without its native libraries — a failed `npm install`, or a
+   package that cannot load for anyone who set
+   `KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE`. Complete the missing registry from
+   the same validated bundle, or prepare a coordinated patch version.
+8. If `publish-github-release` itself fails, both publishers time out in their
+   wait step without publishing, so no version is spent and rerunning failed
+   jobs is safe. The rerun asks for one fresh approval covering all three. The exception is a cancellation part-way through asset upload:
+   `gh release create` publishes the release first and uploads assets one at a
+   time, so the tag can be left with a published release carrying an incomplete
+   asset set. The job's "Refuse to replace an existing release" guard then
+   blocks every rerun, deliberately. Recover by confirming that no registry
+   accepted files, deleting the incomplete release — the tag survives — and
+   rerunning the failed jobs:
+
+   ```sh
+   gh release delete "$TAG" --repo kaleidoswap/swap-sdk --yes
+   ```
+
+   A draft-then-publish release would make this atomic and is deliberately
+   unavailable: `check_release_workflow.py` rejects `--draft` anywhere in the
+   production workflow, so a release can never be left invisible.
+9. If the release is absent — deleted under step 8, or never created — and
+   rerunning failed jobs cannot succeed, for example because npm already holds
+   the version so a fresh preflight would correctly reject it, publish the
+   GitHub release by hand from the retained bundle. Verify before uploading, and
+   never assemble the assets from anything but that bundle:
+
+   ```sh
+   gh run download <run-id> \
+     --repo kaleidoswap/swap-sdk \
+     --name "release-bundle-$TAG" \
+     --dir "release-$TAG"
+   python3 scripts/verify_release_bundle.py "release-$TAG" \
+     --version "$VERSION" --tag "$TAG" \
+     --commit "$(git rev-list -n 1 "$TAG")"
+   gh release create "$TAG" "release-$TAG"/* \
+     --repo kaleidoswap/swap-sdk \
+     --title "KaleidoSwap SDK $TAG" \
+     --verify-tag --latest \
+     --notes-file <(python3 scripts/release_notes.py "$VERSION")
+   ```
+
+## Rust distribution
+
+The Rust surface is **git-only**. Nothing in this pipeline runs `cargo package`
+or `cargo publish`, and `kaleidorg-swap-sdk` is unclaimed on crates.io.
+Consumers take it by tag:
+
+```toml
+kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }
+```
+
+Pin the tag you actually want; `v0.6.0` is the latest published release at the
+time of writing.
+
+The `repository`, `homepage`, and `include` metadata on the manifests exists so
+the crates are publishable *later* without another metadata pass, not because
+publishing happens today.
+
+Three things must be resolved before crates.io is possible, so treat this as a
+deliberate deferral rather than an oversight:
+
+1. `secp256k1_musig` is a git dependency as of `0.4.0`, and `cargo publish`
+   rejects a git dependency outright. Resolving it means the `0.33.x` MuSig2
+   migration described in that release's changelog entry, not a metadata change.
+2. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
+   published first.
+3. The "one synchronized version" contract covers three of the five crates. The
+   root crate, Python distribution, and npm package share one public version;
+   `bindings`, `bindings-wasm`, and `macros` are versioned independently of it
+   and of each other. `validate-versions` deliberately checks only the three
+   public surfaces, so run `make versions` rather than assuming the internal
+   crates track the release.
+
+## Python registry
+
+The previous distribution name `kaleidoswap_sdk` collided with an existing
+public PyPI project: normalized to `kaleidoswap-sdk`, it already holds releases
+`0.1.0` through `0.5.6`, whose versions and uploaded filenames cannot be safely
+reused. Uploading platform wheels to that old `0.1.0` would have mixed the new
+native package with the old universal wheel.
+
+Renaming the distribution to `kaleidorg_swap_sdk` removes that constraint. The
+new name was unclaimed, and `kaleidorg-swap-sdk` now holds `0.1.0` and `0.1.1`
+on PyPI. `0.1.0` reached PyPI but never reached npm, so it is permanently
+claimed there and absent from npm; see the `0.1.1` changelog entry.
+
+Public PyPI publishing is **enabled**: `PYPI_PUBLISH_ENABLED` is `true`, and
+`kaleidorg-swap-sdk` carries a release for every tagged version. The flag still
+defaults to off — absent or `false` — and the registry-completion gate then
+requires the publish and verify jobs to be `skipped`, with the Python artifacts
+validated in CI and shipped as GitHub release assets only. Read the live value
+before tagging rather than assuming either state.
+
+A PyPI upload is effectively permanent: a filename cannot be re-uploaded and a
+yank does not free the version. Treat enabling this flag as a one-way door for
+the version being released.
