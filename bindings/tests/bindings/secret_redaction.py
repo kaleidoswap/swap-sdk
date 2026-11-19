@@ -146,7 +146,9 @@ options = sdk.KaleidoSwapOptions(
     network=sdk.Network.REGTEST, store=object(), signer=object(), api_key=PARTNER_KEY
 )
 assert "s3cr3t" not in str(options), str(options)
-assert "api_key=kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_<redacted>" in str(options), str(options)
+assert "api_key=kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_<redacted>" in str(options), str(
+    options
+)
 assert options.api_key == PARTNER_KEY
 assert "api_key=None" in str(
     sdk.KaleidoSwapOptions(network=sdk.Network.REGTEST, store=object(), signer=object())
