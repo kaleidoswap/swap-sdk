@@ -477,12 +477,14 @@ VERSION=X.Y.Z
 
 1. Open a draft security advisory in this repository for the write-up and the
    CVE. Do not use its temporary private fork.
-2. Bring the mirror up to date, from a clone that has this repository as
-   `origin` and the mirror as `mirror`:
+2. Bring the mirror up to date from a fresh bare clone. A working clone can
+   hold tags from other remotes, and this push would copy them:
 
    ```sh
-   git fetch origin trunk --tags
-   git push mirror origin/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
+   git clone --bare git@github.com:kaleidoswap/swap-sdk.git swap-sdk-sync.git
+   git -C swap-sdk-sync.git push \
+     git@github.com:kaleidoswap/swap-sdk-private.git \
+     refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
    ```
 
 3. In the mirror, create `security/$VERSION` from `trunk` and open the fix as
@@ -506,8 +508,10 @@ VERSION=X.Y.Z
 7. Publish the branch here and open its pull request:
 
    ```sh
-   git fetch mirror "security/$VERSION"
-   git push origin "FETCH_HEAD:refs/heads/release/$VERSION"
+   git fetch git@github.com:kaleidoswap/swap-sdk-private.git \
+     "security/$VERSION"
+   git push git@github.com:kaleidoswap/swap-sdk.git \
+     "FETCH_HEAD:refs/heads/release/$VERSION"
    gh pr create --repo kaleidoswap/swap-sdk --base trunk \
      --head "release/$VERSION" --title "chore(release): prepare $VERSION"
    ```
