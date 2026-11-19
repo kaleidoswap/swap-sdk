@@ -138,6 +138,20 @@ assert "01KZZYB138E7C3HZX7Q1YBGAQG" in str(chain(AUTH, BLINDING))
 assert sdk.TransactionOptions(swap_auth=AUTH).swap_auth == AUTH
 assert chain(AUTH, BLINDING).claim_details.blinding_key == BLINDING
 
+# A partner key prints as the Rust `ApiKey::redacted` does: environment and key
+# id, which a support request needs, and never the last segment.
+PARTNER_KEY = "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t-Ab_Cd0123456789xyz"
+assert "KaleidoSwapOptions" in patched, patched
+options = sdk.KaleidoSwapOptions(
+    network=sdk.Network.REGTEST, store=object(), signer=object(), api_key=PARTNER_KEY
+)
+assert "s3cr3t" not in str(options), str(options)
+assert "api_key=kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_<redacted>" in str(options), str(options)
+assert options.api_key == PARTNER_KEY
+assert "api_key=None" in str(
+    sdk.KaleidoSwapOptions(network=sdk.Network.REGTEST, store=object(), signer=object())
+)
+
 # The default repr never printed fields; it must not start to.
 assert AUTH not in repr(sdk.TransactionOptions(swap_auth=AUTH))
 assert AUTH not in "%r" % sdk.TransactionOptions(swap_auth=AUTH)

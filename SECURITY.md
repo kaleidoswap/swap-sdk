@@ -59,7 +59,11 @@ When auditing this SDK, the highest-impact surfaces are:
   to the maker URL they were configured with, refused over plain HTTP off
   loopback (where the path could strip or replace them), and decline redirects
   on every client — native by reqwest policy, in the browser by issuing each
-  maker `fetch` with `redirect: "error"`.
+  maker `fetch` with `redirect: "error"`. That a key grants nothing beyond
+  attribution and the partner fee is enforced by the maker, not by the SDK.
+  The SDK parses only `kld_test_…` / `kld_live_…` and refuses any other shape,
+  so a future secret key kind must use a shape this parser rejects. SDKs that
+  predate it then refuse such a key rather than treat it as public.
 - **Chain identity.** Signet settles on Mutinynet, and signet and testnet3
   encode addresses identically — a mismatch raises no error, it simply creates
   swaps on one chain while funding or watching another. The same shape of bug
