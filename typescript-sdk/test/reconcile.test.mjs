@@ -360,6 +360,46 @@ function setup(overrides = {}) {
   };
 }
 
+test("a maker reclaim leaves the taker's unspent chain lockup refundable", async () => {
+  for (const status of [
+    "transaction.refunded",
+    "transaction.refunded.confirmed",
+    "transaction.refunded.mempool",
+  ]) {
+    assert.deepEqual(
+      canRefund(status, 160, chainTiming, { kind: "chain" }),
+      { eligible: true, path: "cooperative" },
+      status,
+    );
+    const { options, calls, transaction } = setup({ status, tipHeight: 160 });
+    const signed = await refundChainSwap(options);
+    assert.equal(signed.path, "cooperative", status);
+    assert.equal(signed.transaction, transaction);
+    assert.equal(calls[0].args[0].cooperative, true);
+    // The maker's lockup is gone, so there is nothing to claim.
+    for (const kind of ["chain", "reverse"]) {
+      assert.deepEqual(
+        canClaim(status, 100, kind === "chain" ? chainTiming : timing, {
+          kind,
+        }),
+        { eligible: false, reason: "completed" },
+        `${kind} ${status}`,
+      );
+    }
+  }
+  // Not a maker-reclaim state, and not a submarine refund.
+  assert.deepEqual(
+    canRefund("transaction.refunded.elsewhere", 160, chainTiming, {
+      kind: "chain",
+    }),
+    { eligible: false, reason: "unknown-status" },
+  );
+  assert.deepEqual(canRefund("transaction.refunded.confirmed", 160, timing), {
+    eligible: false,
+    reason: "unknown-status",
+  });
+});
+
 test("refund policy blocks in-flight payment and unknown/terminal states even after CLTV", () => {
   for (const status of [
     "invoice.paid",
