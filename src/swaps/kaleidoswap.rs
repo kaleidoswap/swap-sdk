@@ -1921,7 +1921,10 @@ fn percent_fee(amount: u64, percent: f64) -> u64 {
 /// partner fee.
 fn split_service_fee(amount: u64, percent: f64, partner_percent: Option<f64>) -> (u64, u64) {
     let partner_percent = partner_percent.filter(|p| p.is_finite() && *p > 0.0 && *p <= percent);
-    let partner = partner_fee_part(u64::MAX, amount, partner_percent);
+    // Capped at the amount, never at a sentinel: a partner percentage of 100
+    // or more is then the whole amount, which the callers' additions can hold.
+    // (They refuse a card whose percentage is 100 or more before getting here.)
+    let partner = partner_fee_part(amount, amount, partner_percent);
     let own = percent_fee(amount, percent - partner_percent.unwrap_or(0.0));
     (own, partner)
 }
@@ -4363,6 +4366,13 @@ mod tests {
         assert_eq!(split_service_fee(12_345, 0.5, Some(0.6)), (62, 0));
         for bogus in [Some(0.0), Some(-0.1), Some(f64::NAN)] {
             assert_eq!(split_service_fee(50_000, 0.6, bogus), (300, 0), "{bogus:?}");
+        }
+        // Out-of-range percentages never yield more than the amount, so the
+        // quote's additions cannot overflow even without the callers' guard.
+        for (percent, partner) in [(150.0, 150.0), (100.0, 100.0), (250.0, 120.0)] {
+            let (own, part) = split_service_fee(10_000, percent, Some(partner));
+            assert!(part <= 10_000, "{percent}/{partner}: {part}");
+            assert!(own.checked_add(part).is_some(), "{percent}/{partner}");
         }
     }
 
