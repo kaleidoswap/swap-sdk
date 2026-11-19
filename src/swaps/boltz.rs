@@ -169,7 +169,10 @@ pub struct ChainFees {
 
 impl ChainFees {
     pub fn total(&self, amount_sat: u64) -> u64 {
-        self.boltz(amount_sat) + self.claim_estimate() + self.lockup() + self.server()
+        self.boltz(amount_sat)
+            .saturating_add(self.claim_estimate())
+            .saturating_add(self.lockup())
+            .saturating_add(self.server())
     }
 
     pub fn boltz(&self, amount_sat: u64) -> u64 {
@@ -198,7 +201,9 @@ pub struct ReverseFees {
 
 impl ReverseFees {
     pub fn total(&self, invoice_amount_sat: u64) -> u64 {
-        self.boltz(invoice_amount_sat) + self.claim_estimate() + self.lockup()
+        self.boltz(invoice_amount_sat)
+            .saturating_add(self.claim_estimate())
+            .saturating_add(self.lockup())
     }
 
     pub fn boltz(&self, invoice_amount_sat: u64) -> u64 {
@@ -2528,16 +2533,26 @@ fn ensure_invoice_network(invoice: &Bolt11Invoice, chain: Chain) -> Result<(), E
     Ok(())
 }
 
-/// The least the maker can lock for `amount` under a rate card: the amount
-/// converted at `rate`, less every fee the card lists.
+/// The least the maker can pay for `amount` of the input asset.
 ///
-/// It over-deducts on purpose (the card's `total` includes fees the caller
-/// pays itself, such as its own claim), so it is a floor a legitimate
-/// response clears with room, and a response below it was priced off a
-/// different card than the caller accepted.
-fn minimum_payout(amount: u64, rate: f64, total_fees: u64) -> Result<u64, Error> {
+/// A card's fees are denominated in the payout's units, the same as
+/// [`maximum_funding`]. `total_fees` is the card's fee function, charged on
+/// the converted notional `floor(amount × rate)`, not on the lock amount.
+/// At rate 1 this is `amount − total_fees(amount)`. It still over-deducts
+/// (the card's total includes fees the caller pays itself, such as its own
+/// claim), so a legitimate response clears the floor with room.
+fn minimum_payout(amount: u64, rate: f64, total_fees: impl Fn(u64) -> u64) -> Result<u64, Error> {
     let converted = convert_at_rate(amount, rate)?;
-    Ok(converted.saturating_sub(total_fees))
+    let fees = total_fees(converted);
+    if fees >= converted {
+        // A floor of zero would accept any claim: a card whose fees take the
+        // whole payout (a percentage of 100 or more, or fees that saturate)
+        // prices nothing the caller can check.
+        return Err(Error::Protocol(
+            "Pair fees do not leave a payout".to_string(),
+        ));
+    }
+    Ok(converted - fees)
 }
 
 /// The most a caller can be asked to lock for a `payout` under a rate card.
@@ -3450,11 +3465,12 @@ impl CreateReverseResponse {
     ///
     /// With `pair` — the rate card the caller accepted before creating the
     /// swap, not one fetched again now — `onchainAmount` must also be at least
-    /// `floor(invoiceAmount × rate) − fees.total(invoiceAmount)`. That is a
-    /// floor, not an equality: a maker that charges less than its card
-    /// advertises passes, one that pays out less than the card promised does
-    /// not. Pass the card for sat-denominated routes; on an asset route the
-    /// rate expresses the asset's units and the same bound applies.
+    /// `floor(invoiceAmount × rate) − fees.total(that payout)`. The card's
+    /// fees are in the payout's units, so the percentage is taken on the
+    /// converted notional, not on the invoice. That is a floor, not an
+    /// equality: a maker that charges less than its card advertises passes,
+    /// one that pays out less than the card promised does not. A rate of 1
+    /// leaves the previous bound.
     ///
     /// Call this alongside [`Self::validate`] (or its variants) before paying
     /// the invoice. A request that supplied its own invoice has nothing to
@@ -3515,7 +3531,7 @@ impl CreateReverseResponse {
     }
 
     fn check_payout_floor(&self, invoice_amount: u64, pair: &ReversePair) -> Result<(), Error> {
-        let minimum = minimum_payout(invoice_amount, pair.rate, pair.fees.total(invoice_amount))?;
+        let minimum = minimum_payout(invoice_amount, pair.rate, |amount| pair.fees.total(amount))?;
         if self.onchain_amount < minimum {
             return Err(Error::Protocol(format!(
                 "Reverse swap onchainAmount {} is below the {minimum} the accepted pair card implies for invoiceAmount {invoice_amount}",
@@ -3809,12 +3825,14 @@ impl CreateChainResponse {
     /// The leg the maker computed is bounded with `pair` — the rate card the
     /// caller accepted before creating the swap, not one fetched again now.
     /// With `userLockAmount` fixed, `claimDetails.amount` must be at least
-    /// `floor(userLockAmount × rate) − fees.total(userLockAmount)`; with
-    /// `serverLockAmount` fixed, `lockupDetails.amount` must be at most
-    /// `ceil(serverLockAmount ÷ rate) + fees.total(serverLockAmount)`. Both
-    /// are bounds, not equalities: a maker charging less than its card
-    /// advertises passes, one pricing off a card the caller never accepted
-    /// does not.
+    /// `floor(userLockAmount × rate) − fees.total(that payout)`. The card's
+    /// fees are in the payout's units, so the percentage is taken on the
+    /// converted notional, not on the lock amount. With `serverLockAmount`
+    /// fixed, the lockup is at most the gross payout (the claim plus the
+    /// card's fee on that gross) converted back at `rate`. Both are bounds,
+    /// not equalities: a maker charging less than its card advertises passes,
+    /// one pricing off a card the caller never accepted does not. A rate of 1
+    /// leaves the previous bounds.
     ///
     /// Call this alongside [`Self::validate`] (or its variants) before
     /// funding the lockup.
@@ -3836,11 +3854,9 @@ impl CreateChainResponse {
                 )));
             }
             if let Some(pair) = pair {
-                let minimum = minimum_payout(
-                    user_lock_amount,
-                    pair.rate,
-                    pair.fees.total(user_lock_amount),
-                )?;
+                let minimum = minimum_payout(user_lock_amount, pair.rate, |amount| {
+                    pair.fees.total(amount)
+                })?;
                 if self.claim_details.amount < minimum {
                     return Err(Error::Protocol(format!(
                         "Chain swap claim amount {} is below the {minimum} the accepted pair card implies for userLockAmount {user_lock_amount}",
@@ -4192,8 +4208,17 @@ pub enum RevSwapStates {
     /// and Boltz successfully locked up coins onchain, but the Boltz API Client did not claim
     /// the locked oncahin coins before swap expiry. In this case, Boltz will also automatically refund
     /// its own locked onchain coins and the Lightning payment is cancelled.
+    /// The taker locked nothing on-chain; this is the maker's lockup, not a taker refund.
     #[serde(rename = "transaction.refunded")]
     TransactionRefunded,
+    /// The maker's refund of its own lockup is confirmed. The taker has no
+    /// on-chain deposit in a reverse swap.
+    #[serde(rename = "transaction.refunded.confirmed")]
+    TransactionRefundedConfirmed,
+    /// Not emitted. Accepted so a client that sees it treats it as the maker
+    /// reclaiming its own lockup, the same as [`Self::TransactionRefundedConfirmed`].
+    #[serde(rename = "transaction.refunded.mempool")]
+    TransactionRefundedMempool,
 }
 
 impl Display for RevSwapStates {
@@ -4208,6 +4233,10 @@ impl Display for RevSwapStates {
             RevSwapStates::SwapExpired => "swap.expired".to_string(),
             RevSwapStates::TransactionFailed => "transaction.failed".to_string(),
             RevSwapStates::TransactionRefunded => "transaction.refunded".to_string(),
+            RevSwapStates::TransactionRefundedConfirmed => {
+                "transaction.refunded.confirmed".to_string()
+            }
+            RevSwapStates::TransactionRefundedMempool => "transaction.refunded.mempool".to_string(),
         };
         write!(f, "{str}")
     }
@@ -4227,6 +4256,8 @@ impl FromStr for RevSwapStates {
             "swap.expired" => Ok(RevSwapStates::SwapExpired),
             "transaction.failed" => Ok(RevSwapStates::TransactionFailed),
             "transaction.refunded" => Ok(RevSwapStates::TransactionRefunded),
+            "transaction.refunded.confirmed" => Ok(RevSwapStates::TransactionRefundedConfirmed),
+            "transaction.refunded.mempool" => Ok(RevSwapStates::TransactionRefundedMempool),
             _ => Err(()),
         }
     }
@@ -4273,9 +4304,18 @@ pub enum ChainSwapStates {
     TransactionFailed,
     /// If the user and Boltz both successfully locked up bitcoin on the chain, but the user did not
     /// claim the locked chain bitcoin until swap expiry, Boltz will automatically refund its own locked
-    /// chain bitcoin.
+    /// chain bitcoin. This is the maker's lockup, not the taker's deposit: the
+    /// taker's lockup is still refundable while it is unspent.
     #[serde(rename = "transaction.refunded")]
     TransactionRefunded,
+    /// The maker's refund of its own lockup is confirmed. The taker's lockup
+    /// is unchanged.
+    #[serde(rename = "transaction.refunded.confirmed")]
+    TransactionRefundedConfirmed,
+    /// Not emitted. Accepted so a client that sees it treats it as the maker
+    /// reclaiming its own lockup, the same as [`Self::TransactionRefundedConfirmed`].
+    #[serde(rename = "transaction.refunded.mempool")]
+    TransactionRefundedMempool,
 }
 
 impl Display for ChainSwapStates {
@@ -4297,6 +4337,12 @@ impl Display for ChainSwapStates {
             ChainSwapStates::SwapExpired => "swap.expired".to_string(),
             ChainSwapStates::TransactionFailed => "transaction.failed".to_string(),
             ChainSwapStates::TransactionRefunded => "transaction.refunded".to_string(),
+            ChainSwapStates::TransactionRefundedConfirmed => {
+                "transaction.refunded.confirmed".to_string()
+            }
+            ChainSwapStates::TransactionRefundedMempool => {
+                "transaction.refunded.mempool".to_string()
+            }
         };
         write!(f, "{str}")
     }
@@ -4319,6 +4365,8 @@ impl FromStr for ChainSwapStates {
             "swap.expired" => Ok(ChainSwapStates::SwapExpired),
             "transaction.failed" => Ok(ChainSwapStates::TransactionFailed),
             "transaction.refunded" => Ok(ChainSwapStates::TransactionRefunded),
+            "transaction.refunded.confirmed" => Ok(ChainSwapStates::TransactionRefundedConfirmed),
+            "transaction.refunded.mempool" => Ok(ChainSwapStates::TransactionRefundedMempool),
             _ => Err(()),
         }
     }
@@ -5482,6 +5530,45 @@ mod tests {
     }
 
     #[test]
+    fn minimum_payout_refuses_fees_that_take_the_whole_payout() {
+        // BTC → L-USDT at 37_245.5 units per sat and the inverse direction:
+        // the card's fees come off the converted payout either way.
+        let fees = |amount: u64| ((0.5 / 100.0) * amount as f64).ceil() as u64 + 1_000;
+        assert_eq!(
+            minimum_payout(100_000, 37_245.5, fees).unwrap(),
+            3_705_926_250
+        );
+        assert_eq!(
+            minimum_payout(3_724_550_000, 1.0 / 37_245.5, fees).unwrap(),
+            98_500
+        );
+
+        // A percentage of 100 or more would floor the payout at zero and
+        // accept any claim amount; so would fees that saturate.
+        let card = |percentage: f64| ReverseFees {
+            percentage,
+            miner_fees: PairMinerFees {
+                lockup: 0,
+                claim: 0,
+            },
+        };
+        for percentage in [100.0, 150.0, f64::INFINITY] {
+            let fees = card(percentage);
+            assert!(minimum_payout(100_000, 1.0, |a| fees.total(a)).is_err());
+        }
+        let saturating = ReverseFees {
+            percentage: 1.0,
+            miner_fees: PairMinerFees {
+                lockup: u64::MAX,
+                claim: u64::MAX,
+            },
+        };
+        assert_eq!(saturating.total(100_000), u64::MAX);
+        assert!(minimum_payout(100_000, 1.0, |a| saturating.total(a)).is_err());
+        assert!(minimum_payout(100_000, 1.0, |amount| amount).is_err());
+    }
+
+    #[test]
     fn submarine_asset_amount_is_bounded_in_the_asset_units() {
         use lightning_invoice::Currency as LnCurrency;
         let invoice = signed_invoice(
@@ -5547,6 +5634,102 @@ mod tests {
             .validate_amounts(&server_fixed, Some(&pair))
             .unwrap_err();
         assert!(err.to_string().contains("above"), "{err}");
+    }
+
+    /// The claim floor charges the card's fee on the converted payout. A
+    /// percentage of the lock amount, subtracted in claim units, rejects a
+    /// payout the card allows. Rate 1 is covered by the pair-card test above.
+    #[test]
+    fn chain_cross_asset_claim_uses_the_payout_fee() {
+        let pair: ChainPair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 74_491.0,
+            "limits": { "maximal": 25_000_000, "minimal": 10_000, "maximalZeroConf": 0 },
+            "fees": {
+                "percentage": 0.5,
+                "minerFees": { "server": 93_055_417, "user": { "lockup": 0, "claim": 0 } },
+            },
+        }))
+        .unwrap();
+        // floor(50_000 × 74_491) − total(that payout)
+        // = 3_724_550_000 − (18_622_750 + 93_055_417) = 3_612_871_833.
+        // Charging total(50_000) instead leaves the floor at 3_631_494_333.
+        let request = chain_create_request(Some(50_000), None);
+        let claim = 3_612_871_833;
+        chain_create_response(50_000, claim)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        chain_create_response(50_000, claim + 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = chain_create_response(50_000, claim - 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+        assert!(err.to_string().contains(&claim.to_string()), "{err}");
+    }
+
+    /// LN → L-USDT uses the same payout floor: the percentage is of the
+    /// converted on-chain amount, and the miner fees are already in it.
+    #[test]
+    fn reverse_cross_asset_payout_uses_the_payout_fee() {
+        use lightning_invoice::Currency as LnCurrency;
+        let hash = sha256::Hash::hash(&[9u8; 32]);
+        let invoice = Some(signed_invoice(LnCurrency::Regtest, Some(100_000_000), hash));
+        let pair: ReversePair = serde_json::from_value(serde_json::json!({
+            "hash": "h",
+            "rate": 100_000.0,
+            "limits": { "maximal": 25_000_000_000u64, "minimal": 1 },
+            "fees": { "percentage": 0.5, "minerFees": { "lockup": 1_000, "claim": 200 } },
+        }))
+        .unwrap();
+        // floor(100_000 × 100_000) − ceil(0.5% × 10_000_000_000) − 1_200
+        // = 9_949_998_800.
+        let request = reverse_create_request(Some(100_000));
+        let payout = 9_949_998_800;
+        reverse_create_response(invoice.clone(), payout)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap();
+        let err = reverse_create_response(invoice, payout - 1)
+            .validate_amounts(&request, Some(&pair))
+            .unwrap_err();
+        assert!(err.to_string().contains("below"), "{err}");
+    }
+
+    /// The maker emits `transaction.refunded` and `transaction.refunded.confirmed`
+    /// when it reclaims its own lockup. `.mempool` is not emitted and still parses.
+    /// A status string the enums do not know stays a string on the swap response.
+    #[test]
+    fn maker_reclaim_states_parse_and_unknown_status_strings_still_do() {
+        for wire in [
+            "transaction.refunded",
+            "transaction.refunded.confirmed",
+            "transaction.refunded.mempool",
+        ] {
+            assert_eq!(ChainSwapStates::from_str(wire).unwrap().to_string(), wire);
+            assert_eq!(RevSwapStates::from_str(wire).unwrap().to_string(), wire);
+            let quoted = format!("\"{wire}\"");
+            assert_eq!(
+                serde_json::from_str::<ChainSwapStates>(&quoted)
+                    .unwrap()
+                    .to_string(),
+                wire
+            );
+            assert_eq!(
+                serde_json::from_str::<RevSwapStates>(&quoted)
+                    .unwrap()
+                    .to_string(),
+                wire
+            );
+        }
+        assert!(ChainSwapStates::from_str("transaction.refunded.elsewhere").is_err());
+        assert!(RevSwapStates::from_str("transaction.refunded.elsewhere").is_err());
+        let known: GetSwapResponse =
+            serde_json::from_str(r#"{"status":"transaction.refunded.confirmed"}"#).unwrap();
+        assert_eq!(known.status, "transaction.refunded.confirmed");
+        let unknown: GetSwapResponse =
+            serde_json::from_str(r#"{"status":"transaction.refunded.elsewhere"}"#).unwrap();
+        assert_eq!(unknown.status, "transaction.refunded.elsewhere");
     }
 
     /// Every create response must keep the maker's per-swap taker credential.
