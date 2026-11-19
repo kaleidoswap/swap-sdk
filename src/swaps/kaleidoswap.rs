@@ -2019,6 +2019,23 @@ fn map_status(protocol: Protocol, status: &str, state: &SwapState) -> Transition
         "transaction.claim.pending" => t(SwapPhase::Claiming, true),
         "invoice.paid" | "invoice.settled" | "transaction.claimed" => t(SwapPhase::Settled, false),
         "transaction.refunded" => t(SwapPhase::Refunded, false),
+        // The maker reclaimed its own lockup. A reverse swap has nothing left
+        // to claim. `.mempool` is not emitted and is accepted the same way.
+        // A submarine refund of the taker's lockup is `transaction.refunded`.
+        "transaction.refunded.confirmed" | "transaction.refunded.mempool" => {
+            if protocol == Protocol::BoltzReverse {
+                t(SwapPhase::Failed, false)
+            } else {
+                t(
+                    if state.funded_seen {
+                        SwapPhase::Funded
+                    } else {
+                        SwapPhase::AwaitingFunding
+                    },
+                    false,
+                )
+            }
+        }
         // Only a submarine swap has a lockup of ours to take back; a reverse
         // swap that fails is over, whatever the maker calls it.
         "transaction.lockupFailed" | "invoice.failedToPay" => {
@@ -3560,6 +3577,64 @@ mod tests {
     // from lightning-invoice; only amount and prefix matter here.
     const INVOICE_SIGNET_50K: &str = "lntbs500u1p4t29lqdp8ddskcetfv3hhxampwqs8yetkv4e8xefqwdmkzuqnp4qwveczq4f9q9pj47ey3wjdt4vlsk76jreecz4srms75z79feew0m7pp5d9567gdr5ay9yvy38m0lmcz0g4ny2k9m7gu02t5d06d5dxsnx9ussp526y6s8c3x3hhrgusjhtl79jh0x3x022lgywgr2llnqrrxaz3pk6s9qyysgqcqzd8xqrpc8wrms9ewjwqft6a8w585gx2pwmx8vwcm65tvkfq9sr4rp5sul37n947eyzcrdfgmxjxq4z7mwhlrtxmzw7ms8shrl0gu80l49fn7pxtsquc5q2e";
     const INVOICE_REGTEST_100K: &str = "lnbcrt1m1p45n5sqdq6wpshjtt5dpex7at8dqs8getnwspp5ehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxumnwdehxssp5gfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpyysjzgfpq9qrsgqcqzysyt5fzeueg687mkcum4we2pm452clxqdy9l4extcqs84ek4nte3s56s6pmwxhmx4zx3d4k6xsftlphw8ed60xerfchczpw8w8avdn92qpftvz36";
+
+    /// The maker's reclaim of its own lockup ends a reverse swap. It is not
+    /// the taker's submarine refund, and `.mempool` is accepted though the
+    /// maker does not emit it.
+    #[macros::test_all]
+    fn a_maker_reclaim_ends_a_reverse_swap_and_leaves_a_submarine_refund_alone() {
+        let response: CreateReverseResponse = serde_json::from_value(serde_json::json!({
+            "id": "id",
+            "swapTree": {
+                "claimLeaf": {"output": "00", "version": 196},
+                "refundLeaf": {"output": "01", "version": 196},
+            },
+            "lockupAddress": "bcrt1qlockup",
+            "refundPublicKey":
+                "0276177bcce18ee504d87511991653ca9736a32f58066331e8bc93f1a3cf5dd1f2",
+            "timeoutBlockHeight": 200,
+            "onchainAmount": 1,
+        }))
+        .unwrap();
+        let state = SwapState {
+            swap_index: 0,
+            response: CreateResponse::BoltzReverse(response),
+            destination: "dest".into(),
+            refund_address: None,
+            claim_txid: None,
+            refund_txid: None,
+            pending_claim: None,
+            pending_refund: None,
+            claim_started: false,
+            funded_seen: true,
+            zero_conf_limit: None,
+            claim_fee_rate: None,
+            preimage_salt: None,
+        };
+        for status in [
+            "transaction.refunded.confirmed",
+            "transaction.refunded.mempool",
+        ] {
+            assert_eq!(
+                map_status(Protocol::BoltzReverse, status, &state).phase,
+                SwapPhase::Failed,
+                "{status}"
+            );
+            assert_eq!(
+                map_status(Protocol::BoltzSubmarine, status, &state).phase,
+                SwapPhase::Funded,
+                "{status}"
+            );
+        }
+        assert_eq!(
+            map_status(Protocol::BoltzReverse, "transaction.refunded", &state).phase,
+            SwapPhase::Refunded
+        );
+        assert_eq!(
+            map_status(Protocol::BoltzReverse, "some.future.state", &state).phase,
+            SwapPhase::Funded
+        );
+    }
 
     /// A signet invoice for 50 000 sat, signed now, that expires
     /// `expires_in` seconds from now (in the past when negative).

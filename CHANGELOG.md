@@ -43,6 +43,25 @@ TypeScript, Python and React Native APIs are unchanged.
   for a claim and a positive amount for a refund. RGB HTLCs and L-USDT swaps
   keep their dedicated flows and are refused here.
 
+### Fixed
+
+- Chain and reverse payout floors charge the pair card's fee on the converted
+  payout, `floor(amount × rate) − fees.total(that amount)`. The percentage is
+  no longer taken on the lock amount and subtracted in claim units, so a
+  BTC → L-USDT chain create whose claim matches the card is accepted.
+  Same-asset cards (`rate` 1) are unchanged. The funding ceiling is the one
+  shipped in 0.14.2.
+- A pair card whose fees take the whole payout (a percentage of 100 or more,
+  or miner fees that saturate) is refused instead of flooring the payout at
+  zero, which would have accepted any claim amount. Fee totals saturate
+  rather than overflow.
+- Chain and reverse swaps recognize `transaction.refunded.confirmed`. The
+  maker emits that, and `transaction.refunded`, when it reclaims its own
+  lockup; `transaction.refunded.mempool` is not emitted and is accepted the
+  same way. `canRefund` treats them as a cooperative refund of the taker's
+  chain lockup while that lockup is still unspent. An unknown status stays
+  unknown.
+
 ## [0.15.0] - 2026-11-17
 
 ### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1
