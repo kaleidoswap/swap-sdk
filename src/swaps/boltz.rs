@@ -5687,6 +5687,7 @@ mod tests {
                 lockup: 0,
                 claim: 0,
             },
+            partner_percentage: None,
         };
         for percentage in [100.0, 150.0, f64::INFINITY] {
             let fees = card(percentage);
@@ -5698,6 +5699,7 @@ mod tests {
                 lockup: u64::MAX,
                 claim: u64::MAX,
             },
+            partner_percentage: None,
         };
         assert_eq!(saturating.total(100_000), u64::MAX);
         assert!(minimum_payout(100_000, 1.0, |a| saturating.total(a)).is_err());
