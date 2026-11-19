@@ -21,14 +21,6 @@ on:
         required: false
         type: string
         default: ""
-      release_base:
-        description: >-
-          Branch the tagged commit must be reachable from. `trunk` for every
-          public release; a private mirror's security release passes its
-          `security/X.Y.Z` branch, which is cut from the last release tag.
-        required: false
-        type: string
-        default: trunk
     outputs:
       commit:
         description: Peeled source commit represented by the tag or rehearsal ref
@@ -64,7 +56,6 @@ env:
   # treats "" as falsy and would silently substitute github.ref_name, which is
   # "<pr>/merge" on a pull request.
   RELEASE_TAG: ${{ inputs.release_tag }}
-  RELEASE_BASE: ${{ inputs.release_base }}
   REHEARSAL_FAILURE_CASE: ${{ inputs.rehearsal && inputs.failure_case || 'none' }}
   RUST_VERSION: "1.88.0"
   UV_VERSION: "0.11.16"
@@ -85,15 +76,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # Only trunk, or a security branch named for one exact version. The value
-      # becomes a refspec, so anything else is refused before git sees it.
       - name: Fetch protected release base
-        run: |
-          if ! [[ "${RELEASE_BASE}" =~ ^(trunk|security/[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "Unsupported release base: ${RELEASE_BASE}" >&2
-            exit 1
-          fi
-          git fetch --no-tags origin "${RELEASE_BASE}:refs/remotes/origin/${RELEASE_BASE}"
+        run: git fetch --no-tags origin trunk:refs/remotes/origin/trunk
       - name: Validate mode, tag, version, and source reachability
         id: release
         run: |
@@ -127,11 +111,11 @@ jobs:
 
           if [ "${REHEARSAL}" = "true" ]; then
             python3 scripts/validate_release_ref.py --rehearsal \
-              "${effective_tag}" "${GITHUB_SHA}" "origin/${RELEASE_BASE}"
+              "${effective_tag}" "${GITHUB_SHA}" origin/trunk
           else
             test "${REHEARSAL_FAILURE_CASE}" = "none"
             python3 scripts/validate_release_ref.py \
-              "${effective_tag}" "${GITHUB_SHA}" "origin/${RELEASE_BASE}"
+              "${effective_tag}" "${GITHUB_SHA}" origin/trunk
           fi
           commit="$(git rev-parse "${GITHUB_SHA}^{commit}")"
           echo "commit=${commit}" >> "${GITHUB_OUTPUT}"

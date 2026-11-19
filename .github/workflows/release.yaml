@@ -19,42 +19,8 @@ env:
   PYPI_PUBLISH_ENABLED: ${{ vars.PYPI_PUBLISH_ENABLED || 'false' }}
 
 jobs:
-  # A version reaches this repository's tags in two ways: this workflow builds
-  # and publishes it, or the private mirror publishes it as a security release
-  # and pushes the tag here once its source can be public. The registry tells
-  # the two apart. A version npm does not have yet is a release; one it already
-  # has came from the mirror, and the only job left is verify-mirror-release,
-  # which publishes nothing. The mirror carries this file through its sync, so
-  # the repository guard keeps the public release from ever starting there.
-  release-mode:
-    name: Decide between a release and a verification
-    if: ${{ github.repository == 'kaleidoswap/swap-sdk' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      mode: ${{ steps.mode.outputs.mode }}
-    steps:
-      - name: Checkout tagged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Ask the registry whether this version already exists
-        id: mode
-        run: |
-          state="$(python3 scripts/release_mode.py "${GITHUB_REF_NAME#v}")"
-          case "${state}" in
-            unpublished) mode=release ;;
-            published) mode=verify ;;
-            *)
-              echo "Unexpected registry state: ${state}" >&2
-              exit 1
-              ;;
-          esac
-          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
-          echo "${GITHUB_REF_NAME}: ${mode}"
-
   release-activation:
     name: Require an activated production release
-    needs: release-mode
-    if: ${{ needs.release-mode.outputs.mode == 'release' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout tagged source
@@ -385,12 +351,8 @@ jobs:
 
   registry-publish-complete:
     name: Registry publication and verification gate
-    # always(), so a failed publisher still reaches the assertions below; but
-    # only for a release. A verification never published, so there is nothing
-    # here to gate.
-    if: ${{ always() && needs.release-mode.outputs.mode == 'release' }}
+    if: ${{ always() }}
     needs:
-      - release-mode
       - release-ready
       - publish-npm
       - publish-pypi
@@ -507,77 +469,3 @@ jobs:
         run: >-
           node packages/react-native/scripts/smoke-react-native-install.mjs
           --version "${{ needs.release-ready.outputs.version }}"
-
-  # The public half of a security release. The mirror has already published the
-  # packages, pushed this tag and created this repository's GitHub release from
-  # its sealed bundle; this job is the check anyone can read. npm provenance
-  # cannot come from a private repository, so this run stands in for it: the
-  # release's manifest names the commit that is now public here, and every
-  # registry file must match it byte for byte. It holds no credential and
-  # publishes nothing.
-  verify-mirror-release:
-    name: Verify a release published from the private mirror
-    needs: release-mode
-    if: ${{ needs.release-mode.outputs.mode == 'verify' }}
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    # Thirty minutes for the mirror to finish creating the release, then the
-    # same registry budgets verify-npm and verify-pypi run under.
-    timeout-minutes: 120
-    steps:
-      - name: Checkout tagged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-          registry-url: https://registry.npmjs.org
-      # The mirror pushes the tag and then creates the release, so this run can
-      # start first. A release that is missing files fails its own SHA256SUMS,
-      # which is what this waits out.
-      - name: Wait for the complete GitHub release and download it
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          for attempt in $(seq 1 60); do
-            rm -rf release-artifacts
-            if gh release download "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" \
-              --dir release-artifacts 2>"${RUNNER_TEMP}/gh-release-error"; then
-              if (cd release-artifacts && sha256sum --check --strict --quiet SHA256SUMS); then
-                echo "GitHub release ${RELEASE_TAG} carries every sealed file."
-                exit 0
-              fi
-              echo "Attempt ${attempt}: the release is not complete yet."
-            else
-              echo "Attempt ${attempt}: $(cat "${RUNNER_TEMP}/gh-release-error")"
-            fi
-            sleep 30
-          done
-          echo "GitHub release ${RELEASE_TAG} is not complete after 30 minutes." >&2
-          exit 1
-      - name: Verify the release against its manifest, checksums, and SBOM
-        run: >-
-          python3 scripts/verify_release_bundle.py release-artifacts
-          --version "${GITHUB_REF_NAME#v}"
-          --tag "${GITHUB_REF_NAME}"
-          --commit "$(git rev-parse "${GITHUB_SHA}^{commit}")"
-      - name: Download and hash-match both published npm tarballs
-        run: >-
-          python3 scripts/download_published_artifacts.py
-          release-artifacts registry-npm
-          --version "${GITHUB_REF_NAME#v}"
-          --npm
-      - name: Download and hash-match every published Python artifact
-        if: ${{ vars.PYPI_PUBLISH_ENABLED == 'true' }}
-        run: >-
-          python3 scripts/download_published_artifacts.py
-          release-artifacts registry-python
-          --version "${GITHUB_REF_NAME#v}"
-          --pypi
-      - name: Install the React Native package with lifecycle scripts enabled
-        run: >-
-          node packages/react-native/scripts/smoke-react-native-install.mjs
-          --version "${GITHUB_REF_NAME#v}"

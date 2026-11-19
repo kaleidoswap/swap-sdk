@@ -12,16 +12,6 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/release.yaml"
 BUILD_WORKFLOW = ROOT / ".github/workflows/release-build.yaml"
 REHEARSAL_WORKFLOW = ROOT / ".github/workflows/release-rehearsal.yaml"
-# The private mirror's security release and the job that keeps the mirror in
-# step with this repository. Both live here so the mirror can sync them, and
-# both must do nothing anywhere but the mirror.
-SECURITY_WORKFLOW = ROOT / ".github/workflows/security-release.yaml"
-SECURITY_SOURCE_WORKFLOW = ROOT / ".github/workflows/security-publish-source.yaml"
-MIRROR_SYNC_WORKFLOW = ROOT / ".github/workflows/mirror-sync.yaml"
-PUBLIC_REPOSITORY_GUARD = "if: ${{ github.repository == 'kaleidoswap/swap-sdk' }}"
-MIRROR_REPOSITORY_GUARD = (
-    "if: ${{ github.repository == 'kaleidoswap/swap-sdk-private' }}"
-)
 # The runbook an operator reads mid-incident. Its publication order is an
 # invariant like any other: prose that outlives the job graph it describes is
 # worse than no prose, because it is trusted.
@@ -61,10 +51,6 @@ PRODUCTION_REQUIRED = (
     "registry-publish-complete:",
     "publish-github-release:",
     "verify-react-native-install:",
-    # A tag for a version the mirror already published only verifies.
-    "release-mode:",
-    "scripts/release_mode.py",
-    "verify-mirror-release:",
     # Publishing must consume the sealed bundle, never a fresh build.
     "release-bundle-${{ needs.release-ready.outputs.release_id }}",
 )
@@ -83,10 +69,6 @@ BUILD_REQUIRED = (
     "scripts/verify_release_bundle.py",
     "SHA256SUMS",
     "release.spdx.json",
-    # The base a tag must be reachable from is trunk, or one security branch
-    # per exact version. It becomes a refspec, so the allowlist is load-bearing.
-    "^(trunk|security/[0-9]+\\.[0-9]+\\.[0-9]+)$",
-    '"origin/${RELEASE_BASE}"',
 )
 
 # The step each registry publisher runs before it publishes. It holds the
@@ -255,18 +237,7 @@ def validate(
     build_contents: str | None = None,
     actions_contents: str | None = None,
     runbook_contents: str | None = None,
-    security_contents: str | None = None,
-    mirror_sync_contents: str | None = None,
-    security_source_contents: str | None = None,
 ) -> None:
-    if security_contents is None:
-        security_contents = SECURITY_WORKFLOW.read_text(encoding="utf-8")
-    if security_source_contents is None:
-        security_source_contents = SECURITY_SOURCE_WORKFLOW.read_text(
-            encoding="utf-8"
-        )
-    if mirror_sync_contents is None:
-        mirror_sync_contents = MIRROR_SYNC_WORKFLOW.read_text(encoding="utf-8")
     if rehearsal_contents is None:
         rehearsal_contents = REHEARSAL_WORKFLOW.read_text(encoding="utf-8")
     if build_contents is None:
@@ -307,18 +278,12 @@ def validate(
                 f"but does not declare them: {undeclared}"
             )
     combined = contents + build_contents + rehearsal_contents + actions_contents
-    # Every workflow that can publish or rewrite a ref, for the rules that hold
-    # everywhere: no skipping an existing version, no mutable actions, no basic
-    # auth. Secrets are checked per workflow, because the mirror's differ.
-    every_workflow = (
-        combined + security_contents + security_source_contents + mirror_sync_contents
-    )
     # Both spellings. The CLI flag is what twine/npm take, but the PyPA action
     # is configured through a YAML input — and `skip-existing: true` is exactly
     # the edit someone reaches for after a half-failed release, which would
     # otherwise sail past this gate.
     for spelling in ("--skip-existing", "skip-existing:"):
-        if spelling in every_workflow:
+        if spelling in combined:
             raise ValueError(
                 f"release workflows must never skip an existing version ({spelling})"
             )
@@ -346,7 +311,7 @@ def validate(
             f"browser package and the React Native package (found {publishes})"
         )
 
-    mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", every_workflow)
+    mutable_actions = re.findall(r"uses:\s+[^@\s]+@([^\s#]+)", combined)
     invalid = [ref for ref in mutable_actions if not re.fullmatch(r"[0-9a-f]{40}", ref)]
     if invalid:
         raise ValueError(f"release workflows have mutable action refs: {invalid}")
@@ -382,7 +347,7 @@ def validate(
             f"{found_read_only_authority}"
         )
 
-    if "username:" in every_workflow:
+    if "username:" in combined:
         raise ValueError(
             "release workflows must authenticate with a token, not basic auth"
         )
@@ -420,11 +385,6 @@ def validate(
     ):
         if snippet not in build_call:
             raise ValueError(f"production build call is missing {snippet!r}")
-    if "release_base:" in build_call:
-        raise ValueError(
-            "the public release must build from trunk; only the private mirror's "
-            "security release passes a release_base"
-        )
 
     for name, job, publish_command in (
         ("npm", jobs["publish-npm"], "npm publish ./"),
@@ -674,360 +634,9 @@ def validate(
             "the current version to still be unclaimed"
         )
 
-    validate_release_mode(jobs)
-    validate_security_workflow(security_contents)
-    validate_security_source_workflow(security_source_contents)
-    validate_mirror_sync(mirror_sync_contents)
-
     # Last: a contradictory job graph should report its own failure first, not
     # surface as a documentation complaint.
     validate_runbook(runbook_contents, contents)
-
-
-# Authority a verification must never hold: it runs in public, on a tag anyone
-# with tag rights can push, so it reads and compares and nothing else.
-VERIFY_FORBIDDEN = (
-    "secrets.",
-    "environment:",
-    "contents: write",
-    "id-token: write",
-    "npm publish",
-    "pypa/gh-action-pypi-publish@",
-    "gh release create",
-    "git push",
-)
-
-
-def validate_release_mode(jobs: dict[str, str]) -> None:
-    """release.yaml either releases or verifies a tag, and decides first."""
-    mode_job = jobs["release-mode"]
-    if PUBLIC_REPOSITORY_GUARD not in mode_job:
-        raise ValueError(
-            "release-mode must run only in kaleidoswap/swap-sdk, so the public "
-            "release never starts in the private mirror that syncs this file"
-        )
-    if "scripts/release_mode.py" not in mode_job:
-        raise ValueError("release-mode must ask the registry through release_mode.py")
-
-    activation = jobs["release-activation"]
-    if job_dependencies(activation) != {"release-mode"} or (
-        "if: ${{ needs.release-mode.outputs.mode == 'release' }}" not in activation
-    ):
-        raise ValueError(
-            "release activation must need release-mode and run only in release "
-            "mode, so a version the mirror already published is never rebuilt"
-        )
-    gate = jobs["registry-publish-complete"]
-    if (
-        "needs.release-mode.outputs.mode == 'release'" not in gate
-        or "- release-mode" not in gate
-    ):
-        raise ValueError(
-            "registry completion gate must run only in release mode; a "
-            "verification published nothing for it to gate"
-        )
-
-    verify = jobs["verify-mirror-release"]
-    if job_dependencies(verify) != {"release-mode"} or (
-        "if: ${{ needs.release-mode.outputs.mode == 'verify' }}" not in verify
-    ):
-        raise ValueError(
-            "verify-mirror-release must need release-mode alone and run only in "
-            "verify mode"
-        )
-    # Comments may name what the job must not do; only its code counts.
-    code = "\n".join(
-        line for line in verify.splitlines() if not line.lstrip().startswith("#")
-    )
-    held = [authority for authority in VERIFY_FORBIDDEN if authority in code]
-    if held:
-        raise ValueError(f"verify-mirror-release must publish nothing (found {held})")
-    for snippet, reason in (
-        ("sha256sum --check --strict", "check the release against its SHA256SUMS"),
-        ("scripts/verify_release_bundle.py", "verify the release's manifest"),
-        ("--npm", "hash-match the npm tarballs"),
-        ("--pypi", "hash-match the Python artifacts"),
-        ("smoke-react-native-install.mjs", "install the React Native package"),
-    ):
-        if snippet not in verify:
-            raise ValueError(f"verify-mirror-release must {reason}")
-    if "scripts/download_published_artifacts.py" not in verify:
-        raise ValueError("verify-mirror-release must download registry artifacts")
-
-
-SECURITY_JOBS = {
-    "security-mode": set(),
-    "security-build": {"security-mode"},
-    "security-publish-packages": {"security-build"},
-    "security-verify-packages": {"security-build", "security-publish-packages"},
-}
-SECURITY_ENVIRONMENTS = {"security-publish-packages": "security-packages"}
-SECURITY_SECRETS = {"NPM_TOKEN", "PYPI_TOKEN", "SECURITY_RELEASE_APP_PRIVATE_KEY"}
-SOURCE_JOBS = {"source-mode": set(), "security-publish-source": {"source-mode"}}
-SOURCE_ENVIRONMENTS = {"security-publish-source": "security-source"}
-SOURCE_SECRETS = {"PYPI_TOKEN", "SECURITY_RELEASE_APP_PRIVATE_KEY"}
-
-
-def secret_jobs(
-    contents: str, allowed: set[str], environments: dict[str, str], label: str
-) -> None:
-    """Secrets are allowed only by name, and only in their gated jobs."""
-    referenced = set(re.findall(r"secrets\.([A-Z0-9_]+)", contents))
-    unexpected = sorted(referenced - allowed)
-    if unexpected:
-        raise ValueError(f"{label} references unexpected secrets: {unexpected}")
-    for job_name, job in production_jobs(
-        "\n" + contents.split("\njobs:\n", 1)[-1].lstrip("\n")
-    ).items():
-        if "secrets." not in job:
-            continue
-        environment = environments.get(job_name)
-        if environment is None or f"environment: {environment}" not in job:
-            raise ValueError(
-                f"{label} job {job_name!r} uses a secret outside its protected "
-                "environment, so it could act without review"
-            )
-
-
-def forbid_ref_rewrites(contents: str, label: str) -> None:
-    pushes = [line for line in contents.splitlines() if "push" in line]
-    for line in pushes:
-        if re.search(r"--force|--mirror|\s-f\b|[\"\s]\+refs/", line):
-            raise ValueError(f"{label} must never rewrite a ref (found {line.strip()!r})")
-
-
-def mirror_workflow_rules(
-    contents: str, environments: dict[str, str], secrets: set[str], label: str
-) -> dict[str, str]:
-    """What holds for every mirror publishing workflow; returns its jobs."""
-    jobs = production_jobs("\n" + contents.split("\njobs:\n", 1)[-1].lstrip("\n"))
-    for name, job in jobs.items():
-        environment = environments.get(name)
-        if environment is not None and f"environment: {environment}" not in job:
-            raise ValueError(f"{name} must use the {environment} environment")
-        if environment is None and "environment:" in job:
-            raise ValueError(f"{name} must not reach a protected environment")
-    secret_jobs(contents, secrets, environments, label)
-    if re.search(r"^\s*id-token: write\s*$", contents, re.MULTILINE):
-        raise ValueError(
-            f"{label} must not request OIDC: npm provenance cannot come from a "
-            "private repository, and nothing else here needs it"
-        )
-    if re.search(r"^\s*contents: write\s*$", contents, re.MULTILINE):
-        raise ValueError(
-            f"{label} writes only through scoped App tokens, never through "
-            "GITHUB_TOKEN contents: write"
-        )
-    if "--draft" in contents:
-        raise ValueError(f"{label} GitHub releases must not remain drafts")
-    forbid_ref_rewrites(contents, label)
-    return jobs
-
-
-def validate_security_workflow(contents: str) -> None:
-    """Gate 1 of a security release: build, publish the packages, verify them."""
-    require_snippets(
-        contents,
-        (
-            "tags:",
-            '- "v*"',
-            "group: security-release-${{ github.ref }}",
-            "cancel-in-progress: false",
-            "release-bundle-${{ needs.security-build.outputs.release_id }}",
-        ),
-        "security release",
-    )
-    graph = workflow_job_graph(contents)
-    if graph != SECURITY_JOBS:
-        raise ValueError(
-            "security release jobs must run mode -> build -> packages -> verify "
-            f"(found {graph})"
-        )
-    jobs = mirror_workflow_rules(
-        contents, SECURITY_ENVIRONMENTS, SECURITY_SECRETS, "security release"
-    )
-    # Its one GitHub release is the binaries-only host's; the public release
-    # and the push of the source belong to gate 2.
-    if (
-        contents.count("gh release create") != 1
-        or "git push" in contents
-        or "PUBLIC_REPOSITORY" in contents
-    ):
-        raise ValueError(
-            "gate 1 must not publish the source: the public release and the push "
-            "belong to security-publish-source.yaml"
-        )
-
-    mode = jobs["security-mode"]
-    if MIRROR_REPOSITORY_GUARD not in mode:
-        raise ValueError(
-            "security-mode must run only in kaleidoswap/swap-sdk-private; the "
-            "public repository carries this file only so the mirror can sync it"
-        )
-    for snippet in ("git ls-remote --exit-code --heads origin", "scripts/release_mode.py"):
-        if snippet not in mode:
-            raise ValueError(
-                "security-mode must require a security branch and an unpublished "
-                f"version before releasing (missing {snippet!r})"
-            )
-
-    build = jobs["security-build"]
-    for snippet in (
-        "if: ${{ needs.security-mode.outputs.mode == 'release' }}",
-        "permissions:\n      contents: read",
-        "uses: ./.github/workflows/release-build.yaml",
-        "failure_case: none",
-        "rehearsal: false",
-        "release_tag: ${{ github.ref_name }}",
-        "release_base: ${{ needs.security-mode.outputs.base }}",
-    ):
-        if snippet not in build:
-            raise ValueError(f"security build call is missing {snippet!r}")
-
-    packages = jobs["security-publish-packages"]
-    publishes = re.findall(r"npm publish\s+(\S+)[^\n]*", contents)
-    lines = re.findall(r"npm publish\s+\S+[^\n]*", contents)
-    if (
-        len(publishes) != 2
-        or not all(path.startswith("./") for path in publishes)
-        or not any("react-native" in path for path in publishes)
-        or any("npm publish" in job for name, job in jobs.items() if name != "security-publish-packages")
-    ):
-        raise ValueError(
-            "security-publish-packages must publish both npm tarballs by explicit "
-            f"./ path, and nothing else may publish to npm (found {publishes})"
-        )
-    if not all("--provenance=false" in line for line in lines):
-        raise ValueError(
-            "security npm publishes must pass --provenance=false: npm refuses "
-            "provenance from a private repository"
-        )
-    archives = packages.find('--repo "${ARTIFACTS_REPOSITORY}"')
-    if archives == -1:
-        raise ValueError(
-            "security-publish-packages must publish the native archives to the "
-            "binaries-only host"
-        )
-    for later in ("npm publish ./", "uses: pypa/gh-action-pypi-publish@"):
-        position = packages.find(later)
-        if position != -1 and position < archives:
-            raise ValueError(
-                "security-publish-packages must publish the native archives before "
-                f"any package ({later!r} came first)"
-            )
-    if "sha256sum --check --strict SHA256SUMS" not in packages:
-        raise ValueError("security-publish-packages must re-verify the sealed bundle")
-    if "*.tar.gz" in packages:
-        raise ValueError(
-            "security-publish-packages must not publish the sdist: it is the "
-            "source, and waits for gate 2"
-        )
-
-    verify = jobs["security-verify-packages"]
-    for snippet in (
-        "scripts/download_published_artifacts.py",
-        "--npm",
-        "--pypi-wheels-only",
-        "smoke-react-native-install.mjs",
-    ):
-        if snippet not in verify:
-            raise ValueError(f"security-verify-packages is missing {snippet!r}")
-    if "secrets." in verify or "environment:" in verify:
-        raise ValueError("security-verify-packages must hold no credential")
-
-
-
-def validate_security_source_workflow(contents: str) -> None:
-    """Gate 2: publish the source the verified gate 1 run sealed, nothing else."""
-    require_snippets(
-        contents,
-        (
-            "tags:",
-            '- "source/v*"',
-            "group: security-publish-source-${{ github.ref }}",
-            "cancel-in-progress: false",
-        ),
-        "security source",
-    )
-    graph = workflow_job_graph(contents)
-    if graph != SOURCE_JOBS:
-        raise ValueError(
-            f"security source jobs must run source-mode -> publish (found {graph})"
-        )
-    jobs = mirror_workflow_rules(
-        contents, SOURCE_ENVIRONMENTS, SOURCE_SECRETS, "security source"
-    )
-
-    mode = jobs["source-mode"]
-    if MIRROR_REPOSITORY_GUARD not in mode:
-        raise ValueError(
-            "source-mode must run only in kaleidoswap/swap-sdk-private; the "
-            "public repository carries this file only so the mirror can sync it"
-        )
-    for snippet, reason in (
-        ('if [ "${commit}" != "${release_commit}" ]', "sit on the release tag's commit"),
-        ("security-release.yaml/runs?branch=${tag}&event=push&status=success",
-         "follow a successful gate 1 run"),
-        ('select(.head_sha == \\"${commit}\\")', "follow a gate 1 run of this commit"),
-    ):
-        if snippet not in mode:
-            raise ValueError(f"source-mode must make gate 2 {reason}")
-
-    source = jobs["security-publish-source"]
-    for snippet in (
-        "run-id: ${{ needs.source-mode.outputs.run_id }}",
-        "name: release-bundle-${{ needs.source-mode.outputs.tag }}",
-        "sha256sum --check --strict SHA256SUMS",
-        "cp release-artifacts/*.tar.gz",
-        '--repo "${PUBLIC_REPOSITORY}"',
-        "--verify-tag",
-        "--notes-file release-notes.md",
-    ):
-        if snippet not in source:
-            raise ValueError(f"security-publish-source is missing {snippet!r}")
-    if "npm publish" in contents or "*.whl" in contents:
-        raise ValueError(
-            "gate 2 publishes only the source; the packages belong to gate 1"
-        )
-    verified = source.find("scripts/verify_release_bundle.py")
-    pushed = source.find("push --atomic")
-    released = source.find("gh release create")
-    if verified == -1 or pushed == -1 or released == -1:
-        raise ValueError(
-            "security-publish-source must verify the bundle, push the tag "
-            "atomically and create the public release"
-        )
-    if not verified < pushed < released:
-        raise ValueError(
-            "security-publish-source must verify the bundle before it pushes, and "
-            "push the tag before it creates the release"
-        )
-
-
-def validate_mirror_sync(contents: str) -> None:
-    """The mirror only ever fast-forwards from the public repository."""
-    require_snippets(
-        contents,
-        (
-            "workflow_dispatch:",
-            MIRROR_REPOSITORY_GUARD,
-            "environment: mirror-sync",
-            "https://github.com/kaleidoswap/swap-sdk.git",
-        ),
-        "mirror sync",
-    )
-    secret_jobs(
-        contents,
-        {"SECURITY_RELEASE_APP_PRIVATE_KEY"},
-        {"sync": "mirror-sync"},
-        "mirror sync",
-    )
-    forbid_ref_rewrites(contents, "mirror sync")
-    # Started by hand before a security branch is cut. A schedule would hand
-    # the App key to a job every hour for a mirror nothing else needs current.
-    on = contents.split("\non:\n", 1)[-1].split("\n\n", 1)[0]
-    if "workflow_dispatch:" not in on or re.search(r"^  (?!workflow_dispatch:)\S", on, re.MULTILINE):
-        raise ValueError("mirror sync must run only when started by hand")
 
 
 def main() -> int:

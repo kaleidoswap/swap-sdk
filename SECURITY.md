@@ -37,18 +37,11 @@ email:
 
 ### How Fixes Ship
 
-Each fix takes one of three tracks, by impact:
-
-| Track | When | How it ships |
-|---|---|---|
-| **A. Open** | No funds or secrets at risk: a wrong status, a crash, a denial of service | A normal pull request and the next release. The advisory follows the release. |
-| **B. Private** | Funds or secrets at risk under some precondition, or a swap that needs manual recovery | Fixed and released from a private repository. Packages, source and advisory go public together. |
-| **C. Private, binaries first** | Funds can be taken or locked in default use | As B, but the fixed packages are published first and the source a few days later. |
-
-Tracks B and C are built and published from a private repository, so the fixed
-packages are on npm and PyPI before the fix is readable here.
+A fix for an exploitable bug is reviewed and tested in private, then released
+as an ordinary release of this repository. The advisory is published once the
+fixed packages are on npm and PyPI.
 [docs/releasing.md](docs/releasing.md) ("Security releases") describes the
-pipeline.
+process.
 
 Security fixes go to the latest release only. Upgrade to it to receive them.
 

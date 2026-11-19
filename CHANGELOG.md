@@ -4,22 +4,6 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- Security releases can be built and published from a private mirror, so the
-  fixed packages reach npm and PyPI before the source is public. In the
-  mirror, a `vX.Y.Z` tag runs `security-release.yaml`, which publishes and
-  verifies the packages, and a later `source/vX.Y.Z` tag runs
-  `security-publish-source.yaml`, which publishes the source to this
-  repository. `mirror-sync.yaml` keeps the mirror's `trunk` and tags in step.
-  When a pushed tag's version is already on npm, `release.yaml` now only
-  verifies the release and the registry files against each other, and
-  publishes nothing. `SECURITY.md` describes which fixes take this path.
-- The React Native package's `postinstall` falls back to
-  `kaleidoswap/swap-sdk-artifacts` for its native archives when the source
-  repository has no release for the version yet. The digests pinned in the
-  package still decide what is accepted.
-
 ### Fixed
 
 - Chain and reverse payout floors charge the pair card's fee on the converted
@@ -38,6 +22,13 @@ All notable changes to this project will be documented in this file.
   same way. `canRefund` treats them as a cooperative refund of the taker's
   chain lockup while that lockup is still unspent. An unknown status stays
   unknown.
+
+### Changed — documentation
+
+- `docs/releasing.md` gains a "Security releases" section: a fix is reviewed
+  and tested in a private mirror that publishes nothing, then released from
+  this repository as usual. `SECURITY.md` summarizes it under "How Fixes
+  Ship".
 
 ## [0.15.0] - 2026-11-17
 

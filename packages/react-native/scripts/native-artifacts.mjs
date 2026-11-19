@@ -7,25 +7,6 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 export const ARCHIVES = ["android-artifacts.zip", "ios-artifacts.zip"];
 
-/**
- * Where the archives are published, in the order postinstall tries them.
- *
- * The source repository's GitHub release is their normal home. A security
- * release is published to the registries from a private mirror before its
- * source is public, so for a while that release does not exist yet; the mirror
- * uploads the same archives to a public binaries-only repository first. The
- * digests pinned in native-artifacts.json decide what is accepted, so the
- * second host cannot get anything installed that the first could not.
- */
-export const RELEASE_HOSTS = [
-  "https://github.com/kaleidoswap/swap-sdk/releases/download",
-  "https://github.com/kaleidoswap/swap-sdk-artifacts/releases/download",
-];
-
-export function archiveUrls(version, archive) {
-  return RELEASE_HOSTS.map((host) => `${host}/v${version}/${archive}`);
-}
-
 export async function sha256(file) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(file)) hash.update(chunk);

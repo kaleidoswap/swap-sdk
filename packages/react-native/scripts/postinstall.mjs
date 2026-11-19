@@ -7,7 +7,6 @@ import extract from "extract-zip";
 
 import {
   ARCHIVES,
-  archiveUrls,
   assertNativeLibraries,
   download,
   allowsMissingNativeLibraries,
@@ -35,7 +34,7 @@ validateManifest(manifest, packageJson.version);
 
 const archives = ARCHIVES.map((archive) => ({
   archive,
-  urls: archiveUrls(packageJson.version, archive),
+  url: `https://github.com/kaleidoswap/swap-sdk/releases/download/v${packageJson.version}/${archive}`,
   destination: resolve(packageRoot, archive),
 }));
 
@@ -52,27 +51,13 @@ const archives = ARCHIVES.map((archive) => ({
 // different problem from one that never arrives.
 try {
   let unreachable;
-  for (const { archive, urls, destination } of archives) {
+  for (const { archive, url, destination } of archives) {
     const partial = `${destination}.part`;
-    // Each host in turn; the first that serves the archive wins, and the
-    // digest check below applies to it the same way whichever host it was.
-    const failures = [];
-    for (const url of urls) {
-      try {
-        await download(url, partial);
-        await rename(partial, destination);
-        break;
-      } catch (error) {
-        failures.push({ url, error });
-      }
-    }
-    if (failures.length === urls.length) {
-      unreachable = {
-        archive,
-        url: urls.join(" or "),
-        reason: failures.map(({ error }) => error.message).join("; "),
-        cause: failures.at(-1).error,
-      };
+    try {
+      await download(url, partial);
+      await rename(partial, destination);
+    } catch (error) {
+      unreachable = { archive, url, reason: error.message, cause: error };
       break;
     }
     const actual = await sha256(destination);
