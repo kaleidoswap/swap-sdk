@@ -827,3 +827,34 @@ test("pay-through never sends a per-request fee", async () => {
   });
   assert.equal("extraFees" in sent, false);
 });
+
+test("a keyed pay-through client refuses a plain-HTTP maker before any request", () => {
+  let calls = 0;
+  const build = (makerUrl) =>
+    new PayThroughClient({
+      makerUrl,
+      lightningNetwork: "regtest",
+      apiKey: PARTNER_KEY,
+      fetch: async () => {
+        calls += 1;
+        return Response.json({});
+      },
+    });
+  for (const makerUrl of [
+    "http://maker.example/v2",
+    "http://localhost.example.com/v2",
+    "ws://maker.example/v2",
+    "https://user:pass@maker.example/v2",
+  ]) {
+    assert.throws(() => build(makerUrl), /makerUrl must be an HTTPS/, makerUrl);
+  }
+  // Loopback is the regtest harness.
+  for (const makerUrl of [
+    "https://maker.example/v2",
+    "http://localhost:9420/v2",
+    "http://127.0.0.1:9420/v2",
+  ]) {
+    assert.ok(build(makerUrl), makerUrl);
+  }
+  assert.equal(calls, 0);
+});

@@ -299,8 +299,16 @@ impl ApiKey {
     }
 
     /// What kind of key this is: [`ApiKeyKind::Public`] for every key
-    /// Platform issues today. The format carries no kind, so a key parsed here
-    /// is public until Platform issues a secret kind the SDK can tell apart.
+    /// Platform issues today.
+    ///
+    /// The `kld_<test|live>_…` format carries no kind, so every key that
+    /// parses is public. That is safe only because the parse is closed: any
+    /// other shape, a kind marker included, is refused. A secret kind must
+    /// therefore use a shape this parser rejects, so an SDK that predates it
+    /// refuses the key outright instead of treating it as public and letting
+    /// it into a browser or an app. Whether a public key grants anything
+    /// beyond attribution and the partner fee is the maker's to enforce; see
+    /// `SECURITY.md`.
     pub fn kind(&self) -> ApiKeyKind {
         ApiKeyKind::Public
     }
@@ -734,6 +742,18 @@ mod tests {
                 matches!(&err, Error::Protocol(msg) if msg.contains(expected)),
                 "parsing {value:?} should have complained about {expected:?}, got {err:?}",
             );
+        }
+
+        // The parse is closed, which is what keeps `kind()` honest: a key that
+        // names a kind, or any other shape, is refused rather than read as a
+        // public key. A secret kind has to take a shape like these.
+        for marked in [
+            "kld_secret_live_abc_def",
+            "kld_sk_test_abc_def",
+            "kld_server_abc_def",
+            "kldsk_live_abc_def",
+        ] {
+            assert!(ApiKey::parse(marked).is_err(), "{marked} must not parse");
         }
 
         let oversized = format!("kld_test_abc_{}", "x".repeat(ApiKey::MAX_LEN));

@@ -7396,7 +7396,7 @@ class KaleidoSwapOptions:
             self.quote_ttl_secs,
             self.maker_timeout_ms,
             self.reverse_timeout_headroom,
-            self.api_key,
+            _redact_secret(self.api_key),
         )
 
     def __eq__(self, other):
