@@ -105,7 +105,15 @@ export function canRefund(
     "invoice.set",
   ];
   if (options.kind === "chain") {
-    failed.push("transaction.failed", "transaction.refunded");
+    // These are the maker reclaiming its own lockup, not a refund of the
+    // taker's deposit. The taker can still refund cooperatively while that
+    // lockup is unspent. `.mempool` is not emitted; it is accepted the same way.
+    failed.push(
+      "transaction.failed",
+      "transaction.refunded",
+      "transaction.refunded.confirmed",
+      "transaction.refunded.mempool",
+    );
     funded.push(
       "transaction.zeroconf.rejected",
       "transaction.server.mempool",
@@ -145,6 +153,8 @@ export function canClaim(
       "invoice.settled",
       "transaction.claimed",
       "transaction.refunded",
+      "transaction.refunded.confirmed",
+      "transaction.refunded.mempool",
       "invoice.expired",
       "swap.expired",
       "transaction.failed",
