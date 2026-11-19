@@ -487,6 +487,16 @@ VERSION=X.Y.Z
      refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
    ```
 
+   The push starts the mirror's `trunk` workflows. This repository has
+   already run them on the same commit, so cancel them:
+
+   ```sh
+   gh run list --repo kaleidoswap/swap-sdk-private --branch trunk \
+     --json databaseId,status \
+     --jq '.[] | select(.status != "completed") | .databaseId' |
+     xargs -n1 gh run cancel --repo kaleidoswap/swap-sdk-private
+   ```
+
 3. In the mirror, create `security/$VERSION` from `trunk` and open the fix as
    a pull request into it. It merges once CI passes and a maintainer other
    than its last pusher approves.
