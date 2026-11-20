@@ -771,6 +771,27 @@ test("pay-through refuses a malformed org key and an org key beside an API key",
 
 const PARTNER_KEY = "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
 
+test("pay-through accepts the public partner key format", () => {
+  const options = {
+    makerUrl: "https://maker.example/v2",
+    lightningNetwork: "regtest",
+  };
+  for (const apiKey of [
+    "",
+    "other",
+    "kld_unknown_id_value",
+    "kld_test__value",
+    "kld_live_id_",
+    "kld_test_id_a b",
+    PARTNER_KEY + "x".repeat(512),
+  ]) {
+    assert.throws(
+      () => new PayThroughClient({ ...options, apiKey }),
+      /partner key/,
+    );
+  }
+});
+
 test("a partner key works outside a server runtime and is sent on every request", async (t) => {
   // Look like a browser page: no Node, Deno or Bun.
   const versions = Object.getOwnPropertyDescriptor(process, "versions");
@@ -781,7 +802,7 @@ test("a partner key works outside a server runtime and is sent on every request"
   const client = new PayThroughClient({
     makerUrl: "https://maker.example/v2",
     lightningNetwork: "regtest",
-    apiKey: PARTNER_KEY,
+    apiKey: `  ${PARTNER_KEY}\n`,
     fetch: async (url, init) => {
       seen.push({ url, authorization: init.headers.Authorization });
       if (url.endsWith("/version")) {
