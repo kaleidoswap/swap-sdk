@@ -24,6 +24,7 @@ use crate::swaps::liquid::{
     decode_swap_output, LiquidSwapScript, LiquidSwapTx, PreparedLiquidSpend,
 };
 use crate::swaps::rgb::{PreparedRgbSpend, RgbSpendFunding};
+use crate::swaps::signing::{KeypairSigner, SpendSigner};
 use crate::util::fees::Fee;
 use crate::util::invoice::LightningInvoice;
 use crate::util::secrets::Preimage;
@@ -522,6 +523,35 @@ pub struct SwapTransactionParams<'a> {
     pub options: Option<TransactionOptions>,
 }
 
+/// [`SwapTransactionParams`] without the key, for
+/// [`SwapScript::construct_claim_with_signer`] and
+/// [`SwapScript::construct_refund_with_signer`].
+#[derive(Clone)]
+pub struct SpendParams<'a> {
+    pub output_address: String,
+    pub fee: Fee,
+    pub swap_id: String,
+    pub chain_client: &'a ChainClient,
+    pub boltz_api: &'a BoltzApiClientV2,
+    pub options: Option<TransactionOptions>,
+}
+
+impl<'a> SwapTransactionParams<'a> {
+    fn split(self) -> (Keypair, SpendParams<'a>) {
+        (
+            self.keys,
+            SpendParams {
+                output_address: self.output_address,
+                fee: self.fee,
+                swap_id: self.swap_id,
+                chain_client: self.chain_client,
+                boltz_api: self.boltz_api,
+                options: self.options,
+            },
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct LiquidPsetParams<'a> {
     pub output_address: String,
@@ -987,6 +1017,18 @@ impl SwapScript {
         preimage: &Preimage,
         params: SwapTransactionParams<'_>,
     ) -> Result<BtcLikeTransaction, Error> {
+        let (keys, params) = params.split();
+        self.construct_claim_with_signer(preimage, params, &KeypairSigner::new(keys))
+            .await
+    }
+
+    /// [`Self::construct_claim`] with the swap key behind a [`SpendSigner`].
+    pub async fn construct_claim_with_signer(
+        &self,
+        preimage: &Preimage,
+        params: SpendParams<'_>,
+        signer: &dyn SpendSigner,
+    ) -> Result<BtcLikeTransaction, Error> {
         self.ensure_uncolored_spend()?;
 
         let claim_policy = params
@@ -1053,7 +1095,7 @@ impl SwapScript {
                 )?
                 .with_additional_outputs(additional_outputs.into_bitcoin());
 
-                tx.sign_claim(&params.keys, preimage, params.fee, cooperative)
+                tx.sign_claim_with(signer, preimage, params.fee, cooperative)
                     .await
                     .map(BtcLikeTransaction::bitcoin)
             }
@@ -1101,7 +1143,7 @@ impl SwapScript {
                 .await?
                 .with_additional_outputs(additional_outputs.into_liquid());
 
-                tx.sign_claim(&params.keys, preimage, params.fee, cooperative, true)
+                tx.sign_claim_with(signer, preimage, params.fee, cooperative, true)
                     .await
                     .map(BtcLikeTransaction::liquid)
             }
@@ -1339,6 +1381,17 @@ impl SwapScript {
         &self,
         params: SwapTransactionParams<'_>,
     ) -> Result<BtcLikeTransaction, Error> {
+        let (keys, params) = params.split();
+        self.construct_refund_with_signer(params, &KeypairSigner::new(keys))
+            .await
+    }
+
+    /// [`Self::construct_refund`] with the swap key behind a [`SpendSigner`].
+    pub async fn construct_refund_with_signer(
+        &self,
+        params: SpendParams<'_>,
+        signer: &dyn SpendSigner,
+    ) -> Result<BtcLikeTransaction, Error> {
         self.ensure_uncolored_spend()?;
 
         let additional_outputs =
@@ -1364,7 +1417,7 @@ impl SwapScript {
                 )
                 .await?
                 .with_additional_outputs(additional_outputs.into_bitcoin());
-                tx.sign_refund(&params.keys, params.fee, cooperative)
+                tx.sign_refund_with(signer, params.fee, cooperative)
                     .await
                     .map(BtcLikeTransaction::bitcoin)
             }
@@ -1379,7 +1432,7 @@ impl SwapScript {
                 )
                 .await?
                 .with_additional_outputs(additional_outputs.into_liquid());
-                tx.sign_refund(&params.keys, params.fee, cooperative, true)
+                tx.sign_refund_with(signer, params.fee, cooperative, true)
                     .await
                     .map(BtcLikeTransaction::liquid)
             }

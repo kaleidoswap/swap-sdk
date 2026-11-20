@@ -72,8 +72,8 @@ jobs:
       # is stored anywhere. That needs npm 11.5.1 or later. No read-only command
       # can prove the grant ahead of time (npm's docs say `npm whoami` is not a
       # check of trusted publishing), so a missing or wrong trusted-publisher
-      # entry fails at the first `npm publish` below, before either package is
-      # out, and rerunning this job publishes once it is fixed.
+      # entry fails when npm publishes the affected package. See the partial-
+      # publication recovery procedure if the first package already shipped.
       - name: Check the npm CLI can publish as a trusted publisher
         run: test "$(npm --version)" = "${NPM_PUBLISH_VERSION}"
       - name: Download validated release bundle

@@ -145,7 +145,8 @@ exclude it from backup. Do not log records or send them to telemetry.
 To keep swaps in your own storage or derive keys from your own wallet, pass any
 object that implements the `SwapStore` interface (`get`, `put`, `list`,
 `nextIndex`, records as JSON strings persisted verbatim) or `SwapSigner`
-(`deriveKey`, `derivePreimage`, hex out). These are **synchronous**: the native
+(`publicKey`, `derivePreimage`, `signSchnorr`, `musigNonce`,
+`musigPartialSign`, hex in and out; the SDK never asks for a secret key). These are **synchronous**: the native
 side calls them and waits for the return value, so they cannot return a
 promise. A store of your own follows the store rules above, and:
 

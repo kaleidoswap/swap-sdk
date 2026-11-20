@@ -56,9 +56,9 @@ export type InternalHopRef = { payeeId: string, };
 
 export type SubSwapStates = "swap.created" | "transaction.mempool" | "transaction.confirmed" | "invoice.set" | "invoice.paid" | "invoice.pending" | "invoice.failedToPay" | "transaction.claimed" | "transaction.claim.pending" | "transaction.lockupFailed" | "swap.expired";
 
-export type RevSwapStates = "swap.created" | "minerfee.paid" | "transaction.mempool" | "transaction.confirmed" | "invoice.settled" | "invoice.expired" | "swap.expired" | "transaction.failed" | "transaction.refunded";
+export type RevSwapStates = "swap.created" | "minerfee.paid" | "transaction.mempool" | "transaction.confirmed" | "invoice.settled" | "invoice.expired" | "swap.expired" | "transaction.failed" | "transaction.refunded" | "transaction.refunded.confirmed" | "transaction.refunded.mempool";
 
-export type ChainSwapStates = "swap.created" | "transaction.zeroconf.rejected" | "transaction.mempool" | "transaction.confirmed" | "transaction.server.mempool" | "transaction.server.confirmed" | "transaction.claim.pending" | "transaction.claimed" | "transaction.lockupFailed" | "swap.expired" | "transaction.failed" | "transaction.refunded";
+export type ChainSwapStates = "swap.created" | "transaction.zeroconf.rejected" | "transaction.mempool" | "transaction.confirmed" | "transaction.server.mempool" | "transaction.server.confirmed" | "transaction.claim.pending" | "transaction.claimed" | "transaction.lockupFailed" | "swap.expired" | "transaction.failed" | "transaction.refunded" | "transaction.refunded.confirmed" | "transaction.refunded.mempool";
 
 export type Webhook<T> = { url: string, hashSwapId?: boolean | null, status?: Array<T> | null, };
 
@@ -168,8 +168,8 @@ export type SwapPayoutStatus = { mode: string, destination: string, layer?: stri
 
 export type GetSwapResponse = { status: string, zeroConfRejected?: boolean, transaction?: TransactionResponse,
 /**
- * Everything below is served by the KaleidoSwap maker and absent from
- * Boltz, so each one is optional: an unmodelled field is dropped by
+ * Everything below is optional: the KaleidoSwap maker serves all of it,
+ * a Boltz server only some of it. An unmodelled field is dropped by
  * serde, and callers were getting back `status` alone with no way to see
  * what a swap had done or why it failed.
  */
@@ -177,7 +177,14 @@ id?: string,
 /**
  * `submarine` / `reverse` / `chain`. Named around the `type` keyword.
  */
-type?: string, paymentStatus?: string, failureReason?: string, failureDetails?: string,
+type?: string, paymentStatus?: string, failureReason?: string,
+/**
+ * Detail on why the swap failed, as text. A server may send it as a
+ * string or as a JSON object (Boltz sends `{"expected", "actual"}` for an
+ * amount mismatch); an object is kept as its compact JSON text, so the
+ * shape of this one field never fails the whole status.
+ */
+failureDetails?: string,
 /**
  * The swap's history, oldest first.
  */

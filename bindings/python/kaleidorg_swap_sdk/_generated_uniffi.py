@@ -635,15 +635,36 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_key()
-        != 14350
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage()
+        != 52754
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage()
-        != 52754
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_nonce()
+        != 22393
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_partial_sign()
+        != 16390
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_public_key()
+        != 17492
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_sign_schnorr()
+        != 44100
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1072,13 +1093,28 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_key() != 23884:
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_public_key() != 30398:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
         lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage()
-        != 63874
+        != 55416
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_sign_schnorr() != 945:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_nonce() != 24397:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_partial_sign()
+        != 35869
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -1475,6 +1511,32 @@ _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD1 = ctypes.CFUNCTYPE(
     ctypes.POINTER(_UniffiRustBuffer),
     ctypes.POINTER(_UniffiRustCallStatus),
 )
+_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD2 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD3 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD4 = ctypes.CFUNCTYPE(
+    None,
+    ctypes.c_uint64,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustBuffer),
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
 _UNIFFI_CALLBACK_INTERFACE_SWAP_STORE_METHOD0 = ctypes.CFUNCTYPE(
     None,
     ctypes.c_uint64,
@@ -1513,8 +1575,11 @@ class _UniffiVTableCallbackInterfacePhaseListener(ctypes.Structure):
 
 class _UniffiVTableCallbackInterfaceSwapSigner(ctypes.Structure):
     _fields_ = [
-        ("derive_key", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD0),
+        ("public_key", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD0),
         ("derive_preimage", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD1),
+        ("sign_schnorr", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD2),
+        ("musig_nonce", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD3),
+        ("musig_partial_sign", _UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD4),
         ("uniffi_free", _UNIFFI_CALLBACK_INTERFACE_FREE),
     ]
 
@@ -1797,20 +1862,47 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new.argtypes 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_key.argtypes = (
-    ctypes.c_void_p,
-    ctypes.c_uint64,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_key.restype = (
-    _UniffiRustBuffer
-)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_nonce.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_nonce.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_public_key.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_public_key.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_sign_schnorr.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_sign_schnorr.restype = (
+    _UniffiRustBuffer
+)
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
@@ -2500,12 +2592,12 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner.argtypes
     ctypes.POINTER(_UniffiVTableCallbackInterfaceSwapSigner),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_key.argtypes = (
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_public_key.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_key.restype = (
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_public_key.restype = (
     _UniffiRustBuffer
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.argtypes = (
@@ -2514,6 +2606,35 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.argtyp
     ctypes.POINTER(_UniffiRustCallStatus),
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_sign_schnorr.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_sign_schnorr.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_nonce.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_nonce.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign.restype = (
     _UniffiRustBuffer
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore.argtypes = (
@@ -2982,10 +3103,16 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put.argtypes = 
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_key.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_nonce.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_nonce.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_partial_sign.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_partial_sign.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_public_key.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_public_key.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_sign_schnorr.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_sign_schnorr.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase.restype = (
     ctypes.c_uint16
@@ -3186,12 +3313,22 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refu
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_key.restype = (
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_public_key.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_public_key.restype = (
     ctypes.c_uint16
 )
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_sign_schnorr.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_sign_schnorr.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_nonce.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_nonce.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_partial_sign.argtypes = ()
+_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_partial_sign.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get.argtypes = ()
 _UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get.restype = (
     ctypes.c_uint16
@@ -6473,6 +6610,118 @@ class _UniffiConverterTypeFailureReasonIncorrectAmounts(_UniffiConverterRustBuff
         _UniffiConverterUInt64.write(value.actual, buf)
 
 
+class FeePolicy:
+    """
+    How claims and refunds are priced when `fee_sat_per_vb` is not set: the
+    chain client's estimate for `target_blocks` (default 2), held between the
+    chain's floor and ceiling (Bitcoin 1 and 500 sat/vB, Liquid 0.1 and 1).
+    An estimate that cannot be read signs nothing and is retried. A spend
+    whose fee would exceed `max_fee_percent` of the lockup (default 10) is not
+    signed and fails with `FeeTooHigh`, before a claim hands out the preimage.
+    A claim already under way is always signed, at no less than the rate its
+    first attempt was signed at, held under 50% of the lockup (or
+    `max_fee_percent` if higher).
+    """
+
+    target_blocks: "typing.Optional[int]"
+    bitcoin_min_sat_per_vb: "typing.Optional[float]"
+    bitcoin_max_sat_per_vb: "typing.Optional[float]"
+    liquid_min_sat_per_vb: "typing.Optional[float]"
+    liquid_max_sat_per_vb: "typing.Optional[float]"
+    max_fee_percent: "typing.Optional[float]"
+
+    def __init__(
+        self,
+        *,
+        target_blocks: "typing.Optional[int]" = _DEFAULT,
+        bitcoin_min_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        bitcoin_max_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        liquid_min_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        liquid_max_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        max_fee_percent: "typing.Optional[float]" = _DEFAULT,
+    ):
+        if target_blocks is _DEFAULT:
+            self.target_blocks = None
+        else:
+            self.target_blocks = target_blocks
+        if bitcoin_min_sat_per_vb is _DEFAULT:
+            self.bitcoin_min_sat_per_vb = None
+        else:
+            self.bitcoin_min_sat_per_vb = bitcoin_min_sat_per_vb
+        if bitcoin_max_sat_per_vb is _DEFAULT:
+            self.bitcoin_max_sat_per_vb = None
+        else:
+            self.bitcoin_max_sat_per_vb = bitcoin_max_sat_per_vb
+        if liquid_min_sat_per_vb is _DEFAULT:
+            self.liquid_min_sat_per_vb = None
+        else:
+            self.liquid_min_sat_per_vb = liquid_min_sat_per_vb
+        if liquid_max_sat_per_vb is _DEFAULT:
+            self.liquid_max_sat_per_vb = None
+        else:
+            self.liquid_max_sat_per_vb = liquid_max_sat_per_vb
+        if max_fee_percent is _DEFAULT:
+            self.max_fee_percent = None
+        else:
+            self.max_fee_percent = max_fee_percent
+
+    def __str__(self):
+        return "FeePolicy(target_blocks={}, bitcoin_min_sat_per_vb={}, bitcoin_max_sat_per_vb={}, liquid_min_sat_per_vb={}, liquid_max_sat_per_vb={}, max_fee_percent={})".format(
+            self.target_blocks,
+            self.bitcoin_min_sat_per_vb,
+            self.bitcoin_max_sat_per_vb,
+            self.liquid_min_sat_per_vb,
+            self.liquid_max_sat_per_vb,
+            self.max_fee_percent,
+        )
+
+    def __eq__(self, other):
+        if self.target_blocks != other.target_blocks:
+            return False
+        if self.bitcoin_min_sat_per_vb != other.bitcoin_min_sat_per_vb:
+            return False
+        if self.bitcoin_max_sat_per_vb != other.bitcoin_max_sat_per_vb:
+            return False
+        if self.liquid_min_sat_per_vb != other.liquid_min_sat_per_vb:
+            return False
+        if self.liquid_max_sat_per_vb != other.liquid_max_sat_per_vb:
+            return False
+        if self.max_fee_percent != other.max_fee_percent:
+            return False
+        return True
+
+
+class _UniffiConverterTypeFeePolicy(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return FeePolicy(
+            target_blocks=_UniffiConverterOptionalUInt32.read(buf),
+            bitcoin_min_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            bitcoin_max_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            liquid_min_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            liquid_max_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            max_fee_percent=_UniffiConverterOptionalDouble.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterOptionalUInt32.check_lower(value.target_blocks)
+        _UniffiConverterOptionalDouble.check_lower(value.bitcoin_min_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.bitcoin_max_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.liquid_min_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.liquid_max_sat_per_vb)
+        _UniffiConverterOptionalDouble.check_lower(value.max_fee_percent)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterOptionalUInt32.write(value.target_blocks, buf)
+        _UniffiConverterOptionalDouble.write(value.bitcoin_min_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.bitcoin_max_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.liquid_min_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.liquid_max_sat_per_vb, buf)
+        _UniffiConverterOptionalDouble.write(value.max_fee_percent, buf)
+
+
 class Fees:
     maker: "int"
     miner: "int"
@@ -7005,6 +7254,13 @@ class KaleidoSwapOptions:
     liquid_esplora_url: "typing.Optional[str]"
     poll_interval_ms: "typing.Optional[int]"
     fee_sat_per_vb: "typing.Optional[float]"
+    """
+    A fixed fee rate for claims and refunds; no estimate is read. Raised to
+    the floor of the chain a spend is on; a rate below both floors is
+    refused. Default: estimated, see `fee_policy`.
+    """
+
+    fee_policy: "typing.Optional[FeePolicy]"
     quote_ttl_secs: "typing.Optional[int]"
     maker_timeout_ms: "typing.Optional[int]"
     """
@@ -7028,6 +7284,7 @@ class KaleidoSwapOptions:
         liquid_esplora_url: "typing.Optional[str]" = _DEFAULT,
         poll_interval_ms: "typing.Optional[int]" = _DEFAULT,
         fee_sat_per_vb: "typing.Optional[float]" = _DEFAULT,
+        fee_policy: "typing.Optional[FeePolicy]" = _DEFAULT,
         quote_ttl_secs: "typing.Optional[int]" = _DEFAULT,
         maker_timeout_ms: "typing.Optional[int]" = _DEFAULT,
         reverse_timeout_headroom: "typing.Optional[ReverseTimeoutHeadroom]" = _DEFAULT,
@@ -7055,6 +7312,10 @@ class KaleidoSwapOptions:
             self.fee_sat_per_vb = None
         else:
             self.fee_sat_per_vb = fee_sat_per_vb
+        if fee_policy is _DEFAULT:
+            self.fee_policy = None
+        else:
+            self.fee_policy = fee_policy
         if quote_ttl_secs is _DEFAULT:
             self.quote_ttl_secs = None
         else:
@@ -7069,7 +7330,7 @@ class KaleidoSwapOptions:
             self.reverse_timeout_headroom = reverse_timeout_headroom
 
     def __str__(self):
-        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, quote_ttl_secs={}, maker_timeout_ms={}, reverse_timeout_headroom={})".format(
+        return "KaleidoSwapOptions(network={}, store={}, signer={}, maker_url={}, bitcoin_esplora_url={}, liquid_esplora_url={}, poll_interval_ms={}, fee_sat_per_vb={}, fee_policy={}, quote_ttl_secs={}, maker_timeout_ms={}, reverse_timeout_headroom={})".format(
             self.network,
             self.store,
             self.signer,
@@ -7078,6 +7339,7 @@ class KaleidoSwapOptions:
             self.liquid_esplora_url,
             self.poll_interval_ms,
             self.fee_sat_per_vb,
+            self.fee_policy,
             self.quote_ttl_secs,
             self.maker_timeout_ms,
             self.reverse_timeout_headroom,
@@ -7100,6 +7362,8 @@ class KaleidoSwapOptions:
             return False
         if self.fee_sat_per_vb != other.fee_sat_per_vb:
             return False
+        if self.fee_policy != other.fee_policy:
+            return False
         if self.quote_ttl_secs != other.quote_ttl_secs:
             return False
         if self.maker_timeout_ms != other.maker_timeout_ms:
@@ -7121,6 +7385,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
             liquid_esplora_url=_UniffiConverterOptionalString.read(buf),
             poll_interval_ms=_UniffiConverterOptionalUInt64.read(buf),
             fee_sat_per_vb=_UniffiConverterOptionalDouble.read(buf),
+            fee_policy=_UniffiConverterOptionalTypeFeePolicy.read(buf),
             quote_ttl_secs=_UniffiConverterOptionalUInt64.read(buf),
             maker_timeout_ms=_UniffiConverterOptionalUInt64.read(buf),
             reverse_timeout_headroom=_UniffiConverterOptionalTypeReverseTimeoutHeadroom.read(
@@ -7138,6 +7403,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.check_lower(value.liquid_esplora_url)
         _UniffiConverterOptionalUInt64.check_lower(value.poll_interval_ms)
         _UniffiConverterOptionalDouble.check_lower(value.fee_sat_per_vb)
+        _UniffiConverterOptionalTypeFeePolicy.check_lower(value.fee_policy)
         _UniffiConverterOptionalUInt64.check_lower(value.quote_ttl_secs)
         _UniffiConverterOptionalUInt64.check_lower(value.maker_timeout_ms)
         _UniffiConverterOptionalTypeReverseTimeoutHeadroom.check_lower(
@@ -7154,6 +7420,7 @@ class _UniffiConverterTypeKaleidoSwapOptions(_UniffiConverterRustBuffer):
         _UniffiConverterOptionalString.write(value.liquid_esplora_url, buf)
         _UniffiConverterOptionalUInt64.write(value.poll_interval_ms, buf)
         _UniffiConverterOptionalDouble.write(value.fee_sat_per_vb, buf)
+        _UniffiConverterOptionalTypeFeePolicy.write(value.fee_policy, buf)
         _UniffiConverterOptionalUInt64.write(value.quote_ttl_secs, buf)
         _UniffiConverterOptionalUInt64.write(value.maker_timeout_ms, buf)
         _UniffiConverterOptionalTypeReverseTimeoutHeadroom.write(
@@ -7749,6 +8016,59 @@ class _UniffiConverterTypeMrhResponse(_UniffiConverterRustBuffer):
     def write(value, buf):
         _UniffiConverterString.write(value.bip21, buf)
         _UniffiConverterString.write(value.signature, buf)
+
+
+class MusigSession:
+    """
+    A cooperative MuSig2 key-path signing session, hex-encoded: the two
+    33-byte public keys in aggregation order, the 32-byte Taproot tweak and the
+    32-byte sighash.
+    """
+
+    pubkeys: "typing.List[str]"
+    tweak: "str"
+    sighash: "str"
+
+    def __init__(self, *, pubkeys: "typing.List[str]", tweak: "str", sighash: "str"):
+        self.pubkeys = pubkeys
+        self.tweak = tweak
+        self.sighash = sighash
+
+    def __str__(self):
+        return "MusigSession(pubkeys={}, tweak={}, sighash={})".format(
+            self.pubkeys, self.tweak, self.sighash
+        )
+
+    def __eq__(self, other):
+        if self.pubkeys != other.pubkeys:
+            return False
+        if self.tweak != other.tweak:
+            return False
+        if self.sighash != other.sighash:
+            return False
+        return True
+
+
+class _UniffiConverterTypeMusigSession(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return MusigSession(
+            pubkeys=_UniffiConverterSequenceString.read(buf),
+            tweak=_UniffiConverterString.read(buf),
+            sighash=_UniffiConverterString.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterSequenceString.check_lower(value.pubkeys)
+        _UniffiConverterString.check_lower(value.tweak)
+        _UniffiConverterString.check_lower(value.sighash)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterSequenceString.write(value.pubkeys, buf)
+        _UniffiConverterString.write(value.tweak, buf)
+        _UniffiConverterString.write(value.sighash, buf)
 
 
 class Node:
@@ -12830,6 +13150,8 @@ class SwapErrorCode(enum.Enum):
 
     INVOICE_EXPIRED = 16
 
+    FEE_TOO_HIGH = 17
+
 
 class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
     @staticmethod
@@ -12869,6 +13191,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             return SwapErrorCode.CHAIN_UNREACHABLE
         if variant == 17:
             return SwapErrorCode.INVOICE_EXPIRED
+        if variant == 18:
+            return SwapErrorCode.FEE_TOO_HIGH
         raise InternalError("Raw enum value doesn't match any cases")
 
     @staticmethod
@@ -12906,6 +13230,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
         if value == SwapErrorCode.CHAIN_UNREACHABLE:
             return
         if value == SwapErrorCode.INVOICE_EXPIRED:
+            return
+        if value == SwapErrorCode.FEE_TOO_HIGH:
             return
         raise ValueError(value)
 
@@ -12945,6 +13271,8 @@ class _UniffiConverterTypeSwapErrorCode(_UniffiConverterRustBuffer):
             buf.write_i32(16)
         if value == SwapErrorCode.INVOICE_EXPIRED:
             buf.write_i32(17)
+        if value == SwapErrorCode.FEE_TOO_HIGH:
+            buf.write_i32(18)
 
 
 class SwapPhase(enum.Enum):
@@ -13456,6 +13784,32 @@ class _UniffiConverterOptionalTypeFailureReasonIncorrectAmounts(
             return None
         elif flag == 1:
             return _UniffiConverterTypeFailureReasonIncorrectAmounts.read(buf)
+        else:
+            raise InternalError("Unexpected flag byte for optional type")
+
+
+class _UniffiConverterOptionalTypeFeePolicy(_UniffiConverterRustBuffer):
+    @classmethod
+    def check_lower(cls, value):
+        if value is not None:
+            _UniffiConverterTypeFeePolicy.check_lower(value)
+
+    @classmethod
+    def write(cls, value, buf):
+        if value is None:
+            buf.write_u8(0)
+            return
+
+        buf.write_u8(1)
+        _UniffiConverterTypeFeePolicy.write(value, buf)
+
+    @classmethod
+    def read(cls, buf):
+        flag = buf.read_u8()
+        if flag == 0:
+            return None
+        elif flag == 1:
+            return _UniffiConverterTypeFeePolicy.read(buf)
         else:
             raise InternalError("Unexpected flag byte for optional type")
 
@@ -14740,15 +15094,56 @@ class _UniffiConverterTypePhaseListener:
 
 class SwapSignerProtocol(typing.Protocol):
     """
-    Derives per-swap material from a root the application owns. Hex in, hex
-    out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
-    `derive_preimage`.
+    Holds the per-swap keys, one per store index, and signs with them; the SDK
+    never asks for a secret key, so the keys can stay in a hardware wallet, a
+    secure enclave or a remote signer. Hex in, hex out.
+
+    `musig_nonce` generates and keeps a fresh secret nonce and returns the
+    66-byte public nonce; `musig_partial_sign` signs with the secret nonce
+    behind `our_nonce` and forgets it. Never sign twice with one nonce, and
+    never take a secret nonce from outside: either reveals the key.
     """
 
-    def derive_key(self, index: "int"):
+    def public_key(self, index: "int"):
+        """
+        The 33-byte compressed public key of swap `index`.
+        """
+
         raise NotImplementedError
 
     def derive_preimage(self, index: "int"):
+        """
+        The 32-byte preimage of swap `index`.
+        """
+
+        raise NotImplementedError
+
+    def sign_schnorr(self, index: "int", sighash: "str"):
+        """
+        A 64-byte BIP340 signature by the untweaked key of swap `index` over
+        a 32-byte Taproot script-path sighash.
+        """
+
+        raise NotImplementedError
+
+    def musig_nonce(self, index: "int", session: "MusigSession"):
+        """
+        Starts a MuSig2 signature for `session`: the 66-byte public nonce.
+        """
+
+        raise NotImplementedError
+
+    def musig_partial_sign(
+        self,
+        index: "int",
+        session: "MusigSession",
+        our_nonce: "str",
+        their_nonce: "str",
+    ):
+        """
+        Finishes it: the 32-byte partial signature.
+        """
+
         raise NotImplementedError
 
 
@@ -14759,24 +15154,70 @@ class SwapSignerProtocol(typing.Protocol):
 
 class SwapSigner:
     """
-    Derives per-swap material from a root the application owns. Hex in, hex
-    out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
-    `derive_preimage`.
+    Holds the per-swap keys, one per store index, and signs with them; the SDK
+    never asks for a secret key, so the keys can stay in a hardware wallet, a
+    secure enclave or a remote signer. Hex in, hex out.
+
+    `musig_nonce` generates and keeps a fresh secret nonce and returns the
+    66-byte public nonce; `musig_partial_sign` signs with the secret nonce
+    behind `our_nonce` and forgets it. Never sign twice with one nonce, and
+    never take a secret nonce from outside: either reveals the key.
     """
 
-    def derive_key(self, index: "int"):
+    def public_key(self, index: "int"):
+        """
+        The 33-byte compressed public key of swap `index`.
+        """
+
         raise NotImplementedError
 
     def derive_preimage(self, index: "int"):
+        """
+        The 32-byte preimage of swap `index`.
+        """
+
+        raise NotImplementedError
+
+    def sign_schnorr(self, index: "int", sighash: "str"):
+        """
+        A 64-byte BIP340 signature by the untweaked key of swap `index` over
+        a 32-byte Taproot script-path sighash.
+        """
+
+        raise NotImplementedError
+
+    def musig_nonce(self, index: "int", session: "MusigSession"):
+        """
+        Starts a MuSig2 signature for `session`: the 66-byte public nonce.
+        """
+
+        raise NotImplementedError
+
+    def musig_partial_sign(
+        self,
+        index: "int",
+        session: "MusigSession",
+        our_nonce: "str",
+        their_nonce: "str",
+    ):
+        """
+        Finishes it: the 32-byte partial signature.
+        """
+
         raise NotImplementedError
 
 
 # `SwapSignerImpl` is the implementation for a Rust implemented version.
 class SwapSignerImpl:
     """
-    Derives per-swap material from a root the application owns. Hex in, hex
-    out: a 32-byte secret key for `derive_key`, a 32-byte preimage for
-    `derive_preimage`.
+    Holds the per-swap keys, one per store index, and signs with them; the SDK
+    never asks for a secret key, so the keys can stay in a hardware wallet, a
+    secure enclave or a remote signer. Hex in, hex out.
+
+    `musig_nonce` generates and keeps a fresh secret nonce and returns the
+    66-byte public nonce; `musig_partial_sign` signs with the secret nonce
+    behind `our_nonce` and forgets it. Never sign twice with one nonce, and
+    never take a secret nonce from outside: either reveals the key.
     """
 
     _pointer: ctypes.c_void_p
@@ -14806,19 +15247,27 @@ class SwapSignerImpl:
         inst._pointer = pointer
         return inst
 
-    def derive_key(self, index: "int") -> "str":
+    def public_key(self, index: "int") -> "str":
+        """
+        The 33-byte compressed public key of swap `index`.
+        """
+
         _UniffiConverterUInt64.check_lower(index)
 
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_key,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_public_key,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
         )
 
     def derive_preimage(self, index: "int") -> "str":
+        """
+        The 32-byte preimage of swap `index`.
+        """
+
         _UniffiConverterUInt64.check_lower(index)
 
         return _UniffiConverterString.lift(
@@ -14830,13 +15279,83 @@ class SwapSignerImpl:
             )
         )
 
+    def sign_schnorr(self, index: "int", sighash: "str") -> "str":
+        """
+        A 64-byte BIP340 signature by the untweaked key of swap `index` over
+        a 32-byte Taproot script-path sighash.
+        """
+
+        _UniffiConverterUInt64.check_lower(index)
+
+        _UniffiConverterString.check_lower(sighash)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_sign_schnorr,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+                _UniffiConverterString.lower(sighash),
+            )
+        )
+
+    def musig_nonce(self, index: "int", session: "MusigSession") -> "str":
+        """
+        Starts a MuSig2 signature for `session`: the 66-byte public nonce.
+        """
+
+        _UniffiConverterUInt64.check_lower(index)
+
+        _UniffiConverterTypeMusigSession.check_lower(session)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_nonce,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+                _UniffiConverterTypeMusigSession.lower(session),
+            )
+        )
+
+    def musig_partial_sign(
+        self,
+        index: "int",
+        session: "MusigSession",
+        our_nonce: "str",
+        their_nonce: "str",
+    ) -> "str":
+        """
+        Finishes it: the 32-byte partial signature.
+        """
+
+        _UniffiConverterUInt64.check_lower(index)
+
+        _UniffiConverterTypeMusigSession.check_lower(session)
+
+        _UniffiConverterString.check_lower(our_nonce)
+
+        _UniffiConverterString.check_lower(their_nonce)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+                _UniffiConverterTypeMusigSession.lower(session),
+                _UniffiConverterString.lower(our_nonce),
+                _UniffiConverterString.lower(their_nonce),
+            )
+        )
+
 
 # Put all the bits inside a class to keep the top-level namespace clean
 class _UniffiTraitImplSwapSigner:
     # For each method, generate a callback function to pass to Rust
 
     @_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD0
-    def derive_key(
+    def public_key(
         uniffi_handle,
         index,
         uniffi_out_return,
@@ -14846,7 +15365,7 @@ class _UniffiTraitImplSwapSigner:
 
         def make_call():
             args = (_UniffiConverterUInt64.lift(index),)
-            method = uniffi_obj.derive_key
+            method = uniffi_obj.public_key
             return method(*args)
 
         def write_return_value(v):
@@ -14885,13 +15404,109 @@ class _UniffiTraitImplSwapSigner:
             _UniffiConverterTypeError.lower,
         )
 
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD2
+    def sign_schnorr(
+        uniffi_handle,
+        index,
+        sighash,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapSigner._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (
+                _UniffiConverterUInt64.lift(index),
+                _UniffiConverterString.lift(sighash),
+            )
+            method = uniffi_obj.sign_schnorr
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD3
+    def musig_nonce(
+        uniffi_handle,
+        index,
+        session,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapSigner._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (
+                _UniffiConverterUInt64.lift(index),
+                _UniffiConverterTypeMusigSession.lift(session),
+            )
+            method = uniffi_obj.musig_nonce
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
+    @_UNIFFI_CALLBACK_INTERFACE_SWAP_SIGNER_METHOD4
+    def musig_partial_sign(
+        uniffi_handle,
+        index,
+        session,
+        our_nonce,
+        their_nonce,
+        uniffi_out_return,
+        uniffi_call_status_ptr,
+    ):
+        uniffi_obj = _UniffiConverterTypeSwapSigner._handle_map.get(uniffi_handle)
+
+        def make_call():
+            args = (
+                _UniffiConverterUInt64.lift(index),
+                _UniffiConverterTypeMusigSession.lift(session),
+                _UniffiConverterString.lift(our_nonce),
+                _UniffiConverterString.lift(their_nonce),
+            )
+            method = uniffi_obj.musig_partial_sign
+            return method(*args)
+
+        def write_return_value(v):
+            uniffi_out_return[0] = _UniffiConverterString.lower(v)
+
+        _uniffi_trait_interface_call_with_error(
+            uniffi_call_status_ptr.contents,
+            make_call,
+            write_return_value,
+            Error,
+            _UniffiConverterTypeError.lower,
+        )
+
     @_UNIFFI_CALLBACK_INTERFACE_FREE
     def _uniffi_free(uniffi_handle):
         _UniffiConverterTypeSwapSigner._handle_map.remove(uniffi_handle)
 
     # Generate the FFI VTable.  This has a field for each callback interface method.
     _uniffi_vtable = _UniffiVTableCallbackInterfaceSwapSigner(
-        derive_key, derive_preimage, _uniffi_free
+        public_key,
+        derive_preimage,
+        sign_schnorr,
+        musig_nonce,
+        musig_partial_sign,
+        _uniffi_free,
     )
     # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
     # or else bad things will happen when Rust tries to access it.
@@ -16074,10 +16689,25 @@ class MnemonicSignerProtocol(typing.Protocol):
     A [`SwapSigner`] over a swap mnemonic (`SwapMasterKey::from_swap_mnemonic`).
     """
 
-    def derive_key(self, index: "int"):
+    def derive_preimage(self, index: "int"):
         raise NotImplementedError
 
-    def derive_preimage(self, index: "int"):
+    def musig_nonce(self, index: "int", session: "MusigSession"):
+        raise NotImplementedError
+
+    def musig_partial_sign(
+        self,
+        index: "int",
+        session: "MusigSession",
+        our_nonce: "str",
+        their_nonce: "str",
+    ):
+        raise NotImplementedError
+
+    def public_key(self, index: "int"):
+        raise NotImplementedError
+
+    def sign_schnorr(self, index: "int", sighash: "str"):
         raise NotImplementedError
 
 
@@ -16130,18 +16760,6 @@ class MnemonicSigner(
         inst._pointer = pointer
         return inst
 
-    def derive_key(self, index: "int") -> "str":
-        _UniffiConverterUInt64.check_lower(index)
-
-        return _UniffiConverterString.lift(
-            _uniffi_rust_call_with_error(
-                _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_key,
-                self._uniffi_clone_pointer(),
-                _UniffiConverterUInt64.lower(index),
-            )
-        )
-
     def derive_preimage(self, index: "int") -> "str":
         _UniffiConverterUInt64.check_lower(index)
 
@@ -16151,6 +16769,75 @@ class MnemonicSigner(
                 _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+    def musig_nonce(self, index: "int", session: "MusigSession") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        _UniffiConverterTypeMusigSession.check_lower(session)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_nonce,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+                _UniffiConverterTypeMusigSession.lower(session),
+            )
+        )
+
+    def musig_partial_sign(
+        self,
+        index: "int",
+        session: "MusigSession",
+        our_nonce: "str",
+        their_nonce: "str",
+    ) -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        _UniffiConverterTypeMusigSession.check_lower(session)
+
+        _UniffiConverterString.check_lower(our_nonce)
+
+        _UniffiConverterString.check_lower(their_nonce)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+                _UniffiConverterTypeMusigSession.lower(session),
+                _UniffiConverterString.lower(our_nonce),
+                _UniffiConverterString.lower(their_nonce),
+            )
+        )
+
+    def public_key(self, index: "int") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_public_key,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+            )
+        )
+
+    def sign_schnorr(self, index: "int", sighash: "str") -> "str":
+        _UniffiConverterUInt64.check_lower(index)
+
+        _UniffiConverterString.check_lower(sighash)
+
+        return _UniffiConverterString.lift(
+            _uniffi_rust_call_with_error(
+                _UniffiConverterTypeError,
+                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_sign_schnorr,
+                self._uniffi_clone_pointer(),
+                _UniffiConverterUInt64.lower(index),
+                _UniffiConverterString.lower(sighash),
             )
         )
 
@@ -19396,6 +20083,7 @@ __all__ = [
     "ElectrumBuilder",
     "EsploraBuilder",
     "FailureReasonIncorrectAmounts",
+    "FeePolicy",
     "Fees",
     "FinalizedRgbSpend",
     "FundedLiquidPset",
@@ -19418,6 +20106,7 @@ __all__ = [
     "LiquidPsetTemplate",
     "MrhDestination",
     "MrhResponse",
+    "MusigSession",
     "Node",
     "PairLimits",
     "PairMinerFees",

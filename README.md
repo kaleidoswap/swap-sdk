@@ -118,6 +118,7 @@ let kaleido = KaleidoSwap::new(KaleidoSwapOptions {
     liquid_esplora_url: None,
     poll_interval: None,
     fee_sat_per_vb: None,
+    fee_policy: None,
     quote_ttl: None,
     maker_timeout: None,
 })?;

@@ -30,7 +30,11 @@ class Maker(BaseHTTPRequestHandler):
         txid = hashlib.sha256(hashlib.sha256(raw).digest()).digest()[::-1].hex()
         evidence = {
             "/v2/blocks/tip/height": 100,
-            f"/v2/tx/{txid}/status": {"confirmed": True, "block_height": 100},
+            # Only the status and the number of outputs are read.
+            f"/v2/tx/{txid}": {
+                "status": {"confirmed": True, "block_height": 100},
+                "vout": [{}],
+            },
             f"/v2/tx/{txid}/outspend/0": {"spent": False},
         }
         body = json.dumps(evidence[self.path]).encode()

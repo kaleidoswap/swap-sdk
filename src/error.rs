@@ -59,6 +59,9 @@ pub enum Error {
     /// still leave a colored output above the dust minimum: the caller's
     /// wallet has to add a BTC input (`RgbSpendFunding::CallerInputs`).
     RgbFeeInputRequired,
+    /// A `KaleidoSwap` signer could not produce what was asked of it. Its
+    /// own error, code included, is kept.
+    Signer(Box<crate::swaps::kaleidoswap::SwapError>),
     Generic(String),
     HTTPStatusNotSuccess(reqwest::StatusCode, Value),
     /// A request the server answered with a success status, whose body did not
@@ -322,6 +325,7 @@ impl Error {
             Error::Musig2(_) => "Musig2",
             Error::LiquidFeeAssetRequired => "liquid_fee_asset_required",
             Error::RgbFeeInputRequired => "rgb_fee_input_required",
+            Error::Signer(_) => "Signer",
             Error::Generic(_) => "Generic",
             Error::HTTPStatusNotSuccess(_, _) => "HTTPStatusNotSuccess",
             Error::HTTPResponseBodyInvalid(_, _) => "HTTPResponseBodyInvalid",
@@ -369,6 +373,7 @@ impl Error {
                 "The RGB HTLC cannot pay this fee itself; a caller-provided BTC input is required"
                     .to_string()
             }
+            Error::Signer(e) => format!("signer: {}", e.message),
             Error::Generic(e) => e.clone(),
             Error::HTTPStatusNotSuccess(status, body) => {
                 format!("HTTP Status Not Success: {status}, {body}")
@@ -495,6 +500,7 @@ impl std::error::Error for Error {
             | Error::Musig2(_)
             | Error::LiquidFeeAssetRequired
             | Error::RgbFeeInputRequired
+            | Error::Signer(_)
             | Error::Generic(_)
             | Error::HTTPStatusNotSuccess(_, _)
             | Error::HTTPResponseBodyInvalid(_, _) => None,

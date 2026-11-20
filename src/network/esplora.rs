@@ -7,6 +7,7 @@ use elements::hex::ToHex;
 use elements::pset::serialize::Serialize;
 use reqwest::Response;
 use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -82,6 +83,12 @@ impl EsploraBitcoinClient {
             &txid.to_string(),
         )
         .await
+    }
+
+    /// `GET /fee-estimates`: fee rates in sat/vB by confirmation target in
+    /// blocks. Entries that are not a positive, finite rate are left out.
+    pub async fn fee_estimates(&self) -> Result<BTreeMap<u32, f64>, Error> {
+        fetch_fee_estimates(&self.client, &self.base_url, self.timeout).await
     }
 
     /// The transactions that spend an output paying `address`.
@@ -276,6 +283,12 @@ impl EsploraLiquidClient {
         .await
     }
 
+    /// `GET /fee-estimates`: fee rates in sat/vB by confirmation target in
+    /// blocks. Entries that are not a positive, finite rate are left out.
+    pub async fn fee_estimates(&self) -> Result<BTreeMap<u32, f64>, Error> {
+        fetch_fee_estimates(&self.client, &self.base_url, self.timeout).await
+    }
+
     /// The transactions that spend an output paying `address`.
     pub async fn spends_of_address(
         &self,
@@ -416,16 +429,46 @@ async fn fetch_tip_height(
     parse_tip_height(&body)
 }
 
+async fn fetch_fee_estimates(
+    client: &reqwest::Client,
+    base_url: &str,
+    timeout: Duration,
+) -> Result<BTreeMap<u32, f64>, Error> {
+    let url = format!("{base_url}/fee-estimates");
+    let response = get_with_retry(client, &url, timeout).await?;
+    let status = response.status();
+    let body = response.text().await?;
+    if !status.is_success() {
+        return Err(Error::Esplora(format!(
+            "Fee estimates request failed ({status}): {}",
+            body.trim()
+        )));
+    }
+    parse_fee_estimates(&body)
+}
+
+/// The body of `GET /fee-estimates`, an object of target → sat/vB. Keys that
+/// are not a block count and rates that are not positive and finite are
+/// dropped; a body that is not such an object is an error.
+fn parse_fee_estimates(body: &str) -> Result<BTreeMap<u32, f64>, Error> {
+    let raw: BTreeMap<String, serde_json::Value> = serde_json::from_str(body)
+        .map_err(|e| Error::Esplora(format!("Failed to parse fee estimates: {e}")))?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(target, rate)| {
+            let target = target.parse::<u32>().ok().filter(|t| *t > 0)?;
+            let rate = rate.as_f64().filter(|r| r.is_finite() && *r > 0.0)?;
+            Some((target, rate))
+        })
+        .collect())
+}
+
 fn parse_tip_height(body: &str) -> Result<u32, Error> {
     body.trim()
         .parse::<u32>()
         .map_err(|e| Error::Esplora(format!("Failed to parse tip height {body:?}: {e}")))
 }
 
-/// `GET /tx/:txid/status` and `GET /tx/:txid/outspend/:vout`, combined into
-/// one [`OutputStatus`]. A 404 on the status call means the source has never
-/// seen the transaction; a 404 on the outspend call (the output index does
-/// not exist) is an error, since the caller named a specific output.
 /// `GET /tx/:txid`, which answers 404 for a transaction the server has
 /// neither in its mempool nor in a block. `/tx/:txid/status` cannot tell:
 /// it answers an unknown txid as unconfirmed.
@@ -494,6 +537,14 @@ async fn fetch_address_spends(
         .collect())
 }
 
+/// `GET /tx/:txid` and `GET /tx/:txid/outspend/:vout`, combined into one
+/// [`OutputStatus`].
+///
+/// Presence and inclusion come from `/tx/:txid`, which answers 404 for a
+/// transaction the server has never seen; that is `None`. `/tx/:txid/status`
+/// cannot be used for this, since it answers an unknown txid as unconfirmed.
+/// An output index the transaction does not have is an error, since the
+/// caller named a specific output.
 async fn fetch_output_status(
     client: &reqwest::Client,
     base_url: &str,
@@ -501,8 +552,8 @@ async fn fetch_output_status(
     txid: &str,
     vout: u32,
 ) -> Result<Option<OutputStatus>, Error> {
-    let status_url = format!("{base_url}/tx/{txid}/status");
-    let response = get_with_retry(client, &status_url, timeout).await?;
+    let tx_url = format!("{base_url}/tx/{txid}");
+    let response = get_with_retry(client, &tx_url, timeout).await?;
     let http_status = response.status();
     let body = response.text().await?;
     if http_status == reqwest::StatusCode::NOT_FOUND {
@@ -510,11 +561,17 @@ async fn fetch_output_status(
     }
     if !http_status.is_success() {
         return Err(Error::Esplora(format!(
-            "Transaction status request failed ({http_status}): {}",
+            "Transaction request failed ({http_status}): {}",
             body.trim()
         )));
     }
-    let tx_status: TxStatus = serde_json::from_str(&body)?;
+    let tx: TxWithStatus = serde_json::from_str(&body)?;
+    if vout as usize >= tx.vout.len() {
+        return Err(Error::Esplora(format!(
+            "Transaction {txid} has no output {vout} (it has {})",
+            tx.vout.len()
+        )));
+    }
 
     let outspend_url = format!("{base_url}/tx/{txid}/outspend/{vout}");
     let response = get_with_retry(client, &outspend_url, timeout).await?;
@@ -527,7 +584,7 @@ async fn fetch_output_status(
         )));
     }
     let outspend: OutSpend = serde_json::from_str(&body)?;
-    Ok(Some(output_status_from(&tx_status, &outspend)))
+    Ok(Some(output_status_from(&tx.status, &outspend)))
 }
 
 fn output_status_from(tx_status: &TxStatus, outspend: &OutSpend) -> OutputStatus {
@@ -688,7 +745,15 @@ struct AddressTxOut {
     scriptpubkey: String,
 }
 
-/// `GET /tx/:txid/status`.
+/// A transaction as `GET /tx/:txid` returns it, reduced to what
+/// [`fetch_output_status`] reads.
+#[derive(Debug, Deserialize)]
+struct TxWithStatus {
+    status: TxStatus,
+    vout: Vec<serde_json::Value>,
+}
+
+/// The `status` object of `GET /tx/:txid`.
 #[derive(Debug, Deserialize, Clone)]
 struct TxStatus {
     confirmed: bool,
@@ -745,6 +810,20 @@ mod tests {
     }
 
     #[macros::test_all]
+    fn fee_estimates_keep_only_usable_entries() {
+        let parsed =
+            parse_fee_estimates(r#"{"1": 12.5, "2": 10, "6": 0, "x": 3, "144": -1, "25": 1.01}"#)
+                .unwrap();
+        assert_eq!(
+            parsed.into_iter().collect::<Vec<_>>(),
+            vec![(1, 12.5), (2, 10.0), (25, 1.01)]
+        );
+        assert!(parse_fee_estimates("{}").unwrap().is_empty());
+        assert!(parse_fee_estimates("<html>").is_err());
+        assert!(parse_fee_estimates("[1, 2]").is_err());
+    }
+
+    #[macros::test_all]
     fn tip_height_parses_bare_decimal_only() {
         assert_eq!(parse_tip_height("812345\n").unwrap(), 812345);
         assert_eq!(parse_tip_height("0").unwrap(), 0);
@@ -792,6 +871,138 @@ mod tests {
         );
 
         assert_eq!(output_status_from(&odd, &unspent).block_height, None);
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    mod output_status {
+        use super::*;
+        use crate::util::http_stub::stub_esplora;
+
+        fn client(routes: Vec<(String, u16, String)>) -> EsploraBitcoinClient {
+            EsploraBitcoinClient::new(BitcoinChain::BitcoinSignet, &stub_esplora(routes), 5)
+        }
+
+        fn outpoint(txid: &str, vout: u32) -> bitcoin::OutPoint {
+            bitcoin::OutPoint {
+                txid: bitcoin::Txid::from_str(txid).unwrap(),
+                vout,
+            }
+        }
+
+        fn tx_body(txid: &str, status: &str, outputs: usize) -> String {
+            let vout = vec![r#"{"scriptpubkey":"0014ff","value":1000}"#; outputs].join(",");
+            format!(r#"{{"txid":"{txid}","status":{status},"vout":[{vout}]}}"#)
+        }
+
+        /// Esplora answers an unknown txid as unconfirmed on `/status` and
+        /// unspent on `/outspend`; only `/tx/:txid` says it does not know it.
+        #[macros::async_test]
+        async fn output_status_is_none_for_a_transaction_the_server_never_saw() {
+            let txid = "aa".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}/status"),
+                    200,
+                    r#"{"confirmed":false}"#.into(),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/0"),
+                    200,
+                    r#"{"spent":false}"#.into(),
+                ),
+            ]);
+            let status = client
+                .get_output_status(&outpoint(&txid, 0), bitcoin::Script::new())
+                .await
+                .unwrap();
+            assert_eq!(status, None);
+        }
+
+        #[macros::async_test]
+        async fn output_status_of_a_mempool_transaction_has_no_height() {
+            let txid = "bb".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}"),
+                    200,
+                    tx_body(&txid, r#"{"confirmed":false}"#, 2),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/1"),
+                    200,
+                    r#"{"spent":false}"#.into(),
+                ),
+            ]);
+            let status = client
+                .get_output_status(&outpoint(&txid, 1), bitcoin::Script::new())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(status.block_height, None);
+            assert_eq!(status.spend, OutputSpend::Unspent);
+        }
+
+        #[macros::async_test]
+        async fn output_status_of_a_confirmed_transaction_carries_its_height() {
+            let txid = "cc".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}"),
+                    200,
+                    tx_body(
+                        &txid,
+                        r#"{"confirmed":true,"block_height":812345,"block_hash":"x","block_time":1}"#,
+                        1,
+                    ),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/0"),
+                    200,
+                    r#"{"spent":true,"txid":"abcd","vin":0,"status":{"confirmed":false}}"#.into(),
+                ),
+            ]);
+            let status = client
+                .get_output_status(&outpoint(&txid, 0), bitcoin::Script::new())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(status.block_height, Some(812345));
+            assert_eq!(status.spend, OutputSpend::SpentUnconfirmed);
+        }
+
+        #[macros::async_test]
+        async fn output_status_errors_on_an_output_the_transaction_does_not_have() {
+            let txid = "dd".repeat(32);
+            let client = client(vec![
+                (
+                    format!("/tx/{txid}"),
+                    200,
+                    tx_body(&txid, r#"{"confirmed":false}"#, 2),
+                ),
+                (
+                    format!("/tx/{txid}/outspend/2"),
+                    200,
+                    r#"{"spent":false}"#.into(),
+                ),
+            ]);
+            let err = client
+                .get_output_status(&outpoint(&txid, 2), bitcoin::Script::new())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, Error::Esplora(_)), "{err:?}");
+            assert!(err.message().contains("no output 2"), "{err:?}");
+        }
+
+        #[macros::async_test]
+        async fn output_status_reports_a_server_error() {
+            let txid = "ee".repeat(32);
+            let client = client(vec![(format!("/tx/{txid}"), 500, "boom".into())]);
+            let err = client
+                .get_output_status(&outpoint(&txid, 0), bitcoin::Script::new())
+                .await
+                .unwrap_err();
+            assert!(matches!(err, Error::Esplora(_)), "{err:?}");
+        }
     }
 
     #[macros::test_all]

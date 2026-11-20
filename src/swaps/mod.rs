@@ -9,6 +9,7 @@ pub mod liquid;
 pub mod magic_routing;
 mod restore;
 pub mod rgb;
+pub mod signing;
 #[cfg(feature = "ws")]
 mod status_stream;
 mod wrappers;

@@ -72,12 +72,59 @@ class DictStore(sdk.SwapStore):
         return index
 
 
-class FixedSigner(sdk.SwapSigner):
-    def derive_key(self, index):
-        return f"{index + 1:064x}"
+MNEMONIC = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+
+
+class DeviceSigner(sdk.SwapSigner):
+    """What an application provides: a signer whose keys stay where they
+    are (a hardware wallet, an enclave). Stood in for here by the Rust
+    default, reached only through the trait."""
+
+    def __init__(self):
+        self.device = sdk.MnemonicSigner(MNEMONIC, None, sdk.Network.SIGNET)
+        self.requests = []
+
+    def public_key(self, index):
+        return self.device.public_key(index)
 
     def derive_preimage(self, index):
-        return f"{index + 1:064x}"
+        return self.device.derive_preimage(index)
+
+    def sign_schnorr(self, index, sighash):
+        self.requests.append("sign_schnorr")
+        return self.device.sign_schnorr(index, sighash)
+
+    def musig_nonce(self, index, session):
+        self.requests.append("musig_nonce")
+        return self.device.musig_nonce(index, session)
+
+    def musig_partial_sign(self, index, session, our_nonce, their_nonce):
+        self.requests.append("musig_partial_sign")
+        return self.device.musig_partial_sign(index, session, our_nonce, their_nonce)
+
+
+def check_signer_encoding():
+    """The hex the signer trait carries: 33-byte keys, 64-byte signatures,
+    66-byte nonces, 32-byte partial signatures, and a nonce signs once."""
+    ours = DeviceSigner()
+    theirs = sdk.MnemonicSigner(MNEMONIC, "maker", sdk.Network.SIGNET)
+    our_key, their_key = ours.public_key(0), theirs.public_key(0)
+    assert len(bytes.fromhex(our_key)) == 33
+    assert len(bytes.fromhex(ours.sign_schnorr(0, "11" * 32))) == 64
+    session = sdk.MusigSession(
+        pubkeys=[their_key, our_key], tweak="03" * 32, sighash="05" * 32
+    )
+    our_nonce = ours.musig_nonce(0, session)
+    their_nonce = theirs.musig_nonce(0, session)
+    assert len(bytes.fromhex(our_nonce)) == 66
+    partial = ours.musig_partial_sign(0, session, our_nonce, their_nonce)
+    assert len(bytes.fromhex(partial)) == 32
+    try:
+        ours.musig_partial_sign(0, session, our_nonce, their_nonce)
+    except sdk.Error:
+        pass
+    else:
+        raise AssertionError("a MuSig2 nonce signed twice")
 
 
 def options(store, signer, url):
@@ -98,13 +145,14 @@ def code_of(error):
 
 
 async def run():
+    check_signer_encoding()
     server = ThreadingHTTPServer(("127.0.0.1", 0), Maker)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         url = f"http://127.0.0.1:{server.server_port}/v2"
         store = DictStore()
-        kaleido = sdk.KaleidoSwap(options(store, FixedSigner(), url))
+        kaleido = sdk.KaleidoSwap(options(store, DeviceSigner(), url))
         assert kaleido.network() == sdk.Network.SIGNET
 
         # A reverse quote prices from the pair card and binds its hash.
@@ -242,7 +290,7 @@ async def run():
             def list(self):
                 raise sdk.Error.Generic("disk gone")
 
-        broken = sdk.KaleidoSwap(options(Broken(), FixedSigner(), url))
+        broken = sdk.KaleidoSwap(options(Broken(), DeviceSigner(), url))
         try:
             await broken.resume()
         except sdk.Error.Swap as error:
@@ -254,11 +302,7 @@ async def run():
         defaults = sdk.KaleidoSwap(
             options(
                 sdk.MemoryStore(),
-                sdk.MnemonicSigner(
-                    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
-                    None,
-                    sdk.Network.SIGNET,
-                ),
+                sdk.MnemonicSigner(MNEMONIC, None, sdk.Network.SIGNET),
                 url,
             )
         )

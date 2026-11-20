@@ -362,6 +362,34 @@ test("options: reverseTimeoutHeadroom reaches the core and its keys are checked"
   );
 });
 
+test("options: feePolicy reaches the core and its keys and values are checked", async () => {
+  const options = {
+    network: "signet",
+    store: new MemoryStore(),
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+  };
+  const k = await createKaleidoSwap({
+    ...options,
+    feePolicy: { targetBlocks: 3, bitcoinMaxSatPerVb: 100, maxFeePercent: 5 },
+  });
+  assert.equal(k.network, "signet");
+  await assert.rejects(
+    createKaleidoSwap({ ...options, feePolicy: { target: 3 } }),
+  );
+  await assert.rejects(
+    createKaleidoSwap({
+      ...options,
+      feePolicy: { bitcoinMinSatPerVb: 10, bitcoinMaxSatPerVb: 5 },
+    }),
+    (e) => e.code === "INVALID_AMOUNT",
+  );
+  await assert.rejects(
+    createKaleidoSwap({ ...options, feeSatPerVb: 0 }),
+    (e) => e.code === "INVALID_AMOUNT",
+  );
+});
+
 test("swap() and resume() on an empty store", async (t) => {
   stubMaker(t);
   const k = await kaleido();
@@ -583,9 +611,9 @@ test("phases(): abandoning the iterator leaves no unhandled rejection", async (t
     pollIntervalMs: 1,
   });
   const { resumed } = await k.resume();
-  status = "transaction.claim.pending"; // the first transition the iterator sees
+  status = "transaction.mempool"; // the first transition the iterator sees
   for await (const phase of resumed[0].phases()) {
-    assert.equal(phase, "claiming");
+    assert.equal(phase, "funded");
     break; // the consumer walks away…
   }
   status = "swap.expired"; // …and the swap then ends in `failed`
@@ -663,8 +691,36 @@ test("mnemonicSigner derives what SwapMasterKey derives", async () => {
     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
   const master = SwapMasterKey.fromSwapMnemonic(mnemonic, "signet");
   const signer = mnemonicSigner(mnemonic, "signet");
-  assert.deepEqual(await signer.deriveKey(7n), master.deriveSwapKey(7n));
+  assert.equal(await signer.publicKey(7n), master.deriveSwapKey(7n).publicKey);
   assert.deepEqual(await signer.derivePreimage(7n), master.derivePreimage(7n));
+  assert.match(
+    await signer.signSchnorr(7n, "11".repeat(32)),
+    /^[0-9a-f]{128}$/,
+  );
+});
+
+test("mnemonicSigner keeps its MuSig2 nonce and signs with it once", async () => {
+  await init();
+  const ours = mnemonicSigner(
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "signet",
+  );
+  const theirs = mnemonicSigner(
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+    "signet",
+    "maker",
+  );
+  const session = {
+    pubkeys: [await theirs.publicKey(0), await ours.publicKey(0)],
+    tweak: "03".repeat(32),
+    sighash: "05".repeat(32),
+  };
+  const ourNonce = await ours.musigNonce(0, session);
+  const theirNonce = await theirs.musigNonce(0, session);
+  assert.match(ourNonce, /^[0-9a-f]{132}$/);
+  const partial = await ours.musigPartialSign(0, session, ourNonce, theirNonce);
+  assert.match(partial, /^[0-9a-f]{64}$/);
+  assert.throws(() => ours.musigPartialSign(0, session, ourNonce, theirNonce));
 });
 
 test("FileStore: a swap id never names a path outside the directory", async () => {

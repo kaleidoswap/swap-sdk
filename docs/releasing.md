@@ -113,8 +113,9 @@ The npm job pins the npm CLI (11.5.1 or later is what trusted publishing
 needs), then publishes the validated `.tgz` files with no stored credential:
 the CLI trades the job's OIDC token for a short-lived publish credential. No
 read-only call can prove that grant ahead of time, so a missing or wrong
-trusted-publisher entry fails at the first `npm publish`, before either package
-is out; fix the entry and rerun the failed job. npm emits provenance for a
+trusted-publisher entry fails when npm publishes the affected package. Fix
+the entry and follow [partial-publication recovery](#partial-publication-recovery)
+if the other package has already shipped. npm emits provenance for a
 public package from this public repository. The PyPI job uses the immutable-pinned PyPA publisher
 action to upload the exact wheels and sdist. It does **not** attach PEP 740
 attestations: those require Trusted Publishing, and the action silently ignores

@@ -38,6 +38,7 @@ TYPES = {
     "BoltzWsApi": "SwapWsApi",
     "BoltzWsUpdates": "SwapWsUpdates",
     "WasmSwapMasterKey": "SwapMasterKey",
+    "WasmMnemonicSigner": "MnemonicSigner",
 }
 
 # (wasm type, wasm method) -> UniFFI method, where the name differs.
@@ -83,8 +84,10 @@ DIVERGENCES = {
     ),
 }
 
-IMPL_RE = re.compile(r"^impl\s+(\w+)", re.M)
+# `impl Type` or `impl Trait for Type`; a trait impl's methods carry no `pub`.
+IMPL_RE = re.compile(r"^impl\s+(?:(\w+)\s+for\s+)?(\w+)", re.M)
 FN_RE = re.compile(r"^\s*pub (?:async )?fn (\w+)", re.M)
+TRAIT_FN_RE = re.compile(r"^\s*(?:async )?fn (\w+)", re.M)
 
 
 def exports(text: str, marker: str) -> dict[str, set[str]]:
@@ -103,7 +106,8 @@ def exports(text: str, marker: str) -> dict[str, set[str]]:
         end = re.search(r"^(?:impl|pub struct|pub enum|#\[)", body, re.M)
         if end is not None:
             body = body[: end.start()]
-        found.setdefault(impl.group(1), set()).update(FN_RE.findall(body))
+        fns = TRAIT_FN_RE if impl.group(1) else FN_RE
+        found.setdefault(impl.group(2), set()).update(fns.findall(body))
     return found
 
 

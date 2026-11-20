@@ -3,7 +3,7 @@
 // reach this package through the wasm binding; this file declares the types
 // callers write against and adapts the store and the signer they provide.
 
-import type { DerivedKey, DerivedPreimage, Network } from "./index.js";
+import type { DerivedPreimage, Network } from "./index.js";
 
 // ---------------------------------------------------------------------------
 // Assets and amounts
@@ -56,17 +56,50 @@ export interface SwapStore {
 }
 
 /**
- * Derives per-swap material from a root the caller owns. `mnemonicSigner`
- * wraps `SwapMasterKey`; a wallet that keeps its seed elsewhere implements
- * this instead. The SDK never sees a mnemonic through it.
+ * A cooperative MuSig2 key-path signing session, hex-encoded: the two
+ * compressed public keys in aggregation order, the Taproot tweak and the
+ * sighash.
+ */
+export interface MusigSession {
+  pubkeys: [string, string];
+  tweak: string;
+  sighash: string;
+}
+
+type MaybePromise<T> = T | Promise<T>;
+
+/**
+ * Holds the per-swap keys, one per store index, and signs with them. The SDK
+ * asks for public keys, preimages and signatures, never a secret key, so a
+ * wallet can keep its keys in a hardware device, an enclave or a remote
+ * signer. `mnemonicSigner` is the in-memory implementation. Hex in, hex out.
+ *
+ * `musigNonce` generates and keeps a fresh secret nonce and returns the public
+ * nonce; `musigPartialSign` signs with the secret nonce behind `ourNonce` and
+ * forgets it. Never sign twice with one nonce, and never take a secret nonce
+ * from outside: either reveals the key.
  */
 export interface SwapSigner {
-  deriveKey(index: bigint | number): DerivedKey | Promise<DerivedKey>;
+  /** The compressed public key of swap `index`. */
+  publicKey(index: bigint | number): MaybePromise<string>;
+  /** The preimage of swap `index`. */
   derivePreimage(
     index: bigint | number,
-  ):
-    | Pick<DerivedPreimage, "preimage">
-    | Promise<Pick<DerivedPreimage, "preimage">>;
+  ): MaybePromise<Pick<DerivedPreimage, "preimage">>;
+  /** A BIP340 signature by the untweaked key over a script-path sighash. */
+  signSchnorr(index: bigint | number, sighash: string): MaybePromise<string>;
+  /** Starts a MuSig2 signature for `session`: the public nonce. */
+  musigNonce(
+    index: bigint | number,
+    session: MusigSession,
+  ): MaybePromise<string>;
+  /** Finishes it: the partial signature. */
+  musigPartialSign(
+    index: bigint | number,
+    session: MusigSession,
+    ourNonce: string,
+    theirNonce: string,
+  ): MaybePromise<string>;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +118,15 @@ export interface KaleidoSwapOptions {
   pollIntervalMs?: number;
   /** Timeout of every request to the maker. Default 30 s. */
   makerTimeoutMs?: number;
-  /** Fee rate for claims and refunds this layer broadcasts. Default 2 sat/vB. */
+  /**
+   * A fixed fee rate for the claims and refunds this layer signs, on either
+   * chain. When set, no estimate is read; the rate is raised to the floor of
+   * the chain a spend is on, and a rate below both floors is refused.
+   * Default: estimated, see `feePolicy`.
+   */
   feeSatPerVb?: number;
+  /** How claims and refunds are priced when `feeSatPerVb` is not set. */
+  feePolicy?: FeePolicy;
   /**
    * How long a quote may be held before `start` refuses it. Pair terms are
    * bound by hash, so this guards staleness, not price. Default 10 minutes.
@@ -99,6 +139,32 @@ export interface KaleidoSwapOptions {
    * a smaller value is raised to one and a half times that margin (9 and 90).
    */
   reverseTimeoutHeadroom?: { bitcoinBlocks?: number; liquidBlocks?: number };
+}
+
+/**
+ * The rate is read from the chain client's `/fee-estimates` for
+ * `targetBlocks` when a claim or refund is about to be signed, and held
+ * between the chain's floor and ceiling. An estimate that cannot be read signs
+ * nothing: the spend fails with `CHAIN_UNREACHABLE` and is retried on the next
+ * poll. A spend whose fee would exceed `maxFeePercent` of the lockup is not
+ * signed either: it fails with `FEE_TOO_HIGH`, before a claim hands out the
+ * preimage, and is retried. A claim already under way is always signed, at no
+ * less than the rate its first attempt was signed at, held under 50% of the
+ * lockup (or `maxFeePercent` if higher). Every field left out keeps its default.
+ */
+export interface FeePolicy {
+  /** Confirmation target in blocks; the nearest estimate at or below it is used. Default 2. */
+  targetBlocks?: number;
+  /** Default 1 sat/vB. */
+  bitcoinMinSatPerVb?: number;
+  /** Default 500 sat/vB. */
+  bitcoinMaxSatPerVb?: number;
+  /** Default 0.1 sat/vB. */
+  liquidMinSatPerVb?: number;
+  /** Default 1 sat/vB. */
+  liquidMaxSatPerVb?: number;
+  /** The largest share of the lockup a claim or refund may pay in fees, in percent. Default 10. */
+  maxFeePercent?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -294,7 +360,8 @@ export type SwapErrorCode =
   | "STORE_FAILED"
   | "ABORTED"
   | "CHAIN_UNREACHABLE"
-  | "INVOICE_EXPIRED";
+  | "INVOICE_EXPIRED"
+  | "FEE_TOO_HIGH";
 
 /** Every failure crosses this boundary coded; the engine's errors are mapped in Rust. */
 export interface SwapError extends Error {
@@ -320,6 +387,7 @@ const SWAP_ERROR_CODES: ReadonlySet<string> = new Set<SwapErrorCode>([
   "ABORTED",
   "CHAIN_UNREACHABLE",
   "INVOICE_EXPIRED",
+  "FEE_TOO_HIGH",
 ]);
 
 export function isSwapError(error: unknown): error is SwapError {
