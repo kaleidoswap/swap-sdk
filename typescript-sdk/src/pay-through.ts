@@ -2,6 +2,11 @@
  * The address leg is operator-trusted and has no hash lock. */
 
 import { ORG_KEY_HEADER, normalizeOrgKey } from "./org-key.js";
+import {
+  type MakerAttribution,
+  normalizePartnerKey,
+  readAttribution,
+} from "./partner-key.js";
 
 /** Stable maker codes; unknown future codes remain available on ApiError.code. */
 export const PAY_THROUGH_IDEMPOTENCY_IN_FLIGHT = "idempotency_in_flight";
@@ -34,10 +39,22 @@ export interface PayThroughCreated {
   pairId: string;
   invoiceAmount: number;
   payoutAmount: number;
-  /** In the payout asset's smallest unit. */
-  fees: { protocol: number; network: number; swap: number };
+  /**
+   * In the payout asset's smallest unit. `swap` is the maker's public service
+   * fee; `partner` is the fee the partner whose `apiKey` the client carries
+   * charges on top of it, `0` without a key or for a partner that sets none.
+   */
+  fees: { protocol: number; network: number; swap: number; partner: number };
   /** Unix seconds. */
   expiresAt: number;
+  /**
+   * What the maker answered in `X-Kaleido-Attribution`: `"api_key"` when it
+   * stored the swap for the client's partner key, `"none"` when it did not
+   * recognise the key (unknown, revoked or for the other environment) and
+   * created the swap at the public price, unattributed. `null` when the
+   * response did not carry it.
+   */
+  attribution: MakerAttribution | null;
 }
 
 export interface PayThroughStatus {
@@ -92,12 +109,20 @@ export interface PayThroughClientOptions {
   makerUrl: string;
   /** Network every returned invoice must be for. */
   lightningNetwork: LightningNetwork;
-  /** Optional organization attribution key, for server runtimes only. */
+  /**
+   * Optional partner `kld_` key: a public partner identifier, safe to ship in
+   * any runtime as a build constant. Sent on every request to `makerUrl` and
+   * nowhere else. It attributes the swap to the partner and adds the
+   * partner's fee, reported as `fees.partner`.
+   */
   apiKey?: string;
   /**
    * Optional organization key: the 64-hex public key the organization
-   * registered in the partner panel. Safe in any runtime, since it is public.
-   * Sent on `create` only. Mutually exclusive with `apiKey`.
+   * registered in the partner panel. Sent on `create` only. Mutually
+   * exclusive with `apiKey`.
+   *
+   * @deprecated The `kld_` key is a public partner identifier that ships in
+   * any runtime and also carries the partner fee: pass `apiKey` instead.
    */
   orgKey?: string;
   /** Defaults to global fetch. Useful for controlled hosts and tests. */
@@ -160,17 +185,6 @@ function mismatch(field: string, got: unknown, expected: unknown): Error {
   return new Error(
     `Maker pay-through terms do not match the request: ${field} is ${String(got)}, expected ${String(expected)}`,
   );
-}
-
-/** Server runtimes only: an organization key in a browser, worker or mobile
- * bundle is readable by anyone who has the bundle. */
-function isServerRuntime(): boolean {
-  const g = globalThis as {
-    process?: { versions?: { node?: string } };
-    Deno?: unknown;
-    Bun?: unknown;
-  };
-  return Boolean(g.process?.versions?.node || g.Deno || g.Bun);
 }
 
 const BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
@@ -288,6 +302,7 @@ export class PayThroughClient {
   private readonly request: typeof fetch;
   private readonly timeoutMs: number;
   private readonly lightningNetwork: LightningNetwork;
+  private attribution: MakerAttribution | null = null;
 
   constructor(options: PayThroughClientOptions) {
     if (!(options.lightningNetwork in LIGHTNING_PREFIX)) {
@@ -296,11 +311,6 @@ export class PayThroughClient {
       );
     }
     this.lightningNetwork = options.lightningNetwork;
-    if (options.apiKey && !isServerRuntime()) {
-      throw new TypeError(
-        "Organization API keys can only be used on a server runtime",
-      );
-    }
     // The maker answers a request carrying both `400 attribution_conflict`.
     if (options.apiKey && options.orgKey) {
       throw new TypeError(
@@ -322,7 +332,10 @@ export class PayThroughClient {
       );
     }
     this.baseUrl = url.href.replace(/\/$/, "");
-    this.apiKey = options.apiKey;
+    this.apiKey =
+      options.apiKey === undefined
+        ? undefined
+        : normalizePartnerKey(options.apiKey);
     this.orgKey =
       options.orgKey === undefined
         ? undefined
@@ -331,6 +344,15 @@ export class PayThroughClient {
     // as `this`, which browsers reject as an illegal invocation.
     this.request = options.fetch ?? ((input, init) => fetch(input, init));
     this.timeoutMs = options.timeoutMs ?? 30_000;
+  }
+
+  /**
+   * What the maker last answered in `X-Kaleido-Attribution`, on any
+   * successful response that carried it; `null` until one did. See
+   * {@link PayThroughCreated.attribution}.
+   */
+  get lastAttribution(): MakerAttribution | null {
+    return this.attribution;
   }
 
   /** Check BEFORE the first create. Missing capabilities on older makers fail
@@ -391,14 +413,14 @@ export class PayThroughClient {
     ] as const) {
       if (input[key] !== undefined) body[key] = input[key];
     }
-    const raw = object(
-      await this.call("swap/pay", {
-        method: "POST",
-        body: JSON.stringify(body),
-        signal: options.signal,
-        idempotencyKey,
-      }),
-    );
+    const answer = await this.exchange("swap/pay", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: options.signal,
+      idempotencyKey,
+    });
+    const raw = object(answer.body);
+    const { attribution } = answer;
     const fees = object(raw.fees);
     const created: PayThroughCreated = {
       id: stringField(raw.id, "id"),
@@ -415,8 +437,12 @@ export class PayThroughClient {
         protocol: amount(fees.protocol, "fees.protocol"),
         network: amount(fees.network, "fees.network"),
         swap: amount(fees.swap, "fees.swap"),
+        // Omitted by the maker when zero, and by a maker that predates it.
+        partner:
+          fees.partner === undefined ? 0 : amount(fees.partner, "fees.partner"),
       },
       expiresAt: amount(raw.expiresAt, "expiresAt"),
+      attribution,
     };
 
     if (created.destination !== destination) {
@@ -534,6 +560,20 @@ export class PayThroughClient {
       idempotencyKey?: string;
     },
   ): Promise<unknown> {
+    return (await this.exchange(path, options)).body;
+  }
+
+  /** One request to the maker: its parsed body, and the attribution it
+   * answered with on this very response. */
+  private async exchange(
+    path: string,
+    options: {
+      method: "GET" | "POST";
+      body?: string;
+      signal?: AbortSignal;
+      idempotencyKey?: string;
+    },
+  ): Promise<{ body: unknown; attribution: MakerAttribution | null }> {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (options.body) headers["Content-Type"] = "application/json";
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
@@ -562,6 +602,10 @@ export class PayThroughClient {
         signal: controller.signal,
       });
       const text = await response.text();
+      const attribution = response.ok
+        ? readAttribution(response.headers)
+        : null;
+      if (attribution !== null) this.attribution = attribution;
       if (!response.ok) {
         let error: Record<string, unknown> = {};
         try {
@@ -580,11 +624,13 @@ export class PayThroughClient {
           Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
         );
       }
+      let body: unknown;
       try {
-        return JSON.parse(text);
+        body = JSON.parse(text);
       } catch {
         throw new Error("Invalid maker pay-through response: not JSON");
       }
+      return { body, attribution };
     } finally {
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", forward);

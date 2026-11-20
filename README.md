@@ -172,131 +172,116 @@ answer = await kaleido.quote(sdk.QuoteRequest(
 ))
 ```
 
-## Partner attribution
+## Partner attribution and the partner fee
 
 A partner organization can have the swaps it originates attributed to it, so the
-volume and fees it drives show up in its own statistics. Attribution is opt-in,
-and there are two ways to do it. Without either, every client here behaves
-exactly as before and creates unattributed swaps.
+volume and fees it drives show up in its own statistics, and can add its own
+fee on top of the maker's price. Both come from one key. Without a key, every
+client here behaves exactly as before: public price, unattributed swaps.
 
-- **Client-side software** (a web page, an extension, a mobile or desktop app)
-  uses the organization's public **organization key**. There is nothing secret
-  in it to ship.
-- **Servers** may instead use a secret **organization API key**, which also
-  unlocks what a public label cannot: a rate-limit budget of the organization's
-  own and access to a partners-only maker.
+### The `kld_` key is public: ship it as a build constant
 
-### Organization keys (client-side)
+The key comes from the KaleidoSwap partner panel: a `kld_test_…` key for signet
+and staging, `kld_live_…` for mainnet and production. It is a **public partner
+identifier**, not a secret. Build it into the app — a web page, a Web, shared or
+service worker, a browser extension, a mobile or desktop app, or a server —
+and commit it with the rest of the configuration. A key:
 
-An organization key is the 64-hex x-only secp256k1 public key the organization
-registered in the partner panel, proving with a signature that it holds the
-private half. That private half is used only to claim a revshare payout, on the
-organization's own machine; no KaleidoSwap software, this SDK included, ever
-asks for it.
+- attributes the swap to the partner;
+- carries the partner's fee, set on the key in the partner panel, which the
+  maker adds on top of its own price;
+- never gives a lower price, higher limits or a rate-limit budget of its own,
+  so anyone who copies it out of the app gains nothing.
 
-The key is a **label, never a credential**. Anyone can copy it, so it buys the
-caller nothing: no rate-limit budget of its own, no discount, no access in the
-maker's partners-only mode. That is what makes it safe in a bundle.
-
-```rust
-use kaleidorg_swap_sdk::kaleido::{KaleidoOrgClient, KaleidoOrgClientOptions, OrgKey};
-
-let client = KaleidoOrgClient::new(KaleidoOrgClientOptions {
-    maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
-    org_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798".parse::<OrgKey>()?,
-    timeout: None,
-})?;
-```
-
-```python
-client = kaleidorg_swap_sdk.SwapClient.kaleido_org(
-    "https://maker.signet.kaleidoswap.com/v2", ORG_KEY, None
-)
-```
-
-```ts
-import { createKaleidoOrgClient } from "@kaleidorg/swap-sdk";
-
-const client = createKaleidoOrgClient({
-  makerUrl: "https://maker.signet.kaleidoswap.com/v2",
-  orgKey: import.meta.env.VITE_KALEIDOSWAP_ORG_KEY,
-});
-```
-
-The key goes out in `X-Kaleido-Org-Key` on swap creation only — `POST
-/v2/swap/{submarine,reverse,chain}`, `POST /v2/swap/pay` and the corridor's
-`POST /v1/swap` — and only to the configured maker URL, which must be `https`
-unless it is a loopback address. A value that is not a point on the curve is
-rejected locally rather than reaching the maker as `400 org_key_malformed`. The
-maker answers every creation with `X-Kaleido-Attribution: none | api_key |
-org_key`; when an org-keyed creation comes back as anything but `org_key` (a
-maker with organization keys switched off, say), the swap still goes ahead and
-the SDK logs a warning. A page on another origin also needs the maker's edge to
-allow the header in CORS. The TypeScript `PayThroughClient` and
-`kaleidoswapHttpTransport` take an `orgKey` option too.
-
-### Organization API keys (servers)
-
-The secret key comes from the same panel: a `kld_test_…` key for signet and
-staging, `kld_live_…` for mainnet and production.
-
-The key answers one question — *which partner organization created this swap?* —
-and nothing else. It authorizes no claim, no refund, no fund movement and no
-panel access. The per-swap `swapAuth` credential the maker returns on create is
-what authorizes the outcome of a specific swap, and the two stay separate.
+The partner fee comes only from the key. There is no per-request fee field, and
+the SDK sends no Boltz `extraFees`.
 
 ```rust
 use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 
+const KALEIDOSWAP_PARTNER_KEY: &str = "kld_live_…";
+
 let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
     maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
-    api_key: std::env::var("KALEIDOSWAP_API_KEY").unwrap().parse::<ApiKey>()?,
+    api_key: KALEIDOSWAP_PARTNER_KEY.parse::<ApiKey>()?,
     timeout: None,
 })?;
 ```
 
 ```python
+KALEIDOSWAP_PARTNER_KEY = "kld_live_…"
+
 client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
-    "https://maker.signet.kaleidoswap.com/v2", os.environ["KALEIDOSWAP_API_KEY"], None
+    "https://maker.signet.kaleidoswap.com/v2", KALEIDOSWAP_PARTNER_KEY, None
 )
 ```
 
 ```ts
 import { createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
 
+const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
+
 const client = createKaleidoMakerClient({
   makerUrl: "https://maker.signet.kaleidoswap.com/v2",
-  apiKey: process.env.KALEIDOSWAP_API_KEY!,
+  apiKey: KALEIDOSWAP_PARTNER_KEY,
 });
 ```
 
-Every maker route is available on the result — it is the ordinary client plus a
-credential, not a second API.
+Every maker route is available on the result — it is the ordinary client plus
+a key, not a second API. The high-level `KaleidoSwap` takes the same key as its
+`api_key` / `apiKey` option, and the TypeScript `PayThroughClient` as `apiKey`.
 
-**Credential handling.** The key travels as `Authorization: Bearer …`, marked
-sensitive so it stays out of header dumps and out of the HTTP/2 HPACK dynamic
-table. It is bound to the maker URL it was configured with and is never attached
-to a request addressed anywhere else — not Esplora, not a second maker. That URL
-must be `https` unless it is a loopback address, since a bearer credential over
-plain HTTP is readable by anything on the path, and it may not carry userinfo —
+### Send the key on prices and creates alike
+
+The clients send the key on every request to the configured maker: the pair
+cards (`/pairs`) and quotes as well as the creates. A keyed pair card's
+`fees.percentage` already includes the partner fee, and its `pairHash` covers
+it, so amounts computed from an anonymous card would not match a keyed create.
+Compute amounts from `percentage` as before; the partner's part is shown
+separately:
+
+| Where | The partner fee line |
+|---|---|
+| Pair cards | `fees.partnerPercentage` (Rust `partner_percentage`), the partner's part of `percentage`; absent for anonymous callers |
+| `KaleidoSwap` quotes | `fees.partner`, next to `fees.maker` and `fees.miner`; `fromAmount − toAmount = maker + partner + miner` |
+| Pay-through creates | `fees.partner`, next to `fees.swap`; `0` without a partner fee |
+
+### What the maker answered
+
+A key the maker does not recognise — unknown, revoked, or for the other
+environment — is not an error. The maker answers with the public price, creates
+the swap unattributed, and says so in `X-Kaleido-Attribution: none`, so an app
+with a rotated key keeps swapping. The SDK returns that answer as data:
+`last_attribution()` on the Rust, Python and React Native clients and on
+`KaleidoSwap`, `lastAttribution` on the TypeScript clients, and `attribution`
+on a pay-through create. `"api_key"` means the maker priced or stored the
+request for the key's partner. In a browser the maker's edge must expose the
+header for it to be readable. The last-attribution getters describe the latest
+response seen by the client. Concurrent calls share that value. For a specific
+pay-through create, read the attribution on its returned result.
+
+The key authorizes nothing: no claim, no refund, no fund movement and no panel
+access. The per-swap `swapAuth` credential the maker returns on create is what
+authorizes the outcome of a specific swap, and the two stay separate.
+
+**Transport.** The key travels as `Authorization: Bearer …`. It is bound to the
+maker URL it was configured with and is never attached to a request addressed
+anywhere else — not Esplora, not a second maker. That URL must be `https`
+unless it is a loopback address, since over plain HTTP anything on the path
+could strip or replace the key, and it may not carry userinfo —
 `https://user:pw@host/v2` becomes an `Authorization: Basic …` of its own that
 would displace the key and leave the swap unattributed. Redirects are declined
-outright on both native constructors — `with_client_builder` takes a
-`reqwest::ClientBuilder` rather than a built client precisely so the SDK can set
-the policy while keeping your proxy and TLS configuration — and in the browser,
-where the SDK issues every maker `fetch` itself with `redirect: "error"`, so a
-`3xx` fails the call without being followed. Nothing renders the secret: the
-Rust `Debug` prints `kld_test_<key_id>_<redacted>`, Python and JS expose the key
-id and environment and no accessor for the secret at all. A value that cannot be
-a key is rejected locally rather than reaching the maker as a `401`, which is the
-same answer a revoked key gets.
+on both native constructors and in the browser, where the SDK issues every
+maker `fetch` itself with `redirect: "error"`. A value that cannot be a key is
+rejected locally.
 
-**Server and native integrations only.** A key in a browser bundle is visible to
-every visitor, who can then attribute their own swaps to — or exhaust the limits
-of — an organization that is not theirs. Keep it in server-side configuration;
-for attribution from client-side code, use an organization key instead. A
-client carries one or the other, never both: the maker refuses a request with
-both as `400 attribution_conflict`.
+### Organization keys (deprecated)
+
+`KaleidoOrgClient`, `SwapClient.kaleido_org`, `createKaleidoOrgClient`,
+`forKaleidoOrg` and the `orgKey` options attribute swaps with an organization's
+64-hex public key in `X-Kaleido-Org-Key`. They predate public `kld_` keys and
+are deprecated: use the `kld_` key, which also carries the partner fee. A
+client carries one or the other, never both.
 
 ## Repository structure
 

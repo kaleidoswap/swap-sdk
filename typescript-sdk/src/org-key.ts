@@ -5,13 +5,19 @@
 // shape here and leave the curve to the maker, which answers an off-curve key
 // with `400 org_key_malformed` and never with an anonymous swap.
 
-/** The header an organization key travels in, on swap creation only. */
+/**
+ * The header an organization key travels in, on swap creation only.
+ *
+ * @deprecated Organization keys are deprecated in favour of the partner's
+ * public `kld_` key.
+ */
 export const ORG_KEY_HEADER = "X-Kaleido-Org-Key";
 
 /**
- * The header the maker answers every swap creation with: `none`, `api_key` or
- * `org_key`, naming the attribution the swap was stored with. A browser can
- * read it only where the maker's edge exposes it.
+ * The header the maker answers swap creations and price reads with: `none`,
+ * `api_key` or `org_key`. On a create it names the attribution the swap was
+ * stored with; on a price read, whose price it answered with. A browser can
+ * read it only where the maker's edge exposes it. See `MakerAttribution`.
  */
 export const ATTRIBUTION_HEADER = "X-Kaleido-Attribution";
 
@@ -21,6 +27,9 @@ export const ATTRIBUTION_HEADER = "X-Kaleido-Attribution";
  *
  * The key is public, so the message may quote it; it never quotes a value long
  * enough to be something else pasted into the wrong field, such as a `kld_` key.
+ *
+ * @deprecated Organization keys are deprecated in favour of the partner's
+ * public `kld_` key.
  */
 export function normalizeOrgKey(value: string): string {
   const key = value.trim();

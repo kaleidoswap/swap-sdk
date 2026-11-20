@@ -25,12 +25,13 @@ pub use secp256k1_musig::musig;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
+use crate::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, MakerAttribution};
 use crate::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 use crate::network::{BitcoinChain, Chain as ChainKind, Currency, LiquidChain, Network};
 use crate::swaps::boltz::{
-    BoltzApiClientV2, CreateReverseRequest, CreateReverseResponse, CreateSubmarineRequest,
-    CreateSubmarineResponse, GetReversePairsResponse, GetSubmarinePairsResponse, PairMinerFees,
-    ReversePair, SubmarinePair,
+    partner_fee_part, BoltzApiClientV2, CreateReverseRequest, CreateReverseResponse,
+    CreateSubmarineRequest, CreateSubmarineResponse, GetReversePairsResponse,
+    GetSubmarinePairsResponse, PairMinerFees, ReversePair, SubmarinePair,
 };
 use crate::swaps::fees::{BTC_TX_SIZES, LIQUID_TX_SIZES};
 pub use crate::swaps::signing::MusigSession;
@@ -325,11 +326,19 @@ pub enum Protocol {
     PayThrough,
 }
 
+/// What a quote charges, in the pay side's smallest unit.
+/// `from_amount − to_amount = maker + partner + miner`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Fees {
+    /// The maker's own service fee.
     pub maker: u64,
     pub miner: u64,
+    /// The partner fee: what the partner whose `kld_` key the client carries
+    /// charges on top of the maker's price. `0` without a key, or for a
+    /// partner that sets none.
+    #[serde(default)]
+    pub partner: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -864,6 +873,12 @@ pub trait MakerApi: Send + Sync {
         req: &CreateSubmarineRequest,
     ) -> Result<CreateSubmarineResponse, Error>;
     async fn swap_status(&self, id: &str) -> Result<String, Error>;
+    /// What the maker last answered in
+    /// [`ATTRIBUTION_HEADER`](crate::kaleido::ATTRIBUTION_HEADER). `None`
+    /// by default, for a maker seam that does not track it.
+    fn last_attribution(&self) -> Option<MakerAttribution> {
+        None
+    }
 }
 
 #[macros::async_trait]
@@ -888,6 +903,9 @@ impl MakerApi for BoltzApiClientV2 {
     }
     async fn swap_status(&self, id: &str) -> Result<String, Error> {
         Ok(self.get_swap(id).await?.status)
+    }
+    fn last_attribution(&self) -> Option<MakerAttribution> {
+        BoltzApiClientV2::last_attribution(self)
     }
 }
 
@@ -1203,6 +1221,12 @@ pub struct KaleidoSwapOptions {
     /// The maker's `/v2` base URL. Defaults per network exactly as
     /// [`BoltzApiClientV2::default`] does.
     pub maker_url: Option<String>,
+    /// The partner's `kld_` key, a public identifier to build into the app.
+    /// Sent to the maker, and only to the maker, on every pair-card read and
+    /// every create, so quotes are priced from the partner's own card — the
+    /// partner fee shows as [`Fees::partner`] — and the swaps are attributed
+    /// to the partner. `None` quotes the public price and attributes nothing.
+    pub api_key: Option<ApiKey>,
     pub bitcoin_esplora_url: Option<String>,
     pub liquid_esplora_url: Option<String>,
     /// How often a swap in flight is asked for its status. Default 2 s.
@@ -1884,6 +1908,25 @@ fn percent_fee(amount: u64, percent: f64) -> u64 {
     let basis_points = (percent * 10_000.0).round() as u128;
     let scaled = amount as u128 * basis_points;
     scaled.div_ceil(1_000_000) as u64
+}
+
+/// A card's service fee on `amount`, as `(maker, partner)`.
+///
+/// `percent` is the card's `percentage`, which includes the partner fee, and
+/// `partner_percent` its `partnerPercentage`. The maker charges the two
+/// separately, `floor(P × amount) + floor(E × amount)`, so they are computed
+/// separately here too: the maker's part rounded up as for an anonymous quote,
+/// so a quote never understates what the swap costs, and the partner's part
+/// exactly. A partner percentage the card's own percentage cannot hold is no
+/// partner fee.
+fn split_service_fee(amount: u64, percent: f64, partner_percent: Option<f64>) -> (u64, u64) {
+    let partner_percent = partner_percent.filter(|p| p.is_finite() && *p > 0.0 && *p <= percent);
+    // Capped at the amount, never at a sentinel: a partner percentage of 100
+    // or more is then the whole amount, which the callers' additions can hold.
+    // (They refuse a card whose percentage is 100 or more before getting here.)
+    let partner = partner_fee_part(amount, amount, partner_percent);
+    let own = percent_fee(amount, percent - partner_percent.unwrap_or(0.0));
+    (own, partner)
 }
 
 fn miner_fee_total(fees: &PairMinerFees) -> u64 {
@@ -2894,7 +2937,16 @@ impl KaleidoSwap {
                 .to_string(),
         };
         let timeout = options.maker_timeout.unwrap_or(Duration::from_secs(30));
-        let api = BoltzApiClientV2::new(base_url, Some(timeout));
+        let api = match &options.api_key {
+            Some(api_key) => KaleidoMakerClient::new(KaleidoMakerClientOptions {
+                maker_url: base_url,
+                api_key: api_key.clone(),
+                timeout: Some(timeout),
+            })
+            .map_err(|e| SwapError::from_core(e, None))?
+            .into_inner(),
+            None => BoltzApiClientV2::new(base_url, Some(timeout)),
+        };
         let maker_url = api.base_url().to_string();
         let defaults = default_chain_urls(network);
         let bitcoin_url = options
@@ -2948,6 +3000,17 @@ impl KaleidoSwap {
 
     pub fn network(&self) -> Network {
         self.env.network
+    }
+
+    /// What the maker last answered in
+    /// [`ATTRIBUTION_HEADER`](crate::kaleido::ATTRIBUTION_HEADER): with
+    /// [`KaleidoSwapOptions::api_key`] set, [`MakerAttribution::ApiKey`] when
+    /// the maker priced or stored the request for that partner, and
+    /// [`MakerAttribution::Unattributed`] when it did not recognise the key
+    /// and answered with the public price. See
+    /// [`BoltzApiClientV2::last_attribution`].
+    pub fn last_attribution(&self) -> Option<MakerAttribution> {
+        self.env.maker.last_attribution()
     }
 
     /// Prices `pay → receive`. The two sides decide the protocol; the
@@ -3036,8 +3099,9 @@ impl KaleidoSwap {
         } else {
             amount
         };
-        let maker_fee = percent_fee(from_amount, percent);
-        let to_amount = from_amount.saturating_sub(maker_fee + miner);
+        let (own_fee, partner_fee) =
+            split_service_fee(from_amount, percent, card.fees.partner_percentage);
+        let to_amount = from_amount.saturating_sub(own_fee + partner_fee + miner);
         let limits = Limits {
             min: card.limits.minimal,
             max: card.limits.maximal,
@@ -3052,8 +3116,9 @@ impl KaleidoSwap {
             from_amount,
             to_amount,
             fees: Fees {
-                maker: maker_fee,
+                maker: own_fee,
                 miner,
+                partner: partner_fee,
             },
             limits,
             expires_at: self.expires_at(),
@@ -3102,8 +3167,9 @@ impl KaleidoSwap {
             return Ok(QuoteAnswer::Refusal(refusal));
         }
         let miner = card.fees.miner_fees;
-        let maker_fee = percent_fee(to_amount, percent);
-        let from_amount = to_amount + maker_fee + miner;
+        let (own_fee, partner_fee) =
+            split_service_fee(to_amount, percent, card.fees.partner_percentage);
+        let from_amount = to_amount + own_fee + partner_fee + miner;
         let limits = Limits {
             min: card.limits.minimal,
             max: card.limits.maximal,
@@ -3118,8 +3184,9 @@ impl KaleidoSwap {
             from_amount,
             to_amount,
             fees: Fees {
-                maker: maker_fee,
+                maker: own_fee,
                 miner,
+                partner: partner_fee,
             },
             limits,
             // A quote lasts no longer than the invoice it was priced against
@@ -3693,6 +3760,8 @@ mod tests {
         reverse_card_hash: Mutex<Option<String>>,
         /// Overrides the fee percentage the reverse pair card carries.
         reverse_percentage: Mutex<Option<f64>>,
+        /// The partner fee the reverse pair card carries, as a keyed card does.
+        reverse_partner_percentage: Mutex<Option<f64>>,
         /// Swap ids whose status the maker cannot give.
         unknown_ids: Mutex<Vec<String>>,
         /// Whether the submarine create response accepts zero-conf.
@@ -3717,6 +3786,7 @@ mod tests {
             if let Some(percentage) = *self.reverse_percentage.lock().unwrap() {
                 card.fees.percentage = percentage;
             }
+            card.fees.partner_percentage = *self.reverse_partner_percentage.lock().unwrap();
             Ok(serde_json::from_value(serde_json::json!({
                 "BTC": {"L-BTC": card.clone(), "BTC": card}
             }))
@@ -4181,6 +4251,7 @@ mod tests {
             store: store.clone(),
             signer: signer.clone(),
             maker_url: None,
+            api_key: None,
             bitcoin_esplora_url: None,
             liquid_esplora_url: None,
             poll_interval: Some(Duration::from_millis(1)),
@@ -4244,11 +4315,65 @@ mod tests {
             q.fees,
             Fees {
                 maker: 250,
-                miner: 300
+                miner: 300,
+                partner: 0,
             }
         );
         assert_eq!(q.to_amount, 49_450);
         assert_eq!(q.binding.pair_hash, "rev-hash");
+    }
+
+    /// A keyed card's `percentage` already includes the partner fee, so the
+    /// amounts come from it unchanged; `partnerPercentage` only splits the
+    /// line out, and the lines still add up to what the swap costs.
+    #[macros::async_test_all]
+    async fn a_keyed_card_shows_the_partner_fee_as_its_own_line() {
+        let h = harness();
+        // 0.5 % maker fee plus a 0.1 % partner fee.
+        *h.maker.reverse_percentage.lock().unwrap() = Some(0.6);
+        *h.maker.reverse_partner_percentage.lock().unwrap() = Some(0.1);
+        let q = reverse_quote(&h).await;
+        assert_eq!(
+            q.fees,
+            Fees {
+                maker: 250,
+                miner: 300,
+                partner: 50,
+            }
+        );
+        assert_eq!(q.to_amount, 49_400);
+        assert_eq!(
+            q.from_amount - q.to_amount,
+            q.fees.maker + q.fees.partner + q.fees.miner
+        );
+    }
+
+    /// The two lines are rounded the way the maker charges them: the
+    /// partner's part floored, the maker's own part rounded up exactly as it is
+    /// without a key. Rounding their sum up instead would overstate a keyed
+    /// quote by a satoshi more than an anonymous one.
+    #[test]
+    fn the_service_fee_splits_into_lines_rounded_like_the_maker_charges() {
+        // 0.5 % + 0.1 % of 12 345: ceil(61.725) = 62 and floor(12.345) = 12.
+        assert_eq!(split_service_fee(12_345, 0.6, Some(0.1)), (62, 12));
+        // Without a partner fee the maker's line is the anonymous one.
+        assert_eq!(split_service_fee(12_345, 0.5, None), (62, 0));
+        assert_eq!(
+            split_service_fee(12_345, 0.5, None).0,
+            percent_fee(12_345, 0.5)
+        );
+        // A partner percentage above the card's own is not trusted.
+        assert_eq!(split_service_fee(12_345, 0.5, Some(0.6)), (62, 0));
+        for bogus in [Some(0.0), Some(-0.1), Some(f64::NAN)] {
+            assert_eq!(split_service_fee(50_000, 0.6, bogus), (300, 0), "{bogus:?}");
+        }
+        // Out-of-range percentages never yield more than the amount, so the
+        // quote's additions cannot overflow even without the callers' guard.
+        for (percent, partner) in [(150.0, 150.0), (100.0, 100.0), (250.0, 120.0)] {
+            let (own, part) = split_service_fee(10_000, percent, Some(partner));
+            assert!(part <= 10_000, "{percent}/{partner}: {part}");
+            assert!(own.checked_add(part).is_some(), "{percent}/{partner}");
+        }
     }
 
     #[macros::async_test_all]
@@ -6227,6 +6352,7 @@ mod tests {
                 store: store.clone(),
                 signer: Arc::new(FakeSigner::default()),
                 maker_url: None,
+                api_key: None,
                 bitcoin_esplora_url: None,
                 liquid_esplora_url: None,
                 poll_interval: Some(Duration::from_millis(1)),

@@ -1,18 +1,19 @@
 #!/usr/bin/env node
 /**
- * Make the generated `SwapClient.kaleidoMaker` refuse to run without an
- * explicit `{ allowMobile: true }`.
+ * Wire the in-app key check into the generated `SwapClient.kaleidoMaker`.
  *
- * `kaleidoMaker` takes a partner organization's secret `kld_` key, and this
- * package only runs inside a mobile app, where the key would be readable by
- * every user. The guard cannot go in the Rust `bindings` crate, because that
- * crate also builds the Python wheel, where a server holding the key is the
- * intended use. So after each `ubrn` generation this script:
+ * `kaleidoMaker` takes a partner's `kld_` key. Every key Platform issues today
+ * is a public partner identifier that belongs in the app, so the check lets
+ * it through; it is kept, and stays wired in, for a future secret,
+ * server-only key kind. The check cannot go in the Rust `bindings` crate,
+ * because that crate also builds the Python wheel, where a server holding a
+ * secret key is the intended use. So after each `ubrn` generation this script:
  *
  * - imports `kaleidoMakerRefusal` from `src/kaleido-maker-guard.ts`, and
  *   re-exports its options type so callers can name it;
  * - adds an optional fourth parameter, `options?: KaleidoMakerAppOptions`;
- * - throws `Exception.Generic` with the refusal before the native call.
+ * - throws `Exception.Generic` with the refusal, when there is one, before
+ *   the native call.
  *
  * Unlike `fix-generated-modifiers.mjs`, a file it cannot patch is an error, not
  * a no-op. If the generator renames the method or changes its shape, building

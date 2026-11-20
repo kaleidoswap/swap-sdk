@@ -30,6 +30,14 @@ export async function live() {
       process.env.KALEIDO_LIVE_WS_URL ??
       `${makerUrl.replace(/^http/, "ws")}/ws`,
     client: new SwapClient(makerUrl),
+    // Optional: a partner `kld_` key for the keyed tests (partner.live.test.mjs).
+    // Public by design, so it may sit in CI configuration as is.
+    keyedClient: process.env.KALEIDO_LIVE_API_KEY
+      ? SwapClient.forKaleidoMaker({
+          makerUrl,
+          apiKey: process.env.KALEIDO_LIVE_API_KEY,
+        })
+      : undefined,
     btcEsplora: env("KALEIDO_LIVE_BTC_ESPLORA"),
     liquidEsplora: env("KALEIDO_LIVE_LIQUID_ESPLORA"),
     btc: new Node(env("KALEIDO_LIVE_BITCOIND_RPC"), "bitcoin"),

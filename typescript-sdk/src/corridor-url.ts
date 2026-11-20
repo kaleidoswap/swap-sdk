@@ -16,7 +16,7 @@
  *
  * The `/v2` suffix is **required**, not stripped when present: a URL without
  * it is not a maker base this SDK recognises, and guessing an origin would
- * send a request — and any organization API key riding on it — somewhere the
+ * send a request — and any partner key riding on it — somewhere the
  * caller did not name. A trailing slash is tolerated; a query or fragment is
  * not, since neither belongs on a base URL.
  */
