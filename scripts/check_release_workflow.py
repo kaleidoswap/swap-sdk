@@ -20,8 +20,9 @@ RUNBOOK = ROOT / "docs/releasing.md"
 # so they are held to the read-only build's rules.
 ACTIONS_DIR = ROOT / ".github/actions"
 
-# Both npm packages publish under one OIDC grant, and that grant is justified
-# only by provenance — so every manifest it publishes must claim it.
+# Both npm packages publish under one OIDC grant, which npm uses both to
+# authenticate the job as a trusted publisher and to sign provenance — so every
+# manifest it publishes must claim provenance.
 NPM_MANIFESTS = (
     "typescript-sdk/package.json",
     "packages/react-native/package.json",
@@ -352,7 +353,9 @@ def validate(
             "release workflows must authenticate with a token, not basic auth"
         )
 
-    allowed_secrets = {"NPM_TOKEN", "PYPI_TOKEN"}
+    # npm publishes as a trusted publisher, so PyPI holds the only stored
+    # registry credential.
+    allowed_secrets = {"PYPI_TOKEN"}
     referenced_secrets = set(re.findall(r"secrets\.([A-Z0-9_]+)", combined))
     unexpected = sorted(referenced_secrets - allowed_secrets)
     if unexpected:
@@ -423,10 +426,10 @@ def validate(
         if name == "npm" and "id-token: write" not in job:
             raise ValueError("npm publisher must have job-scoped OIDC for provenance")
         if name == "npm":
-            # The npm job's OIDC scope is justified *only* by provenance. If that
-            # field is dropped from a package.json the scope becomes exactly the
-            # unused privilege the PyPI job's comment condemns, and nothing else
-            # would notice.
+            # The npm job's OIDC scope authenticates the publish and signs its
+            # provenance. If provenance is dropped from a package.json, that
+            # package ships unsigned while the job still holds the scope, and
+            # nothing else would notice.
             for manifest_path in NPM_MANIFESTS:
                 manifest = json.loads(
                     (ROOT / manifest_path).read_text(encoding="utf-8")

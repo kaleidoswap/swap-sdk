@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- The release workflow publishes both npm packages as an npm trusted publisher:
+  the `publish-npm` job authenticates with its OIDC token and no npm token is
+  stored. The read-only `npm whoami` check before publishing is gone, since it
+  cannot prove that grant; a missing trusted-publisher entry fails when
+  the affected package is published. The workflow checker now accepts
+  `PYPI_TOKEN` as the only secret. Each package needs a trusted-publisher entry
+  on npmjs.com before the next release; `docs/releasing.md` lists the fields.
+
 ### Fixed
 
 - Chain and reverse payout floors charge the pair card's fee on the converted
