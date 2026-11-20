@@ -849,8 +849,7 @@ access. The per-swap `swapAuth` below stays separate and unchanged.
 
 `makerUrl` must be `https` unless it is a loopback address, since over plain
 HTTP anything on the path could strip or replace the key. A value that cannot
-be a key is rejected here. `allowBrowser` is still accepted and has no effect
-for today's keys; it is kept for a future secret, server-only key kind.
+be a key is rejected here.
 
 Redirects are declined under `fetch` as on a server. The SDK issues every maker
 request with `redirect: "error"`, so a `3xx` away from the maker fails the call
@@ -858,14 +857,6 @@ without being followed: neither the key nor a per-swap `swapAuth` reaches the
 origin a `Location` named. The browser reports a refused redirect, a CORS
 failure and a network error as one and the same `TypeError`, so the error names
 all three.
-
-### Organization keys (deprecated)
-
-`createKaleidoOrgClient`, `SwapClient.forKaleidoOrg`, and the `orgKey` options
-of `PayThroughClient` and `kaleidoswapHttpTransport` attribute swaps with an
-organization's 64-hex public key in `X-Kaleido-Org-Key`, on swap creation only.
-They predate public `kld_` keys and are deprecated: use the `kld_` key, which
-also carries the partner fee.
 
 ## `swapAuth` — persist it with the swap
 

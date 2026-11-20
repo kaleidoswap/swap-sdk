@@ -264,12 +264,6 @@ separate and unchanged. The URL must be `https` unless it is a loopback
 address, since over plain HTTP anything on the path could strip or replace the
 key. A value that cannot be a key is rejected here.
 
-### Organization keys (deprecated)
-
-`SwapClient.kaleido_org` attributes swaps with an organization's 64-hex public
-key in `X-Kaleido-Org-Key`. It predates public `kld_` keys and is deprecated:
-use `kaleido_maker` with the `kld_` key, which also carries the partner fee.
-
 ## Swap Types
 
 - **Submarine swaps** - On-chain Bitcoin/Liquid → Lightning

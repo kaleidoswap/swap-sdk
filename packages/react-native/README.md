@@ -98,8 +98,7 @@ creates the swap unattributed. `client.lastAttribution()` and
 
 The partner fee comes only from the key; there is no per-request fee field.
 `kaleidoMaker` still accepts a fourth `{ allowMobile }` argument, which only
-matters for a future secret, server-only key kind. `SwapClient.kaleidoOrg` and
-organization keys are deprecated: use the `kld_` key instead.
+matters for a future secret, server-only key kind.
 
 ## High-level API: `KaleidoSwap`
 

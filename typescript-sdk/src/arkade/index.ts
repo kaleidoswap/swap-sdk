@@ -49,9 +49,9 @@
  * answers both calls — so one build of it runs on 0.0.20 and on 0.0.21+.
  */
 
+import { normalizePartnerKey } from "../partner-key.js";
 import type { IContractManager, IWallet } from "@arkade-os/sdk";
 import { corridorRootFromMakerUrl } from "../corridor-url.js";
-import { ORG_KEY_HEADER, normalizeOrgKey } from "../org-key.js";
 export { corridorRootFromMakerUrl };
 import {
   ArkAddress,
@@ -499,44 +499,45 @@ export interface PreparedLightningReceive {
  * ```ts
  * const venue = new ArkadeIntentsVenue({
  *   wallet, arkServerUrl, store,
- *   transport: kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2"),
+ *   transport: kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2", {
+ *     apiKey: KALEIDOSWAP_PARTNER_KEY,
+ *   }),
  * });
  * ```
  *
- * Pass `orgKey` — the 64-hex public key an organization registered in the
- * partner panel — to attribute the swaps this transport creates. It goes out in
- * `X-Kaleido-Org-Key` on `POST /v1/swap` to this maker only; status reads carry
- * nothing. It is public, so it is safe in an app bundle. `orgKey` is
- * deprecated, like every organization key.
+ * Pass `apiKey`, the partner's `kld_` key, to attribute the swaps this
+ * transport creates to the partner, as `createKaleidoMakerClient` does
+ * for the `/v2` routes. It goes out as `Authorization: Bearer <key>` on every
+ * corridor request to this maker's origin and on nothing addressed anywhere
+ * else.
  */
 export function kaleidoswapHttpTransport(
   makerUrl: string,
-  options?: { fetchImpl?: typeof fetch; orgKey?: string },
+  options?: { fetchImpl?: typeof fetch; apiKey?: string },
 ): RfqTransport {
   const root = corridorRootFromMakerUrl(makerUrl);
   const fetchImpl = options?.fetchImpl;
-  if (options?.orgKey === undefined) {
+  if (options?.apiKey === undefined) {
     return httpTransport(root, { fetchImpl });
   }
   return httpTransport(root, {
-    fetchImpl: attributingFetch(
+    fetchImpl: withPartnerKey(
       fetchImpl ?? ((input, init) => fetch(input, init)),
-      `${root}/v1/swap`,
-      normalizeOrgKey(options.orgKey),
+      new URL(root).origin,
+      normalizePartnerKey(options.apiKey),
     ),
   });
 }
 
 /**
- * `fetch` that adds the organization key to the one request that creates a
- * swap: a `POST` to exactly `createUrl`. Everything else passes through
- * untouched, so the key cannot reach a status read, another route, or another
- * origin through this transport.
+ * `fetch` that adds the partner key to every request addressed to `origin`.
+ * Anything addressed elsewhere passes through untouched, so the key reaches
+ * only the maker it was configured for.
  */
-function attributingFetch(
+function withPartnerKey(
   fetchImpl: typeof fetch,
-  createUrl: string,
-  orgKey: string,
+  origin: string,
+  apiKey: string,
 ): typeof fetch {
   return (input, init) => {
     const request =
@@ -549,12 +550,17 @@ function attributingFetch(
         : input instanceof URL
           ? input.href
           : (request?.url ?? String(input));
-    const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
-    if (method !== "POST" || url !== createUrl) {
+    let sameOrigin = false;
+    try {
+      sameOrigin = new URL(url).origin === origin;
+    } catch {
+      sameOrigin = false;
+    }
+    if (!sameOrigin) {
       return fetchImpl(input, init);
     }
     const headers = new Headers(init?.headers ?? request?.headers);
-    headers.set(ORG_KEY_HEADER, orgKey);
+    headers.set("Authorization", `Bearer ${apiKey}`);
     return fetchImpl(input, { ...init, headers });
   };
 }
