@@ -23,6 +23,13 @@ All notable changes to this project will be documented in this file.
   chain lockup while that lockup is still unspent. An unknown status stays
   unknown.
 
+### Changed — documentation
+
+- `docs/releasing.md` gains a "Security releases" section: a fix is reviewed
+  and tested in a private mirror that publishes nothing, then released from
+  this repository as usual. `SECURITY.md` summarizes it under "How Fixes
+  Ship".
+
 ## [0.15.0] - 2026-11-17
 
 ### BREAKING — the arkade venue moves to `@arkade-os/sdk` 0.5 + `@arkade-os/swap` 0.1

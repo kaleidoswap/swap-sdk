@@ -413,6 +413,137 @@ TAG="v$VERSION"
 10. Retain the workflow URL, registry URLs, `SHA256SUMS`,
     `release-manifest.json`, and `release.spdx.json` in the release record.
 
+## Security releases
+
+A fix for an exploitable bug is reviewed and tested in a private mirror,
+`kaleidoswap/swap-sdk-private`, and then released from this repository like
+any other release. The mirror publishes nothing and holds no credentials. It
+exists because the temporary private fork of a GitHub advisory cannot run
+Actions, so a fix merged from one has never been through CI. In the mirror the
+fix and the release commit pass CI in private, and the fix is readable here
+only for the length of one release run before the fixed packages are on npm
+and PyPI.
+
+Everything pushed to this repository during a security release follows the
+rules in [AGENTS.md](../AGENTS.md): neutral titles, commit messages and
+changelog lines, and no advisory details before the release is out.
+
+### The mirror
+
+An administrator sets it up once.
+
+1. Create an empty private repository, `kaleidoswap/swap-sdk-private`, with
+   access for the release maintainers only. Do not fork: a fork of a public
+   repository is public and shares its fork network. Seed it instead:
+
+   ```sh
+   git clone --bare git@github.com:kaleidoswap/swap-sdk.git swap-sdk-seed.git
+   cd swap-sdk-seed.git
+   git push git@github.com:kaleidoswap/swap-sdk-private.git \
+     refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
+   ```
+
+2. Give it no secrets, no environments and no `NPM_PUBLISH_ENABLED` or
+   `PYPI_PUBLISH_ENABLED` variable, so nothing there can publish.
+3. Disable the `release` workflow, which must never run there, and
+   `build react native bindings`, whose macOS build the rehearsal covers:
+
+   ```sh
+   gh workflow disable release.yaml --repo kaleidoswap/swap-sdk-private
+   gh workflow disable build-bindings-react-native.yml \
+     --repo kaleidoswap/swap-sdk-private
+   ```
+
+   `build`, `lint`, `test` and `package` stay on and run on every pull
+   request. The release rehearsal also runs on pull requests that change
+   its watched paths, including package manifests and bindings. Budget for
+   these runs as well as the manual rehearsal on the merged release commit.
+4. Add rulesets:
+   - Branches `security/*`: require a pull request with one approval, dismiss
+     stale approvals, require approval of the most recent push, block force
+     pushes.
+   - Branch `trunk`: block force pushes and deletion. It only ever receives
+     this repository's `trunk`.
+   - Tags `v*`: creation, update and deletion by administrators only. They are
+     copies of this repository's tags.
+
+### Running one
+
+Set the version once:
+
+```sh
+VERSION=X.Y.Z
+```
+
+1. Open a draft security advisory in this repository for the write-up and the
+   CVE. Do not use its temporary private fork.
+2. Bring the mirror up to date from a fresh bare clone. A working clone can
+   hold tags from other remotes, and this push would copy them:
+
+   ```sh
+   git clone --bare git@github.com:kaleidoswap/swap-sdk.git swap-sdk-sync.git
+   git -C swap-sdk-sync.git push \
+     git@github.com:kaleidoswap/swap-sdk-private.git \
+     refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
+   ```
+
+   The push starts the mirror's `trunk` workflows. This repository has
+   already run them on the same commit, so cancel them:
+
+   ```sh
+   gh run list --repo kaleidoswap/swap-sdk-private --branch trunk \
+     --json databaseId,status \
+     --jq '.[] | select(.status != "completed") | .databaseId' |
+     xargs -n1 gh run cancel --repo kaleidoswap/swap-sdk-private
+   ```
+
+3. In the mirror, create `security/$VERSION` from `trunk` and open the fix as
+   a pull request into it. It merges once CI passes and a maintainer other
+   than its last pusher approves.
+4. Open the release commit as a second pull request into `security/$VERSION`:
+   `make sync-version VERSION=$VERSION` and the finalized changelog section,
+   as for any release.
+5. Run the release rehearsal on the result and wait for it to pass:
+
+   ```sh
+   gh workflow run release-rehearsal.yaml \
+     --repo kaleidoswap/swap-sdk-private \
+     --ref "security/$VERSION" -f failure_case=none
+   ```
+
+6. Before going public, have the maintainer who will approve the `release`
+   environment standing by, and check that `trunk` here has not moved since
+   step 2. If it has, repeat step 2, merge `trunk` into `security/$VERSION`
+   in the mirror and let CI and the rehearsal pass again.
+7. Publish the branch here and open its pull request:
+
+   ```sh
+   git fetch git@github.com:kaleidoswap/swap-sdk-private.git \
+     "security/$VERSION"
+   git push git@github.com:kaleidoswap/swap-sdk.git \
+     "FETCH_HEAD:refs/heads/release/$VERSION"
+   gh pr create --repo kaleidoswap/swap-sdk --base trunk \
+     --head "release/$VERSION" --title "chore(release): prepare $VERSION"
+   ```
+
+   Merge it as soon as the branch rules allow: its tree is the one the mirror
+   tested. From this push on the fix is public.
+8. Run the [release activation checklist](#release-activation-checklist)
+   straight away. The tag goes on the merge commit.
+9. Once the release run has verified the registries, publish the advisory
+   with the affected and patched versions, and add a `Security` section
+   linking it to the GitHub release notes.
+
+### What it does not cover
+
+- The fix is readable here from step 7 until the release run publishes:
+  the build, the approval and the publication. Keep that to one sitting, and
+  do not start step 7 without the approver.
+- A published package can be compared with the previous one, so the release
+  itself shows what changed. The advisory waits for the release, not the
+  other way round.
+- Security fixes go to the latest release only.
+
 ## Partial-publication recovery
 
 External registries cannot participate in an atomic transaction. If one
