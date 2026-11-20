@@ -1246,7 +1246,7 @@ test("kaleidoswapHttpTransport sends the partner key on corridor requests and no
   assert.equal(calls[0].authorization, null);
 
   // A value that cannot be a partner key is refused without being quoted.
-  for (const bad of ["", "abc", "kld_with space", 42]) {
+  for (const bad of ["", "abc", "kld_with space", "kld_other_id_value", 42]) {
     assert.throws(
       () =>
         kaleidoswapHttpTransport("https://maker.example/v2", {

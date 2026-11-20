@@ -3,7 +3,7 @@
 
 import {
   type MakerAttribution,
-  partnerKeyRequiresServer,
+  normalizePartnerKey,
   readAttribution,
 } from "./partner-key.js";
 
@@ -177,17 +177,6 @@ function mismatch(field: string, got: unknown, expected: unknown): Error {
   );
 }
 
-/** Whether this is a server runtime. Only a secret, server-only partner key
- * kind is refused elsewhere, and Platform issues none yet. */
-function isServerRuntime(): boolean {
-  const g = globalThis as {
-    process?: { versions?: { node?: string } };
-    Deno?: unknown;
-    Bun?: unknown;
-  };
-  return Boolean(g.process?.versions?.node || g.Deno || g.Bun);
-}
-
 const BECH32 = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 
 function bech32Polymod(values: number[]): number {
@@ -311,17 +300,6 @@ export class PayThroughClient {
       );
     }
     this.lightningNetwork = options.lightningNetwork;
-    // Every key Platform issues today is public and runs anywhere; this is
-    // kept for a future secret, server-only kind.
-    if (
-      options.apiKey &&
-      partnerKeyRequiresServer(options.apiKey) &&
-      !isServerRuntime()
-    ) {
-      throw new TypeError(
-        "A secret partner key can only be used on a server runtime",
-      );
-    }
     const url = new URL(options.makerUrl);
     const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
     if (
@@ -337,7 +315,10 @@ export class PayThroughClient {
       );
     }
     this.baseUrl = url.href.replace(/\/$/, "");
-    this.apiKey = options.apiKey;
+    this.apiKey =
+      options.apiKey === undefined
+        ? undefined
+        : normalizePartnerKey(options.apiKey);
     // Called as this.request(...), so a bare `fetch` would run with the client
     // as `this`, which browsers reject as an illegal invocation.
     this.request = options.fetch ?? ((input, init) => fetch(input, init));

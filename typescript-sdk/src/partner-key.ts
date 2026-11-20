@@ -40,14 +40,26 @@ export function readAttribution(headers: {
   return value === null ? null : value.trim();
 }
 
-/**
- * Whether a partner key must stay on a server. `false` for every key Platform
- * issues today: they are public partner identifiers, meant to ship inside
- * browser bundles, extensions and mobile apps. Kept for a future secret,
- * server-only key kind, which the clients will refuse outside a server.
- */
+/** Parse the public partner key accepted by the Rust client. */
+export function normalizePartnerKey(apiKey: string): string {
+  // Rust trims surrounding ASCII whitespace before parsing the header value.
+  const key =
+    typeof apiKey === "string"
+      ? apiKey.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, "")
+      : "";
+  if (
+    key.length > 512 ||
+    !/^kld_(?:test|live)_[A-Za-z0-9-]+_[!-~]+$/.test(key)
+  ) {
+    throw new TypeError(
+      "apiKey must be a valid kld_test_ or kld_live_ partner key",
+    );
+  }
+  return key;
+}
+
+/** Every currently supported partner key is public. Unknown formats are refused. */
 export function partnerKeyRequiresServer(apiKey: string): boolean {
-  // The `kld_` format carries no kind yet: every key is public.
-  void apiKey;
+  normalizePartnerKey(apiKey);
   return false;
 }

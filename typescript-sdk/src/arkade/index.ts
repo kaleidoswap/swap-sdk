@@ -49,6 +49,7 @@
  * answers both calls — so one build of it runs on 0.0.20 and on 0.0.21+.
  */
 
+import { normalizePartnerKey } from "../partner-key.js";
 import type { IContractManager, IWallet } from "@arkade-os/sdk";
 import { corridorRootFromMakerUrl } from "../corridor-url.js";
 export { corridorRootFromMakerUrl };
@@ -523,23 +524,9 @@ export function kaleidoswapHttpTransport(
     fetchImpl: withPartnerKey(
       fetchImpl ?? ((input, init) => fetch(input, init)),
       new URL(root).origin,
-      checkPartnerKey(options.apiKey),
+      normalizePartnerKey(options.apiKey),
     ),
   });
-}
-
-/**
- * A partner key as it goes on the wire, or a `TypeError` that names the
- * problem without quoting the value.
- */
-function checkPartnerKey(apiKey: string): string {
-  const key = typeof apiKey === "string" ? apiKey.trim() : "";
-  if (!/^kld_[\x21-\x7e]+$/.test(key)) {
-    throw new TypeError(
-      "apiKey must be the partner's kld_ key from the KaleidoSwap partner panel",
-    );
-  }
-  return key;
 }
 
 /**

@@ -56,6 +56,7 @@ sends it on pricing and creation and exposes the partner fee line.
   the pair cards included, so amounts and `pairHash` come from the keyed card.
   `KaleidoSwap` takes it as `api_key` (Rust, Python, React Native) / `apiKey`
   (TypeScript), and prices its quotes from the keyed card.
+- Pay-through accepts the same partner key format as the Rust client.
 - The partner fee line: pair cards' fees carry `partner_percentage` /
   `partnerPercentage` (the partner's part of `percentage`, which already
   includes it; `SubmarineFees`, `ReverseFees` and `ChainFees` gain

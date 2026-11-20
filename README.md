@@ -256,7 +256,9 @@ with a rotated key keeps swapping. The SDK returns that answer as data:
 `KaleidoSwap`, `lastAttribution` on the TypeScript clients, and `attribution`
 on a pay-through create. `"api_key"` means the maker priced or stored the
 request for the key's partner. In a browser the maker's edge must expose the
-header for it to be readable.
+header for it to be readable. The last-attribution getters describe the latest
+response seen by the client. Concurrent calls share that value. For a specific
+pay-through create, read the attribution on its returned result.
 
 The key authorizes nothing: no claim, no refund, no fund movement and no panel
 access. The per-swap `swapAuth` credential the maker returns on create is what
