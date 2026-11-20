@@ -455,9 +455,9 @@ An administrator sets it up once.
    ```
 
    `build`, `lint`, `test` and `package` stay on and run on every pull
-   request. Private repositories draw on the organization's Actions minutes,
-   and macOS jobs count ten times, which is why the rehearsal is run once by
-   hand and not on every push.
+   request. The release rehearsal also runs on pull requests that change
+   its watched paths, including package manifests and bindings. Budget for
+   these runs as well as the manual rehearsal on the merged release commit.
 4. Add rulesets:
    - Branches `security/*`: require a pull request with one approval, dismiss
      stale approvals, require approval of the most recent push, block force
