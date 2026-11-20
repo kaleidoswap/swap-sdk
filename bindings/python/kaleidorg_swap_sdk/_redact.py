@@ -15,9 +15,21 @@ so it can be persisted with the swap.
 
 import inspect
 
-#: Record fields whose value is secret material.
-SECRET_FIELDS = frozenset({"swap_auth", "blinding_key"})
+#: Record fields whose value is secret material, or (``api_key``) a partner
+#: key whose last segment the Rust ``Debug`` keeps out of logs too.
+SECRET_FIELDS = frozenset({"swap_auth", "blinding_key", "api_key"})
 REDACTED = "<redacted>"
+
+
+def _redacted(name, value):
+    """How a set secret field prints. A partner key keeps its environment and
+    key id, which are what a support request needs, exactly as the Rust
+    ``ApiKey::redacted`` renders it; anything else is withheld whole."""
+    if name == "api_key" and isinstance(value, str):
+        parts = value.strip().split("_", 3)
+        if len(parts) == 4 and parts[0] == "kld" and parts[1] and parts[2]:
+            return f"kld_{parts[1]}_{parts[2]}_{REDACTED}"
+    return REDACTED
 
 
 def _record_fields(cls):
@@ -59,7 +71,7 @@ def _redacting_str(cls, fields):
         for name in fields:
             value = getattr(self, name)
             if name in SECRET_FIELDS and value is not None:
-                value = REDACTED
+                value = _redacted(name, value)
             parts.append(f"{name}={value}")
         return f"{cls.__name__}({', '.join(parts)})"
 

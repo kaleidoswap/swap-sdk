@@ -106,8 +106,13 @@ pub struct QuoteRequest {
 
 #[uniffi::remote(Record)]
 pub struct Fees {
+    /// The maker's own service fee.
     pub maker: u64,
     pub miner: u64,
+    /// The partner fee: what the partner whose `kld_` key this instance
+    /// carries charges on top of the maker's price. `0` without a key.
+    #[uniffi(default = 0)]
+    pub partner: u64,
 }
 
 #[uniffi::remote(Record)]
@@ -646,6 +651,12 @@ pub struct KaleidoSwapOptions {
     /// `start` to hand out the invoice. Default 12 on Bitcoin, 120 on Liquid.
     #[uniffi(default = None)]
     pub reverse_timeout_headroom: Option<ReverseTimeoutHeadroom>,
+    /// The partner's `kld_` key, a public identifier to build into the app.
+    /// Sent to the maker, and only to the maker, on every pair-card read and
+    /// every create, so quotes carry the partner fee as `fees.partner` and
+    /// the swaps are attributed to the partner.
+    #[uniffi(default = None)]
+    pub api_key: Option<String>,
 }
 
 #[derive(uniffi::Object)]
@@ -680,6 +691,11 @@ impl KaleidoSwap {
             store: Arc::new(ForeignStore(options.store)),
             signer: Arc::new(ForeignSigner(options.signer)),
             maker_url: options.maker_url,
+            api_key: options
+                .api_key
+                .as_deref()
+                .map(kaleidorg_swap_sdk::kaleido::ApiKey::parse)
+                .transpose()?,
             bitcoin_esplora_url: options.bitcoin_esplora_url,
             liquid_esplora_url: options.liquid_esplora_url,
             poll_interval: options
@@ -699,6 +715,16 @@ impl KaleidoSwap {
     #[uniffi::method]
     pub fn network(&self) -> Network {
         self.inner.network()
+    }
+
+    /// What the maker last answered in `X-Kaleido-Attribution`: `"api_key"`
+    /// when it priced or stored the request for `api_key`'s partner, `"none"`
+    /// when it did not recognise the key and answered with the public price.
+    #[uniffi::method]
+    pub fn last_attribution(&self) -> Option<String> {
+        self.inner
+            .last_attribution()
+            .map(|attribution| attribution.as_str().to_string())
     }
 
     #[uniffi::method]

@@ -191,9 +191,52 @@ test("quote: reverse prices from the pair card and binds its hash", async (t) =>
   assert.ok(isQuote(answer));
   assert.equal(answer.protocol, "boltz-reverse");
   assert.equal(answer.fromAmount, 50_000n);
-  assert.deepEqual(answer.fees, { maker: 250n, miner: 300n });
+  assert.deepEqual(answer.fees, { maker: 250n, miner: 300n, partner: 0n });
   assert.equal(answer.toAmount, 49_450n);
   assert.equal(answer.binding.pairHash, "rev-hash");
+});
+
+test("quote: a partner key prices from the keyed card and shows the partner fee", async (t) => {
+  const PARTNER_KEY = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
+  const real = globalThis.fetch;
+  const authorizations = [];
+  globalThis.fetch = async (input, init) => {
+    const headers = new Headers(init?.headers ?? input?.headers);
+    authorizations.push(headers.get("authorization"));
+    // The keyed card: the partner fee is inside `percentage`, and named.
+    const card = {
+      ...REVERSE_CARD,
+      hash: "keyed-hash",
+      fees: { ...REVERSE_CARD.fees, percentage: 0.6, partnerPercentage: 0.1 },
+    };
+    return Response.json(
+      { BTC: { "L-BTC": card, BTC: card } },
+      { headers: { "X-Kaleido-Attribution": "api_key" } },
+    );
+  };
+  t.after(() => {
+    globalThis.fetch = real;
+  });
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store: new MemoryStore(),
+    signer: SIGNER,
+    makerUrl: "https://maker.example/v2",
+    apiKey: PARTNER_KEY,
+    pollIntervalMs: 1,
+  });
+  assert.equal(k.lastAttribution, undefined);
+  const answer = await k.quote({
+    pay: "lightning:BTC",
+    receive: "liquid:BTC",
+    amount: { pay: 50_000 },
+  });
+  assert.ok(isQuote(answer));
+  assert.deepEqual(authorizations, [`Bearer ${PARTNER_KEY}`]);
+  assert.deepEqual(answer.fees, { maker: 250n, miner: 300n, partner: 50n });
+  assert.equal(answer.toAmount, 49_400n);
+  assert.equal(answer.binding.pairHash, "keyed-hash");
+  assert.equal(k.lastAttribution, "api_key");
 });
 
 test("quote: amounts in any accepted form, bad ones coded", async (t) => {

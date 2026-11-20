@@ -1,4 +1,4 @@
-# Partner attribution: the organization API key, from the UniFFI surface.
+# Partner attribution: the partner `kld_` key, from the UniFFI surface.
 #
 # Deliberately does not `import common`: nothing here needs the regtest
 # environment. Every check runs on the argument itself, before any request.

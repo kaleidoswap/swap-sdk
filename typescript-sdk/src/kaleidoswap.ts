@@ -4,6 +4,7 @@
 // callers write against and adapts the store and the signer they provide.
 
 import type { DerivedPreimage, Network } from "./index.js";
+import type { MakerAttribution } from "./partner-key.js";
 
 // ---------------------------------------------------------------------------
 // Assets and amounts
@@ -111,6 +112,15 @@ export interface KaleidoSwapOptions {
   signer: SwapSigner;
   /** The maker's `/v2` base URL. Defaults per network exactly as `SwapClient.forNetwork` does. */
   makerUrl?: string;
+  /**
+   * The partner's `kld_` key, a public partner identifier: ship it in the app
+   * as a build constant. It is sent to the maker, and only to the maker, on
+   * every pair-card read and every create, so quotes are priced from the
+   * partner's own card (the partner fee shows as `fees.partner`) and the
+   * swaps are attributed to the partner. Omit it for the public price and no
+   * attribution.
+   */
+  apiKey?: string;
   /** Defaults to the KaleidoSwap endpoints for `network`; required where there are none. */
   bitcoinEsploraUrl?: string;
   liquidEsploraUrl?: string;
@@ -200,7 +210,12 @@ export interface Quote {
   to: Asset;
   fromAmount: bigint;
   toAmount: bigint;
-  fees: { maker: bigint; miner: bigint };
+  /**
+   * `fromAmount − toAmount = maker + partner + miner`. `partner` is the fee
+   * the partner whose `apiKey` this instance carries charges on top of the
+   * maker's price: `0n` without a key.
+   */
+  fees: { maker: bigint; miner: bigint; partner: bigint };
   limits: { min: bigint; max: bigint };
   /** Unix seconds. Accepting after this is a new quote, not this one. */
   expiresAt: bigint;
@@ -418,6 +433,15 @@ export interface ResumeReport {
 export interface KaleidoSwap {
   readonly network: Network;
 
+  /**
+   * What the maker last answered in `X-Kaleido-Attribution`: `"api_key"`
+   * when it priced or stored the request for `apiKey`'s partner, `"none"`
+   * when it did not recognise the key (unknown, revoked or for the other
+   * environment) and answered with the public price. `undefined` until a
+   * response carried it.
+   */
+  readonly lastAttribution: MakerAttribution | undefined;
+
   quote(request: QuoteRequest): Promise<QuoteAnswer>;
 
   /**
@@ -478,6 +502,7 @@ export function swapError(code: SwapErrorCode, message: string): SwapError {
 /** The wasm classes this layer wraps; handed in so each entry binds its own `init`. */
 export interface WasmKaleidoSwap {
   readonly network: string;
+  readonly lastAttribution: string | undefined;
   quote(request: unknown): Promise<unknown>;
   start(quote: unknown, options?: unknown): Promise<WasmSwap>;
   swap(id: string): Promise<WasmSwap>;
@@ -621,6 +646,9 @@ export function makeCreateKaleidoSwap(
     return {
       get network() {
         return options.network;
+      },
+      get lastAttribution() {
+        return inner.lastAttribution;
       },
       async quote(request) {
         const amount = request.amount as QuoteAmount | undefined;

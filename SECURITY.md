@@ -35,6 +35,16 @@ email:
 - We credit researchers who report responsibly (unless you prefer anonymity).
 - Once a fix ships, we publish an advisory describing the issue and the fix.
 
+### How Fixes Ship
+
+A fix for an exploitable bug is reviewed and tested in private, then released
+as an ordinary release of this repository. The advisory is published once the
+fixed packages are on npm and PyPI.
+[docs/releasing.md](docs/releasing.md) ("Security releases") describes the
+process.
+
+Security fixes go to the latest release only. Upgrade to it to receive them.
+
 ## Threat Model Notes
 
 When auditing this SDK, the highest-impact surfaces are:
@@ -53,11 +63,17 @@ When auditing this SDK, the highest-impact surfaces are:
   authorizes accepting a chain-swap re-quote — the taker's full capability over
   that swap. It is a plain property of the create response, so anything that
   logs the response discloses it, and nothing re-issues a lost one.
-- **Partner API keys.** `kld_test_…` / `kld_live_…` organization keys travel
-  as bearer credentials bound to the maker URL they were configured with, are
-  refused over plain HTTP off loopback, decline redirects on every client —
-  native by reqwest policy, in the browser by issuing each maker `fetch` with
-  `redirect: "error"` — and are refused outright in a document context.
+- **Partner keys.** `kld_test_…` / `kld_live_…` keys are public partner
+  identifiers: they attribute swaps and carry the partner's fee, and never a
+  lower price or higher limits, so they ship inside apps. They are still bound
+  to the maker URL they were configured with, refused over plain HTTP off
+  loopback (where the path could strip or replace them), and decline redirects
+  on every client — native by reqwest policy, in the browser by issuing each
+  maker `fetch` with `redirect: "error"`. That a key grants nothing beyond
+  attribution and the partner fee is enforced by the maker, not by the SDK.
+  The SDK parses only `kld_test_…` / `kld_live_…` and refuses any other shape,
+  so a future secret key kind must use a shape this parser rejects. SDKs that
+  predate it then refuse such a key rather than treat it as public.
 - **Chain identity.** Signet settles on Mutinynet, and signet and testnet3
   encode addresses identically — a mismatch raises no error, it simply creates
   swaps on one chain while funding or watching another. The same shape of bug

@@ -8,6 +8,8 @@ use kaleidorg_swap_sdk::boltz::{
     ChannelInfo, FailureReasonIncorrectAmounts, SubSwapStates, SwapStatus, TransactionInfo,
 };
 use kaleidorg_swap_sdk::error::Error as CoreError;
+// The organization-key client is deprecated, and still exported.
+#[allow(deprecated)]
 use kaleidorg_swap_sdk::kaleido::{
     ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
     KaleidoOrgClientOptions, OrgKey,
@@ -105,31 +107,29 @@ impl SwapClient {
         })
     }
 
-    /// Client for the **KaleidoSwap maker** that attributes the swaps it creates
-    /// to a partner organization.
+    /// Client for the **KaleidoSwap maker** that sends a partner's `kld_` key,
+    /// so the swaps it creates are attributed to the partner and priced with
+    /// the partner's fee.
     ///
-    /// `api_key` is the organization key from the partner panel — a
-    /// `kld_test_…` or `kld_live_…` value. It answers "which partner
-    /// organization created this swap?" and nothing else: it authorizes no
-    /// claim, no refund, no fund movement and no panel access. The per-swap
-    /// `swap_auth` credential the maker returns on create stays separate and
-    /// unchanged.
+    /// `api_key` is the partner's key from the partner panel — a `kld_test_…`
+    /// or `kld_live_…` value. It is a public partner identifier: ship it inside
+    /// the app or the service as a build constant. It attributes swaps and
+    /// carries the partner's fee, and never gives a lower price or higher
+    /// limits, so a copy of it gains nobody anything. It authorizes no claim,
+    /// no refund, no fund movement and no panel access; the per-swap
+    /// `swap_auth` credential the maker returns on create stays separate.
     ///
-    /// A value that cannot be a key is rejected here rather than reaching the
-    /// maker as a `401`, which is the same answer a revoked key gets. The key is
-    /// bound to `maker_url` and is never sent anywhere else, and `maker_url`
-    /// must be `https` unless it is a loopback address — a bearer credential
-    /// over plain HTTP is readable by anything on the path.
+    /// The key goes out on every request to `maker_url` — the pair cards as
+    /// well as the creates, so the amounts and the `pair_hash` a swap is
+    /// created with come from the partner's own card, whose `percentage`
+    /// includes the partner fee and whose `partner_percentage` is that fee —
+    /// and is never sent anywhere else. `maker_url` must be `https` unless it is
+    /// a loopback address: over plain HTTP anything on the path could strip or
+    /// replace the key. A value that cannot be a key is rejected here.
     ///
-    /// The key is a permanent organization credential: keep it on a server, load
-    /// it from configuration rather than committing it, and never ship it inside
-    /// a mobile or desktop application binary, where every user holds it.
-    ///
-    /// No exported method returns the secret, and UniFFI renders no string form
-    /// of this object at all — it emits `__str__` only for an object that
-    /// exports `Display`, and this one does not, so `str(client)` is the default
-    /// `<... object at 0x...>`. See `api_key_id` for the half that is safe to
-    /// log.
+    /// A key the maker does not recognise (unknown, revoked or for the other
+    /// environment) is not an error: the maker prices and creates at the public
+    /// price, unattributed. Read `last_attribution` to notice it.
     #[uniffi::constructor]
     pub fn kaleido_maker(
         maker_url: &str,
@@ -149,6 +149,9 @@ impl SwapClient {
     /// Client for the **KaleidoSwap maker** that attributes the swaps it creates
     /// to a partner organization by its public organization key.
     ///
+    /// **Deprecated:** the `kld_` key is now a public partner identifier that
+    /// ships in any app and also carries the partner fee. Use `kaleido_maker`.
+    ///
     /// `org_key` is the 64-hex x-only public key the organization registered in
     /// the partner panel. Unlike `kaleido_maker`'s API key it is public, so it
     /// is safe to ship inside a mobile or desktop app: it is a label, never a
@@ -159,6 +162,7 @@ impl SwapClient {
     /// A value that is not a point on the curve is rejected here rather than
     /// reaching the maker as `400 org_key_malformed`.
     #[uniffi::constructor]
+    #[allow(deprecated)]
     pub fn kaleido_org(
         maker_url: &str,
         org_key: &str,
@@ -181,7 +185,7 @@ impl SwapClient {
         self.inner.org_key().map(|key| key.to_string())
     }
 
-    /// The environment the configured organization key is scoped to — `"test"`
+    /// The environment the configured partner key is scoped to — `"test"`
     /// or `"live"` — or `None` for an unauthenticated client.
     ///
     /// Worth asserting at start-up: a `kld_test_…` key against a production
@@ -194,12 +198,24 @@ impl SwapClient {
             .map(|key| key.environment().to_string())
     }
 
-    /// The configured organization key's public identifier — the same one the
+    /// The configured partner key's public identifier — the same one the
     /// partner panel shows. Safe to log and to name in a support request; the
     /// secret half is not reachable from here.
     #[uniffi::method]
     pub fn api_key_id(&self) -> Option<String> {
         self.inner.api_key().map(|key| key.key_id().to_string())
+    }
+
+    /// What the maker last answered in `X-Kaleido-Attribution`, on a pair
+    /// card or a create: `"api_key"` when it priced or stored the request for
+    /// this client's partner key, `"none"` when it did not recognise the key
+    /// (unknown, revoked or for the other environment) and answered with the
+    /// public price, unattributed. `None` until a response carried it.
+    #[uniffi::method]
+    pub fn last_attribution(&self) -> Option<String> {
+        self.inner
+            .last_attribution()
+            .map(|attribution| attribution.as_str().to_string())
     }
 
     #[uniffi::method]
@@ -1040,12 +1056,22 @@ pub struct ChainMinerFees {
 pub struct ChainFees {
     pub percentage: f64,
     pub miner_fees: ChainMinerFees,
+    /// The partner fee's part of `percentage`, when the request carried a
+    /// partner `kld_` key whose partner sets one. `percentage` already
+    /// includes it; this is the line to show.
+    #[uniffi(default = None)]
+    pub partner_percentage: Option<f64>,
 }
 
 #[uniffi::remote(Record)]
 pub struct ReverseFees {
     pub percentage: f64,
     pub miner_fees: PairMinerFees,
+    /// The partner fee's part of `percentage`, when the request carried a
+    /// partner `kld_` key whose partner sets one. `percentage` already
+    /// includes it; this is the line to show.
+    #[uniffi(default = None)]
+    pub partner_percentage: Option<f64>,
 }
 
 #[uniffi::remote(Record)]
@@ -1054,6 +1080,11 @@ pub struct SubmarineFees {
     pub percentage: f64,
     /// The network fees charged for locking up and claiming funds onchain. These values are absolute, denominated in 10 ** -8 of the quote asset.
     pub miner_fees: u64,
+    /// The partner fee's part of `percentage`, when the request carried a
+    /// partner `kld_` key whose partner sets one. `percentage` already
+    /// includes it; this is the line to show.
+    #[uniffi(default = None)]
+    pub partner_percentage: Option<f64>,
 }
 
 #[uniffi::remote(Record)]

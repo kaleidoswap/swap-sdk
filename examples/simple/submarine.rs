@@ -46,6 +46,8 @@ async fn main() -> Result<()> {
             &mnemonic, None, network,
         )?),
         maker_url: None,
+        // A partner sets its public `kld_` key here, as a build constant.
+        api_key: None,
         bitcoin_esplora_url: None,
         liquid_esplora_url: None,
         poll_interval: None,

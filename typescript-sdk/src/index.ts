@@ -95,73 +95,66 @@ export interface KaleidoMakerClientOptions {
   /** The maker's `/v2` base URL — the only origin the key is ever sent to. */
   makerUrl: string;
   /**
-   * The organization API key from the KaleidoSwap partner panel, a
-   * `kld_test_…` or `kld_live_…` value.
+   * The partner's key from the KaleidoSwap partner panel, a `kld_test_…` or
+   * `kld_live_…` value. A public partner identifier: ship it in the bundle as
+   * a build constant.
    */
   apiKey: string;
   /** Per-request timeout in seconds. Omit to leave it to the HTTP stack. */
   timeoutSecs?: number;
   /**
-   * Build the client even in a browser context: a page, a worker or an
-   * extension. Off by default, and the constructor throws rather than running
-   * in a browser — see below. Set this only if you have accepted that every
-   * visitor can read the key.
+   * Has no effect for the keys Platform issues today, which are public and
+   * run in any context. Kept for a future secret, server-only key kind, which
+   * the constructor refuses in a browser unless this is `true`.
    */
   allowBrowser?: boolean;
 }
 
 /**
- * A {@link SwapClient} that attributes the swaps it creates to a partner
- * organization.
+ * A {@link SwapClient} that sends a partner's `kld_` key, so the swaps it
+ * creates are attributed to the partner and priced with the partner's fee.
  *
- * The key answers *"which partner organization created this swap?"* and nothing
- * else: it authorizes no claim, no refund, no fund movement and no panel access.
- * The per-swap `swapAuth` credential the maker returns on create is what
- * authorizes the outcome of a specific swap, and the two stay separate.
+ * The key is a **public partner identifier**. Ship it in the app as a build
+ * constant: a browser page, a Web, shared or service worker, a browser
+ * extension, React Native or Node. It attributes swaps and carries the
+ * partner's fee, and never gives a lower price or higher limits, so a copy of
+ * it gains nobody anything. It authorizes no claim, no refund, no fund
+ * movement and no panel access; the per-swap `swapAuth` credential the maker
+ * returns on create is what authorizes the outcome of a specific swap.
  *
- * The key is bound to `makerUrl` and never sent anywhere else — not to Esplora,
- * not to a second maker. `makerUrl` must be `https` unless it is a loopback
- * address, since a bearer credential over plain HTTP is readable by anything on
- * the path. A value that cannot be a key is rejected here rather than reaching
- * the maker as a `401`, which is the same answer a revoked key gets.
+ * The key goes out on every request to `makerUrl` — the pair cards as well as
+ * the creates, so amounts and the `pairHash` come from the partner's own card,
+ * whose `fees.percentage` includes the partner fee and whose
+ * `fees.partnerPercentage` is that fee — and never anywhere else: not to
+ * Esplora, not to a second maker. `makerUrl` must be `https` unless it is a
+ * loopback address, because over plain HTTP anything on the path could strip
+ * or replace the key. A value that cannot be a key is rejected here.
  *
  * ```ts
  * import { init, createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
  *
+ * // Public: safe to commit and to bundle.
+ * const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
+ *
  * await init();
  * const client = createKaleidoMakerClient({
- *   makerUrl: "https://maker.signet.kaleidoswap.com/v2",
- *   apiKey: process.env.KALEIDOSWAP_API_KEY!,
+ *   makerUrl: "https://maker.kaleidoswap.com/v2",
+ *   apiKey: KALEIDOSWAP_PARTNER_KEY,
  * });
+ * const pairs = await client.submarinePairs();
+ * // "api_key" when the maker priced with the partner key, "none" when it did
+ * // not recognise it (unknown, revoked or for the other environment).
+ * console.log(client.lastAttribution);
  * ```
  *
- * ## Server and native integrations only
- *
- * **This throws if called from a browser.** One wasm artifact serves both Node
- * and the browser, so the check is a runtime one: a document context, a Web,
- * shared or service worker, and a browser extension (`chrome.runtime.id`) are
- * all refused unless you pass `allowBrowser: true`. The key is a permanent
- * organization credential with no origin binding and no per-key rate limit, so a
- * key in a browser bundle is visible to every visitor — who can then attribute
- * their own swaps to, or exhaust the limits of, an organization that is not
- * theirs. Nothing in the bundle can prevent that. Put the key in server-side
- * configuration and talk to the maker from there; for attribution from a
- * browser, an extension or a mobile app, use {@link createKaleidoOrgClient}
- * with the organization's public key instead.
+ * A key the maker does not recognise is not an error: the maker answers with
+ * the public price and creates the swap unattributed. Read `lastAttribution`
+ * to notice it. In a browser the maker's edge must expose
+ * `X-Kaleido-Attribution` for it to be readable.
  *
  * Redirects are declined under `fetch` as on a server: the SDK issues every
  * maker request with `redirect: "error"`, so a `3xx` away from the maker fails
  * the call without being followed and no header reaches the host it named.
- *
- * ## Error reporters that capture locals
- *
- * The key crosses this boundary as a plain `string`, so it is an argument on a
- * stack frame for the length of the call. The SDK keeps it out of its own
- * errors, logs and `toString`, but a reporter configured to capture local
- * variables or function arguments — Sentry's `includeLocalVariables`, and the
- * equivalent in Python (`pytest --showlocals`, `with_locals`) — will capture it
- * from the frame regardless. Scrub `apiKey` in your reporter's
- * before-send hook.
  */
 export function createKaleidoMakerClient(
   options: KaleidoMakerClientOptions,
@@ -175,7 +168,18 @@ export {
   normalizeOrgKey,
 } from "./org-key.js";
 
-/** Options for {@link createKaleidoOrgClient}. */
+export {
+  type MakerAttribution,
+  partnerKeyRequiresServer,
+  readAttribution,
+} from "./partner-key.js";
+
+/**
+ * Options for {@link createKaleidoOrgClient}.
+ *
+ * @deprecated Use {@link KaleidoMakerClientOptions} with the partner's public
+ * `kld_` key.
+ */
 export interface KaleidoOrgClientOptions {
   /** The maker's `/v2` base URL — the only origin the key is sent to. */
   makerUrl: string;
@@ -218,6 +222,10 @@ export interface KaleidoOrgClientOptions {
  *
  * A page on another origin also needs the maker's edge to allow
  * `X-Kaleido-Org-Key` in CORS; an extension's host permissions make that moot.
+ *
+ * @deprecated The `kld_` key is now a public partner identifier that ships in
+ * any bundle and also carries the partner fee: use
+ * {@link createKaleidoMakerClient}.
  */
 export function createKaleidoOrgClient(
   options: KaleidoOrgClientOptions,

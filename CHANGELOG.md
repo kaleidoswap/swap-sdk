@@ -43,6 +43,54 @@ TypeScript, Python and React Native APIs are unchanged.
   for a claim and a positive amount for a refund. RGB HTLCs and L-USDT swaps
   keep their dedicated flows and are refused here.
 
+### The `kld_` partner key is public, and carries the partner fee
+
+A partner's `kld_<env>_<key_id>_<secret>` key is now a public partner
+identifier: ship it in the app as a build constant. It attributes swaps and
+carries the partner's fee, and never a lower price or higher limits. The SDK
+sends it on pricing and creation and exposes the partner fee line.
+
+- The `kld_` client runs everywhere: `createKaleidoMakerClient` /
+  `BoltzClient.forKaleidoMaker` in a page, a Web, shared or service worker
+  and a browser extension, `SwapClient.kaleidoMaker` in React Native without
+  `{ allowMobile: true }`, and `PayThroughClient({ apiKey })` outside a server
+  runtime. `allowBrowser` and `allowMobile` are still accepted and only apply
+  to a future secret, server-only key kind (`ApiKeyKind::Secret`, which
+  Platform does not issue). New: `ApiKey::kind()` and
+  `KaleidoMakerClient::api_key_kind()`, both `ApiKeyKind::Public` for every key.
+- The key goes on every request to the configured maker and nowhere else,
+  the pair cards included, so amounts and `pairHash` come from the keyed card.
+  `KaleidoSwap` takes it as `api_key` (Rust, Python, React Native) / `apiKey`
+  (TypeScript), and prices its quotes from the keyed card.
+- Pay-through accepts the same partner key format as the Rust client.
+- The partner fee line: pair cards' fees carry `partner_percentage` /
+  `partnerPercentage` (the partner's part of `percentage`, which already
+  includes it; `SubmarineFees`, `ReverseFees` and `ChainFees` gain
+  `partner()`), `KaleidoSwap` quotes carry `fees.partner` (`from − to =
+  maker + partner + miner`; the partner line is floored as the maker charges
+  it, and the maker's line rounds exactly as it does without a key), and pay-through creates carry `fees.partner`
+  (`0` when the maker omits it). The partner fee comes only from the key;
+  there is no per-request fee option.
+- The `X-Kaleido-Attribution` answer is returned as data, not only logged:
+  `last_attribution()` on the Rust client (`MakerAttribution`), the UniFFI
+  `SwapClient` and `KaleidoSwap`; `lastAttribution` on the TypeScript
+  `SwapClient`, `KaleidoSwap` and `PayThroughClient`; and `attribution` on a
+  pay-through create. `"none"` means the maker did not recognise the key and
+  answered with the public price, unattributed. A keyed create answered with
+  anything but `api_key` also logs a warning. TypeScript adds
+  `MakerAttribution` and `readAttribution`.
+- Breaking for Rust struct literals only: `SubmarineFees`, `ReverseFees`,
+  `ChainFees`, `kaleidoswap::Fees` and `KaleidoSwapOptions` gain a field.
+
+### Deprecated — organization keys
+
+`KaleidoOrgClient` and `KaleidoOrgClientOptions` (Rust), `SwapClient.kaleido_org`
+(Python, React Native), `createKaleidoOrgClient`, `BoltzClient.forKaleidoOrg`,
+`KaleidoOrgClientOptions`, `ORG_KEY_HEADER`, `normalizeOrgKey` and the `orgKey`
+options of `PayThroughClient` and `kaleidoswapHttpTransport` (TypeScript) are
+deprecated. Use the public `kld_` key, which also carries the partner fee.
+Nothing is removed in this release.
+
 ### Fixed
 
 - Chain and reverse payout floors charge the pair card's fee on the converted
@@ -61,6 +109,13 @@ TypeScript, Python and React Native APIs are unchanged.
   same way. `canRefund` treats them as a cooperative refund of the taker's
   chain lockup while that lockup is still unspent. An unknown status stays
   unknown.
+
+### Changed — documentation
+
+- `docs/releasing.md` gains a "Security releases" section: a fix is reviewed
+  and tested in a private mirror that publishes nothing, then released from
+  this repository as usual. `SECURITY.md` summarizes it under "How Fixes
+  Ship".
 
 ## [0.15.0] - 2026-11-17
 

@@ -17,7 +17,9 @@
 //!     output_amount - base_fees - claim_fee
 //! );
 
-use crate::kaleido::{ApiKey, OrgKey, API_KEY_HEADER, ATTRIBUTION_HEADER, ORG_KEY_HEADER};
+use crate::kaleido::{
+    ApiKey, MakerAttribution, OrgKey, API_KEY_HEADER, ATTRIBUTION_HEADER, ORG_KEY_HEADER,
+};
 use crate::network::{BitcoinChain, Currency, LiquidChain, Network};
 use crate::swaps::corridor;
 use crate::swaps::rgb::RgbLock;
@@ -160,11 +162,41 @@ pub struct ChainMinerFees {
     pub user: PairMinerFees,
 }
 
+/// The partner fee's part of a service fee `total` charged on `amount`, given
+/// the card's `partnerPercentage`.
+///
+/// The maker charges the partner fee as `floor(amount × partner%)`, on top of
+/// its own fee; this computes the same floor in integer basis points and never
+/// returns more than `total`, so `total − partner` is the maker's own part. A
+/// missing, non-finite or non-positive percentage is no partner fee.
+pub fn partner_fee_part(total: u64, amount: u64, partner_percentage: Option<f64>) -> u64 {
+    let Some(percent) = partner_percentage.filter(|p| p.is_finite() && *p > 0.0) else {
+        return 0;
+    };
+    // Percent to hundredths of a basis point, so 0.1 % is 1 000 exactly
+    // instead of 999.999… as a float.
+    let scaled = (percent * 10_000.0).round();
+    if scaled >= 1_000_000.0 {
+        return total;
+    }
+    let part = (amount as u128 * scaled as u128) / 1_000_000;
+    (part.min(total as u128)) as u64
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainFees {
+    /// The service fee in percent, including the partner fee when there is
+    /// one.
     pub percentage: f64,
     pub miner_fees: ChainMinerFees,
+    /// The partner fee's part of `percentage`, when the request carried a
+    /// partner `kld_` key whose partner sets one. `percentage` already
+    /// includes it, so amounts computed from `percentage` alone are right;
+    /// this is only the line to show. `None` when the maker sent none, which
+    /// is every anonymous caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partner_percentage: Option<f64>,
 }
 
 impl ChainFees {
@@ -177,6 +209,12 @@ impl ChainFees {
 
     pub fn boltz(&self, amount_sat: u64) -> u64 {
         ((self.percentage / 100.0) * amount_sat as f64).ceil() as u64
+    }
+
+    /// The partner fee's part of [`Self::boltz`], for display: see
+    /// [`partner_fee_part`].
+    pub fn partner(&self, amount_sat: u64) -> u64 {
+        partner_fee_part(self.boltz(amount_sat), amount_sat, self.partner_percentage)
     }
 
     pub fn claim_estimate(&self) -> u64 {
@@ -195,8 +233,17 @@ impl ChainFees {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ReverseFees {
+    /// The service fee in percent, including the partner fee when there is
+    /// one.
     pub percentage: f64,
     pub miner_fees: PairMinerFees,
+    /// The partner fee's part of `percentage`, when the request carried a
+    /// partner `kld_` key whose partner sets one. `percentage` already
+    /// includes it, so amounts computed from `percentage` alone are right;
+    /// this is only the line to show. `None` when the maker sent none, which
+    /// is every anonymous caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partner_percentage: Option<f64>,
 }
 
 impl ReverseFees {
@@ -208,6 +255,16 @@ impl ReverseFees {
 
     pub fn boltz(&self, invoice_amount_sat: u64) -> u64 {
         ((self.percentage / 100.0) * invoice_amount_sat as f64).ceil() as u64
+    }
+
+    /// The partner fee's part of [`Self::boltz`], for display: see
+    /// [`partner_fee_part`].
+    pub fn partner(&self, invoice_amount_sat: u64) -> u64 {
+        partner_fee_part(
+            self.boltz(invoice_amount_sat),
+            invoice_amount_sat,
+            self.partner_percentage,
+        )
     }
 
     pub fn claim_estimate(&self) -> u64 {
@@ -226,6 +283,13 @@ pub struct SubmarineFees {
     pub percentage: f64,
     /// The network fees charged for locking up and claiming funds onchain. These values are absolute, denominated in 10 ** -8 of the quote asset.
     pub miner_fees: u64,
+    /// The partner fee's part of `percentage`, when the request carried a
+    /// partner `kld_` key whose partner sets one. `percentage` already
+    /// includes it, so amounts computed from `percentage` alone are right;
+    /// this is only the line to show. `None` when the maker sent none, which
+    /// is every anonymous caller.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partner_percentage: Option<f64>,
 }
 
 impl SubmarineFees {
@@ -235,6 +299,16 @@ impl SubmarineFees {
 
     pub fn boltz(&self, invoice_amount_sat: u64) -> u64 {
         ((self.percentage / 100.0) * invoice_amount_sat as f64).ceil() as u64
+    }
+
+    /// The partner fee's part of [`Self::boltz`], for display: see
+    /// [`partner_fee_part`].
+    pub fn partner(&self, invoice_amount_sat: u64) -> u64 {
+        partner_fee_part(
+            self.boltz(invoice_amount_sat),
+            invoice_amount_sat,
+            self.partner_percentage,
+        )
     }
 
     pub fn network(&self) -> u64 {
@@ -645,7 +719,7 @@ fn redirect_strips_api_key(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
         || sent_to.port_or_known_default() != came_from.port_or_known_default()
 }
 
-/// What a caller should do about the organization API key after a redirect off
+/// What a caller should do about the partner key after a redirect off
 /// the maker. See [`BoltzApiClientV2::reject_credential_leaking_redirect`].
 ///
 /// Neither branch claims more than the SDK can see, which is the origin the
@@ -659,7 +733,7 @@ fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
     if redirect_strips_api_key(sent_to, came_from) {
         return format!(
             "; the response came back from a different host or port, so a direct hop \
-             there dropped {API_KEY_HEADER} and the organization API key did not \
+             there dropped {API_KEY_HEADER} and the partner key did not \
              travel — but nothing this response says came from the maker. If the \
              maker answered with a chain of redirects rather than one, an earlier hop \
              could have changed only the scheme and kept the key: this SDK sees only \
@@ -668,7 +742,7 @@ fn api_key_redirect_advice(sent_to: &reqwest::Url, came_from: &reqwest::Url) -> 
         );
     }
     "; the redirect changed only the scheme, which native HTTP clients do not treat \
-     as cross-origin — assume the organization API key reached that host, in the \
+     as cross-origin — assume the partner key reached that host, in the \
      clear if the hop was to http, and revoke it"
         .to_string()
 }
@@ -907,6 +981,9 @@ pub struct BoltzApiClientV2 {
     /// [`KaleidoMakerClient`]: crate::kaleido::KaleidoMakerClient
     /// [`KaleidoOrgClient`]: crate::kaleido::KaleidoOrgClient
     attribution: Option<Attribution>,
+    /// The last [`ATTRIBUTION_HEADER`] value a successful maker response
+    /// carried. Shared by clones of this client: they are one client.
+    last_attribution: std::sync::Arc<std::sync::Mutex<Option<MakerAttribution>>>,
 }
 
 /// How a client names its partner organization to the maker. One or the other,
@@ -915,7 +992,7 @@ pub struct BoltzApiClientV2 {
 /// to fail.
 #[derive(Debug, Clone)]
 enum Attribution {
-    /// The secret `kld_` key, on every request to the maker.
+    /// The partner's `kld_` key, on every request to the maker.
     ApiKey(ApiKey),
     /// The public organization key, on swap creation only.
     OrgKey(OrgKey),
@@ -928,6 +1005,7 @@ impl BoltzApiClientV2 {
             http_client: Self::default_http_client(),
             timeout,
             attribution: None,
+            last_attribution: Default::default(),
         }
     }
 
@@ -1102,10 +1180,11 @@ impl BoltzApiClientV2 {
             http_client,
             timeout,
             attribution: None,
+            last_attribution: Default::default(),
         }
     }
 
-    /// Bind a partner organization API key to this client.
+    /// Bind a partner key to this client.
     ///
     /// Crate-private: a key may only be paired with a URL [`KaleidoMakerClient`]
     /// has already vetted, which is what makes "this client sends the key" and
@@ -1129,7 +1208,7 @@ impl BoltzApiClientV2 {
         self
     }
 
-    /// The partner organization API key this client carries, if any. The key's
+    /// The partner key this client carries, if any. The key's
     /// secret is not reachable through it — see [`ApiKey`].
     pub fn api_key(&self) -> Option<&ApiKey> {
         match &self.attribution {
@@ -1147,9 +1226,60 @@ impl BoltzApiClientV2 {
         }
     }
 
+    /// What the maker last answered in [`ATTRIBUTION_HEADER`], on any
+    /// successful response that carried it: a rate card, a quote or a create.
+    ///
+    /// For a client with a partner key, [`MakerAttribution::ApiKey`] means the
+    /// maker priced (or stored) the request for that partner, and
+    /// [`MakerAttribution::Unattributed`] means it did not recognise the key —
+    /// unknown, revoked, or for the other environment — and answered with the
+    /// public price and no attribution. That is not an error, so an app with a
+    /// rotated key keeps working; check this value to notice it. `None` until a
+    /// response carried the header: a maker that predates it, or a browser
+    /// whose maker edge does not expose it.
+    ///
+    /// Shared by clones of this client; with concurrent requests it is
+    /// whichever answer arrived last.
+    pub fn last_attribution(&self) -> Option<MakerAttribution> {
+        self.last_attribution
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Keep the maker's [`ATTRIBUTION_HEADER`] answer, and warn when a create
+    /// sent with a partner key came back unattributed.
+    fn record_attribution(&self, response: &MakerResponse, creates: bool) {
+        if !response.status().is_success() {
+            return;
+        }
+        let Some(value) = response.headers().get(ATTRIBUTION_HEADER) else {
+            return;
+        };
+        let answered = MakerAttribution::parse(value.to_str().unwrap_or("<not text>"));
+        if creates {
+            if let Some(api_key) = self.api_key() {
+                if answered != MakerAttribution::ApiKey {
+                    log::warn!(
+                        "{} sent partner key {}, but the maker stored the swap with \
+                         attribution `{answered}`: it did not recognise the key (unknown, \
+                         revoked or for the other environment), so the swap is not \
+                         attributed to that partner",
+                        response.url().path(),
+                        api_key.redacted(),
+                    );
+                }
+            }
+        }
+        *self
+            .last_attribution
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(answered);
+    }
+
     /// Returns the WebSocket URL for the Boltz server.
     ///
-    /// The organization API key is not carried on it. `/v2/ws` publishes swap
+    /// The partner key is not carried on it. `/v2/ws` publishes swap
     /// status for ids the subscriber already holds and creates nothing, so there
     /// is nothing on it to attribute — and the WebSocket client this SDK uses
     /// sends no custom headers on the handshake in the browser regardless.
@@ -1199,6 +1329,7 @@ impl BoltzApiClientV2 {
         let req_builder = self.maybe_add_api_key(req_builder, &url)?;
         let response = self.send(req_builder).await?;
         self.reject_credential_leaking_redirect(&response, self.credentials_sent(None))?;
+        self.record_attribution(&response, false);
         Ok(response)
     }
 
@@ -1240,7 +1371,7 @@ impl BoltzApiClientV2 {
     }
 
     /// The credential headers a request just went out with: the per-swap
-    /// `swapAuth` when the caller passed one, and the organization API key when
+    /// `swapAuth` when the caller passed one, and the partner key when
     /// this client carries one.
     fn credentials_sent(&self, swap_auth: Option<&str>) -> Vec<&'static str> {
         let mut sent = Vec::new();
@@ -1564,6 +1695,7 @@ impl BoltzApiClientV2 {
         swap_auth: Option<&str>,
     ) -> Result<MakerResponse, Error> {
         let method_str = method.to_string();
+        let creates = self.is_swap_creation(&method, &url);
         let org_key = self.org_key_for(&method, &url);
         let req_builder = self.http_client.request(method, &url).json(&data);
         let req_builder = self.maybe_add_timeout(req_builder);
@@ -1582,6 +1714,7 @@ impl BoltzApiClientV2 {
                 if let Some(org_key) = org_key {
                     warn_if_attribution_dropped(&response, org_key);
                 }
+                self.record_attribution(&response, creates);
                 Ok(response)
             }
             Err(e) => {
@@ -1599,7 +1732,7 @@ impl BoltzApiClientV2 {
         }
     }
 
-    /// Attach the partner organization API key — and only to the exact origin
+    /// Attach the partner key — and only to the exact origin
     /// it was configured for.
     ///
     /// The key names an organization to the KaleidoSwap maker and to nobody
@@ -1623,7 +1756,7 @@ impl BoltzApiClientV2 {
         let target = reqwest::Url::parse(url)?;
         if !same_origin(&configured, &target) {
             return Err(Error::Protocol(format!(
-                "refusing to send organization API key {} to {} — it is bound to {}",
+                "refusing to send partner key {} to {} — it is bound to {}",
                 api_key.redacted(),
                 target.host_str().unwrap_or(url),
                 configured.host_str().unwrap_or(&self.base_url),
@@ -1643,16 +1776,19 @@ impl BoltzApiClientV2 {
     /// drift apart when one is added.
     fn org_key_for(&self, method: &Method, url: &str) -> Option<OrgKey> {
         let org_key = self.org_key()?;
-        if *method != Method::POST {
-            return None;
-        }
-        let creates = SWAP_CREATION_ENDPOINTS
-            .iter()
-            .any(|end_point| url == format!("{}/{end_point}", self.base_url))
-            || self
-                .corridor_root()
-                .is_ok_and(|root| url == format!("{root}/v1/swap"));
-        creates.then_some(org_key)
+        self.is_swap_creation(method, url).then_some(org_key)
+    }
+
+    /// Whether `method url` is one of the exact swap-creation requests this
+    /// client builds.
+    fn is_swap_creation(&self, method: &Method, url: &str) -> bool {
+        *method == Method::POST
+            && (SWAP_CREATION_ENDPOINTS
+                .iter()
+                .any(|end_point| url == format!("{}/{end_point}", self.base_url))
+                || self
+                    .corridor_root()
+                    .is_ok_and(|root| url == format!("{root}/v1/swap")))
     }
 
     /// Attach the per-swap taker credential, rejecting a value that cannot be
@@ -1735,7 +1871,7 @@ impl BoltzApiClientV2 {
     //
     // A sibling of the `/v2` routes above, not a child: `POST /v1/swap` and
     // `GET /v1/rfq/{id}` hang off the maker's origin. Everything a `/v2`
-    // request carries rides along — the organization API key (the maker
+    // request carries rides along — the partner key (the maker
     // attributes `/v1/swap` exactly like `/v2/swap/*`), the timeout, the
     // redirect guard — because the origin is the same one the key is bound to.
 
@@ -5551,6 +5687,7 @@ mod tests {
                 lockup: 0,
                 claim: 0,
             },
+            partner_percentage: None,
         };
         for percentage in [100.0, 150.0, f64::INFINITY] {
             let fees = card(percentage);
@@ -5562,6 +5699,7 @@ mod tests {
                 lockup: u64::MAX,
                 claim: u64::MAX,
             },
+            partner_percentage: None,
         };
         assert_eq!(saturating.total(100_000), u64::MAX);
         assert!(minimum_payout(100_000, 1.0, |a| saturating.total(a)).is_err());
@@ -6309,6 +6447,169 @@ mod tests {
             .unwrap();
         assert_eq!(response.headers()[ATTRIBUTION_HEADER], "none");
         maker.join().unwrap();
+    }
+
+    /// A keyed client sends its key on the rate-card read, not only on the
+    /// create: the keyed card carries the partner fee in `percentage` and its
+    /// own `pairHash`, so amounts priced from an anonymous card would not
+    /// match the keyed create. It also keeps what the maker answered in
+    /// `X-Kaleido-Attribution`, and reads the partner fee line off the card.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn a_keyed_client_sends_its_key_on_pair_reads_and_keeps_the_answer() {
+        let card = br#"{"BTC":{"BTC":{"hash":"keyed","rate":1,"limits":{"minimal":1000,"maximal":100000,"maximalZeroConf":0},"fees":{"percentage":0.6,"partnerPercentage":0.1,"minerFees":150}}}}"#;
+        let mut answer = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+             X-Kaleido-Attribution: api_key\r\nContent-Length: {}\r\n\r\n",
+            card.len()
+        )
+        .into_bytes();
+        answer.extend_from_slice(card);
+        let (base_url, maker) = capture_one_request_answering(answer);
+        let key = "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
+        let client =
+            crate::kaleido::KaleidoMakerClient::new(crate::kaleido::KaleidoMakerClientOptions {
+                maker_url: base_url,
+                api_key: key.parse().unwrap(),
+                timeout: None,
+            })
+            .unwrap();
+        assert_eq!(client.last_attribution(), None);
+
+        let pairs = client.get_submarine_pairs().await.unwrap();
+        let request = maker.join().unwrap().to_ascii_lowercase();
+        assert!(request.starts_with("get /v2/swap/submarine "), "{request}");
+        assert!(
+            request.contains(&format!(
+                "authorization: bearer {}",
+                key.to_ascii_lowercase()
+            )),
+            "{request}",
+        );
+        assert_eq!(client.last_attribution(), Some(MakerAttribution::ApiKey));
+
+        let fees = &pairs.get("BTC", "BTC").unwrap().fees;
+        assert_eq!(fees.partner_percentage, Some(0.1));
+        // 0.6 % of 50 000 is the whole service fee; 0.1 % of it is the partner's.
+        assert_eq!(fees.boltz(50_000), 300);
+        assert_eq!(fees.partner(50_000), 50);
+    }
+
+    /// A key the maker does not recognise is not an error: the maker answers
+    /// with the public price and `X-Kaleido-Attribution: none`, the create
+    /// succeeds, and the client keeps the answer for the app to read.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn an_unrecognised_key_is_reported_as_data_not_an_error() {
+        let (base_url, maker) = capture_one_request_answering(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+              X-Kaleido-Attribution: none\r\nContent-Length: 2\r\n\r\n{}"
+                .to_vec(),
+        );
+        let client = BoltzApiClientV2::new(base_url, None).with_api_key(
+            "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t"
+                .parse::<crate::kaleido::ApiKey>()
+                .unwrap(),
+        );
+        client
+            .post_response("swap/reverse", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        maker.join().unwrap();
+        assert_eq!(
+            client.last_attribution(),
+            Some(MakerAttribution::Unattributed)
+        );
+        // A clone is the same client, and sees the same answer.
+        assert_eq!(
+            client.clone().last_attribution(),
+            Some(MakerAttribution::Unattributed)
+        );
+    }
+
+    /// The maker's partner-key refusals reach the caller as data it can act
+    /// on: the status and the maker's error code, and in the high-level layer
+    /// `MakerRejected` rather than an unreachable maker. `pair_hash_mismatch`
+    /// is a keyed create carrying an anonymous card's hash,
+    /// `extra_fees_unsupported` a per-request fee the maker does not take,
+    /// `partner_auth_invalid` a malformed `Authorization`.
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn partner_key_refusals_surface_as_typed_maker_rejections() {
+        use crate::kaleidoswap::{SwapError, SwapErrorCode};
+
+        for (status, code) in [
+            ("400 Bad Request", "pair_hash_mismatch"),
+            ("400 Bad Request", "extra_fees_unsupported"),
+            ("401 Unauthorized", "partner_auth_invalid"),
+        ] {
+            let body = format!(r#"{{"error":"{code}","details":"refused"}}"#);
+            let (base_url, maker) = capture_one_request_answering(
+                format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\n\
+                     Content-Length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .into_bytes(),
+            );
+            let client = BoltzApiClientV2::new(base_url, None).with_api_key(
+                "kld_test_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t"
+                    .parse::<crate::kaleido::ApiKey>()
+                    .unwrap(),
+            );
+            let error = client
+                .post_json::<Value>("swap/reverse", serde_json::json!({}))
+                .await
+                .unwrap_err();
+            maker.join().unwrap();
+            match &error {
+                Error::HTTPStatusNotSuccess(got, value) => {
+                    assert_eq!(got.as_str(), &status[..3], "{code}");
+                    assert_eq!(value["error"], code, "{code}");
+                }
+                other => panic!("{code}: expected HTTPStatusNotSuccess, got {other:?}"),
+            }
+            let swap_error = SwapError::from_core(error, None);
+            assert_eq!(swap_error.code, SwapErrorCode::MakerRejected, "{code}");
+            assert!(swap_error.message.contains(code), "{}", swap_error.message);
+            // A refused create sets no attribution: there was no answer to keep.
+            assert_eq!(client.last_attribution(), None, "{code}");
+        }
+    }
+
+    /// The partner line is the floor the maker charges, never more than the
+    /// service fee it is part of, and nothing without a partner percentage.
+    #[test]
+    fn the_partner_fee_part_floors_and_stays_inside_the_total() {
+        assert_eq!(partner_fee_part(300, 50_000, Some(0.1)), 50);
+        // floor(12 345 × 0.1 %) = 12.
+        assert_eq!(partner_fee_part(75, 12_345, Some(0.1)), 12);
+        assert_eq!(partner_fee_part(10, 50_000, Some(0.1)), 10);
+        for absent in [None, Some(0.0), Some(-1.0), Some(f64::NAN)] {
+            assert_eq!(partner_fee_part(300, 50_000, absent), 0, "{absent:?}");
+        }
+        // An anonymous card has no `partnerPercentage`, and serializes back
+        // without one.
+        let fees: SubmarineFees =
+            serde_json::from_str(r#"{"percentage":0.5,"minerFees":150}"#).unwrap();
+        assert_eq!(fees.partner_percentage, None);
+        assert_eq!(fees.partner(50_000), 0);
+        assert!(!serde_json::to_string(&fees)
+            .unwrap()
+            .contains("partnerPercentage"));
+    }
+
+    #[test]
+    fn a_maker_attribution_reads_every_value() {
+        for (wire, parsed) in [
+            ("none", MakerAttribution::Unattributed),
+            ("api_key", MakerAttribution::ApiKey),
+            ("org_key", MakerAttribution::OrgKey),
+            ("future", MakerAttribution::Other("future".into())),
+        ] {
+            assert_eq!(MakerAttribution::parse(wire), parsed);
+            assert_eq!(parsed.as_str(), wire);
+        }
     }
 
     /// A client built for a partner organization must put the key in

@@ -83,8 +83,19 @@ function loadGuarded() {
   return { SwapClient, Exception, nativeCalls };
 }
 
-test("kaleidoMaker is refused without the opt-in, before the key reaches native code", () => {
-  const { SwapClient, Exception, nativeCalls } = loadGuarded();
+test("kaleidoMaker builds without an opt-in: the kld_ key is public", () => {
+  const { SwapClient, nativeCalls } = loadGuarded();
+  for (const options of [undefined, {}, { allowMobile: false }, { allowMobile: true }]) {
+    assert.equal(
+      SwapClient.kaleidoMaker("https://maker.example", API_KEY, 30n, options),
+      "client",
+      `kaleidoMaker should build with ${JSON.stringify(options)}`,
+    );
+  }
+  assert.deepEqual(nativeCalls, Array(4).fill(["https://maker.example", API_KEY, 30n]));
+});
+
+test("a secret key kind is refused without the opt-in", () => {
   for (const options of [
     undefined,
     {},
@@ -94,31 +105,21 @@ test("kaleidoMaker is refused without the opt-in, before the key reaches native 
     { allowMobile: "true" },
     { allowMobile: 1 },
   ]) {
-    assert.throws(
-      () => SwapClient.kaleidoMaker("https://maker.example", API_KEY, undefined, options),
-      (error) =>
-        error instanceof Exception.Generic &&
-        error.message === KALEIDO_MAKER_IN_APP_REFUSAL &&
-        !error.message.includes(API_KEY),
-      `kaleidoMaker should be refused with ${JSON.stringify(options)}`,
+    assert.equal(
+      kaleidoMakerRefusal(options, "secret"),
+      KALEIDO_MAKER_IN_APP_REFUSAL,
+      `a secret key should be refused with ${JSON.stringify(options)}`,
     );
   }
-  assert.deepEqual(nativeCalls, []);
-});
-
-test("kaleidoMaker builds with allowMobile: true", () => {
-  const { SwapClient, nativeCalls } = loadGuarded();
-  assert.equal(
-    SwapClient.kaleidoMaker("https://maker.example", API_KEY, 30n, { allowMobile: true }),
-    "client",
-  );
-  assert.deepEqual(nativeCalls, [["https://maker.example", API_KEY, 30n]]);
+  assert.equal(kaleidoMakerRefusal({ allowMobile: true }, "secret"), undefined);
+  assert.equal(kaleidoMakerRefusal(undefined), undefined);
+  assert.equal(kaleidoMakerRefusal(undefined, "public"), undefined);
 });
 
 test("the refusal names the opt-in and never the key", () => {
-  assert.equal(kaleidoMakerRefusal({ allowMobile: true }), undefined);
   assert.match(KALEIDO_MAKER_IN_APP_REFUSAL, /allowMobile: true/);
   assert.match(KALEIDO_MAKER_IN_APP_REFUSAL, /mobile app/);
+  assert.ok(!KALEIDO_MAKER_IN_APP_REFUSAL.includes(API_KEY));
 });
 
 test("adds the import, the parameter and the refusal", () => {

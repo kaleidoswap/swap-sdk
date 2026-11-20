@@ -1,13 +1,17 @@
 /**
- * The in-app refusal for `SwapClient.kaleidoMaker`.
+ * The in-app check for `SwapClient.kaleidoMaker`.
  *
- * `kaleidoMaker` takes the partner organization's secret `kld_test_…` /
- * `kld_live_…` key. The `bindings` crate it comes from also builds the Python
- * wheel, where it runs on a server and holding the key is the point, so the
- * Rust side has no way to know it is inside an app. This package only ever runs
- * inside one: a turbo module in an iOS or Android bundle, where every user
- * holds the binary and can read the key out of it. So the refusal lives here,
- * in this package's TypeScript, with no runtime sniffing to get wrong.
+ * `kaleidoMaker` takes a partner's `kld_test_…` / `kld_live_…` key. Every key
+ * Platform issues today is a public partner identifier: it attributes swaps
+ * and carries the partner's fee, never a lower price or higher limits, so it
+ * belongs in the app as a build constant and `kaleidoMaker` builds without any
+ * opt-in.
+ *
+ * The refusal below is kept for a future secret, server-only key kind. The
+ * `bindings` crate also builds the Python wheel, where a server holding such a
+ * key is the intended use, so the Rust side has no way to know it is inside an
+ * app; this package only ever runs inside one. So the check lives here, in
+ * this package's TypeScript, with no runtime sniffing to get wrong.
  *
  * `scripts/guard-kaleido-maker.mjs` wires this into the generated
  * `SwapClient.kaleidoMaker` after every `ubrn` generation, and refuses to finish
@@ -21,26 +25,27 @@
 /** The fourth argument to `SwapClient.kaleidoMaker`. */
 export interface KaleidoMakerAppOptions {
   /**
-   * Build the attributed client inside the app anyway. Off by default, and
-   * `kaleidoMaker` throws without it. Set it only if you have accepted that
-   * everyone who installs the app can read the organization key out of it and
-   * attribute their own swaps to your organization, or exhaust its limits.
-   * Only the boolean `true` counts.
+   * Build the client inside the app with a secret, server-only key. Has no
+   * effect for the keys Platform issues today, which are public and need no
+   * opt-in. Only the boolean `true` counts.
    */
   allowMobile?: boolean;
 }
 
-/** Why `kaleidoMaker` refused. Never includes the key. */
+/** What a partner key may be shipped in: `"public"` for every key today. */
+export type PartnerKeyKind = "public" | "secret";
+
+/** Why `kaleidoMaker` refused a secret key. Never includes the key. */
 export const KALEIDO_MAKER_IN_APP_REFUSAL =
-  "refusing to build an attributed client in a mobile app: the organization " +
-  "API key is a permanent credential with no origin binding and no per-key " +
-  "rate limit, so a key in an app bundle is readable by anyone who installs " +
-  "it. Create attributed swaps from your server with the key in server-side " +
-  "configuration, or pass { allowMobile: true } as the fourth argument if " +
-  "you have accepted that exposure.";
+  "refusing to build a client with a secret partner key in a mobile app: a " +
+  "key in an app bundle is readable by anyone who installs it. Create those " +
+  "swaps from your server with the key in server-side configuration, or pass " +
+  "{ allowMobile: true } as the fourth argument if you have accepted that " +
+  "exposure. Public kld_ keys need no opt-in.";
 
 /**
- * The refusal message, or `undefined` when the caller opted in.
+ * The refusal message, or `undefined` when the client may be built: always for
+ * a public key, and for a secret one only when the caller opted in.
  *
  * It returns the message rather than throwing it so that the generated code
  * can throw its own `Exception.Generic`, the same error type every other
@@ -48,6 +53,10 @@ export const KALEIDO_MAKER_IN_APP_REFUSAL =
  */
 export function kaleidoMakerRefusal(
   options: KaleidoMakerAppOptions | undefined,
+  keyKind: PartnerKeyKind = "public",
 ): string | undefined {
-  return options?.allowMobile === true ? undefined : KALEIDO_MAKER_IN_APP_REFUSAL;
+  if (keyKind === "public" || options?.allowMobile === true) {
+    return undefined;
+  }
+  return KALEIDO_MAKER_IN_APP_REFUSAL;
 }

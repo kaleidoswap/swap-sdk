@@ -657,7 +657,7 @@ impl RfqQuote {
 /// `https://maker.example/v2` → `https://maker.example`. The `/v2` suffix is
 /// required rather than stripped when present: a URL without it is not a
 /// maker base this crate recognises, and guessing an origin would send the
-/// request — and the organization API key riding on it — somewhere the
+/// request — and the partner key riding on it — somewhere the
 /// caller did not name. A trailing slash is tolerated; a query string or
 /// fragment is not, since neither belongs on a base URL.
 pub fn corridor_root_from_maker_url(maker_url: &str) -> Result<String, Error> {

@@ -31,6 +31,7 @@ fn kaleidoswap(store: Arc<dyn SwapStore>, passphrase: &str) -> KaleidoSwap {
         store,
         signer: Arc::new(signer),
         maker_url: Some(BOLTZ_REGTEST.to_string()),
+        api_key: None,
         // The layer's regtest defaults are the stack's Esplora instances.
         bitcoin_esplora_url: None,
         liquid_esplora_url: None,
