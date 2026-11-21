@@ -98,7 +98,7 @@ members = [
 
 [workspace.dependencies]
 bitcoin = { version = "0.32.2", features = ["rand", "base64", "rand-std"] }
-elements = { version = "0.26.2", features = ["serde", "base64"] }
+elements = { version = "0.27.0", features = ["serde", "base64"] }
 serde = { version = "1.0.0", features = ["derive"] }
 serde_json = "1.0.0"
 async-trait = "0.1.86"
@@ -118,27 +118,7 @@ bitcoin = { workspace = true }
 
 # Used for musig API not available in secp included in bitcoin/elements
 # TODO: remove once bitcoin included version contains musig
-#
-# A git rev and not a crates.io version: every `0.32.0-beta.*` was yanked on
-# 2026-08-28, superseded by the stable 0.33 line. Cargo will keep using a yanked
-# version that a `Cargo.lock` already pins, so this repo's own builds went on
-# working — but any resolution that starts without that lock cannot see the
-# version at all, which is a downstream consumer adding this SDK, and is what
-# the "Build as wasm dependency" job reproduces. A `=0.32.0-beta.2` requirement
-# does not help: yanked versions are excluded from a fresh resolution however
-# exact the requirement. A git source is not subject to the yank.
-#
-# `rev`, not `tag`: this is a cryptography dependency and a tag can be moved,
-# which is a class of surprise the yank has just demonstrated the cost of. The
-# rev below is the commit tagged `secp256k1-0.32.0-beta.2` — the same version
-# the lock pinned before this change, so no call site moves.
-#
-# This is a stopgap, not the destination. The real fix is 0.33.x, whose MuSig2
-# nonce API differs (`SessionSecretRand::assume_unique_per_nonce_gen` takes a
-# second argument, and `KeyAggCache::nonce_gen` changed shape) — a migration
-# through the cooperative-signing path that wants its own review, not a rider
-# on an unrelated branch.
-secp256k1_musig = { package = "secp256k1", git = "https://github.com/rust-bitcoin/rust-secp256k1", rev = "6e5c556e566d6ca1954daa1d8592efac70e75d06" }
+secp256k1_musig = { package = "secp256k1", version = "0.33.1" }
 
 elements = { workspace = true }
 serde = { workspace = true }
@@ -164,7 +144,7 @@ zeroize = "1.9.0"
 # `net` + `rt` for the LNURL egress resolver (`tokio::net::lookup_host`);
 # reqwest already needs both on native, so this adds no compile.
 tokio = { workspace = true, features = ["net", "rt"] }
-electrum-client = { version = "0.25.0", default-features = false, features = ["use-rustls-ring", "proxy"], optional = true }
+electrum-client = { version = "0.25.2", default-features = false, features = ["use-rustls-ring", "proxy"], optional = true }
 rustls = { version = "0.23.32", default-features = false, features = ["ring"], optional = true }
 
 [target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]

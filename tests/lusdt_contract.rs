@@ -587,7 +587,7 @@ fn musig_internal_key(
     let second = secp256k1_musig::PublicKey::from_slice(&second.serialize()).expect("musig pubkey");
     let cache = musig::KeyAggCache::new(&[&first, &second]);
     let internal =
-        bitcoin::XOnlyPublicKey::from_slice(&cache.agg_pk().serialize()).expect("xonly key");
+        bitcoin::XOnlyPublicKey::from_slice(&cache.agg_pk().to_byte_array()).expect("xonly key");
     (cache, internal)
 }
 
@@ -636,7 +636,7 @@ fn sdk_derives_the_canonical_liquid_taproot_vectors() {
         };
         let (cache, internal) = musig_internal_key(first, second);
         assert_eq!(
-            hex::encode(cache.agg_pk().serialize()),
+            hex::encode(cache.agg_pk().to_byte_array()),
             string_at(case, "/internalKey")
         );
 
