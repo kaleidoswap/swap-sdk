@@ -43,6 +43,8 @@ TypeScript, Python and React Native APIs are unchanged.
   for a claim and a positive amount for a refund. RGB HTLCs and L-USDT swaps
   keep their dedicated flows and are refused here.
 
+## [0.16.0] - 2026-11-20
+
 ### The `kld_` partner key is public, and carries the partner fee
 
 A partner's `kld_<env>_<key_id>_<secret>` key is now a public partner
@@ -109,6 +111,12 @@ Nothing is removed in this release.
   same way. `canRefund` treats them as a cooperative refund of the taker's
   chain lockup while that lockup is still unspent. An unknown status stays
   unknown.
+
+### Changed — dependencies
+
+- `Cargo.lock` moves to quinn-proto 0.11.19, quinn-udp 0.5.16, rustls 0.23.46,
+  rustls-webpki 0.103.17, webpki-roots 1.0.12, zstd-sys 2.1.3 and
+  electrum-client 0.25.2. Lockfile only; no manifest changes.
 
 ### Changed — documentation
 
