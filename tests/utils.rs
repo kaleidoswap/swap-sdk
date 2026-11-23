@@ -3,9 +3,9 @@ use bitcoin::base64::Engine;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 use futures::FutureExt;
 #[cfg(feature = "ws")]
-use kaleidorg_swap_sdk::boltz::BoltzWsApi;
-use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, LiquidChain};
-use kaleidorg_swap_sdk::util::sleep;
+use kaleidoswap::boltz::BoltzWsApi;
+use kaleidoswap::network::{BitcoinChain, Chain, LiquidChain};
+use kaleidoswap::util::sleep;
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::{error::Error, sync::Arc, time::Duration};

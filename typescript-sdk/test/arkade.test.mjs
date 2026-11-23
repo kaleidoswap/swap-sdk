@@ -1,4 +1,4 @@
-// Tests for the `@kaleidorg/swap-sdk/arkade` venue. Run against the built
+// Tests for the `kaleidoswap/arkade` venue. Run against the built
 // output (`npm test` builds first). Everything this venue does NOT own —
 // `@arkade-os/swap`'s `RfqSwapManager` chain-evidence reads (`readLockupFate`,
 // `findLockupVtxos`) — is exercised through a fake `indexerProvider` that

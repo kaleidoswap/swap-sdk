@@ -5,11 +5,7 @@
  *
  *   KALEIDO_SWAP_MNEMONIC="…12 words…" node examples/simple/resume.ts
  */
-import {
-  createKaleidoSwap,
-  FileStore,
-  mnemonicSigner,
-} from "@kaleidorg/swap-sdk";
+import { createKaleidoSwap, FileStore, mnemonicSigner } from "kaleidoswap";
 
 const kaleido = await createKaleidoSwap({
   network: "signet",

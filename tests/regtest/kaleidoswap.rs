@@ -5,13 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use bitcoin::key::rand::{thread_rng, RngCore};
-use kaleidorg_swap_sdk::boltz::BOLTZ_REGTEST;
-use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Network};
-use kaleidorg_swap_sdk::swaps::kaleidoswap::{
+use kaleidoswap::boltz::BOLTZ_REGTEST;
+use kaleidoswap::network::{BitcoinChain, Chain, Network};
+use kaleidoswap::swaps::kaleidoswap::{
     Amount, Asset, KaleidoSwap, KaleidoSwapOptions, MemoryStore, MnemonicSigner, Protocol,
     QuoteRequest, StartOptions, SwapErrorCode, SwapPhase, SwapRecord, SwapStore,
 };
-use kaleidorg_swap_sdk::util::{setup_logger, sleep};
+use kaleidoswap::util::{setup_logger, sleep};
 use serial_test::serial;
 
 use crate::utils;

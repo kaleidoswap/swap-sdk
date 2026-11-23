@@ -1,4 +1,4 @@
-# kaleidorg-swap-sdk
+# kaleidoswap
 
 **KaleidoSwap swap SDK** — client-side atomic swaps (Boltz protocol) across
 Bitcoin, Lightning, and Liquid, for Rust, Python, the browser, and React
@@ -49,10 +49,10 @@ the KaleidoSwap layers are built on top of it.
 Bitcoin on Arkade (`ARKD` in the maker's catalogue) is not a Boltz-shaped
 route. The maker serves it as an RFQ over `POST /v1/swap` and
 `GET /v1/rfq/{id}`, beside its `/v2` surface, and this SDK speaks that wire from
-`kaleidorg_swap_sdk::corridor` on the same client:
+`kaleidoswap::corridor` on the same client:
 
 ```rust
-use kaleidorg_swap_sdk::corridor::{new_rfq_id, LightningSendRequest, RfqAnswer};
+use kaleidoswap::corridor::{new_rfq_id, LightningSendRequest, RfqAnswer};
 
 let answer = client
     .quote_lightning_send(&LightningSendRequest {
@@ -92,7 +92,7 @@ preimage and lossless-processing requirements.
 
 What this half does **not** do is touch Arkade: funding a send lockup or
 claiming a receive lockup needs an Ark wallet, which is the
-`@kaleidorg/swap-sdk/arkade` venue's job (TypeScript, on `@arkade-os/sdk`).
+`kaleidoswap/arkade` venue's job (TypeScript, on `@arkade-os/sdk`).
 Build that venue's transport from the same maker URL with
 `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
@@ -106,8 +106,8 @@ funds anything on your behalf.
 
 ```rust
 use std::sync::Arc;
-use kaleidorg_swap_sdk::kaleidoswap::*;
-use kaleidorg_swap_sdk::network::Network;
+use kaleidoswap::kaleidoswap::*;
+use kaleidoswap::network::Network;
 
 let kaleido = KaleidoSwap::new(KaleidoSwapOptions {
     network: Network::Signet,
@@ -197,7 +197,7 @@ The partner fee comes only from the key. There is no per-request fee field, and
 the SDK sends no Boltz `extraFees`.
 
 ```rust
-use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+use kaleidoswap::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 
 const KALEIDOSWAP_PARTNER_KEY: &str = "kld_live_…";
 
@@ -211,13 +211,13 @@ let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
 ```python
 KALEIDOSWAP_PARTNER_KEY = "kld_live_…"
 
-client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
+client = kaleidoswap.SwapClient.kaleido_maker(
     "https://maker.signet.kaleidoswap.com/v2", KALEIDOSWAP_PARTNER_KEY, None
 )
 ```
 
 ```ts
-import { createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
+import { createKaleidoMakerClient } from "kaleidoswap";
 
 const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
 
@@ -283,26 +283,26 @@ rejected locally.
 | `src/` | The swap engine (Boltz protocol): scripts, MuSig2, tx construction, key/preimage derivation, Esplora/Electrum chain access |
 | `bindings/` | [UniFFI](https://mozilla.github.io/uniffi-rs/) bindings — Python today, and the crate every native target is generated from |
 | `bindings-wasm/` | wasm-bindgen bindings for the browser — same swap surface, 64-bit integers cross as `BigInt` |
-| `typescript-sdk/` | TypeScript SDK (`@kaleidorg/swap-sdk`) wrapping the wasm package with hand-written types |
-| `packages/react-native/` | React Native SDK (`@kaleidorg/swap-sdk-react-native`) — a turbo module over the UniFFI crate, because Hermes has no `WebAssembly` |
+| `typescript-sdk/` | TypeScript SDK (`kaleidoswap`) wrapping the wasm package with hand-written types |
+| `packages/react-native/` | React Native SDK (`kaleidoswap-react-native`) — a turbo module over the UniFFI crate, because Hermes has no `WebAssembly` |
 | `macros/` | Proc-macros (wasm-compatible `async_trait`, cross-target `test_all`) |
 
 ## Installation and supported runtimes
 
 | Surface | Install | Supported runtime |
 |---|---|---|
-| Rust | `kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.12.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
-| Python | `pip install kaleidorg_swap_sdk` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
-| TypeScript | `npm install @kaleidorg/swap-sdk` | Browsers and Node 22+; `await init()` takes no argument in either |
-| React Native | `npm install @kaleidorg/swap-sdk-react-native` | iOS and Android, new architecture; a bare or prebuilt app, not Expo Go |
+| Rust | `kaleidoswap = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.12.0" }` | Rust 1.88+, native and `wasm32-unknown-unknown` |
+| Python | `pip install kaleidoswap` | Python 3.10+; wheels for Linux x86_64/aarch64, macOS x86_64/arm64, Windows x86_64, sdist elsewhere |
+| TypeScript | `npm install kaleidoswap` | Browsers and Node 22+; `await init()` takes no argument in either |
+| React Native | `npm install kaleidoswap-react-native` | iOS and Android, new architecture; a bare or prebuilt app, not Expo Go |
 
 Both registries are live and carry every release through `0.12.0`:
-`kaleidorg_swap_sdk` on PyPI (five platform wheels plus an sdist) and
-`@kaleidorg/swap-sdk` on npm. npm has no `0.1.0` — that version reached PyPI
+`kaleidoswap` on PyPI (five platform wheels plus an sdist) and
+`kaleidoswap` on npm. npm has no `0.1.0` — that version reached PyPI
 only; see the `0.1.1` changelog entry. The Rust crate is not published to
 crates.io — depend on it by tag.
 
-The distribution rename to `kaleidorg_swap_sdk` is what cleared the public PyPI
+The distribution rename to `kaleidoswap` is what cleared the public PyPI
 collision that blocked the previous name (`kaleidoswap-sdk`, whose normalized
 project already holds `0.1.0`-`0.5.6`). Publishing per tag is still gated on
 `PYPI_PUBLISH_ENABLED` and `NPM_PUBLISH_ENABLED`, so read both before you tag.
@@ -383,7 +383,7 @@ Native bindings expose the same core constructor as
   [`packages/react-native/`](packages/react-native/README.md). `make rn-build`
   cross-compiles the bindings crate for iOS and Android and regenerates the
   turbo module. The Arkade corridor is not part of the native module — it stays
-  TypeScript and is re-exported from `@kaleidorg/swap-sdk/arkade`.
+  TypeScript and is re-exported from `kaleidoswap/arkade`.
 
   Published with every release beside the browser package: the release
   pipeline seals both npm tarballs in one bundle and attaches the compiled
@@ -510,7 +510,7 @@ JSON:
    means settled).
 
 ```ts
-import { AtomicSwaps, ATOMIC_BTC_TO_USDT_RGB, SwapClient, init } from "@kaleidorg/swap-sdk";
+import { AtomicSwaps, ATOMIC_BTC_TO_USDT_RGB, SwapClient, init } from "kaleidoswap";
 
 await init();
 const atomic = new AtomicSwaps(new SwapClient(makerUrl));
@@ -530,7 +530,7 @@ Amounts are in base units (sats, or USDT-RGB's 6-decimal units), not the pair
 card's display units. `maxServiceFee` only bounds the fee the maker declares,
 so set `minToAmount` (or `maxFromAmount` for a `to` quote) to bound the price.
 
-The same flow is `kaleidorg_swap_sdk::atomic` with
+The same flow is `kaleidoswap::atomic` with
 `BoltzApiClientV2::atomic_pairs` / `atomic_quote` / `atomic_request` /
 `atomic_complete` / `atomic_swap` in Rust, and `SwapClient.get_atomic_pairs` /
 `atomic_quote` / `atomic_request` / `atomic_complete` / `get_atomic_swap` in

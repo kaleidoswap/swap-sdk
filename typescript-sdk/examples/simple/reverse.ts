@@ -11,7 +11,7 @@ import {
   isQuote,
   isSwapError,
   mnemonicSigner,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 const kaleido = await createKaleidoSwap({
   network: "signet",

@@ -2,7 +2,7 @@
 use crate::support::*;
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{Address, Amount, OutPoint, Psbt, Sequence, Transaction, TxIn, TxOut, Witness};
-use kaleidorg_swap_sdk::swaps::rgb::{
+use kaleidoswap::swaps::rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend, PreparedRgbSpend, RgbAllocation, RgbLock, RgbPsbtTemplate,
 };
 use rgb_lib::{

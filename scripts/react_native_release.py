@@ -41,7 +41,7 @@ NPM_REQUIRED = {
     "package/react-native.config.js",
     "package/KaleidoswapSwapSdk.podspec",
     "package/android/CMakeLists.txt",
-    "package/cpp/generated/kaleidorg_swap_sdk.cpp",
+    "package/cpp/generated/kaleidoswap.cpp",
     "package/src/index.tsx",
     "package/src/arkade.ts",
     "package/lib/module/index.js",
@@ -70,14 +70,14 @@ POSTINSTALL = "node scripts/postinstall.mjs"
 # device of that architecture, so it must not be sealed.
 ANDROID_ABIS = ("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
 ANDROID_LIBRARIES = frozenset(
-    f"android/src/main/jniLibs/{abi}/libkaleidorg_swap_sdk.so" for abi in ANDROID_ABIS
+    f"android/src/main/jniLibs/{abi}/libkaleidoswap.so" for abi in ANDROID_ABIS
 )
 IOS_FRAMEWORK = "build/KaleidoSwapSdk.xcframework"
 IOS_LIBRARIES = frozenset(
     {
         f"{IOS_FRAMEWORK}/Info.plist",
-        f"{IOS_FRAMEWORK}/ios-arm64/libkaleidorg_swap_sdk.a",
-        f"{IOS_FRAMEWORK}/ios-arm64_x86_64-simulator/libkaleidorg_swap_sdk.a",
+        f"{IOS_FRAMEWORK}/ios-arm64/libkaleidoswap.a",
+        f"{IOS_FRAMEWORK}/ios-arm64_x86_64-simulator/libkaleidoswap.a",
     }
 )
 ARCHIVE_INVENTORY = {

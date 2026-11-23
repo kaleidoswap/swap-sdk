@@ -25,7 +25,7 @@ let tarballPath = suppliedTarball
     : resolve(process.cwd(), suppliedTarball)
   : undefined;
 let removeTarball = false;
-const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-browser-"));
+const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-browser-"));
 const profileRoot = join(consumerRoot, "firefox-profile");
 const browserBin = process.env.BROWSER_BIN ?? "firefox";
 mkdirSync(profileRoot);
@@ -64,7 +64,7 @@ try {
       <script type="module">
         try {
           const { SwapMasterKey, init, toJson } = await import(
-            "/node_modules/@kaleidorg/swap-sdk/dist/index.js"
+            "/node_modules/kaleidoswap/dist/index.js"
           );
           await init();
           const key = SwapMasterKey.fromWalletMnemonic(

@@ -4,13 +4,16 @@ The Rust crate, Python distribution, and npm package use one public version.
 The first release line for this repository is `0.1.0`, and stable release tags
 use the form `vX.Y.Z`.
 
-The public package names, migrated to the `kaleidorg` identity:
+The public package names, one name on every registry:
 
-- Rust crate: `kaleidorg-swap-sdk`
-- Python distribution: `kaleidorg_swap_sdk` (normalized by PyPI to
-  `kaleidorg-swap-sdk`)
-- Python import: `kaleidorg_swap_sdk`
-- npm package: `@kaleidorg/swap-sdk`
+- Rust crate and import: `kaleidoswap`
+- Python distribution and import: `kaleidoswap`
+- npm packages: `kaleidoswap` and `kaleidoswap-react-native`
+
+Releases up to `0.16.0` shipped as `kaleidorg-swap-sdk` (crate, PyPI;
+import `kaleidorg_swap_sdk`), `@kaleidorg/swap-sdk` and
+`@kaleidorg/swap-sdk-react-native`. Those names stay published and are
+deprecated in favour of the ones above.
 
 ## Version commands
 
@@ -122,7 +125,7 @@ the `attestations` input when a password is set, so it is pinned to `false`.
 ## Publication order
 
 The GitHub release is published from the sealed ten-file bundle and finalized
-changelog **before** either registry. `@kaleidorg/swap-sdk-react-native`'s
+changelog **before** either registry. `kaleidoswap-react-native`'s
 `postinstall` downloads its iOS and Android archives from the GitHub release for
 its own version, so a package that reaches npm before that release exists
 resolves, installs, and then fails in `postinstall`. An npm publish cannot be
@@ -293,14 +296,15 @@ they are unreachable except from a job that environment gates.
 
 ### npm — `NPM_TOKEN`
 
-`@kaleidorg/swap-sdk` did not exist on npm when this pipeline was built, and
 npm configures trusted publishing from an existing package's settings, so a
-brand-new package could not be created by OIDC alone — which is the practical
-reason this pipeline uses a token. The package now exists, so that constraint is
-spent: migrating to trusted publishing is possible whenever someone wants to
+brand-new package cannot be created by OIDC alone — which is the practical
+reason this pipeline uses a token. `@kaleidorg/swap-sdk` was new when the
+pipeline was built, and `kaleidoswap` / `kaleidoswap-react-native` are new
+again with the rename: their first release needs the token. Once they exist,
+migrating to trusted publishing is possible whenever someone wants to
 retire the stored credential.
 
-1. An owner of the `@kaleidorg` scope creates an **automation** token with
+1. An owner of the `kaleidoswap` and `kaleidoswap-react-native` packages creates an **automation** token with
    publish rights (granular access tokens scoped to this package are preferable
    to a legacy classic token).
 2. Store it as `NPM_TOKEN` on the `release` environment. Never at repository
@@ -324,7 +328,7 @@ an unused privilege.
 
 ### PyPI — `PYPI_TOKEN`
 
-1. A PyPI account with upload rights for `kaleidorg-swap-sdk` creates an API
+1. A PyPI account with upload rights for `kaleidoswap` creates an API
    token. The project now exists, so scope the token to it rather than to the
    whole account — the account-scoped token the first upload required should not
    still be in use.
@@ -363,8 +367,8 @@ TAG="v$VERSION"
    make validate-release-readiness TAG="$TAG"
    ```
 
-2. Confirm `@kaleidorg/swap-sdk@$VERSION` and
-   `kaleidorg_swap_sdk==$VERSION` are still absent from npm and PyPI:
+2. Confirm `kaleidoswap@$VERSION` and
+   `kaleidoswap==$VERSION` are still absent from npm and PyPI:
 
    ```sh
    NPM_PUBLISH_ENABLED=false \
@@ -376,7 +380,7 @@ TAG="v$VERSION"
    ruleset, the `v*` release-environment policy, required reviewers, and
    `can_admins_bypass: false`.
 4. Have a second maintainer confirm `NPM_TOKEN` is present on the `release`
-   environment and scoped to publish `@kaleidorg/swap-sdk`. Set
+   environment and scoped to publish `kaleidoswap` and `kaleidoswap-react-native`. Set
    `NPM_PUBLISH_ENABLED=true`; production activation deliberately fails while
    this variable is false.
 5. To publish Python, confirm `PYPI_TOKEN` is present on the `release`
@@ -412,6 +416,137 @@ TAG="v$VERSION"
 
 10. Retain the workflow URL, registry URLs, `SHA256SUMS`,
     `release-manifest.json`, and `release.spdx.json` in the release record.
+
+## Security releases
+
+A fix for an exploitable bug is reviewed and tested in a private mirror,
+`kaleidoswap/swap-sdk-private`, and then released from this repository like
+any other release. The mirror publishes nothing and holds no credentials. It
+exists because the temporary private fork of a GitHub advisory cannot run
+Actions, so a fix merged from one has never been through CI. In the mirror the
+fix and the release commit pass CI in private, and the fix is readable here
+only for the length of one release run before the fixed packages are on npm
+and PyPI.
+
+Everything pushed to this repository during a security release follows the
+rules in [AGENTS.md](../AGENTS.md): neutral titles, commit messages and
+changelog lines, and no advisory details before the release is out.
+
+### The mirror
+
+An administrator sets it up once.
+
+1. Create an empty private repository, `kaleidoswap/swap-sdk-private`, with
+   access for the release maintainers only. Do not fork: a fork of a public
+   repository is public and shares its fork network. Seed it instead:
+
+   ```sh
+   git clone --bare git@github.com:kaleidoswap/swap-sdk.git swap-sdk-seed.git
+   cd swap-sdk-seed.git
+   git push git@github.com:kaleidoswap/swap-sdk-private.git \
+     refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
+   ```
+
+2. Give it no secrets, no environments and no `NPM_PUBLISH_ENABLED` or
+   `PYPI_PUBLISH_ENABLED` variable, so nothing there can publish.
+3. Disable the `release` workflow, which must never run there, and
+   `build react native bindings`, whose macOS build the rehearsal covers:
+
+   ```sh
+   gh workflow disable release.yaml --repo kaleidoswap/swap-sdk-private
+   gh workflow disable build-bindings-react-native.yml \
+     --repo kaleidoswap/swap-sdk-private
+   ```
+
+   `build`, `lint`, `test` and `package` stay on and run on every pull
+   request. The release rehearsal also runs on pull requests that change
+   its watched paths, including package manifests and bindings. Budget for
+   these runs as well as the manual rehearsal on the merged release commit.
+4. Add rulesets:
+   - Branches `security/*`: require a pull request with one approval, dismiss
+     stale approvals, require approval of the most recent push, block force
+     pushes.
+   - Branch `trunk`: block force pushes and deletion. It only ever receives
+     this repository's `trunk`.
+   - Tags `v*`: creation, update and deletion by administrators only. They are
+     copies of this repository's tags.
+
+### Running one
+
+Set the version once:
+
+```sh
+VERSION=X.Y.Z
+```
+
+1. Open a draft security advisory in this repository for the write-up and the
+   CVE. Do not use its temporary private fork.
+2. Bring the mirror up to date from a fresh bare clone. A working clone can
+   hold tags from other remotes, and this push would copy them:
+
+   ```sh
+   git clone --bare git@github.com:kaleidoswap/swap-sdk.git swap-sdk-sync.git
+   git -C swap-sdk-sync.git push \
+     git@github.com:kaleidoswap/swap-sdk-private.git \
+     refs/heads/trunk:refs/heads/trunk 'refs/tags/v*:refs/tags/v*'
+   ```
+
+   The push starts the mirror's `trunk` workflows. This repository has
+   already run them on the same commit, so cancel them:
+
+   ```sh
+   gh run list --repo kaleidoswap/swap-sdk-private --branch trunk \
+     --json databaseId,status \
+     --jq '.[] | select(.status != "completed") | .databaseId' |
+     xargs -n1 gh run cancel --repo kaleidoswap/swap-sdk-private
+   ```
+
+3. In the mirror, create `security/$VERSION` from `trunk` and open the fix as
+   a pull request into it. It merges once CI passes and a maintainer other
+   than its last pusher approves.
+4. Open the release commit as a second pull request into `security/$VERSION`:
+   `make sync-version VERSION=$VERSION` and the finalized changelog section,
+   as for any release.
+5. Run the release rehearsal on the result and wait for it to pass:
+
+   ```sh
+   gh workflow run release-rehearsal.yaml \
+     --repo kaleidoswap/swap-sdk-private \
+     --ref "security/$VERSION" -f failure_case=none
+   ```
+
+6. Before going public, have the maintainer who will approve the `release`
+   environment standing by, and check that `trunk` here has not moved since
+   step 2. If it has, repeat step 2, merge `trunk` into `security/$VERSION`
+   in the mirror and let CI and the rehearsal pass again.
+7. Publish the branch here and open its pull request:
+
+   ```sh
+   git fetch git@github.com:kaleidoswap/swap-sdk-private.git \
+     "security/$VERSION"
+   git push git@github.com:kaleidoswap/swap-sdk.git \
+     "FETCH_HEAD:refs/heads/release/$VERSION"
+   gh pr create --repo kaleidoswap/swap-sdk --base trunk \
+     --head "release/$VERSION" --title "chore(release): prepare $VERSION"
+   ```
+
+   Merge it as soon as the branch rules allow: its tree is the one the mirror
+   tested. From this push on the fix is public.
+8. Run the [release activation checklist](#release-activation-checklist)
+   straight away. The tag goes on the merge commit.
+9. Once the release run has verified the registries, publish the advisory
+   with the affected and patched versions, and add a `Security` section
+   linking it to the GitHub release notes.
+
+### What it does not cover
+
+- The fix is readable here from step 7 until the release run publishes:
+  the build, the approval and the publication. Keep that to one sitting, and
+  do not start step 7 without the approver.
+- A published package can be compared with the previous one, so the release
+  itself shows what changed. The advisory waits for the release, not the
+  other way round.
+- Security fixes go to the latest release only.
 
 ## Partial-publication recovery
 
@@ -489,11 +624,11 @@ publisher succeeds and another fails:
 ## Rust distribution
 
 The Rust surface is **git-only**. Nothing in this pipeline runs `cargo package`
-or `cargo publish`, and `kaleidorg-swap-sdk` is unclaimed on crates.io.
+or `cargo publish`, and `kaleidoswap` is unclaimed on crates.io.
 Consumers take it by tag:
 
 ```toml
-kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }
+kaleidoswap = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }
 ```
 
 Pin the tag you actually want; `v0.6.0` is the latest published release at the
@@ -509,7 +644,7 @@ deliberate deferral rather than an oversight:
 1. `secp256k1_musig` is a git dependency as of `0.4.0`, and `cargo publish`
    rejects a git dependency outright. Resolving it means the `0.33.x` MuSig2
    migration described in that release's changelog entry, not a metadata change.
-2. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
+2. `kaleidoswap-macros` is a path dependency and would have to be
    published first.
 3. The "one synchronized version" contract covers three of the five crates. The
    root crate, Python distribution, and npm package share one public version;
@@ -531,8 +666,11 @@ new name was unclaimed, and `kaleidorg-swap-sdk` now holds `0.1.0` and `0.1.1`
 on PyPI. `0.1.0` reached PyPI but never reached npm, so it is permanently
 claimed there and absent from npm; see the `0.1.1` changelog entry.
 
+From `0.17.0` the distribution is `kaleidoswap`, matching the npm package and
+the crate; `kaleidorg-swap-sdk` keeps `0.1.0` through `0.16.0`.
+
 Public PyPI publishing is **enabled**: `PYPI_PUBLISH_ENABLED` is `true`, and
-`kaleidorg-swap-sdk` carries a release for every tagged version. The flag still
+`kaleidoswap` carries a release for every tagged version. The flag still
 defaults to off — absent or `false` — and the registry-completion gate then
 requires the publish and verify jobs to be `skipped`, with the Python artifacts
 validated in CI and shipped as GitHub release assets only. Read the live value

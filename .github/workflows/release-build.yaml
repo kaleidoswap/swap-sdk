@@ -414,12 +414,12 @@ jobs:
         working-directory: typescript-sdk
         run: >-
           node scripts/smoke-package.mjs
-          "../release-artifacts/kaleidorg-swap-sdk-${{ needs.preflight.outputs.version }}.tgz"
+          "../release-artifacts/kaleidoswap-${{ needs.preflight.outputs.version }}.tgz"
       - name: Clean-install exact React Native npm tarball
         working-directory: packages/react-native
         run: >-
           node scripts/smoke-react-native-package.mjs
-          "../../release-artifacts/kaleidorg-swap-sdk-react-native-${{ needs.preflight.outputs.version }}.tgz"
+          "../../release-artifacts/kaleidoswap-react-native-${{ needs.preflight.outputs.version }}.tgz"
       - name: Upload validated release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

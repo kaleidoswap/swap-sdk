@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 fixtures = json.loads(
     (

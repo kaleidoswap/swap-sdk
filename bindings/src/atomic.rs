@@ -1,5 +1,5 @@
 //! Python surface for BTC L1 <-> USDT-RGB L1 atomic swaps — the maker's
-//! `/v2/swap/atomic` wire. Mirrors `kaleidorg_swap_sdk::atomic`; see that
+//! `/v2/swap/atomic` wire. Mirrors `kaleidoswap::atomic`; see that
 //! module for the flow and for what `verify` checks.
 //!
 //! rgb-lib's offer, request, proposal and completion cross as JSON text, as
@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use kaleidorg_swap_sdk::atomic::{
+use kaleidoswap::atomic::{
     self, AtomicAmountDirection, AtomicOutpoint, AtomicPair, AtomicPairFees, AtomicPairLimits,
     AtomicQuoteExpectations, AtomicQuoteRequest, AtomicSwapState, AtomicSwapStatus,
 };

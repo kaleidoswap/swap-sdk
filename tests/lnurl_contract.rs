@@ -1,5 +1,5 @@
 #![cfg(feature = "lnurl")]
-use kaleidorg_swap_sdk::{lnurl::lnurl::LnUrl, util::lnurl::resolve_lightning_address};
+use kaleidoswap::{lnurl::lnurl::LnUrl, util::lnurl::resolve_lightning_address};
 
 #[tokio::test]
 async fn public_resolver_rejects_insecure_clearnet_before_network_io() {

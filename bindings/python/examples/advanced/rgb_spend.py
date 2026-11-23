@@ -9,7 +9,7 @@ remaining timeout before paying the invoice.
 
 from typing import Protocol
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 
 class RgbWalletAdapter(Protocol):

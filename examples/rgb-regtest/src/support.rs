@@ -22,7 +22,7 @@ pub const MAKER: &str = "http://127.0.0.1:29420/v2";
 pub const ISSUED: u64 = 2_000_000_000;
 pub const INVENTORY: u64 = 1_000_000_000;
 
-pub fn sdk<T>(result: std::result::Result<T, kaleidorg_swap_sdk::error::Error>) -> Result<T> {
+pub fn sdk<T>(result: std::result::Result<T, kaleidoswap::error::Error>) -> Result<T> {
     result.map_err(|e| anyhow!("SDK: {e}"))
 }
 pub fn now() -> u64 {

@@ -1,7 +1,7 @@
 //! Emit the actual serde DTO surface, with the WASM serializer's integer types.
 
-use kaleidorg_swap_sdk::boltz::*;
-use kaleidorg_swap_sdk::swaps::rgb::RgbLock;
+use kaleidoswap::boltz::*;
+use kaleidoswap::swaps::rgb::RgbLock;
 use std::collections::HashSet;
 use ts_rs::{Config, TS};
 

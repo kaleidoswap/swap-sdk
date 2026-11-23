@@ -2217,7 +2217,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaleidorg-swap-sdk"
+name = "kaleidoswap"
 version = "0.12.0"
 dependencies = [
  "async-trait",
@@ -2231,7 +2231,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "js-sys",
- "kaleidorg-swap-sdk-macros",
+ "kaleidoswap-macros",
  "lightning",
  "lightning-invoice",
  "log",
@@ -2248,7 +2248,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaleidorg-swap-sdk-macros"
+name = "kaleidoswap-macros"
 version = "1.0.0"
 dependencies = [
  "proc-macro2",
@@ -3640,7 +3640,7 @@ dependencies = [
  "anyhow",
  "bitcoin",
  "hex",
- "kaleidorg-swap-sdk",
+ "kaleidoswap",
  "ldk-server-client",
  "maker-connector-grpc",
  "reqwest 0.12.28",

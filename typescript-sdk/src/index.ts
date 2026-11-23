@@ -125,7 +125,7 @@ export interface KaleidoMakerClientOptions {
  * or replace the key. A value that cannot be a key is rejected here.
  *
  * ```ts
- * import { init, createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
+ * import { init, createKaleidoMakerClient } from "kaleidoswap";
  *
  * // Public: safe to commit and to bundle.
  * const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
@@ -687,7 +687,7 @@ export class SwapScript {
 // refusal, track by `rfq_id`. These types are the corridor's own snake_case
 // vocabulary on purpose — a quote here IS the `RfqQuote` that
 // `@arkade-os/swap`'s `assertFundable`, `verifyLockupAddress` and
-// `deriveLightningReceive` take, so it crosses into `@kaleidorg/swap-sdk/arkade`
+// `deriveLightningReceive` take, so it crosses into `kaleidoswap/arkade`
 // with no rename. 64-bit amounts and timestamps arrive as `bigint`.
 //
 // This half needs no Arkade dependency: quote, verify, track. Funding a send
@@ -848,7 +848,7 @@ export interface RfqStatus {
  *   rfq_id: newRfqId(), invoice, refund_address, client_refund_pubkey,
  * });
  * if (!isRfqQuote(answer)) throw new Error(`refused: ${answer.reason}`);
- * // Derive the covenant from `answer` with @kaleidorg/swap-sdk/arkade, compare
+ * // Derive the covenant from `answer` with kaleidoswap/arkade, compare
  * // against answer.profile.lockup_address, then fund answer.from_amount.
  * ```
  */
@@ -1161,7 +1161,7 @@ export class AtomicSwaps {
 
 // ---------------------------------------------------------------------------
 // KaleidoSwap — the high-level surface. The state machine is the Rust core's
-// (`kaleidorg_swap_sdk::kaleidoswap`); see ./kaleidoswap.ts for the types.
+// (`kaleidoswap::kaleidoswap`); see ./kaleidoswap.ts for the types.
 // ---------------------------------------------------------------------------
 
 export * from "./kaleidoswap.js";

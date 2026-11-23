@@ -4,7 +4,7 @@
  *
  *   node examples/advanced/01-pairs.ts
  */
-import { SwapClient, init } from "@kaleidorg/swap-sdk";
+import { SwapClient, init } from "kaleidoswap";
 
 import { die, network } from "./common.ts";
 

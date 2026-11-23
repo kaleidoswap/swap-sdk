@@ -1,7 +1,7 @@
 import {
   type KaleidoSwap,
   type SwapPhase,
-} from "@kaleidorg/swap-sdk-react-native";
+} from "kaleidoswap-react-native";
 
 /**
  * Run at every launch, before anything else. `resume()` moves each stored

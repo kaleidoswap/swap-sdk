@@ -6,10 +6,10 @@
 mod common;
 
 use anyhow::{Context, Result};
-use kaleidorg_swap_sdk::network::{Chain, Currency};
-use kaleidorg_swap_sdk::swaps::boltz::CreateSubmarineRequest;
-use kaleidorg_swap_sdk::swaps::SwapScript;
-use kaleidorg_swap_sdk::{LiquidAssetContext, PublicKey};
+use kaleidoswap::network::{Chain, Currency};
+use kaleidoswap::swaps::boltz::CreateSubmarineRequest;
+use kaleidoswap::swaps::SwapScript;
+use kaleidoswap::{LiquidAssetContext, PublicKey};
 
 use common::{api_client, network, required_env, sdk, swap_key, wait_for_status};
 

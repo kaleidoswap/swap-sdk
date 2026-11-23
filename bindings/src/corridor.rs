@@ -1,9 +1,9 @@
 //! Python surface for the Arkade Intents corridor — the maker's `/v1` RFQ
-//! wire. Mirrors `kaleidorg_swap_sdk::corridor` record for record; see that
+//! wire. Mirrors `kaleidoswap::corridor` record for record; see that
 //! module for what each field means and which checks a client owes before it
 //! commits value.
 
-use kaleidorg_swap_sdk::corridor::{
+use kaleidoswap::corridor::{
     self, AmountSide, CardAsset, CardMarket, CardNostrTransport, CardTransports, CorridorCard,
     LightningReceiveRequest, LightningSendRequest, QuoteProfile, RefusalReason, RfqQuote,
     RfqRefusal, RfqState, RfqStatus,

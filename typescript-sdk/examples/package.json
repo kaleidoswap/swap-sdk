@@ -1,14 +1,14 @@
 {
-  "name": "@kaleidorg/swap-sdk-examples",
+  "name": "kaleidoswap-examples",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Runnable examples for @kaleidorg/swap-sdk.",
+  "description": "Runnable examples for kaleidoswap.",
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kaleidorg/swap-sdk": "file:.."
+    "kaleidoswap": "file:.."
   },
   "devDependencies": {
     "typescript": "^5"

@@ -1,5 +1,5 @@
 /**
- * Arkade Intents venue — `@kaleidorg/swap-sdk/arkade`.
+ * Arkade Intents venue — `kaleidoswap/arkade`.
  *
  * Wraps `@arkade-os/swap`'s RFQ client behind the SDK's venue vocabulary:
  * prepare (quote + derive + persist), fund (the caller's wallet), and a
@@ -9,7 +9,7 @@
  * ## Why a subpath
  *
  * Same reasoning as `@arkade-os/swap/nostr`: a Boltz-only consumer of
- * `@kaleidorg/swap-sdk` should not pay for the Arkade dependency graph.
+ * `kaleidoswap` should not pay for the Arkade dependency graph.
  * `@arkade-os/swap` and `@arkade-os/sdk` are optional peer dependencies,
  * resolved only when this subpath is imported — MV3 service workers forbid
  * dynamic `import()`, so the imports below are static and the module is

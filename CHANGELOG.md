@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### One name on every registry: `kaleidoswap`
+
+The SDK is published as `kaleidoswap` on npm, PyPI and (by git tag) Cargo,
+and its React Native package as `kaleidoswap-react-native`.
+
+| | Up to 0.16.0 | From this release |
+| --- | --- | --- |
+| npm | `@kaleidorg/swap-sdk` | `kaleidoswap` |
+| npm (React Native) | `@kaleidorg/swap-sdk-react-native` | `kaleidoswap-react-native` |
+| PyPI | `kaleidorg-swap-sdk` | `kaleidoswap` |
+| Python import | `kaleidorg_swap_sdk` | `kaleidoswap` |
+| Rust crate and import | `kaleidorg-swap-sdk` / `kaleidorg_swap_sdk` | `kaleidoswap` |
+
+Only the names change: the API, the wire format and stored swap records are
+the same. To migrate, swap the dependency and replace the old name in
+imports (`@kaleidorg/swap-sdk/arkade` becomes `kaleidoswap/arkade`). The old
+packages stay published and are deprecated in favour of the new ones.
+
+The React Native package's optional `./arkade` entry still re-exports
+`@kaleidorg/swap-sdk/arkade` below 0.14, the last line built on
+`@arkade-os/sdk` 0.4.
+
 ### Added — `apiKey` on `kaleidoswapHttpTransport`
 
 The Arkade corridor transport takes the partner's `kld_` key as `apiKey` and
@@ -36,6 +58,8 @@ To keep attributing swaps, build the client from the `kld_` key instead:
 `KaleidoMakerClient` in Rust, `SwapClient.kaleido_maker` in Python,
 `createKaleidoMakerClient` in TypeScript, or the `apiKey` option on
 `PayThroughClient`.
+
+## [0.16.0] - 2026-11-20
 
 ### The `kld_` partner key is public, and carries the partner fee
 
@@ -103,6 +127,19 @@ Nothing is removed in this release.
   same way. `canRefund` treats them as a cooperative refund of the taker's
   chain lockup while that lockup is still unspent. An unknown status stays
   unknown.
+
+### Changed — dependencies
+
+- `Cargo.lock` moves to quinn-proto 0.11.19, quinn-udp 0.5.16, rustls 0.23.46,
+  rustls-webpki 0.103.17, webpki-roots 1.0.12, zstd-sys 2.1.3 and
+  electrum-client 0.25.2. Lockfile only; no manifest changes.
+
+### Changed — documentation
+
+- `docs/releasing.md` gains a "Security releases" section: a fix is reviewed
+  and tested in a private mirror that publishes nothing, then released from
+  this repository as usual. `SECURITY.md` summarizes it under "How Fixes
+  Ship".
 
 ## [0.15.0] - 2026-11-17
 

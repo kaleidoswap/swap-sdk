@@ -1,7 +1,7 @@
-use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
-use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain, Network};
-use kaleidorg_swap_sdk::swaps::ChainClient as CoreClient;
+use kaleidoswap::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+use kaleidoswap::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidoswap::network::{BitcoinChain, Chain, Currency, LiquidChain, Network};
+use kaleidoswap::swaps::ChainClient as CoreClient;
 
 use crate::boltz::Error;
 use crate::swap::BtcLikeTransaction;

@@ -5,7 +5,7 @@ Python bindings for the KaleidoSwap SDK: atomic swaps (Boltz protocol) between B
 ## Installation
 
 ```bash
-python -m pip install kaleidorg_swap_sdk
+python -m pip install kaleidoswap
 ```
 
 Python 3.10+ is supported. Prebuilt wheels cover Linux x86_64/aarch64, macOS
@@ -21,7 +21,7 @@ previous run left in the store. The store and the signer are yours: the SDK
 holds no key material and never funds anything on your behalf.
 
 ```python
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 network = sdk.Network.SIGNET
 # One FileStore and one KaleidoSwap per store directory per process.
@@ -184,21 +184,21 @@ Runnable versions are in [`examples/simple/`](#examples).
 > **⚠️ WARNING: The engine-level examples are only to be used in REGTEST.**
 
 ```python
-import kaleidorg_swap_sdk
+import kaleidoswap
 import asyncio
 
 async def main():
     # Initialize for regtest (do NOT use this example in production)
-    network = kaleidorg_swap_sdk.Network.REGTEST
-    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
+    network = kaleidoswap.Network.REGTEST
+    boltz_api = kaleidoswap.SwapClient.default(network)
 
     # Example: Create a submarine swap (Lightning → Bitcoin)
-    key_pair = kaleidorg_swap_sdk.KeyPair()
-    btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
+    key_pair = kaleidoswap.KeyPair()
+    btc_chain = kaleidoswap.btc_chain_from_network(network)
 
     invoice = "lightning-invoice-to-pay"
 
-    request = kaleidorg_swap_sdk.CreateSubmarineRequest(
+    request = kaleidoswap.CreateSubmarineRequest(
         _from=btc_chain,
         to=btc_chain,
         invoice=invoice,
@@ -224,12 +224,12 @@ a build constant. It never gives a lower price, higher limits or a rate-limit
 budget of its own, so anyone who copies it gains nothing.
 
 ```python
-import kaleidorg_swap_sdk
+import kaleidoswap
 
 # Public: safe to commit and to ship.
 KALEIDOSWAP_PARTNER_KEY = "kld_live_…"
 
-client = kaleidorg_swap_sdk.SwapClient.kaleido_maker(
+client = kaleidoswap.SwapClient.kaleido_maker(
     "https://maker.kaleidoswap.com/v2",
     KALEIDOSWAP_PARTNER_KEY,
     None,  # timeout in seconds

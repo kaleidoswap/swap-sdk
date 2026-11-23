@@ -2,17 +2,17 @@
 use std::str::FromStr;
 
 use bitcoin::{Address, OutPoint, Psbt, PublicKey, ScriptBuf};
-use kaleidorg_swap_sdk::error::Error;
-use kaleidorg_swap_sdk::network::BitcoinChain;
-use kaleidorg_swap_sdk::swaps::boltz::{
+use kaleidoswap::error::Error;
+use kaleidoswap::network::BitcoinChain;
+use kaleidoswap::swaps::boltz::{
     CreateReverseResponse, CreateSubmarineResponse, GetReversePairsResponse,
     GetSubmarinePairsResponse, SwapTxKind,
 };
-use kaleidorg_swap_sdk::swaps::rgb::{
+use kaleidoswap::swaps::rgb::{
     rgb_recipient_id, rgb_recipient_script, PreparedRgbSpend, RgbChainNet, RgbLock, RgbSpendFunding,
 };
-use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::BtcSwapScript;
+use kaleidoswap::util::secrets::Preimage;
+use kaleidoswap::BtcSwapScript;
 use serde_json::{json, Value};
 
 const WIRE: &str = include_str!("fixtures/rgb-v1/wire-contract.json");
@@ -286,11 +286,11 @@ fn rgb_responses_require_canonical_leaf_versions_and_script_bytes() {
 
 struct ReviewCoins(
     Vec<(OutPoint, bitcoin::TxOut)>,
-    Option<kaleidorg_swap_sdk::network::OutputStatus>,
+    Option<kaleidoswap::network::OutputStatus>,
     u32,
 );
 #[macros::async_trait]
-impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
+impl kaleidoswap::network::BitcoinClient for ReviewCoins {
     async fn get_address_balance(&self, _: &Address) -> Result<(u64, i64), Error> {
         unreachable!()
     }
@@ -313,7 +313,7 @@ impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
         &self,
         _: &OutPoint,
         _: &bitcoin::Script,
-    ) -> Result<Option<kaleidorg_swap_sdk::network::OutputStatus>, Error> {
+    ) -> Result<Option<kaleidoswap::network::OutputStatus>, Error> {
         Ok(self.1)
     }
     fn network(&self) -> BitcoinChain {
@@ -322,8 +322,8 @@ impl kaleidorg_swap_sdk::network::BitcoinClient for ReviewCoins {
 }
 #[tokio::test]
 async fn rgb_spends_ignore_address_candidates_and_require_the_pinned_lock() {
-    use kaleidorg_swap_sdk::swaps::boltz::BoltzApiClientV2;
-    use kaleidorg_swap_sdk::swaps::{ChainClient, RgbPsbtParams, SwapScript};
+    use kaleidoswap::swaps::boltz::BoltzApiClientV2;
+    use kaleidoswap::swaps::{ChainClient, RgbPsbtParams, SwapScript};
     let f = wire();
     let g: Value = serde_json::from_str(GOLDEN).unwrap();
     let dest = Address::from_script(
@@ -374,7 +374,7 @@ async fn rgb_spends_ignore_address_candidates_and_require_the_pinned_lock() {
             }),
             script_pubkey: c.script_pubkey.clone(),
         };
-        use kaleidorg_swap_sdk::network::{OutputSpend, OutputStatus};
+        use kaleidoswap::network::{OutputSpend, OutputStatus};
         let confirmed = OutputStatus {
             block_height: Some(1),
             spend: OutputSpend::Unspent,

@@ -65,5 +65,5 @@ jobs:
           # through a lock entry, and `cargo add` already resolves.
           cp ../Cargo.lock Cargo.lock
           # In this test, we reference the checked out repo (e.g. this PR branch)
-          cargo add --path ../ kaleidorg-swap-sdk
+          cargo add --path ../ kaleidoswap
           wasm-pack build --target web

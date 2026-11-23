@@ -1,16 +1,16 @@
-import kaleidorg_swap_sdk
+import kaleidoswap
 import asyncio
 from datetime import datetime
 
-electrum_btc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
-    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidoswap.ClientConnection.ELECTRUM(
+    kaleidoswap.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
-    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidoswap.ClientConnection.ELECTRUM(
+    kaleidoswap.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-network = kaleidorg_swap_sdk.Network.REGTEST
-chain_client = kaleidorg_swap_sdk.ChainClient(
-    kaleidorg_swap_sdk.ClientConfig(
+network = kaleidoswap.Network.REGTEST
+chain_client = kaleidoswap.ChainClient(
+    kaleidoswap.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -18,21 +18,21 @@ chain_client = kaleidorg_swap_sdk.ChainClient(
 
 async def main():
     # Initialize the Boltz API client
-    network = kaleidorg_swap_sdk.Network.REGTEST
-    btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
-    boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
+    network = kaleidoswap.Network.REGTEST
+    btc_chain = kaleidoswap.btc_chain_from_network(network)
+    boltz_api = kaleidoswap.SwapClient.default(network)
 
     # Initialize WebSocket client
     ws_client = boltz_api.ws()
 
     # Generate a new key pair for the swap
-    key_pair = kaleidorg_swap_sdk.KeyPair()
+    key_pair = kaleidoswap.KeyPair()
 
     # Create a submarine swap request
     # Note: Replace this with your actual Lightning invoice
     invoice = input("Enter your Lightning invoice: ")
 
-    request = kaleidorg_swap_sdk.CreateSubmarineRequest(
+    request = kaleidoswap.CreateSubmarineRequest(
         _from=btc_chain,
         to=btc_chain,
         invoice=invoice,
@@ -46,7 +46,7 @@ async def main():
     print(f"Expected Amount: {swap_response.expected_amount} sats")
     print(f"Lockup Address: {swap_response.address}")
 
-    lockup_script = kaleidorg_swap_sdk.SwapScript.from_submarine(
+    lockup_script = kaleidoswap.SwapScript.from_submarine(
         chain=btc_chain,
         create_swap_response=swap_response,
         our_pubkey=key_pair.public(),
@@ -98,9 +98,9 @@ async def main():
             refund_address = input("Enter your refund address: ")
 
             tx = await lockup_script.construct_refund(
-                kaleidorg_swap_sdk.SwapTransactionParams(
+                kaleidoswap.SwapTransactionParams(
                     output_address=refund_address,
-                    fee=kaleidorg_swap_sdk.Fee.ABSOLUTE(200),
+                    fee=kaleidoswap.Fee.ABSOLUTE(200),
                     swap_id=swap_id,
                     keys=key_pair,
                     chain_client=chain_client,

@@ -5,12 +5,12 @@
 use std::io::{Read, Write};
 use std::thread::JoinHandle;
 
-use kaleidorg_swap_sdk::atomic::{
+use kaleidoswap::atomic::{
     AtomicAmountDirection, AtomicOutpoint, AtomicQuote, AtomicQuoteExpectations,
     AtomicQuoteRequest, AtomicSwapState, AtomicSwapStatus,
 };
-use kaleidorg_swap_sdk::boltz::BoltzApiClientV2;
-use kaleidorg_swap_sdk::error::Error;
+use kaleidoswap::boltz::BoltzApiClientV2;
+use kaleidoswap::error::Error;
 use serde_json::Value;
 
 const CAPTURE: &str = include_str!("fixtures/atomic-v1/wire-capture.json");

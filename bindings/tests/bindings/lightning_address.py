@@ -1,7 +1,7 @@
 """Generated async resolver export and satoshi validation, without network I/O."""
 
 import asyncio
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 
 async def run():

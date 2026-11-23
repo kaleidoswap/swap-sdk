@@ -49,12 +49,12 @@
 //! [`BoltzApiClientV2::last_attribution`]: crate::boltz::BoltzApiClientV2::last_attribution
 //!
 //! ```no_run
-//! use kaleidorg_swap_sdk::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
+//! use kaleidoswap::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions};
 //!
 //! /// The partner's key, built into the app.
 //! const KALEIDOSWAP_PARTNER_KEY: &str = "kld_live_01KZZYB138E7C3HZX7Q1YBGAQG_s3cr3t";
 //!
-//! # async fn run() -> Result<(), kaleidorg_swap_sdk::error::Error> {
+//! # async fn run() -> Result<(), kaleidoswap::error::Error> {
 //! let client = KaleidoMakerClient::new(KaleidoMakerClientOptions {
 //!     maker_url: "https://maker.signet.kaleidoswap.com/v2".to_string(),
 //!     api_key: KALEIDOSWAP_PARTNER_KEY.parse::<ApiKey>()?,
@@ -473,8 +473,8 @@ pub struct KaleidoMakerClientOptions {
 /// generic client:
 ///
 /// ```no_run
-/// # use kaleidorg_swap_sdk::kaleido::KaleidoMakerClient;
-/// # async fn run(client: KaleidoMakerClient) -> Result<(), kaleidorg_swap_sdk::error::Error> {
+/// # use kaleidoswap::kaleido::KaleidoMakerClient;
+/// # async fn run(client: KaleidoMakerClient) -> Result<(), kaleidoswap::error::Error> {
 /// let height = client.get_height().await?;
 /// # let _ = height;
 /// # Ok(())

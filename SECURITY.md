@@ -1,6 +1,6 @@
 # Security Policy
 
-`kaleidorg-swap-sdk` builds, validates and signs the transactions that move
+`kaleidoswap` builds, validates and signs the transactions that move
 funds through a swap. We take security seriously and welcome responsible
 disclosure.
 
@@ -34,6 +34,16 @@ email:
 - Please give us reasonable time to investigate and fix before going public.
 - We credit researchers who report responsibly (unless you prefer anonymity).
 - Once a fix ships, we publish an advisory describing the issue and the fix.
+
+### How Fixes Ship
+
+A fix for an exploitable bug is reviewed and tested in private, then released
+as an ordinary release of this repository. The advisory is published once the
+fixed packages are on npm and PyPI.
+[docs/releasing.md](docs/releasing.md) ("Security releases") describes the
+process.
+
+Security fixes go to the latest release only. Upgrade to it to receive them.
 
 ## Threat Model Notes
 
