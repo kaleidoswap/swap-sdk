@@ -111,7 +111,7 @@ def verify(
     sbom = load_json(files["release.spdx.json"])
     require(sbom.get("spdxVersion") == "SPDX-2.3", "release SBOM version mismatch")
     require(
-        sbom.get("name") == f"kaleidorg-swap-sdk-{version}-release-artifacts",
+        sbom.get("name") == f"kaleidoswap-{version}-release-artifacts",
         "release SBOM name/version mismatch",
     )
     require(

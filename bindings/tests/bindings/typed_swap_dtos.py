@@ -5,7 +5,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 LARGE = 9007199254740993
 ENTRY = {

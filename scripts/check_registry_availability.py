@@ -67,7 +67,7 @@ def flag(name: str) -> bool:
 def validate_configuration() -> tuple[bool, bool]:
     """Read the publisher flags. Each must be explicitly true or false.
 
-    Public PyPI is not forced off: the distribution rename to kaleidorg_swap_sdk
+    Public PyPI is not forced off: the distribution rename to kaleidoswap
     cleared the name collision that made it impossible, so it is a configured
     choice like npm.
     """
@@ -85,7 +85,7 @@ def main() -> int:
         "--react-native-npm-package", default=react_native_npm_package()
     )
     parser.add_argument("--npm-registry", default="https://registry.npmjs.org")
-    parser.add_argument("--python-package", default="kaleidorg_swap_sdk")
+    parser.add_argument("--python-package", default="kaleidoswap")
     parser.add_argument("--pypi-registry", default="https://pypi.org/pypi")
     parser.add_argument(
         "--check-pypi",

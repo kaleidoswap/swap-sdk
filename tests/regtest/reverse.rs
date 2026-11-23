@@ -1,10 +1,10 @@
 use bitcoin::secp256k1::SecretKey;
 use bitcoin::{key::rand::thread_rng, secp256k1::Keypair, PublicKey};
-use kaleidorg_swap_sdk::boltz::BoltzWsConfig;
-use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::Network;
-use kaleidorg_swap_sdk::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
-use kaleidorg_swap_sdk::{
+use kaleidoswap::boltz::BoltzWsConfig;
+use kaleidoswap::fees::Fee;
+use kaleidoswap::network::Network;
+use kaleidoswap::swaps::{ChainClient, DirectTxOptions, TransactionOptions};
+use kaleidoswap::{
     network::Chain,
     swaps::{
         boltz::CreateReverseRequest,
@@ -263,9 +263,9 @@ async fn swap_mrh(chain: Chain, chain_client: &ChainClient) {
 /// Electrum client.
 #[cfg(feature = "electrum")]
 mod hidden_lockup {
-    use kaleidorg_swap_sdk::error::Error;
-    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
-    use kaleidorg_swap_sdk::network::{
+    use kaleidoswap::error::Error;
+    use kaleidoswap::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+    use kaleidoswap::network::{
         BitcoinChain, BitcoinClient, LiquidChain, LiquidClient, OutputStatus,
     };
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -376,7 +376,7 @@ mod hidden_lockup {
 #[cfg(feature = "electrum")]
 async fn claim_waits_for_own_lockup(chain: Chain) {
     use hidden_lockup::{HiddenBitcoin, HiddenLiquid};
-    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+    use kaleidoswap::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     let visible = Arc::new(AtomicBool::new(false));
@@ -477,7 +477,7 @@ async fn claim_waits_for_own_lockup(chain: Chain) {
             Err(e) if attempts < 10 => {
                 log::debug!("Lockup not indexed yet: {e:?}");
                 attempts += 1;
-                kaleidorg_swap_sdk::util::sleep(super::WAIT_TIME).await;
+                kaleidoswap::util::sleep(super::WAIT_TIME).await;
             }
             Err(e) => panic!("claim failed once the lockup was visible: {e:?}"),
         }

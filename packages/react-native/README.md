@@ -1,4 +1,4 @@
-# @kaleidorg/swap-sdk-react-native
+# kaleidoswap-react-native
 
 The KaleidoSwap swap SDK for React Native: client-side atomic swaps across
 Bitcoin, Lightning, Liquid and Arkade, with keys and claim/refund construction
@@ -7,12 +7,12 @@ staying on the device.
 This package is the same Rust engine the Python and browser SDKs use, compiled
 for iOS and Android and exposed as a React Native turbo module. It exists
 because the browser package cannot work here — Hermes has no `WebAssembly`, so
-`@kaleidorg/swap-sdk`'s core will not load on a device.
+`kaleidoswap`'s core will not load on a device.
 
 ## Install
 
 ```sh
-npm install @kaleidorg/swap-sdk-react-native
+npm install kaleidoswap-react-native
 ```
 
 Prebuilt native binaries are fetched from this version's GitHub release on
@@ -40,7 +40,7 @@ Allow it in `pnpm-workspace.yaml`:
 
 ```yaml
 onlyBuiltDependencies:
-  - "@kaleidorg/swap-sdk-react-native"
+  - "kaleidoswap-react-native"
 ```
 
 New architecture only, and a bare or prebuilt app — the module is native code,
@@ -52,7 +52,7 @@ build.
 The Arkade Intents corridor is a separate entry point:
 
 ```ts
-import { ArkadeIntentsVenue } from "@kaleidorg/swap-sdk-react-native/arkade";
+import { ArkadeIntentsVenue } from "kaleidoswap-react-native/arkade";
 ```
 
 It re-exports `@kaleidorg/swap-sdk/arkade`, which is pure TypeScript over
@@ -73,7 +73,7 @@ key in the panel, and it never gives a lower price or higher limits, so anyone
 who reads it out of the app gains nothing.
 
 ```ts
-import { KaleidoSwap, SwapClient } from "@kaleidorg/swap-sdk-react-native";
+import { KaleidoSwap, SwapClient } from "kaleidoswap-react-native";
 
 // Public: safe to commit and to bundle.
 const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
@@ -118,7 +118,7 @@ import {
   KaleidoSwapOptions,
   MnemonicSigner,
   Network,
-} from "@kaleidorg/swap-sdk-react-native";
+} from "kaleidoswap-react-native";
 
 // Once, at app scope: one FileStore and one KaleidoSwap per store directory.
 const kaleido = new KaleidoSwap(
@@ -215,7 +215,7 @@ import {
   Amount,
   Asset,
   QuoteRefusalReason,
-} from "@kaleidorg/swap-sdk-react-native";
+} from "kaleidoswap-react-native";
 
 const { quote, refusal } = await kaleido.quote({
   pay: new Asset.BtcLightning(),
@@ -247,7 +247,7 @@ live.
 ### Start, act, watch
 
 ```ts
-import { Exception, SwapPhase } from "@kaleidorg/swap-sdk-react-native";
+import { Exception, SwapPhase } from "kaleidoswap-react-native";
 
 const swap = await kaleido.start(quote, {
   destination: liquidAddress,

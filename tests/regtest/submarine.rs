@@ -1,9 +1,9 @@
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[cfg(feature = "electrum")]
-use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+use kaleidoswap::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
 #[cfg(feature = "esplora")]
-use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidorg_swap_sdk::{
+use kaleidoswap::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidoswap::{
     network::Chain,
     swaps::{
         boltz::CreateSubmarineRequest, ChainClient, SwapScript, SwapTransactionParams,
@@ -17,9 +17,9 @@ use crate::regtest::common::*;
 use crate::regtest::WAIT_TIME;
 use crate::utils;
 use bitcoin::{key::rand::thread_rng, secp256k1::Keypair, PublicKey};
-use kaleidorg_swap_sdk::boltz::BoltzWsConfig;
-use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::{BitcoinChain, LiquidChain};
+use kaleidoswap::boltz::BoltzWsConfig;
+use kaleidoswap::fees::Fee;
+use kaleidoswap::network::{BitcoinChain, LiquidChain};
 use serial_test::serial;
 
 #[cfg(all(target_family = "wasm", target_os = "unknown"))]

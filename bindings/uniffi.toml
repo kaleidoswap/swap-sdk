@@ -1,2 +1,2 @@
 [bindings.python]
-cdylib_name = "kaleidorg_swap_sdk"
+cdylib_name = "kaleidoswap"

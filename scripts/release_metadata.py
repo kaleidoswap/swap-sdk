@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-PYTHON_DISTRIBUTION = "kaleidorg_swap_sdk"
+PYTHON_DISTRIBUTION = "kaleidoswap"
 
 # The two npm packages a release publishes: the browser/Node package over the
 # wasm binding, and the React Native package over the UniFFI crate.
@@ -88,7 +88,7 @@ def npm_tarball_name(version: str, package: str | None = None) -> str:
     """Reproduce `npm pack`'s filename for a (possibly scoped) package.
 
     npm drops the leading `@` and replaces the scope separator with a dash:
-    `@kaleidorg/swap-sdk` at 0.1.0 packs as `kaleidorg-swap-sdk-0.1.0.tgz`.
+    `kaleidoswap` at 0.1.0 packs as `kaleidoswap-0.1.0.tgz`.
     """
     name = npm_package() if package is None else package
     return f"{name.lstrip('@').replace('/', '-')}-{version}.tgz"

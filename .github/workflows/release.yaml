@@ -150,8 +150,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ needs.release-ready.outputs.version }}
         run: |
-          npm publish ./release-artifacts/kaleidorg-swap-sdk-${VERSION}.tgz --access public
-          npm publish ./release-artifacts/kaleidorg-swap-sdk-react-native-${VERSION}.tgz --access public
+          npm publish ./release-artifacts/kaleidoswap-${VERSION}.tgz --access public
+          npm publish ./release-artifacts/kaleidoswap-react-native-${VERSION}.tgz --access public
 
   publish-pypi:
     name: Publish exact Python artifacts to PyPI
@@ -282,12 +282,12 @@ jobs:
         working-directory: typescript-sdk
         run: >-
           node scripts/smoke-package.mjs
-          "../registry-npm/kaleidorg-swap-sdk-${{ needs.release-ready.outputs.version }}.tgz"
+          "../registry-npm/kaleidoswap-${{ needs.release-ready.outputs.version }}.tgz"
       - name: Clean-install the registry npm tarball in Firefox
         working-directory: typescript-sdk
         run: >-
           node scripts/smoke-browser-package.mjs
-          "../registry-npm/kaleidorg-swap-sdk-${{ needs.release-ready.outputs.version }}.tgz"
+          "../registry-npm/kaleidoswap-${{ needs.release-ready.outputs.version }}.tgz"
       # This is the package-structure smoke test and deliberately keeps lifecycle
       # scripts off. verify-react-native-install, below, is where postinstall runs
       # for real against both public distribution channels.
@@ -295,7 +295,7 @@ jobs:
         working-directory: packages/react-native
         run: >-
           node scripts/smoke-react-native-package.mjs
-          "../../registry-npm/kaleidorg-swap-sdk-react-native-${{ needs.release-ready.outputs.version }}.tgz"
+          "../../registry-npm/kaleidoswap-react-native-${{ needs.release-ready.outputs.version }}.tgz"
 
   verify-pypi:
     name: Verify published PyPI package

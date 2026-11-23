@@ -1,6 +1,6 @@
 # Security Policy
 
-`kaleidorg-swap-sdk` builds, validates and signs the transactions that move
+`kaleidoswap` builds, validates and signs the transactions that move
 funds through a swap. We take security seriously and welcome responsible
 disclosure.
 

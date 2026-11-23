@@ -4,7 +4,7 @@ import {
   KaleidoSwapOptions,
   MnemonicSigner,
   Network,
-} from "@kaleidorg/swap-sdk-react-native";
+} from "kaleidoswap-react-native";
 
 /**
  * Builds the one `KaleidoSwap` the app uses. Call it once, at app scope, and

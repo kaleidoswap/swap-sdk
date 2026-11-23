@@ -3,12 +3,12 @@
 from importlib.metadata import PackageNotFoundError, version as _distribution_version
 
 try:
-    __version__ = _distribution_version("kaleidorg_swap_sdk")
+    __version__ = _distribution_version("kaleidoswap")
 except PackageNotFoundError:  # running from a source tree, not an install
     __version__ = "0+unknown"
 
 try:
-    from .kaleidorg_swap_sdk import Preimage as _preimage_probe  # noqa: F401
+    from .kaleidoswap import Preimage as _preimage_probe  # noqa: F401
 except ImportError:
     # Maturin omits its generated Python glue from manylinux wheels while
     # still packaging the native library in this subdirectory. Measured with
@@ -19,8 +19,8 @@ except ImportError:
     from . import _generated_uniffi as _glue
     from ._generated_uniffi import *  # noqa: F403
 else:
-    from . import kaleidorg_swap_sdk as _glue
-    from .kaleidorg_swap_sdk import *  # noqa: F403
+    from . import kaleidoswap as _glue
+    from .kaleidoswap import *  # noqa: F403
 
 from ._redact import redact_secret_fields as _redact_secret_fields
 

@@ -256,7 +256,7 @@ dependencies = [
  "bitcoin",
  "elements",
  "hex",
- "kaleidorg-swap-sdk",
+ "kaleidoswap",
  "serde_json",
  "serial_test",
  "thiserror 1.0.69",
@@ -270,7 +270,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "js-sys",
- "kaleidorg-swap-sdk",
+ "kaleidoswap",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",
@@ -1476,7 +1476,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaleidorg-swap-sdk"
+name = "kaleidoswap"
 version = "0.16.0"
 dependencies = [
  "anyhow",
@@ -1495,7 +1495,7 @@ dependencies = [
  "gloo-timers",
  "hex",
  "js-sys",
- "kaleidorg-swap-sdk-macros",
+ "kaleidoswap-macros",
  "lightning",
  "lightning-invoice",
  "lnurl-rs",
@@ -1518,7 +1518,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaleidorg-swap-sdk-macros"
+name = "kaleidoswap-macros"
 version = "1.0.0"
 dependencies = [
  "proc-macro2",

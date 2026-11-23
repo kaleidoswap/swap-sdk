@@ -9,7 +9,7 @@ Fields stay readable as attributes for persistence. Idempotent.
 import re
 from pathlib import Path
 
-GENERATED = Path("kaleidorg_swap_sdk/_generated_uniffi.py")
+GENERATED = Path("kaleidoswap/_generated_uniffi.py")
 SECRET_FIELDS = ("swap_auth", "blinding_key", "api_key")
 HELPER_MARKER = "def _redact_secret("
 HELPER = '''\

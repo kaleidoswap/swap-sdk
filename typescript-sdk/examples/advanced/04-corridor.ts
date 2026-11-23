@@ -16,7 +16,7 @@ import {
   init,
   isRfqQuote,
   newRfqId,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 import { die, network, optionalInt } from "./common.ts";
 

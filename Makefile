@@ -72,7 +72,7 @@ generate-python-bindings:
 # Regenerate the committed generated sources from repository-pinned inputs,
 # then fail if the checked-in outputs drift.
 check-generated: generate-python-bindings
-	git diff --exit-code -- bindings/python/kaleidorg_swap_sdk/_generated_uniffi.py
+	git diff --exit-code -- bindings/python/kaleidoswap/_generated_uniffi.py
 
 # --- React Native binding ----------------------------------------------------
 # Cross-compiles the `bindings` crate for iOS and Android and regenerates the
@@ -99,10 +99,10 @@ wasm-pack-build:
 build: cargo-build cargo-clippy
 
 cargo-build:
-	cargo build -p kaleidorg-swap-sdk --all-targets --all-features
+	cargo build -p kaleidoswap --all-targets --all-features
 
 wasm-build:
-	cargo build -p kaleidorg-swap-sdk --target=wasm32-unknown-unknown --all-features
+	cargo build -p kaleidoswap --target=wasm32-unknown-unknown --all-features
 
 clippy: cargo-clippy wasm-clippy
 
@@ -113,19 +113,19 @@ regtest-test: cargo-regtest-test wasm-regtest-test
 # Lint every native workspace member. bindings-wasm is excluded because its
 # secp256k1 C dependency only cross-compiles under the wasm clang; it is
 # covered by wasm-clippy instead.
-NATIVE_CRATES = -p kaleidorg-swap-sdk -p bindings -p kaleidorg-swap-sdk-macros
+NATIVE_CRATES = -p kaleidoswap -p bindings -p kaleidoswap-macros
 
 cargo-clippy:
 	cargo clippy $(NATIVE_CRATES) --all-targets --all-features -- -D warnings
 
 cargo-test:
-	cargo test -p kaleidorg-swap-sdk --features "esplora, electrum, lnurl, ws"  -- --nocapture
+	cargo test -p kaleidoswap --features "esplora, electrum, lnurl, ws"  -- --nocapture
 
 cargo-regtest-test:
-	$(REGTEST_PREFIX) cargo test -p kaleidorg-swap-sdk --features "electrum, regtest, ws" -- --nocapture
+	$(REGTEST_PREFIX) cargo test -p kaleidoswap --features "electrum, regtest, ws" -- --nocapture
 
 wasm-clippy:
-	$(CLANG_PREFIX) cargo clippy -p kaleidorg-swap-sdk -p bindings-wasm --target=wasm32-unknown-unknown --all-features -- -D warnings
+	$(CLANG_PREFIX) cargo clippy -p kaleidoswap -p bindings-wasm --target=wasm32-unknown-unknown --all-features -- -D warnings
 
 BROWSER ?= firefox
 

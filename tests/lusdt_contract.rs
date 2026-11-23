@@ -16,13 +16,13 @@ use lightning_invoice::Bolt11Invoice;
 use secp256k1_musig::musig;
 use serde_json::Value;
 
-use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
-use kaleidorg_swap_sdk::swaps::boltz::{
+use kaleidoswap::network::{BitcoinChain, Chain, Currency, LiquidChain};
+use kaleidoswap::swaps::boltz::{
     CreateChainResponse, CreateReverseResponse, CreateSubmarineResponse, GetChainPairsResponse,
     GetReversePairsResponse, GetSubmarinePairsResponse, Side,
 };
-use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::{BtcSwapScript, LiquidAssetContext, LiquidSwapScript};
+use kaleidoswap::util::secrets::Preimage;
+use kaleidoswap::{BtcSwapScript, LiquidAssetContext, LiquidSwapScript};
 
 const GOLDEN: &str = include_str!("fixtures/lusdt-v1/liquid-golden-vectors.json");
 const WIRE: &str = include_str!("fixtures/lusdt-v1/wire-contract.json");

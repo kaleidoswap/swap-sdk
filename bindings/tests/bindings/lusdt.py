@@ -11,7 +11,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 ROOT = Path(__file__).resolve().parents[3]
 WIRE = json.loads((ROOT / "tests/fixtures/lusdt-v1/wire-contract.json").read_text())

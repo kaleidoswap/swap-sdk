@@ -26,7 +26,7 @@ from release_metadata import (
 )
 
 NPM_REGISTRY = "https://registry.npmjs.org"
-PYTHON_PACKAGE = "kaleidorg_swap_sdk"
+PYTHON_PACKAGE = "kaleidoswap"
 PYPI_REGISTRY = "https://pypi.org/pypi"
 USER_AGENT = "kaleidoswap-release-verifier"
 

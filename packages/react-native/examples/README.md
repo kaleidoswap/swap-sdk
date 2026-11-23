@@ -1,4 +1,4 @@
-# `@kaleidorg/swap-sdk-react-native` examples
+# `kaleidoswap-react-native` examples
 
 The high-level `KaleidoSwap` surface in a React Native app. You name what you
 pay and what you receive; the SDK prices the route, checks the maker's

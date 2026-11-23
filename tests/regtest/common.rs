@@ -1,9 +1,7 @@
-use kaleidorg_swap_sdk::swaps::{
-    BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams,
-};
-use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::util::sleep;
-use kaleidorg_swap_sdk::{
+use kaleidoswap::swaps::{BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams};
+use kaleidoswap::util::secrets::Preimage;
+use kaleidoswap::util::sleep;
+use kaleidoswap::{
     boltz::{BoltzApiClientV2, SwapStatus, BOLTZ_REGTEST},
     error::Error,
     network::{BitcoinChain, Chain, LiquidChain},
@@ -22,7 +20,7 @@ pub fn create_boltz_api() -> BoltzApiClientV2 {
 
 #[cfg(feature = "electrum")]
 pub fn create_chain_client_electrum() -> ChainClient {
-    use kaleidorg_swap_sdk::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
+    use kaleidoswap::network::electrum::{ElectrumBitcoinClient, ElectrumLiquidClient};
 
     ChainClient::new()
         .with_bitcoin(ElectrumBitcoinClient::default(BTC_CHAIN, None).unwrap())
@@ -31,7 +29,7 @@ pub fn create_chain_client_electrum() -> ChainClient {
 
 #[cfg(feature = "esplora")]
 pub fn create_chain_client_esplora() -> ChainClient {
-    use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+    use kaleidoswap::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 
     ChainClient::new()
         .with_bitcoin(EsploraBitcoinClient::default(BTC_CHAIN, None))
@@ -127,7 +125,7 @@ async fn unblind_liquid_output(
 pub async fn next_status(
     updates: &mut Receiver<SwapStatus>,
     expected_status: &str,
-) -> Result<kaleidorg_swap_sdk::boltz::SwapStatus, anyhow::Error> {
+) -> Result<kaleidoswap::boltz::SwapStatus, anyhow::Error> {
     tokio::select! {
         result = async {
             loop {

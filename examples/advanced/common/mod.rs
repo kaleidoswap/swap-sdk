@@ -7,11 +7,11 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
-use kaleidorg_swap_sdk::boltz::BoltzApiClientV2;
-use kaleidorg_swap_sdk::error::Error as SdkError;
-use kaleidorg_swap_sdk::network::{LiquidChain, Network};
-use kaleidorg_swap_sdk::util::secrets::SwapMasterKey;
-use kaleidorg_swap_sdk::Keypair;
+use kaleidoswap::boltz::BoltzApiClientV2;
+use kaleidoswap::error::Error as SdkError;
+use kaleidoswap::network::{LiquidChain, Network};
+use kaleidoswap::util::secrets::SwapMasterKey;
+use kaleidoswap::Keypair;
 
 /// Writes `bytes` readable by the owner only. The state files the examples
 /// keep carry the swap's `swap_auth`, which is issued once and authorizes the

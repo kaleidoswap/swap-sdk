@@ -14,7 +14,7 @@ import {
   SwapMasterKey,
   SwapScript,
   toJson,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 import {
   SIGNET_BITCOIN_ESPLORA,

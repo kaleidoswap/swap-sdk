@@ -18,17 +18,15 @@ use std::time::Duration;
 use bitcoin::key::rand::thread_rng;
 use bitcoin::secp256k1::{Keypair, Secp256k1};
 use bitcoin::PublicKey;
-use kaleidorg_swap_sdk::boltz::{
+use kaleidoswap::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateChainResponse, CreateReverseRequest,
     CreateReverseResponse, Side, BOLTZ_MAINNET_URL_V2,
 };
-use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, LiquidChain};
-use kaleidorg_swap_sdk::swaps::{
-    ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
-};
-use kaleidorg_swap_sdk::util::secrets::Preimage;
+use kaleidoswap::fees::Fee;
+use kaleidoswap::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidoswap::network::{BitcoinChain, Chain, LiquidChain};
+use kaleidoswap::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
+use kaleidoswap::util::secrets::Preimage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -113,7 +111,7 @@ fn write_secret_file(path: &str, contents: &str) {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    kaleidorg_swap_sdk::util::setup_logger();
+    kaleidoswap::util::setup_logger();
     let args: Vec<String> = std::env::args().collect();
 
     match args.get(1).map(String::as_str) {
