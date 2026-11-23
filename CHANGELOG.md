@@ -98,6 +98,11 @@ TypeScript, Python and React Native APIs are unchanged.
   for a claim and a positive amount for a refund. RGB HTLCs and L-USDT swaps
   keep their dedicated flows and are refused here.
 
+### Changed — dependencies
+
+- `Cargo.lock` moves to url 2.5.9 and form_urlencoded 1.2.3. Lockfile only; no
+  manifest changes.
+
 ## [0.16.0] - 2026-11-20
 
 ### The `kld_` partner key is public, and carries the partner fee
