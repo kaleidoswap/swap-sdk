@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-23
+
 ### One name on every registry: `kaleidoswap`
 
 The SDK is published as `kaleidoswap` on npm, PyPI and (by git tag) Cargo,
@@ -17,8 +19,8 @@ and its React Native package as `kaleidoswap-react-native`.
 | Python import | `kaleidorg_swap_sdk` | `kaleidoswap` |
 | Rust crate and import | `kaleidorg-swap-sdk` / `kaleidorg_swap_sdk` | `kaleidoswap` |
 
-Only the names change: the API, the wire format and stored swap records are
-the same. To migrate, swap the dependency and replace the old name in
+The rename itself changes only names; the API changes in this release are
+listed below. To migrate, swap the dependency and replace the old name in
 imports (`@kaleidorg/swap-sdk/arkade` becomes `kaleidoswap/arkade`). The old
 packages stay published and are deprecated in favour of the new ones.
 
