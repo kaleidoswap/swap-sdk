@@ -1,6 +1,4 @@
-use kaleidoswap::swaps::{
-    BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams,
-};
+use kaleidoswap::swaps::{BtcLikeTransaction, ChainClient, SwapScript, SwapTransactionParams};
 use kaleidoswap::util::secrets::Preimage;
 use kaleidoswap::util::sleep;
 use kaleidoswap::{

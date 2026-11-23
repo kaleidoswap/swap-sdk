@@ -407,9 +407,8 @@ fn parse_musig_session(
     let session: JsMusigSession = serde_wasm_bindgen::from_value(value).map_err(arg_err)?;
     let [a, b] = <[String; 2]>::try_from(session.pubkeys)
         .map_err(|_| arg_err("a MuSig2 session has two public keys"))?;
-    let key = |hex: &str| {
-        kaleidoswap::bitcoin::secp256k1::PublicKey::from_str(hex).map_err(arg_err)
-    };
+    let key =
+        |hex: &str| kaleidoswap::bitcoin::secp256k1::PublicKey::from_str(hex).map_err(arg_err);
     Ok(kaleidoswap::swaps::signing::MusigSession {
         pubkeys: [key(&a)?, key(&b)?],
         tweak: parse_hex32(&session.tweak, "tweak")?,
@@ -417,9 +416,7 @@ fn parse_musig_session(
     })
 }
 
-fn parse_public_nonce(
-    hex: &str,
-) -> Result<kaleidoswap::kaleidoswap::musig::PublicNonce, JsValue> {
+fn parse_public_nonce(hex: &str) -> Result<kaleidoswap::kaleidoswap::musig::PublicNonce, JsValue> {
     kaleidoswap::kaleidoswap::musig::PublicNonce::from_str(hex)
         .map_err(|e| arg_err(format!("public nonce: {e:?}")))
 }
@@ -476,10 +473,7 @@ impl WasmMnemonicSigner {
     #[wasm_bindgen(js_name = signSchnorr)]
     pub fn sign_schnorr(&self, index: u64, sighash: StringArg) -> Result<String, JsValue> {
         let sighash = parse_hex32(&str_arg(sighash, "sighash")?, "sighash")?;
-        Ok(
-            kaleidoswap::swaps::signing::sign_schnorr(&self.keys(index)?, sighash)
-                .to_string(),
-        )
+        Ok(kaleidoswap::swaps::signing::sign_schnorr(&self.keys(index)?, sighash).to_string())
     }
 
     /// Starts a MuSig2 signature for `session`: generates and keeps a secret
@@ -560,13 +554,7 @@ fn core_err(e: kaleidoswap::error::Error) -> JsValue {
 fn asset_from_boltz(
     s: &str,
     network: &str,
-) -> Result<
-    (
-        kaleidoswap::network::Chain,
-        kaleidoswap::network::Currency,
-    ),
-    JsValue,
-> {
+) -> Result<(kaleidoswap::network::Chain, kaleidoswap::network::Currency), JsValue> {
     use kaleidoswap::network::{Chain, Currency};
 
     let net = parse_network(network)?;
@@ -1221,28 +1209,27 @@ impl BoltzClient {
         )?;
         // The pin resolves before any I/O, so a missing one never creates a
         // swap; the maker's pair card is then only cross-checked against it.
-        let expected_asset_context =
-            match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
-                from_chain,
-                to_chain,
-                from_currency,
-                to_currency,
-                lusdt_asset_id.as_deref(),
-            )
-            .map_err(core_err)?
-            {
-                Some(trusted) => {
-                    let pair_card = self
-                        .inner
-                        .get_submarine_pairs()
-                        .await
-                        .map_err(core_err)?
-                        .expected_liquid_asset_context(from_currency, to_currency)
-                        .map_err(core_err)?;
-                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
-                }
-                None => None,
-            };
+        let expected_asset_context = match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            lusdt_asset_id.as_deref(),
+        )
+        .map_err(core_err)?
+        {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_submarine_pairs()
+                    .await
+                    .map_err(core_err)?
+                    .expected_liquid_asset_context(from_currency, to_currency)
+                    .map_err(core_err)?;
+                Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+            }
+            None => None,
+        };
         // A pinned pairHash binds the response to the card the caller
         // accepted; a card the maker has since replaced is refused.
         let accepted_pair = match req.pair_hash.as_deref() {
@@ -1266,8 +1253,7 @@ impl BoltzClient {
                 &req.refund_public_key,
                 chain,
                 contract_id,
-                rgb_max_htlc_sat
-                    .unwrap_or(kaleidoswap::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+                rgb_max_htlc_sat.unwrap_or(kaleidoswap::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
             )
             .map_err(core_err)?;
         } else {
@@ -1310,28 +1296,27 @@ impl BoltzClient {
         )?;
         // The pin resolves before any I/O, so a missing one never creates a
         // swap; the maker's pair card is then only cross-checked against it.
-        let expected_asset_context =
-            match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
-                from_chain,
-                to_chain,
-                from_currency,
-                to_currency,
-                lusdt_asset_id.as_deref(),
-            )
-            .map_err(core_err)?
-            {
-                Some(trusted) => {
-                    let pair_card = self
-                        .inner
-                        .get_reverse_pairs()
-                        .await
-                        .map_err(core_err)?
-                        .expected_liquid_asset_context(from_currency, to_currency)
-                        .map_err(core_err)?;
-                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
-                }
-                None => None,
-            };
+        let expected_asset_context = match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            lusdt_asset_id.as_deref(),
+        )
+        .map_err(core_err)?
+        {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_reverse_pairs()
+                    .await
+                    .map_err(core_err)?
+                    .expected_liquid_asset_context(from_currency, to_currency)
+                    .map_err(core_err)?;
+                Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+            }
+            None => None,
+        };
         // Validate the returned tree/address regardless of request form: derive
         // the payment hash from `preimage_hash` or, in the invoice form, from the
         // invoice itself. Never hand back an unvalidated response to fund.
@@ -1416,28 +1401,27 @@ impl BoltzClient {
         }
         // The pin resolves before any I/O, so a missing one never creates a
         // swap; the maker's pair card is then only cross-checked against it.
-        let expected_asset_context =
-            match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
-                from_chain,
-                to_chain,
-                from_currency,
-                to_currency,
-                lusdt_asset_id.as_deref(),
-            )
-            .map_err(core_err)?
-            {
-                Some(trusted) => {
-                    let pair_card = self
-                        .inner
-                        .get_chain_pairs()
-                        .await
-                        .map_err(core_err)?
-                        .expected_liquid_asset_context(from_currency, to_currency)
-                        .map_err(core_err)?;
-                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
-                }
-                None => None,
-            };
+        let expected_asset_context = match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            lusdt_asset_id.as_deref(),
+        )
+        .map_err(core_err)?
+        {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_chain_pairs()
+                    .await
+                    .map_err(core_err)?
+                    .expected_liquid_asset_context(from_currency, to_currency)
+                    .map_err(core_err)?;
+                Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+            }
+            None => None,
+        };
         let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
             (kaleidoswap::network::Currency::LUsdt, _) => (expected_asset_context, None),
             (_, kaleidoswap::network::Currency::LUsdt) => (None, expected_asset_context),
@@ -3004,8 +2988,7 @@ impl hl::SwapSigner for JsSigner {
         let hex = js_string(self, "signSchnorr", &args)
             .await
             .map_err(hl_signer_err)?;
-        kaleidoswap::bitcoin::secp256k1::schnorr::Signature::from_str(&hex)
-            .map_err(hl_signer_err)
+        kaleidoswap::bitcoin::secp256k1::schnorr::Signature::from_str(&hex).map_err(hl_signer_err)
     }
     async fn musig_nonce(
         &self,

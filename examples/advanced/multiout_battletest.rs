@@ -25,9 +25,7 @@ use kaleidoswap::boltz::{
 use kaleidoswap::fees::Fee;
 use kaleidoswap::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
 use kaleidoswap::network::{BitcoinChain, Chain, LiquidChain};
-use kaleidoswap::swaps::{
-    ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
-};
+use kaleidoswap::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
 use kaleidoswap::util::secrets::Preimage;
 use serde::{Deserialize, Serialize};
 

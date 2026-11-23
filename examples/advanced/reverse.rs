@@ -25,9 +25,7 @@ use kaleidoswap::fees::Fee;
 use kaleidoswap::network::esplora::EsploraBitcoinClient;
 use kaleidoswap::network::{BitcoinChain, BitcoinClient, Chain, Currency};
 use kaleidoswap::swaps::boltz::CreateReverseRequest;
-use kaleidoswap::swaps::{
-    ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
-};
+use kaleidoswap::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
 use kaleidoswap::util::secrets::Preimage;
 use kaleidoswap::PublicKey;
 

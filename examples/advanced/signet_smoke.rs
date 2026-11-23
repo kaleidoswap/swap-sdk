@@ -164,9 +164,7 @@ async fn main() -> Result<(), String> {
     resp.validate(
         &invoice_str,
         &refund_pk,
-        kaleidoswap::network::Chain::Bitcoin(
-            kaleidoswap::network::BitcoinChain::BitcoinSignet,
-        ),
+        kaleidoswap::network::Chain::Bitcoin(kaleidoswap::network::BitcoinChain::BitcoinSignet),
     )
     .map_err(|e| format!("{e:?}"))?;
     println!(

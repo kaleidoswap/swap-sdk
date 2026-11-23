@@ -23,9 +23,7 @@ use kaleidoswap::fees::Fee;
 use kaleidoswap::network::esplora::EsploraBitcoinClient;
 use kaleidoswap::network::{BitcoinChain, Chain, Currency};
 use kaleidoswap::swaps::boltz::CreateSubmarineRequest;
-use kaleidoswap::swaps::{
-    ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
-};
+use kaleidoswap::swaps::{ChainClient, SwapScript, SwapTransactionParams, TransactionOptions};
 use kaleidoswap::PublicKey;
 
 use common::{
