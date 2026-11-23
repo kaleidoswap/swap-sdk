@@ -26,6 +26,39 @@ The React Native package's optional `./arkade` entry still re-exports
 `@kaleidorg/swap-sdk/arkade` below 0.14, the last line built on
 `@arkade-os/sdk` 0.4.
 
+### Added — `apiKey` on `kaleidoswapHttpTransport`
+
+The Arkade corridor transport takes the partner's `kld_` key as `apiKey` and
+sends it as `Authorization: Bearer …` on every corridor request to the maker's
+origin, so swaps created through the Arkade venue are attributed like those
+created on the `/v2` routes.
+
+### BREAKING — Removed: the organisation-key client
+
+Swaps are attributed with the organisation's `kld_` key alone. The
+organisation-key client and everything that sent `X-Kaleido-Org-Key` are
+gone:
+
+- Rust: `kaleido::OrgKey`, `kaleido::ORG_KEY_HEADER`, `KaleidoOrgClient`,
+  `KaleidoOrgClientOptions`, `BoltzApiClientV2::org_key` and
+  `MakerAttribution::OrgKey` (an `org_key` answer now reads as
+  `MakerAttribution::Other`). `kaleido::ATTRIBUTION_HEADER` stays.
+- Python: `SwapClient.kaleido_org` and `SwapClient.org_key`.
+- WASM/TS: `SwapClient.forKaleidoOrg`, the `orgKey` getter,
+  `createKaleidoOrgClient`, `KaleidoOrgClientOptions`, `ORG_KEY_HEADER` and
+  `normalizeOrgKey`, plus the `orgKey` option on `PayThroughClient` and
+  `kaleidoswapHttpTransport`. `ATTRIBUTION_HEADER` is still exported, now
+  from the partner-key module, and `MakerAttribution` drops `"org_key"`.
+- WASM/TS: the `allowBrowser` option on `forKaleidoMaker` and
+  `createKaleidoMakerClient`. Every key Platform issues builds in a page, a
+  worker and an extension already, so the override had nothing left to allow;
+  passing it is now an unknown-option error.
+
+To keep attributing swaps, build the client from the `kld_` key instead:
+`KaleidoMakerClient` in Rust, `SwapClient.kaleido_maker` in Python,
+`createKaleidoMakerClient` in TypeScript, or the `apiKey` option on
+`PayThroughClient`.
+
 ### BREAKING — Rust core: `elements` 0.27 and `secp256k1` 0.33, merged from upstream boltz-rust
 
 This merges `SatoshiPortal/boltz-rust` trunk as of 2026-11-17 (previous merge
