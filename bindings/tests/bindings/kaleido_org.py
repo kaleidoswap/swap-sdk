@@ -66,9 +66,7 @@ expect_error(
 )
 
 # Loopback is the regtest harness.
-local = kaleidoswap.SwapClient.kaleido_org(
-    "http://127.0.0.1:9001/v2", ORG_KEY, None
-)
+local = kaleidoswap.SwapClient.kaleido_org("http://127.0.0.1:9001/v2", ORG_KEY, None)
 assert local.org_key() == ORG_KEY
 
 print("kaleido_org: ok")

@@ -95,9 +95,7 @@ expect_error(
 
 # Loopback is the regtest harness, where the "network" is a socket on this
 # machine.
-local = kaleidoswap.SwapClient.kaleido_maker(
-    "http://127.0.0.1:9001/v2", KEY, None
-)
+local = kaleidoswap.SwapClient.kaleido_maker("http://127.0.0.1:9001/v2", KEY, None)
 assert local.api_key_environment() == "test"
 
 print("kaleido_auth: ok")

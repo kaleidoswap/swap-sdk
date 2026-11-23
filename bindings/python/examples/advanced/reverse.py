@@ -95,9 +95,7 @@ async def main():
                     output_address=claim_address,
                     chain_client=chain_client,
                     boltz_api=boltz_api,
-                    options=kaleidoswap.TransactionOptions(
-                        cooperative=cooperative
-                    ),
+                    options=kaleidoswap.TransactionOptions(cooperative=cooperative),
                 )
 
             # Cooperative first. The script path needs nothing from the maker,

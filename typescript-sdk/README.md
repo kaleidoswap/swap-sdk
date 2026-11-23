@@ -48,11 +48,7 @@ holds no key material and never funds anything on your behalf.
 and a resume.
 
 ```ts
-import {
-  createKaleidoSwap,
-  FileStore,
-  mnemonicSigner,
-} from "kaleidoswap";
+import { createKaleidoSwap, FileStore, mnemonicSigner } from "kaleidoswap";
 
 // Once per process: one FileStore and one KaleidoSwap per store directory.
 const kaleido = await createKaleidoSwap({
@@ -518,12 +514,7 @@ I/O. The maker serves it as an RFQ beside `/v2`, and `IntentsCorridor` speaks
 that wire over the same client:
 
 ```ts
-import {
-  SwapClient,
-  IntentsCorridor,
-  isRfqQuote,
-  newRfqId,
-} from "kaleidoswap";
+import { SwapClient, IntentsCorridor, isRfqQuote, newRfqId } from "kaleidoswap";
 
 const corridor = new IntentsCorridor(SwapClient.forNetwork("signet"));
 const answer = await corridor.quoteLightningReceive({

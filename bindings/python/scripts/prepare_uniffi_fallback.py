@@ -12,7 +12,9 @@ WINDOWS_LOADER = """\
 """
 NESTED_WINDOWS_LOADER = '        libname = "{}.dll"\n'
 LOCAL_LIBRARY = "    path = os.path.join(os.path.dirname(__file__), libname)\n"
-NESTED_LIBRARY = '    path = os.path.join(os.path.dirname(__file__), "kaleidoswap", libname)\n'
+NESTED_LIBRARY = (
+    '    path = os.path.join(os.path.dirname(__file__), "kaleidoswap", libname)\n'
+)
 
 
 def replace_once(source: str, old: str, new: str) -> str:

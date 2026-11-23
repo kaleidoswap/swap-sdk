@@ -1,9 +1,5 @@
 /** Glue the examples share. None of it is part of the SDK. */
-import {
-  isKaleidoSwapError,
-  type SwapClient,
-  type Network,
-} from "kaleidoswap";
+import { isKaleidoSwapError, type SwapClient, type Network } from "kaleidoswap";
 
 /** The maker's signet deployment settles on Mutinynet, so chain access must too. */
 export const SIGNET_BITCOIN_ESPLORA = "https://esplora.signet.kaleidoswap.com";

@@ -15,9 +15,7 @@ from pathlib import Path
 
 import kaleidoswap as sdk
 
-REDACT = (
-    Path(__file__).resolve().parents[2] / "python" / "kaleidoswap" / "_redact.py"
-)
+REDACT = Path(__file__).resolve().parents[2] / "python" / "kaleidoswap" / "_redact.py"
 spec = importlib.util.spec_from_file_location("_redact", REDACT)
 redact = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = redact
