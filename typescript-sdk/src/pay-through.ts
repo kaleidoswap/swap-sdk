@@ -1,7 +1,6 @@
 /** Maker pay-through: a Lightning hold invoice funds a direct address payout.
  * The address leg is operator-trusted and has no hash lock. */
 
-import { ORG_KEY_HEADER, normalizeOrgKey } from "./org-key.js";
 import {
   type MakerAttribution,
   normalizePartnerKey,
@@ -116,15 +115,6 @@ export interface PayThroughClientOptions {
    * partner's fee, reported as `fees.partner`.
    */
   apiKey?: string;
-  /**
-   * Optional organization key: the 64-hex public key the organization
-   * registered in the partner panel. Sent on `create` only. Mutually
-   * exclusive with `apiKey`.
-   *
-   * @deprecated The `kld_` key is a public partner identifier that ships in
-   * any runtime and also carries the partner fee: pass `apiKey` instead.
-   */
-  orgKey?: string;
   /** Defaults to global fetch. Useful for controlled hosts and tests. */
   fetch?: typeof fetch;
   /** Per-request timeout. Defaults to 30 seconds. */
@@ -298,7 +288,6 @@ export function bolt11Network(invoice: string): LightningNetwork {
 export class PayThroughClient {
   private readonly baseUrl: string;
   private readonly apiKey?: string;
-  private readonly orgKey?: string;
   private readonly request: typeof fetch;
   private readonly timeoutMs: number;
   private readonly lightningNetwork: LightningNetwork;
@@ -311,12 +300,6 @@ export class PayThroughClient {
       );
     }
     this.lightningNetwork = options.lightningNetwork;
-    // The maker answers a request carrying both `400 attribution_conflict`.
-    if (options.apiKey && options.orgKey) {
-      throw new TypeError(
-        "Pass apiKey or orgKey, not both: a client attributes its swaps one way",
-      );
-    }
     const url = new URL(options.makerUrl);
     const local = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
     if (
@@ -336,10 +319,6 @@ export class PayThroughClient {
       options.apiKey === undefined
         ? undefined
         : normalizePartnerKey(options.apiKey);
-    this.orgKey =
-      options.orgKey === undefined
-        ? undefined
-        : normalizeOrgKey(options.orgKey);
     // Called as this.request(...), so a bare `fetch` would run with the client
     // as `this`, which browsers reject as an illegal invocation.
     this.request = options.fetch ?? ((input, init) => fetch(input, init));
@@ -577,10 +556,6 @@ export class PayThroughClient {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (options.body) headers["Content-Type"] = "application/json";
     if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
-    // Attribution is decided at creation; nothing else carries the label.
-    if (this.orgKey && options.method === "POST" && path === "swap/pay") {
-      headers[ORG_KEY_HEADER] = this.orgKey;
-    }
     if (options.idempotencyKey !== undefined) {
       headers["Idempotency-Key"] = options.idempotencyKey;
     }

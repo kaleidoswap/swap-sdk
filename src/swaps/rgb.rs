@@ -926,10 +926,12 @@ impl PreparedRgbSpend {
                 .to_byte_array(),
         )?;
         key_agg.pubkey_xonly_tweak_add(&tweak)?;
-        let (secret_nonce, public_nonce) = key_agg.nonce_gen(
-            musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b()),
+        let (secret_nonce, public_nonce) = musig::new_nonce_pair(
+            musig::SessionSecretRand::assume_uniformly_random(rng_32b()),
+            Some(&key_agg),
+            Some(convert_keypair(keys).secret_key()),
             convert_public_key(keys.public_key()),
-            &message,
+            Some(&message),
             Some(rng_32b()),
         );
         let request = RgbCooperativeRefundRequest {
@@ -1522,7 +1524,7 @@ mod tests {
         assert_eq!(tx.input[0].sequence, RGB_SPEND_SEQUENCE);
         assert_eq!(tx.input[0].witness.len(), 4);
         assert_eq!(tx.input[0].witness.nth(1).unwrap(), &[3; 32]);
-        assert_valid_leaf_spend(&tx, 0, &[f.utxo.clone()], &f.taker);
+        assert_valid_leaf_spend(&tx, 0, std::slice::from_ref(&f.utxo), &f.taker);
         // The vsize the fee was priced at.
         assert_eq!(tx.vsize(), 195);
     }
@@ -2097,10 +2099,12 @@ mod tests {
     fn maker_reply(session: &RgbCooperativeRefund) -> RgbCooperativeRefundResponse {
         let maker =
             Keypair::from_secret_key(&Secp256k1::new(), &SecretKey::from_slice(&[9; 32]).unwrap());
-        let (secret, nonce) = session.key_agg.nonce_gen(
-            musig::SessionSecretRand::assume_unique_per_nonce_gen(rng_32b()),
+        let (secret, nonce) = musig::new_nonce_pair(
+            musig::SessionSecretRand::assume_uniformly_random(rng_32b()),
+            Some(&session.key_agg),
+            Some(convert_keypair(&maker).secret_key()),
             convert_public_key(maker.public_key()),
-            &session.message,
+            Some(&session.message),
             Some(rng_32b()),
         );
         let aggregate = musig::AggregatedNonce::new(&[&nonce, &session.public_nonce]);

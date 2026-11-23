@@ -57,7 +57,7 @@ env:
   # "<pr>/merge" on a pull request.
   RELEASE_TAG: ${{ inputs.release_tag }}
   REHEARSAL_FAILURE_CASE: ${{ inputs.rehearsal && inputs.failure_case || 'none' }}
-  RUST_VERSION: "1.88.0"
+  RUST_VERSION: "1.100.0"
   UV_VERSION: "0.11.16"
   WASM_PACK_VERSION: "0.14.0"
 

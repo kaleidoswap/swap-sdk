@@ -26,6 +26,78 @@ The React Native package's optional `./arkade` entry still re-exports
 `@kaleidorg/swap-sdk/arkade` below 0.14, the last line built on
 `@arkade-os/sdk` 0.4.
 
+### Added — `apiKey` on `kaleidoswapHttpTransport`
+
+The Arkade corridor transport takes the partner's `kld_` key as `apiKey` and
+sends it as `Authorization: Bearer …` on every corridor request to the maker's
+origin, so swaps created through the Arkade venue are attributed like those
+created on the `/v2` routes.
+
+### BREAKING — Removed: the organisation-key client
+
+Swaps are attributed with the organisation's `kld_` key alone. The
+organisation-key client and everything that sent `X-Kaleido-Org-Key` are
+gone:
+
+- Rust: `kaleido::OrgKey`, `kaleido::ORG_KEY_HEADER`, `KaleidoOrgClient`,
+  `KaleidoOrgClientOptions`, `BoltzApiClientV2::org_key` and
+  `MakerAttribution::OrgKey` (an `org_key` answer now reads as
+  `MakerAttribution::Other`). `kaleido::ATTRIBUTION_HEADER` stays.
+- Python: `SwapClient.kaleido_org` and `SwapClient.org_key`.
+- WASM/TS: `SwapClient.forKaleidoOrg`, the `orgKey` getter,
+  `createKaleidoOrgClient`, `KaleidoOrgClientOptions`, `ORG_KEY_HEADER` and
+  `normalizeOrgKey`, plus the `orgKey` option on `PayThroughClient` and
+  `kaleidoswapHttpTransport`. `ATTRIBUTION_HEADER` is still exported, now
+  from the partner-key module, and `MakerAttribution` drops `"org_key"`.
+- WASM/TS: the `allowBrowser` option on `forKaleidoMaker` and
+  `createKaleidoMakerClient`. Every key Platform issues builds in a page, a
+  worker and an extension already, so the override had nothing left to allow;
+  passing it is now an unknown-option error.
+
+To keep attributing swaps, build the client from the `kld_` key instead:
+`KaleidoMakerClient` in Rust, `SwapClient.kaleido_maker` in Python,
+`createKaleidoMakerClient` in TypeScript, or the `apiKey` option on
+`PayThroughClient`.
+
+### BREAKING — Rust core: `elements` 0.27 and `secp256k1` 0.33, merged from upstream boltz-rust
+
+This merges `SatoshiPortal/boltz-rust` trunk as of 2026-11-17 (previous merge
+point `7542d2e`). Only the Rust crate's dependency surface changes; the
+TypeScript, Python and React Native APIs are unchanged.
+
+- `elements` moves from 0.26 to 0.27. Rust callers that build or inspect
+  `elements` types the SDK hands out (transactions, witnesses, proofs) move to
+  0.27 with it.
+- The MuSig2 dependency moves from a git pin of the yanked
+  `secp256k1` 0.32.0-beta.2 to `secp256k1` 0.33.1 from crates.io, so a fresh
+  dependency resolution no longer needs a git source. Nonces are generated
+  with the 0.33 API from OS randomness, the signing key and fresh extra
+  randomness.
+- `electrum-client` moves to 0.25.2.
+- The crate root re-exports `elements::hex::DisplayHex` in place of
+  `elements::hex::ToHex`, which `elements` 0.27 no longer has. Call
+  `to_lower_hex_string()` where you called `to_hex()`.
+- The toolchain is pinned to Rust 1.100 in `rust-toolchain.toml` and CI.
+
+### Changed — claims and refunds read their lockup from the chain client
+
+- A claim takes its lockup UTXO only from the caller's chain client. When the
+  client errors or does not see the lockup yet, building the claim fails and
+  can be retried; it no longer falls back to the maker's copy of the lockup
+  transaction. Wallets that claim as soon as the maker reports the lockup
+  should expect, and retry, this error while their indexer catches up.
+- A refund that falls back to the maker's copy of the lockup transaction uses
+  it only once the chain client returns that transaction by its txid, and
+  reads the refunded output from the chain client's copy.
+- `BtcSwapTx::new_refund_with_utxo` and `LiquidSwapTx::new_refund_with_utxo`
+  are new, and `BtcSwapTx::new_claim_with_utxo` and
+  `LiquidSwapTx::new_claim_with_utxo` are now public: they build a claim or
+  refund from a caller-provided lockup UTXO with no maker API call. They apply
+  the same UTXO checks as `new_claim` and `new_refund`: the UTXO must pay the
+  swap script (in the swap asset on Liquid), with exactly the expected amount
+  for a claim and a positive amount for a refund. RGB HTLCs and L-USDT swaps
+  keep their dedicated flows and are refused here.
+
 ### Changed — dependencies
 
 - `Cargo.lock` moves to url 2.5.9 and form_urlencoded 1.2.3. Lockfile only; no
