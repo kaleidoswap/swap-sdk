@@ -31,7 +31,7 @@ Boltz-shaped BOLT12 client methods remain Rust-only.
 #### From PyPI
 
 ```bash
-pip install kaleidorg_swap_sdk
+pip install kaleidoswap
 ```
 
 #### From Source
@@ -52,7 +52,7 @@ pip install kaleidorg_swap_sdk
 3. **Install the wheel**
    ```bash
    cd python/dist
-   pip install kaleidorg_swap_sdk-*.whl
+   pip install kaleidoswap-*.whl
    ```
 
 ## Development
@@ -100,13 +100,13 @@ install the selected archive, and execute a native SDK operation.
 
 The build process generates:
 
-- `python/dist/kaleidorg_swap_sdk-*-<platform>.whl` - native wheel
-- `python/dist/kaleidorg_swap_sdk-*.tar.gz` - source distribution
+- `python/dist/kaleidoswap-*-<platform>.whl` - native wheel
+- `python/dist/kaleidoswap-*.tar.gz` - source distribution
 
 Maturin generates the UniFFI Python module and packages it with the native
-library under the `kaleidorg_swap_sdk` package. A platform-independent fallback of
+library under the `kaleidoswap` package. A platform-independent fallback of
 that generated Python glue is committed as
-`python/kaleidorg_swap_sdk/_generated_uniffi.py` and checked for drift. The package
+`python/kaleidoswap/_generated_uniffi.py` and checked for drift. The package
 imports it only when Maturin omits its own generated module, which it does for
 manylinux wheels; host and sdist builds ship Maturin's glue and never use the
 fallback. Native libraries remain uncommitted build artifacts.

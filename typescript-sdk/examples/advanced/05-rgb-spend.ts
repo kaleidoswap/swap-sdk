@@ -8,7 +8,7 @@ import {
   type RgbPsbtParams,
   type RgbPsbtTemplate,
   type SwapScript,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 export interface RgbWalletAdapter {
   /** Add spendable BTC fee inputs/change to an uncolored PSBT. Sign nothing. */

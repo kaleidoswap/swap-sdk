@@ -1,4 +1,4 @@
-# `@kaleidorg/swap-sdk`
+# `kaleidoswap`
 
 TypeScript and WebAssembly bindings for KaleidoSwap: Boltz-protocol atomic swaps
 (submarine, reverse, and chain) between Bitcoin, Lightning, and Liquid.
@@ -6,7 +6,7 @@ TypeScript and WebAssembly bindings for KaleidoSwap: Boltz-protocol atomic swaps
 ## Install
 
 ```sh
-npm install @kaleidorg/swap-sdk
+npm install kaleidoswap
 ```
 
 ## Usage
@@ -17,7 +17,7 @@ from disk via the `"node"` export condition. Await it once before constructing
 any client.
 
 ```ts
-import { SwapClient, init } from "@kaleidorg/swap-sdk";
+import { SwapClient, init } from "kaleidoswap";
 
 await init();
 const client = SwapClient.forNetwork("signet");
@@ -52,7 +52,7 @@ import {
   createKaleidoSwap,
   FileStore,
   mnemonicSigner,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 // Once per process: one FileStore and one KaleidoSwap per store directory.
 const kaleido = await createKaleidoSwap({
@@ -122,7 +122,7 @@ kind for a route rejects with a `SwapError` (`INVALID_AMOUNT` or
 `INVALID_DESTINATION`) before anything is sent.
 
 ```ts
-import { isQuote } from "@kaleidorg/swap-sdk";
+import { isQuote } from "kaleidoswap";
 
 const answer = await kaleido.quote({
   pay: "lightning:BTC",
@@ -145,7 +145,7 @@ message names where they live.
 ### Start, act, watch
 
 ```ts
-import { isSwapError } from "@kaleidorg/swap-sdk";
+import { isSwapError } from "kaleidoswap";
 
 const swap = await kaleido.start(answer, { destination: liquidAddress });
 console.log(`pay ${swap.action.invoice}`);
@@ -199,7 +199,7 @@ after the timeout; `swap.refund()` is there for a caller who wants to decide.
 ## Lightning addresses and LNURL-pay
 
 ```ts
-import { init, resolveLightningAddress } from "@kaleidorg/swap-sdk";
+import { init, resolveLightningAddress } from "kaleidoswap";
 
 await init();
 const invoice = await resolveLightningAddress("alice@example.com", 25_000n);
@@ -239,7 +239,7 @@ import {
   esploraFeeEstimates,
   selectEsploraFeeRate,
   esploraTipHeight,
-} from "@kaleidorg/swap-sdk/chain-data";
+} from "kaleidoswap/chain-data";
 
 const baseUrl = "https://your-bitcoin-esplora.example/api";
 const [fees, tipHeight] = await Promise.all([
@@ -300,7 +300,7 @@ validated `SwapScript` constructors. They return a signed transaction or
 broadcast. Rust/native retain the lower-level constructors.
 
 ```ts
-import { refundSubmarineSwap } from "@kaleidorg/swap-sdk";
+import { refundSubmarineSwap } from "kaleidoswap";
 
 const result = await refundSubmarineSwap({
   status, // fresh maker status for this swap
@@ -423,13 +423,13 @@ swaps on one chain while funding or watching another.
 
 ## Pay-through
 
-`@kaleidorg/swap-sdk/pay-through` is a small HTTP client for the maker's
+`kaleidoswap/pay-through` is a small HTTP client for the maker's
 `POST /v2/swap/pay` and `GET /v2/swap/{id}`. It needs no WASM initialization.
 The maker must enable `swap.pay_through_enabled` (off by default), and the
 caller still pays the returned Lightning invoice with its own wallet.
 
 ```ts
-import { PayThroughClient } from "@kaleidorg/swap-sdk/pay-through";
+import { PayThroughClient } from "kaleidoswap/pay-through";
 
 const pay = new PayThroughClient({
   makerUrl: "https://maker.signet.kaleidoswap.com/v2",
@@ -523,7 +523,7 @@ import {
   IntentsCorridor,
   isRfqQuote,
   newRfqId,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 const corridor = new IntentsCorridor(SwapClient.forNetwork("signet"));
 const answer = await corridor.quoteLightningReceive({
@@ -542,7 +542,7 @@ if (!isRfqQuote(answer)) throw new Error(`refused: ${answer.reason}`);
 Payloads keep the wire's snake_case and `bigint` amounts on purpose: a quote
 from here is the `RfqQuote` that `@arkade-os/swap`'s gates and derivations
 take. Funding or claiming the Arkade side needs an Ark wallet — that is the
-`@kaleidorg/swap-sdk/arkade` venue, whose transport you build from the same URL
+`kaleidoswap/arkade` venue, whose transport you build from the same URL
 with `kaleidoswapHttpTransport("https://maker.signet.kaleidoswap.com/v2")`.
 
 Discovery cards are **unverified**. `corridor.card()` / `client.corridorCard()`
@@ -591,7 +591,7 @@ Persist the signed transaction's hex, chain, network and Esplora endpoint
 the transaction and explicitly rebroadcast the same bytes:
 
 ```ts
-import { BtcLikeTransaction, init } from "@kaleidorg/swap-sdk";
+import { BtcLikeTransaction, init } from "kaleidoswap";
 
 await init();
 // Load these from the receipt saved before the original broadcast.
@@ -628,7 +628,7 @@ Swap keys and preimages derive client-side from a wallet mnemonic via BIP85
 index 26589 — no key material leaves the caller:
 
 ```ts
-import { SwapMasterKey } from "@kaleidorg/swap-sdk";
+import { SwapMasterKey } from "kaleidoswap";
 
 const master = SwapMasterKey.fromWalletMnemonic(walletMnemonic, "regtest");
 const { publicKey, secretKey } = master.deriveSwapKey(0n);
@@ -790,7 +790,7 @@ limits or a rate-limit budget of its own, so anyone who reads it out of the
 bundle gains nothing.
 
 ```ts
-import { init, createKaleidoMakerClient } from "@kaleidorg/swap-sdk";
+import { init, createKaleidoMakerClient } from "kaleidoswap";
 
 // Public: safe to commit and to bundle.
 const KALEIDOSWAP_PARTNER_KEY = "kld_live_…";
@@ -876,7 +876,7 @@ full capability over that swap. It is a plain property of the create response,
 so `console.log(swap)` puts it in your logs; log `swap.id` instead.
 
 ```ts
-import { toJson } from "@kaleidorg/swap-sdk";
+import { toJson } from "kaleidoswap";
 
 const swap = await client.createChainSwap("regtest", req);
 // `toJson`, not `JSON.stringify`: a create response carries bigint amounts that
@@ -912,7 +912,7 @@ Amounts cross the WASM boundary as `bigint`. Use the exported `toJson` helper
 when serializing SDK responses:
 
 ```ts
-import { toJson } from "@kaleidorg/swap-sdk";
+import { toJson } from "kaleidoswap";
 
 console.log(toJson({ amount: 1000n }));
 ```
@@ -971,7 +971,7 @@ builds never receive that token or depend on moving maker `main`; they always
 check the pinned contract. Run the manual workflow after deployment/schema
 changes or refresh locally with authenticated read access as above.
 
-## Arkade Intents venue (`@kaleidorg/swap-sdk/arkade`)
+## Arkade Intents venue (`kaleidoswap/arkade`)
 
 An optional subpath serving the Arkade Intents RFQ routes
 (`arkade:BTC ↔ lightning:BTC`) against any solver card. Opt-in by design:
@@ -982,7 +982,7 @@ Boltz-only consumer never installs.
 import {
   ArkadeIntentsVenue,
   InMemoryArkadeSwapStore,
-} from "@kaleidorg/swap-sdk/arkade";
+} from "kaleidoswap/arkade";
 
 const venue = new ArkadeIntentsVenue({
   wallet,
@@ -1011,7 +1011,7 @@ can co-sign an early refund using the existing submarine `/refund` endpoint.
 The caller's RGB wallet owns funding, coloring and operation recovery:
 
 ```ts
-import { getRgbRefundPartialSig } from "@kaleidorg/swap-sdk";
+import { getRgbRefundPartialSig } from "kaleidoswap";
 
 const prepared = await script.prepareRgbCooperativeRefund(params);
 // Add native SegWit BTC fee inputs if required; color the frozen template

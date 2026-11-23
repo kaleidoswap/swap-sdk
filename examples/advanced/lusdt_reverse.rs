@@ -9,15 +9,15 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
-use kaleidorg_swap_sdk::elements::{Address as ElementsAddress, AddressParams};
-use kaleidorg_swap_sdk::network::esplora::EsploraLiquidClient;
-use kaleidorg_swap_sdk::network::{Chain, Currency, LiquidChain};
-use kaleidorg_swap_sdk::swaps::boltz::CreateReverseRequest;
-use kaleidorg_swap_sdk::swaps::{
+use kaleidoswap::elements::{Address as ElementsAddress, AddressParams};
+use kaleidoswap::network::esplora::EsploraLiquidClient;
+use kaleidoswap::network::{Chain, Currency, LiquidChain};
+use kaleidoswap::swaps::boltz::CreateReverseRequest;
+use kaleidoswap::swaps::{
     BtcLikeTransaction, ChainClient, FundedLiquidPset, LiquidPsetParams, SwapScript,
 };
-use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::{LiquidAssetContext, PublicKey};
+use kaleidoswap::util::secrets::Preimage;
+use kaleidoswap::{LiquidAssetContext, PublicKey};
 
 use common::{
     api_client, network, optional_env, optional_u64, required_env, sdk, swap_key, wait_for_file,

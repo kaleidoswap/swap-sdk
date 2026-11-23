@@ -15,7 +15,7 @@ async-trait = { workspace = true }
 bitcoin = { workspace = true }
 hex = "0.4"
 tokio = { workspace = true }
-kaleidorg-swap-sdk = { path = "..", features = ["ws", "esplora", "electrum", "lnurl"] }
+kaleidoswap = { path = "..", features = ["ws", "esplora", "electrum", "lnurl"] }
 uniffi = { version = "0.29.2", features = ["cli", "tokio"] }
 
 [build-dependencies]
@@ -30,11 +30,11 @@ serial_test = { workspace = true }
 # reports differently. uniffi-bindgen-react-native reads the built library's
 # filename from cargo metadata by looking for a target of kind `lib`; with only
 # `rlib` it finds none, falls back to the *package* name, and goes looking for
-# `libbindings.a` while cargo has emitted `libkaleidorg_swap_sdk.a` from the
+# `libbindings.a` while cargo has emitted `libkaleidoswap.a` from the
 # `name` below. The iOS `lipo` step is where that surfaces, and Android's `.so`
 # would follow.
 crate-type = ["staticlib", "cdylib", "lib"]
-name = "kaleidorg_swap_sdk"
+name = "kaleidoswap"
 
 [[bin]]
 name = "uniffi-bindgen"

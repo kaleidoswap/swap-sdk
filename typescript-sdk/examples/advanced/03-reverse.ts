@@ -17,7 +17,7 @@ import {
   SwapScript,
   toJson,
   validateReverseTimeoutHeadroom,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 import {
   SIGNET_LIQUID_ESPLORA,

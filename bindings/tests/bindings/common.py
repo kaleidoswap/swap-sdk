@@ -1,19 +1,19 @@
-import kaleidorg_swap_sdk
+import kaleidoswap
 import asyncio
 
-network = kaleidorg_swap_sdk.Network.REGTEST
-boltz_api = kaleidorg_swap_sdk.SwapClient.default(network)
-btc_chain = kaleidorg_swap_sdk.btc_chain_from_network(network)
-lbtc_chain = kaleidorg_swap_sdk.lbtc_chain_from_network(network)
+network = kaleidoswap.Network.REGTEST
+boltz_api = kaleidoswap.SwapClient.default(network)
+btc_chain = kaleidoswap.btc_chain_from_network(network)
+lbtc_chain = kaleidoswap.lbtc_chain_from_network(network)
 
-electrum_btc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
-    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19001", tls=False)
+electrum_btc = kaleidoswap.ClientConnection.ELECTRUM(
+    kaleidoswap.ElectrumBuilder(url="localhost:19001", tls=False)
 )
-electrum_lbtc = kaleidorg_swap_sdk.ClientConnection.ELECTRUM(
-    kaleidorg_swap_sdk.ElectrumBuilder(url="localhost:19002", tls=False)
+electrum_lbtc = kaleidoswap.ClientConnection.ELECTRUM(
+    kaleidoswap.ElectrumBuilder(url="localhost:19002", tls=False)
 )
-chain_client = kaleidorg_swap_sdk.ChainClient(
-    kaleidorg_swap_sdk.ClientConfig(
+chain_client = kaleidoswap.ChainClient(
+    kaleidoswap.ClientConfig(
         network=network, bitcoin=electrum_btc, liquid=electrum_lbtc
     )
 )
@@ -37,17 +37,17 @@ async def pay_invoice(invoice: str):
     await cli_docker(f"lncli-sim 1 payinvoice --force {invoice}")
 
 
-async def chain_cli(chain: kaleidorg_swap_sdk.Chain, cmd: str):
+async def chain_cli(chain: kaleidoswap.Chain, cmd: str):
     return await cli_docker(
         f"{'bitcoin' if chain.is_bitcoin() else 'elements'}-cli-sim-client {cmd}"
     )
 
 
-async def getnewaddress(chain: kaleidorg_swap_sdk.Chain):
+async def getnewaddress(chain: kaleidoswap.Chain):
     return await chain_cli(chain, "getnewaddress")
 
 
-async def sendtoaddress(chain: kaleidorg_swap_sdk.Chain, address: str, amount: int):
+async def sendtoaddress(chain: kaleidoswap.Chain, address: str, amount: int):
     btc_amount = f"{amount / 100_000_000:.8f}"
     return await chain_cli(chain, f"sendtoaddress {address} {btc_amount}")
 
@@ -61,7 +61,7 @@ async def delay():
     await asyncio.sleep(5)
 
 
-async def next_status(updates: kaleidorg_swap_sdk.SwapWsUpdates, status: str):
+async def next_status(updates: kaleidoswap.SwapWsUpdates, status: str):
     # 5s per event flakes on loaded CI runners (the first event regularly
     # takes longer than that right after subscribing); 60s still fails fast
     # when an event genuinely never comes.
@@ -86,7 +86,7 @@ async def construct_claim_when_indexed(script, preimage, params):
     for attempt in range(60):
         try:
             return await script.construct_claim(preimage, params)
-        except kaleidorg_swap_sdk.Error as error:
+        except kaleidoswap.Error as error:
             message = str(error)
             if attempt < 59 and (
                 "confirmations" in message or "unknown to the chain source" in message

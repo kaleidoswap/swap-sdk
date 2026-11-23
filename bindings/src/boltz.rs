@@ -1,25 +1,25 @@
 use bitcoin::hashes::sha256;
 use bitcoin::key::PublicKey;
 use bitcoin::secp256k1::PublicKey as Secp256k1PublicKey;
-use kaleidorg_swap_sdk::boltz::{
+use kaleidoswap::boltz::{
     self, BoltzWsConfig, ChainSwapDetails, CreateChainResponse, CreateReverseResponse, Side,
 };
-use kaleidorg_swap_sdk::boltz::{
+use kaleidoswap::boltz::{
     ChannelInfo, FailureReasonIncorrectAmounts, SubSwapStates, SwapStatus, TransactionInfo,
 };
-use kaleidorg_swap_sdk::error::Error as CoreError;
+use kaleidoswap::error::Error as CoreError;
 // The organization-key client is deprecated, and still exported.
 #[allow(deprecated)]
-use kaleidorg_swap_sdk::kaleido::{
+use kaleidoswap::kaleido::{
     ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
     KaleidoOrgClientOptions, OrgKey,
 };
-use kaleidorg_swap_sdk::network::{Chain, Currency, Network};
-use kaleidorg_swap_sdk::swaps::boltz::*;
-use kaleidorg_swap_sdk::swaps::magic_routing::{self, MrhDestination};
-use kaleidorg_swap_sdk::swaps::RgbLock;
-use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::LiquidAssetContext;
+use kaleidoswap::network::{Chain, Currency, Network};
+use kaleidoswap::swaps::boltz::*;
+use kaleidoswap::swaps::magic_routing::{self, MrhDestination};
+use kaleidoswap::swaps::RgbLock;
+use kaleidoswap::util::secrets::Preimage;
+use kaleidoswap::LiquidAssetContext;
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -46,7 +46,7 @@ pub enum Error {
     // Appended, not inserted: variant order is the FFI wire order.
     #[error("{code:?}: {message}")]
     Swap {
-        code: kaleidorg_swap_sdk::kaleidoswap::SwapErrorCode,
+        code: kaleidoswap::kaleidoswap::SwapErrorCode,
         message: String,
         swap_id: Option<String>,
     },
@@ -290,7 +290,7 @@ impl SwapClient {
                 contract_id,
                 swap_request
                     .rgb_max_htlc_sat
-                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+                    .unwrap_or(kaleidoswap::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
             )?;
         } else {
             response.validate_with_currency_and_asset_context(
@@ -607,9 +607,9 @@ impl SwapClient {
     pub async fn get_rgb_refund_partial_sig(
         &self,
         swap_id: &str,
-        request: kaleidorg_swap_sdk::swaps::rgb::RgbCooperativeRefundRequest,
+        request: kaleidoswap::swaps::rgb::RgbCooperativeRefundRequest,
         swap_auth: &str,
-    ) -> Result<kaleidorg_swap_sdk::swaps::rgb::RgbCooperativeRefundResponse, Error> {
+    ) -> Result<kaleidoswap::swaps::rgb::RgbCooperativeRefundResponse, Error> {
         Ok(self
             .inner
             .get_rgb_refund_partial_sig(swap_id, &request, swap_auth)
@@ -697,9 +697,9 @@ pub struct SwapStatus {
     pub id: String,
     pub status: String,
     pub zero_conf_rejected: Option<bool>,
-    pub transaction: Option<kaleidorg_swap_sdk::boltz::TransactionInfo>,
+    pub transaction: Option<kaleidoswap::boltz::TransactionInfo>,
     pub failure_reason: Option<String>,
-    pub failure_details: Option<kaleidorg_swap_sdk::boltz::FailureReasonIncorrectAmounts>,
+    pub failure_details: Option<kaleidoswap::boltz::FailureReasonIncorrectAmounts>,
     pub channel_info: Option<ChannelInfo>,
 }
 

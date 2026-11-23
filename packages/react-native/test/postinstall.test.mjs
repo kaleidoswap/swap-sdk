@@ -17,7 +17,7 @@ const VERSION = "0.0.0-postinstall-test";
  * skips the download entirely when it finds a Cargo.toml two levels up.
  */
 function installedPackage(digest = "b".repeat(64)) {
-  const root = mkdtempSync(join(tmpdir(), "kaleidorg-postinstall-"));
+  const root = mkdtempSync(join(tmpdir(), "kaleidoswap-postinstall-"));
   mkdirSync(join(root, "scripts"));
   for (const script of ["postinstall.mjs", "native-artifacts.mjs"]) {
     cpSync(join(packageRoot, "scripts", script), join(root, "scripts", script));

@@ -6,7 +6,7 @@ mod support;
 mod wallet;
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{OutPoint, PublicKey, TxOut};
-use kaleidorg_swap_sdk::{
+use kaleidoswap::{
     network::BitcoinChain,
     swaps::{
         boltz::{
@@ -239,7 +239,7 @@ async fn run() -> Result<()> {
     ensure!(
         matches!(
             insufficient,
-            Err(kaleidorg_swap_sdk::error::Error::RgbFeeInputRequired)
+            Err(kaleidoswap::error::Error::RgbFeeInputRequired)
         ),
         "insufficient HTLC fee must request BTC input"
     );

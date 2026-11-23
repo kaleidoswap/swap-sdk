@@ -3,7 +3,7 @@ import {
   isKaleidoSwapError,
   type SwapClient,
   type Network,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 /** The maker's signet deployment settles on Mutinynet, so chain access must too. */
 export const SIGNET_BITCOIN_ESPLORA = "https://esplora.signet.kaleidoswap.com";

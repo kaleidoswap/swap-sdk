@@ -6,7 +6,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 card = json.loads(
     (

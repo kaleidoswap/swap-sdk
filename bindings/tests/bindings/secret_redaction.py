@@ -13,10 +13,10 @@ import importlib.util
 import sys
 from pathlib import Path
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 REDACT = (
-    Path(__file__).resolve().parents[2] / "python" / "kaleidorg_swap_sdk" / "_redact.py"
+    Path(__file__).resolve().parents[2] / "python" / "kaleidoswap" / "_redact.py"
 )
 spec = importlib.util.spec_from_file_location("_redact", REDACT)
 redact = importlib.util.module_from_spec(spec)

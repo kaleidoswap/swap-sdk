@@ -1,22 +1,22 @@
 use crate::boltz::Error;
 use crate::swap::KeyPair;
-use kaleidorg_swap_sdk::network::Network;
-use kaleidorg_swap_sdk::util::secrets::SwapMasterKey as CoreSwapMasterKey;
+use kaleidoswap::network::Network;
+use kaleidoswap::util::secrets::SwapMasterKey as CoreSwapMasterKey;
 use std::sync::Arc;
 
 #[derive(uniffi::Object)]
-pub struct Preimage(pub(crate) kaleidorg_swap_sdk::util::secrets::Preimage);
+pub struct Preimage(pub(crate) kaleidoswap::util::secrets::Preimage);
 
 #[uniffi::export]
 impl Preimage {
     #[uniffi::constructor]
     pub fn new() -> Self {
-        Self(kaleidorg_swap_sdk::util::secrets::Preimage::random())
+        Self(kaleidoswap::util::secrets::Preimage::random())
     }
 
     #[uniffi::constructor]
     pub fn from_bytes(vec: Vec<u8>) -> Result<Self, Error> {
-        Ok(Self(kaleidorg_swap_sdk::util::secrets::Preimage::from_vec(
+        Ok(Self(kaleidoswap::util::secrets::Preimage::from_vec(
             vec,
         )?))
     }
@@ -116,7 +116,7 @@ impl SwapMasterKey {
     pub fn derive_preimage(&self, index: u64) -> Result<Arc<Preimage>, Error> {
         let keypair = self.0.derive_swapkey(index)?;
         Ok(Arc::new(Preimage(
-            kaleidorg_swap_sdk::util::secrets::Preimage::from_swap_key(&keypair),
+            kaleidoswap::util::secrets::Preimage::from_swap_key(&keypair),
         )))
     }
 }

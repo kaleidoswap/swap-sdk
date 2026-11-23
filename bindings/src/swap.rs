@@ -5,17 +5,17 @@ use crate::util::Preimage;
 use bitcoin::hex::DisplayHex;
 use bitcoin::key::{rand, Keypair, PublicKey};
 use bitcoin::secp256k1::SecretKey;
-use kaleidorg_swap_sdk::boltz::ChainSwapDetails;
-use kaleidorg_swap_sdk::boltz::{
+use kaleidoswap::boltz::ChainSwapDetails;
+use kaleidoswap::boltz::{
     CreateReverseResponse, CreateSubmarineResponse, Side, SwapRestoreResponse,
 };
-use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::{Chain, Network};
-use kaleidorg_swap_sdk::swaps::rgb::{
+use kaleidoswap::fees::Fee;
+use kaleidoswap::network::{Chain, Network};
+use kaleidoswap::swaps::rgb::{
     ColoredRgbPsbt, RgbAllocation, RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
     RgbPsbtTemplate, RgbSpendFunding,
 };
-use kaleidorg_swap_sdk::swaps::{self as swaps_bitcoin};
+use kaleidoswap::swaps::{self as swaps_bitcoin};
 use std::str::FromStr;
 use std::sync::Arc;
 

@@ -8,7 +8,7 @@
 //!
 //! What it deliberately cannot do is finish a swap: funding the send lockup, or
 //! claiming the receive lockup once the maker funds it, needs an Ark wallet
-//! (`@kaleidorg/swap-sdk/arkade`). Quote, verify, track is the half every
+//! (`kaleidoswap/arkade`). Quote, verify, track is the half every
 //! runtime carries without that dependency.
 //!
 //! A quote is a real reservation on the maker's side, so by default the receive
@@ -20,13 +20,13 @@
 //!   MAKER_URL=https://maker.signet.kaleidoswap.com/v2 cargo run --example corridor_quote
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kaleidorg_swap_sdk::bitcoin::hashes::{sha256, Hash};
-use kaleidorg_swap_sdk::bitcoin::secp256k1::rand::{self, RngCore};
-use kaleidorg_swap_sdk::corridor::{
+use kaleidoswap::bitcoin::hashes::{sha256, Hash};
+use kaleidoswap::bitcoin::secp256k1::rand::{self, RngCore};
+use kaleidoswap::corridor::{
     new_rfq_id, AmountSide, LightningReceiveRequest, LightningSendRequest, RfqAnswer, RfqQuote,
 };
-use kaleidorg_swap_sdk::error::Error;
-use kaleidorg_swap_sdk::swaps::boltz::BoltzApiClientV2;
+use kaleidoswap::error::Error;
+use kaleidoswap::swaps::boltz::BoltzApiClientV2;
 
 /// secp256k1's generator point, x-only: a valid key nobody holds the secret to.
 /// Fine for a quote you will not act on; use your own wallet's key otherwise.

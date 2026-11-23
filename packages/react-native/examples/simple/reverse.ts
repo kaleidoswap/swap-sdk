@@ -3,7 +3,7 @@ import {
   Asset,
   type KaleidoSwap,
   type SwapPhase,
-} from "@kaleidorg/swap-sdk-react-native";
+} from "kaleidoswap-react-native";
 
 export async function reverse(
   kaleido: KaleidoSwap,

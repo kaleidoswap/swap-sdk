@@ -16,11 +16,11 @@
 #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
 use {
     anyhow::{Context, Result},
-    kaleidorg_swap_sdk::kaleidoswap::{
+    kaleidoswap::kaleidoswap::{
         Amount, Asset, FileStore, KaleidoSwap, KaleidoSwapOptions, MnemonicSigner, QuoteRequest,
         StartOptions,
     },
-    kaleidorg_swap_sdk::network::Network,
+    kaleidoswap::network::Network,
     std::{env, path::PathBuf, sync::Arc},
 };
 

@@ -21,15 +21,15 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::esplora::EsploraBitcoinClient;
-use kaleidorg_swap_sdk::network::{BitcoinChain, BitcoinClient, Chain, Currency};
-use kaleidorg_swap_sdk::swaps::boltz::CreateReverseRequest;
-use kaleidorg_swap_sdk::swaps::{
+use kaleidoswap::fees::Fee;
+use kaleidoswap::network::esplora::EsploraBitcoinClient;
+use kaleidoswap::network::{BitcoinChain, BitcoinClient, Chain, Currency};
+use kaleidoswap::swaps::boltz::CreateReverseRequest;
+use kaleidoswap::swaps::{
     ChainClient, SwapScript, SwapTransactionParams, TransactionOptions,
 };
-use kaleidorg_swap_sdk::util::secrets::Preimage;
-use kaleidorg_swap_sdk::PublicKey;
+use kaleidoswap::util::secrets::Preimage;
+use kaleidoswap::PublicKey;
 
 use common::{
     api_client, network, optional_env, optional_u64, required_env, sdk, swap_key, wait_for_status,
@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
     // wrong-network address would surface only at the claim, after the payment.
     let claim_address = required_env("BTC_CLAIM_ADDRESS")?;
     claim_address
-        .parse::<kaleidorg_swap_sdk::bitcoin::Address<_>>()
+        .parse::<kaleidoswap::bitcoin::Address<_>>()
         .context("BTC_CLAIM_ADDRESS is not a Bitcoin address")?
         .require_network(chain.into())
         .with_context(|| format!("BTC_CLAIM_ADDRESS is not a {chain:?} address"))?;

@@ -48,7 +48,7 @@ def main() -> None:
                 "-I",
                 "-c",
                 (
-                    "from kaleidorg_swap_sdk import Preimage; "
+                    "from kaleidoswap import Preimage; "
                     "assert len(Preimage().sha256()) == 64"
                 ),
             ],
