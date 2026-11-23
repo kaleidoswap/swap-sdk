@@ -8,7 +8,7 @@ lockup or pays an invoice.
 
 What it deliberately cannot do is finish a swap. Funding the send lockup, or
 claiming the receive lockup once the maker funds it, needs an Ark wallet; that
-is `@kaleidorg/swap-sdk/arkade`'s job (TypeScript). This half — quote, verify,
+is `kaleidoswap/arkade`'s job (TypeScript). This half — quote, verify,
 track — is what a Python host can carry without that dependency.
 
 A quote is a real reservation on the maker's side, so the receive request below
@@ -22,7 +22,7 @@ import hashlib
 import os
 import time
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 # secp256k1's generator point, x-only: a valid key nobody holds the secret to.
 # Fine for a quote you will not act on; use your own wallet's key otherwise.

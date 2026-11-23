@@ -17,11 +17,11 @@ where a breaking change can land. Python's compatible-release operator means the
 same thing.
 
 ```json
-"@kaleidorg/swap-sdk": "^0.10.0"
+"kaleidoswap": "^0.10.0"
 ```
 
 ```text
-kaleidorg-swap-sdk~=0.10.0
+kaleidoswap~=0.10.0
 ```
 
 Move to a new minor deliberately, after reading its changelog entry. Your

@@ -73,8 +73,8 @@ fn lightning_address() {
 /// The high-level surface: foreign store and signer, a local maker stub.
 #[test]
 #[serial]
-fn kaleidoswap() {
-    run_test("tests/bindings/kaleidoswap.py");
+fn high_level() {
+    run_test("tests/bindings/high_level.py");
 }
 
 #[test]

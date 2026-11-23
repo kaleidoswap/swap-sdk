@@ -50,20 +50,16 @@ class _UniffiRustBuffer(ctypes.Structure):
 
     @staticmethod
     def alloc(size):
-        return _uniffi_rust_call(
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc, size
-        )
+        return _uniffi_rust_call(_UniffiLib.ffi_kaleidoswap_rustbuffer_alloc, size)
 
     @staticmethod
     def reserve(rbuf, additional):
         return _uniffi_rust_call(
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_reserve, rbuf, additional
+            _UniffiLib.ffi_kaleidoswap_rustbuffer_reserve, rbuf, additional
         )
 
     def free(self):
-        return _uniffi_rust_call(
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_free, self
-        )
+        return _uniffi_rust_call(_UniffiLib.ffi_kaleidoswap_rustbuffer_free, self)
 
     def __str__(self):
         return "_UniffiRustBuffer(capacity={}, len={}, data={})".format(
@@ -497,8 +493,8 @@ def _uniffi_load_indirect():
         # Anything else must be an ELF platform - Linux, *BSD, Solaris/illumos
         libname = "lib{}.so"
 
-    libname = libname.format("kaleidorg_swap_sdk")
-    path = os.path.join(os.path.dirname(__file__), "kaleidorg_swap_sdk", libname)
+    libname = libname.format("kaleidoswap")
+    path = os.path.join(os.path.dirname(__file__), "kaleidoswap", libname)
     lib = ctypes.cdll.LoadLibrary(path)
     return lib
 
@@ -507,7 +503,7 @@ def _uniffi_check_contract_api_version(lib):
     # Get the bindings contract version from our ComponentInterface
     bindings_contract_version = 29
     # Get the scaffolding contract version by calling the into the dylib
-    scaffolding_contract_version = lib.ffi_kaleidorg_swap_sdk_uniffi_contract_version()
+    scaffolding_contract_version = lib.ffi_kaleidoswap_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version:
         raise InternalError(
             "UniFFI contract version mismatch: try cleaning and rebuilding your project"
@@ -515,785 +511,632 @@ def _uniffi_check_contract_api_version(lib):
 
 
 def _uniffi_check_api_checksums(lib):
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_func_btc_chain_from_network() != 35500:
+    if lib.uniffi_kaleidoswap_checksum_func_btc_chain_from_network() != 28148:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network() != 51760:
+    if lib.uniffi_kaleidoswap_checksum_func_lbtc_chain_from_network() != 13473:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id() != 37080:
+    if lib.uniffi_kaleidoswap_checksum_func_new_rfq_id() != 44903:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address() != 45246:
+    if lib.uniffi_kaleidoswap_checksum_func_resolve_lightning_address() != 48669:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom()
-        != 14140
-    ):
+    if lib.uniffi_kaleidoswap_checksum_func_validate_chain_timeout_headroom() != 34718:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom()
-        != 49957
+        lib.uniffi_kaleidoswap_checksum_func_validate_reverse_timeout_headroom()
+        != 42093
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex() != 9628:
+    if lib.uniffi_kaleidoswap_checksum_method_btcliketransaction_hex() != 61382:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid() != 24114:
+    if lib.uniffi_kaleidoswap_checksum_method_btcliketransaction_txid() != 35182:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height()
-        != 60872
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_chainclient_bitcoin_tip_height() != 30770:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx()
-        != 21307
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_chainclient_broadcast_tx() != 38393:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height()
-        != 37297
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_chainclient_liquid_tip_height() != 55540:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_get() != 23077:
+    if lib.uniffi_kaleidoswap_checksum_method_filestore_get() != 24863:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_list() != 36848:
+    if lib.uniffi_kaleidoswap_checksum_method_filestore_list() != 8429:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_next_index() != 46200:
+    if lib.uniffi_kaleidoswap_checksum_method_filestore_next_index() != 60768:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_put() != 57283:
+    if lib.uniffi_kaleidoswap_checksum_method_filestore_put() != 35690:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_last_attribution()
-        != 39000
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_kaleidoswap_last_attribution() != 34467:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_network() != 49640:
+    if lib.uniffi_kaleidoswap_checksum_method_kaleidoswap_network() != 27508:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_quote() != 64482:
+    if lib.uniffi_kaleidoswap_checksum_method_kaleidoswap_quote() != 38291:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_resume() != 7132:
+    if lib.uniffi_kaleidoswap_checksum_method_kaleidoswap_resume() != 29657:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_start() != 6570:
+    if lib.uniffi_kaleidoswap_checksum_method_kaleidoswap_start() != 17158:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_swap() != 62339:
+    if lib.uniffi_kaleidoswap_checksum_method_kaleidoswap_swap() != 33697:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public() != 25695:
+    if lib.uniffi_kaleidoswap_checksum_method_keypair_public() != 17013:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_secret() != 50235:
+    if lib.uniffi_kaleidoswap_checksum_method_keypair_secret() != 26120:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_get() != 63104:
+    if lib.uniffi_kaleidoswap_checksum_method_memorystore_get() != 18232:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_list() != 61532:
+    if lib.uniffi_kaleidoswap_checksum_method_memorystore_list() != 11127:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_next_index() != 27259:
+    if lib.uniffi_kaleidoswap_checksum_method_memorystore_next_index() != 35056:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put() != 1851:
+    if lib.uniffi_kaleidoswap_checksum_method_memorystore_put() != 15678:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage()
-        != 52754
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_derive_preimage() != 18559:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_nonce()
-        != 22393
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_musig_nonce() != 14885:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_partial_sign()
-        != 16390
+        lib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_musig_partial_sign()
+        != 43791
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_public_key()
-        != 17492
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_public_key() != 2119:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_sign_schnorr()
-        != 44100
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_sign_schnorr() != 63429:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase() != 53185:
+    if lib.uniffi_kaleidoswap_checksum_method_phaselistener_on_phase() != 36520:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_bytes() != 34022:
+    if lib.uniffi_kaleidoswap_checksum_method_preimage_bytes() != 22106:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_hash160() != 49966:
+    if lib.uniffi_kaleidoswap_checksum_method_preimage_hash160() != 45726:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_sha256() != 49465:
+    if lib.uniffi_kaleidoswap_checksum_method_preimage_sha256() != 22462:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_to_string() != 36528:
+    if lib.uniffi_kaleidoswap_checksum_method_preimage_to_string() != 34644:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_claim()
-        != 22780
+        lib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_finalize_claim()
+        != 27786
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_refund()
-        != 8859
+        lib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_finalize_refund()
+        != 36614
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template()
-        != 22943
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_template() != 14513:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_begin_cooperative_refund()
-        != 37014
+        lib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_begin_cooperative_refund()
+        != 25499
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_claim()
-        != 26399
+        lib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_finalize_claim()
+        != 56823
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_refund()
-        != 20740
+        lib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_finalize_refund()
+        != 5402
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_fund() != 16698:
+    if lib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_fund() != 27086:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_template()
-        != 46368
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_template() != 1255:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete()
-        != 37288
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_rgbcooperativerefund_complete() != 15393:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request()
-        != 7198
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_rgbcooperativerefund_request() != 57629:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_action() != 30011:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_action() != 49743:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_id() != 11574:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_id() != 26516:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_phase() != 30777:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_phase() != 51939:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_protocol() != 2466:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_protocol() != 20141:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_record() != 44583:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_record() != 53509:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_refund() != 16558:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_refund() != 22071:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_settled() != 62762:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_settled() != 11027:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_tick() != 8073:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_tick() != 3793:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_watch() != 47245:
+    if lib.uniffi_kaleidoswap_checksum_method_swap_watch() != 32068:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote() != 65325:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_accept_quote() != 28172:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_environment()
-        != 26157
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_api_key_environment() != 1133:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id() != 62478:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_api_key_id() != 49269:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete()
-        != 51194
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_complete() != 35046:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote() != 23968:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_quote() != 27633:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request()
-        != 30612
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_request() != 21518:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_check_mrh() != 38332:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_check_mrh() != 39997:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card()
-        != 59966
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_card() != 34851:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw()
-        != 7137
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_card_raw() != 40327:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url() != 34546:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_url() != 49624:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_chain_swap()
-        != 10293
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_create_chain_swap() != 51478:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_reverse_swap()
-        != 17506
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_create_reverse_swap() != 35497:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap() != 17792:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_create_swap() != 19986:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs()
-        != 61489
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_atomic_pairs() != 40438:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap()
-        != 19255
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_atomic_swap() != 59645:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs()
-        != 44079
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_chain_pairs() != 35057:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_txs()
-        != 59448
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_chain_txs() != 25508:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_fee_estimation()
-        != 59927
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_fee_estimation() != 53169:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_height() != 30180:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_height() != 5579:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_mrh_bip21()
-        != 42131
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_mrh_bip21() != 30180:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_nodes() != 128:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_nodes() != 53099:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_quote() != 3162:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_quote() != 32475:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_pairs()
-        != 30457
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_pairs() != 50647:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_tx()
-        != 34653
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_tx() != 52014:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_rgb_refund_partial_sig()
-        != 51458
+        lib.uniffi_kaleidoswap_checksum_method_swapclient_get_rgb_refund_partial_sig()
+        != 64535
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_pairs()
-        != 26359
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_pairs() != 48216:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_preimage()
-        != 6994
+        lib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_preimage()
+        != 12619
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_tx()
-        != 41865
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_tx() != 21394:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_swap() != 17638:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_swap() != 61221:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_last_attribution()
-        != 64241
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_last_attribution() != 40697:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_org_key() != 27248:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_org_key() != 27331:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive()
-        != 52299
+        lib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_receive()
+        != 40811
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send()
-        != 56372
+        lib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_send()
+        != 58865
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_recover_swap_auth()
-        != 55894
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_recover_swap_auth() != 28166:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_rfq_status() != 40705:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_rfq_status() != 11672:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_swap_restore() != 19420:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_swap_restore() != 4632:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_swap_restore_index()
-        != 52207
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_swap_restore_index() != 43112:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_ws() != 20767:
+    if lib.uniffi_kaleidoswap_checksum_method_swapclient_ws() != 40924:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_preimage()
-        != 9238
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapmasterkey_derive_preimage() != 1699:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_swap_key()
-        != 52513
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapmasterkey_derive_swap_key() != 63983:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_master_xpub()
-        != 19966
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapmasterkey_master_xpub() != 56488:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_swap_mnemonic()
-        != 64409
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapmasterkey_swap_mnemonic() != 31424:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_claim()
-        != 6794
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapscript_construct_claim() != 9049:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_refund()
-        != 59320
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapscript_construct_refund() != 57807:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_claim()
-        != 10683
+        lib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_liquid_claim()
+        != 37670
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_refund()
-        != 4364
+        lib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_liquid_refund()
+        != 26353
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_claim()
-        != 49572
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_claim() != 58608:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_cooperative_refund()
-        != 56069
+        lib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_cooperative_refund()
+        != 43781
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund()
-        != 21083
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_refund() != 33408:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim()
-        != 21839
+        lib.uniffi_kaleidoswap_checksum_method_swapscript_submarine_cooperative_claim()
+        != 34895
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_public_key() != 30398:
+    if lib.uniffi_kaleidoswap_checksum_method_swapsigner_public_key() != 33914:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage()
-        != 55416
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapsigner_derive_preimage() != 25475:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_sign_schnorr() != 945:
+    if lib.uniffi_kaleidoswap_checksum_method_swapsigner_sign_schnorr() != 9855:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_nonce() != 24397:
+    if lib.uniffi_kaleidoswap_checksum_method_swapsigner_musig_nonce() != 28571:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_partial_sign()
-        != 35869
-    ):
+    if lib.uniffi_kaleidoswap_checksum_method_swapsigner_musig_partial_sign() != 31573:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get() != 7014:
+    if lib.uniffi_kaleidoswap_checksum_method_swapstore_get() != 30303:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_put() != 43166:
+    if lib.uniffi_kaleidoswap_checksum_method_swapstore_put() != 48112:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_list() != 62276:
+    if lib.uniffi_kaleidoswap_checksum_method_swapstore_list() != 59405:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_next_index() != 53736:
+    if lib.uniffi_kaleidoswap_checksum_method_swapstore_next_index() != 28515:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected() != 21523:
+    if lib.uniffi_kaleidoswap_checksum_method_swapwsapi_is_connected() != 15740:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_run_ws_loop() != 22028:
+    if lib.uniffi_kaleidoswap_checksum_method_swapwsapi_run_ws_loop() != 43010:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_shutdown() != 37947:
+    if lib.uniffi_kaleidoswap_checksum_method_swapwsapi_shutdown() != 8390:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_subscribe_swap() != 9540:
+    if lib.uniffi_kaleidoswap_checksum_method_swapwsapi_subscribe_swap() != 23994:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_updates() != 56897:
+    if lib.uniffi_kaleidoswap_checksum_method_swapwsapi_updates() != 41874:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next() != 25944:
+    if lib.uniffi_kaleidoswap_checksum_method_swapwsupdates_next() != 36503:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex()
-        != 32618
+        lib.uniffi_kaleidoswap_checksum_constructor_btcliketransaction_from_hex()
+        != 35725
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin()
-        != 59607
+        lib.uniffi_kaleidoswap_checksum_constructor_btcliketransaction_from_hex_bitcoin()
+        != 55623
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new() != 43536:
+    if lib.uniffi_kaleidoswap_checksum_constructor_chainclient_new() != 9262:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_filestore_new() != 63797:
+    if lib.uniffi_kaleidoswap_checksum_constructor_filestore_new() != 5656:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_kaleidoswap_new() != 56939:
+    if lib.uniffi_kaleidoswap_checksum_constructor_kaleidoswap_new() != 20209:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_from_secret_key()
-        != 58765
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_keypair_from_secret_key() != 23012:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_new() != 49100:
+    if lib.uniffi_kaleidoswap_checksum_constructor_keypair_new() != 20170:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_memorystore_new() != 40643:
+    if lib.uniffi_kaleidoswap_checksum_constructor_memorystore_new() != 25251:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_mnemonicsigner_new() != 21457:
+    if lib.uniffi_kaleidoswap_checksum_constructor_mnemonicsigner_new() != 48420:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_from_bytes()
-        != 43293
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_preimage_from_bytes() != 25512:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new() != 58443:
+    if lib.uniffi_kaleidoswap_checksum_constructor_preimage_new() != 14950:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_default() != 60714:
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapclient_default() != 7806:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_maker()
-        != 58392
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapclient_kaleido_maker() != 61118:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_org()
-        != 26977
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapclient_kaleido_org() != 17304:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_new() != 60761:
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapclient_new() != 32619:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_swap_mnemonic()
-        != 26148
+        lib.uniffi_kaleidoswap_checksum_constructor_swapmasterkey_from_swap_mnemonic()
+        != 29956
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic()
-        != 15773
+        lib.uniffi_kaleidoswap_checksum_constructor_swapmasterkey_from_wallet_mnemonic()
+        != 5995
     ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain()
-        != 26876
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_chain() != 21797:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_restored()
-        != 30988
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_restored() != 24757:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse()
-        != 40951
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_reverse() != 38910:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if (
-        lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_submarine()
-        != 22437
-    ):
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_submarine() != 32685:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
-    if lib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapwsapi_new() != 23429:
+    if lib.uniffi_kaleidoswap_checksum_constructor_swapwsapi_new() != 40621:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -1608,297 +1451,265 @@ class _UniffiVTableCallbackInterfaceSwapStore(ctypes.Structure):
     ]
 
 
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_btcliketransaction.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_btcliketransaction.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_btcliketransaction.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_btcliketransaction.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_btcliketransaction.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_btcliketransaction.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_btcliketransaction_from_hex.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_btcliketransaction_from_hex.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_btcliketransaction_from_hex_bitcoin.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_btcliketransaction_from_hex_bitcoin.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_btcliketransaction_hex.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex.argtypes = (
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex_bitcoin.argtypes = (
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex_bitcoin.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_btcliketransaction_hex.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_btcliketransaction_hex.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_btcliketransaction_hex.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_btcliketransaction_txid.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_btcliketransaction_txid.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_btcliketransaction_txid.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_btcliketransaction_txid.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_chainclient.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_chainclient.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_chainclient.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_chainclient.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_chainclient.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_chainclient.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_chainclient.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_chainclient.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_chainclient_new.argtypes = (
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_chainclient_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_bitcoin_tip_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_bitcoin_tip_height.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_broadcast_tx.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_broadcast_tx.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_liquid_tip_height.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_liquid_tip_height.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_filestore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_filestore.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_filestore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_filestore.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_filestore_new.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_filestore_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_get.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_get.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_list.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_list.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_next_index.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_next_index.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_put.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_filestore_put.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_clone_kaleidoswap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_kaleidoswap.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_kaleidoswap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_kaleidoswap.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_kaleidoswap_new.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_kaleidoswap_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_last_attribution.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_last_attribution.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_network.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_network.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_quote.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_resume.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_resume.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_start.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_start.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_swap.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_clone_keypair.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_keypair.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_keypair.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_keypair.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_keypair_from_secret_key.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_keypair_from_secret_key.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height.argtypes = (
-    ctypes.c_void_p,
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_keypair_new.argtypes = (
+    ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx.argtypes = (
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_filestore.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_keypair_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_keypair_public.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_filestore.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_filestore.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_keypair_public.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_keypair_secret.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_filestore.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_filestore_new.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_keypair_secret.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_clone_memorystore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_memorystore.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_memorystore.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_memorystore.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_memorystore_new.argtypes = (
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_memorystore_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_get.argtypes = (
+    ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_filestore_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_get.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_list.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_list.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_next_index.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_next_index.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_put.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_put.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_clone_mnemonicsigner.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_mnemonicsigner.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_mnemonicsigner.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_mnemonicsigner.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_mnemonicsigner_new.argtypes = (
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_mnemonicsigner_new.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_get.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_get.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_list.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_list.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_next_index.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_next_index.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_put.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_put.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_kaleidoswap.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_kaleidoswap.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_kaleidoswap.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_kaleidoswap.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_kaleidoswap_new.argtypes = (
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_kaleidoswap_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_last_attribution.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_last_attribution.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_network.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_network.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_quote.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_quote.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_resume.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_resume.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_start.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_start.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_swap.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_swap.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_keypair.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_keypair.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_keypair.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_keypair.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_keypair_from_secret_key.argtypes = (
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_keypair_from_secret_key.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_keypair_new.argtypes = (
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_keypair_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_public.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_public.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_secret.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_secret.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_memorystore.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_memorystore.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_memorystore.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_memorystore.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_memorystore_new.argtypes = (
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_memorystore_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_get.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_get.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_list.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_list.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_next_index.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_next_index.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_put.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_put.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_mnemonicsigner.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_mnemonicsigner.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_mnemonicsigner.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_mnemonicsigner.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new.argtypes = (
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_derive_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_nonce.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_derive_preimage.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_musig_nonce.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_nonce.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_musig_nonce.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_musig_partial_sign.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     _UniffiRustBuffer,
@@ -1906,755 +1717,745 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_public_key.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_musig_partial_sign.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_public_key.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_public_key.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_public_key.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_sign_schnorr.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_sign_schnorr.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_sign_schnorr.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_sign_schnorr.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_phaselistener.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_phaselistener.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_phaselistener.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_phaselistener.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_phaselistener.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_phaselistener.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_phaselistener.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_phaselistener.argtypes = (
     ctypes.POINTER(_UniffiVTableCallbackInterfacePhaseListener),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_phaselistener.restype = (
-    None
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_phaselistener_on_phase.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_phaselistener.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_phaselistener_on_phase.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_phaselistener_on_phase.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preimage.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_phaselistener_on_phase.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_clone_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preimage.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preimage.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_preimage.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preimage.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_preimage_from_bytes.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_preimage.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_preimage_from_bytes.argtypes = (
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_preimage_from_bytes.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_preimage_from_bytes.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_preimage_new.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_preimage_new.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_preimage_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_bytes.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_preimage_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_bytes.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_bytes.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_bytes.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_hash160.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_hash160.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_sha256.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_sha256.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_to_string.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preimage_to_string.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_clone_preparedliquidspend.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_preparedliquidspend.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_preparedliquidspend.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_preparedliquidspend.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_finalize_claim.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_finalize_claim.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_finalize_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_finalize_refund.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_template.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_template.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_hash160.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_preparedrgbspend.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_hash160.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_preparedrgbspend.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_preparedrgbspend.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_preparedrgbspend.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_begin_cooperative_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_begin_cooperative_refund.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_finalize_claim.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_finalize_claim.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_sha256.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_finalize_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_sha256.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_finalize_refund.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_to_string.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_fund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_fund.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_template.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_to_string.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_template.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preparedliquidspend.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_rgbcooperativerefund.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preparedliquidspend.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedliquidspend.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_rgbcooperativerefund.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_rgbcooperativerefund.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedliquidspend.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_finalize_claim.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_finalize_claim.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_finalize_refund.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_rgbcooperativerefund.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_rgbcooperativerefund_complete.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_finalize_refund.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_rgbcooperativerefund_complete.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preparedrgbspend.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_rgbcooperativerefund_request.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preparedrgbspend.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedrgbspend.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedrgbspend.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_begin_cooperative_refund.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_begin_cooperative_refund.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_claim.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_claim.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_refund.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_refund.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_fund.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_fund.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_template.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_template.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_rgbcooperativerefund_request.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbcooperativerefund.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swap.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbcooperativerefund.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swap.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swap.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_swap.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_action.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_action.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_id.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_id.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_phase.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_phase.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_protocol.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_protocol.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_record.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_record.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_refund.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_refund.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_settled.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_settled.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_tick.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_tick.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_watch.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swap_watch.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapclient.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapclient.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapclient.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapclient.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_default.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_default.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbcooperativerefund.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbcooperativerefund.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_complete.argtypes = (
-    ctypes.c_void_p,
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_kaleido_maker.argtypes = (
     _UniffiRustBuffer,
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_complete.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swap.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swap.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swap.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swap.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_action.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_action.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_id.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_id.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_phase.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_phase.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_protocol.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_protocol.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_record.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_record.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_refund.argtypes = (ctypes.c_void_p,)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_refund.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_settled.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_settled.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_tick.argtypes = (ctypes.c_void_p,)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_tick.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_watch.argtypes = (
-    ctypes.c_void_p,
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_watch.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapclient.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapclient.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapclient.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapclient.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_default.argtypes = (
+    _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_default.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_kaleido_maker.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_maker.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_kaleido_org.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_maker.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_kaleido_org.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_org.argtypes = (
-    _UniffiRustBuffer,
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_new.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_org.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_new.argtypes = (
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_accept_quote.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_accept_quote.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.c_uint64,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_accept_quote.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_accept_quote.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_environment.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_api_key_environment.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_environment.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_api_key_environment.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_api_key_id.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_api_key_id.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_complete.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_complete.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_quote.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.c_uint64,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_quote.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_request.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_request.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_check_mrh.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_check_mrh.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_check_mrh.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_check_mrh.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_card.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_card.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_card_raw.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_card_raw.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_url.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_url.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_url.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_url.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_chain_swap.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_chain_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_chain_swap.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_chain_swap.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_reverse_swap.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_reverse_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_reverse_swap.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_reverse_swap.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_swap.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_atomic_pairs.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_atomic_pairs.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_atomic_swap.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_atomic_swap.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_pairs.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_chain_pairs.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_pairs.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_chain_pairs.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_txs.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_txs.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_fee_estimation.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_fee_estimation.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_height.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_height.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_mrh_bip21.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_chain_txs.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_mrh_bip21.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_chain_txs.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_nodes.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_fee_estimation.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_nodes.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_fee_estimation.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_quote.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_quote.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_pairs.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_height.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_pairs.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_tx.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_height.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_mrh_bip21.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_tx.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_mrh_bip21.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_rgb_refund_partial_sig.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_nodes.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_nodes.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_quote.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_quote.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_pairs.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_pairs.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_tx.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_tx.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_rgb_refund_partial_sig.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_rgb_refund_partial_sig.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_pairs.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_rgb_refund_partial_sig.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_pairs.argtypes = (
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_pairs.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_preimage.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_preimage.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_tx.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_tx.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_pairs.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_swap.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_preimage.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_swap.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_preimage.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_last_attribution.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_tx.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_tx.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_swap.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_last_attribution.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_last_attribution.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_last_attribution.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_org_key.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_org_key.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_org_key.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_receive.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_org_key.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_receive.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_receive.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_send.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_send.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_recover_swap_auth.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_recover_swap_auth.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_receive.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_rfq_status.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_send.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_rfq_status.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_send.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_swap_restore.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_recover_swap_auth.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
-    _UniffiRustBuffer,
-    _UniffiRustBuffer,
+    ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_swap_restore.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_recover_swap_auth.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_swap_restore_index.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_rfq_status.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_rfq_status.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_swap_restore.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_swap_restore_index.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_swap_restore.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_ws.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_swap_restore_index.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_swap_restore_index.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_ws.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_ws.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapmasterkey.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_ws.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapmasterkey.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapmasterkey.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapmasterkey.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapmasterkey.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapmasterkey.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapmasterkey.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_swap_mnemonic.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapmasterkey.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapmasterkey_from_swap_mnemonic.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_swap_mnemonic.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_wallet_mnemonic.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapmasterkey_from_swap_mnemonic.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapmasterkey_from_wallet_mnemonic.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_preimage.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_derive_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_preimage.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_derive_preimage.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_swap_key.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_derive_swap_key.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_swap_key.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_derive_swap_key.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_master_xpub.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_master_xpub.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_master_xpub.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_master_xpub.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_swap_mnemonic.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_swap_mnemonic.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_swap_mnemonic.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_swap_mnemonic.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapscript.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapscript.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapscript.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapscript.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapscript.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapscript.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapscript.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_chain.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapscript.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_chain.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_chain.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_chain.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_restored.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_restored.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_restored.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_restored.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_reverse.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_reverse.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_reverse.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_reverse.restype = (
     ctypes.c_void_p
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_submarine.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_submarine.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_submarine.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_construct_claim.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_submarine.restype = (
+    ctypes.c_void_p
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_construct_claim.argtypes = (
     ctypes.c_void_p,
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_construct_claim.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_construct_claim.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_construct_refund.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_construct_refund.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_construct_refund.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_construct_refund.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_liquid_claim.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_liquid_claim.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_liquid_claim.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_liquid_refund.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_liquid_refund.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_claim.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_claim.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_liquid_claim.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_cooperative_refund.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_liquid_refund.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_cooperative_refund.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_refund.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_refund.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_liquid_refund.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_submarine_cooperative_claim.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_claim.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_claim.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_cooperative_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_cooperative_refund.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_refund.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_refund.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_submarine_cooperative_claim.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.c_void_p,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint64
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapsigner.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapsigner.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapsigner.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapsigner.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapsigner.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapsigner.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapsigner.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapsigner.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_swapsigner.argtypes = (
     ctypes.POINTER(_UniffiVTableCallbackInterfaceSwapSigner),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_public_key.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_swapsigner.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_public_key.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_public_key.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_public_key.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_derive_preimage.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_derive_preimage.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_sign_schnorr.argtypes = (
-    ctypes.c_void_p,
-    ctypes.c_uint64,
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_sign_schnorr.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_nonce.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_sign_schnorr.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_nonce.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_sign_schnorr.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_musig_nonce.argtypes = (
+    ctypes.c_void_p,
+    ctypes.c_uint64,
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_musig_nonce.restype = (
+    _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_musig_partial_sign.argtypes = (
     ctypes.c_void_p,
     ctypes.c_uint64,
     _UniffiRustBuffer,
@@ -2662,141 +2463,119 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign.arg
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_musig_partial_sign.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapstore.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapstore.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapstore.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapstore.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapstore.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapstore.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapstore.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_swapstore.argtypes = (
     ctypes.POINTER(_UniffiVTableCallbackInterfaceSwapStore),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapstore.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_get.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_swapstore.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_get.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_get.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_put.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_get.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_put.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_put.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_list.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_put.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_list.argtypes = (
     ctypes.c_void_p,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_list.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_list.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_next_index.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_next_index.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapwsapi.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapwsapi.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapwsapi.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapwsapi.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapwsapi_new.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_constructor_swapwsapi_new.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_is_connected.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_is_connected.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_run_ws_loop.argtypes = (
+    ctypes.c_void_p,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_run_ws_loop.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_shutdown.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_shutdown.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_subscribe_swap.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_subscribe_swap.restype = (
+    ctypes.c_uint64
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_updates.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_updates.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapwsupdates.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_clone_swapwsupdates.restype = ctypes.c_void_p
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapwsupdates.argtypes = (
+    ctypes.c_void_p,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_free_swapwsupdates.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsupdates_next.argtypes = (ctypes.c_void_p,)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapwsupdates_next.restype = ctypes.c_uint64
+_UniffiLib.uniffi_kaleidoswap_fn_func_btc_chain_from_network.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_func_btc_chain_from_network.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_func_lbtc_chain_from_network.argtypes = (
+    _UniffiRustBuffer,
+    ctypes.POINTER(_UniffiRustCallStatus),
+)
+_UniffiLib.uniffi_kaleidoswap_fn_func_lbtc_chain_from_network.restype = (
     _UniffiRustBuffer
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_next_index.argtypes = (
-    ctypes.c_void_p,
+_UniffiLib.uniffi_kaleidoswap_fn_func_new_rfq_id.argtypes = (
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_next_index.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsapi.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsapi.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapwsapi.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapwsapi.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapwsapi_new.argtypes = (
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapwsapi_new.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_is_connected.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_is_connected.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_run_ws_loop.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_run_ws_loop.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_shutdown.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_shutdown.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_subscribe_swap.argtypes = (
-    ctypes.c_void_p,
-    _UniffiRustBuffer,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_subscribe_swap.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_updates.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_updates.restype = (
-    ctypes.c_void_p
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsupdates.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsupdates.restype = ctypes.c_void_p
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapwsupdates.argtypes = (
-    ctypes.c_void_p,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapwsupdates.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsupdates_next.argtypes = (
-    ctypes.c_void_p,
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsupdates_next.restype = (
-    ctypes.c_uint64
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_btc_chain_from_network.argtypes = (
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_btc_chain_from_network.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_lbtc_chain_from_network.argtypes = (
-    _UniffiRustBuffer,
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_lbtc_chain_from_network.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.argtypes = (
-    ctypes.POINTER(_UniffiRustCallStatus),
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id.restype = _UniffiRustBuffer
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_func_new_rfq_id.restype = _UniffiRustBuffer
+_UniffiLib.uniffi_kaleidoswap_fn_func_resolve_lightning_address.argtypes = (
     _UniffiRustBuffer,
     ctypes.c_uint64,
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address.restype = (
+_UniffiLib.uniffi_kaleidoswap_fn_func_resolve_lightning_address.restype = (
     ctypes.c_uint64
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_func_validate_chain_timeout_headroom.argtypes = (
     _UniffiRustBuffer,
     _UniffiRustBuffer,
     ctypes.c_uint32,
@@ -2805,666 +2584,712 @@ _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.arg
     ctypes.c_uint32,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom.restype = (
-    None
-)
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_func_validate_chain_timeout_headroom.restype = None
+_UniffiLib.uniffi_kaleidoswap_fn_func_validate_reverse_timeout_headroom.argtypes = (
     _UniffiRustBuffer,
     ctypes.c_uint32,
     ctypes.c_uint32,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.argtypes = (
+_UniffiLib.uniffi_kaleidoswap_fn_func_validate_reverse_timeout_headroom.restype = None
+_UniffiLib.ffi_kaleidoswap_rustbuffer_alloc.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_alloc.restype = _UniffiRustBuffer
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_from_bytes.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rustbuffer_alloc.restype = _UniffiRustBuffer
+_UniffiLib.ffi_kaleidoswap_rustbuffer_from_bytes.argtypes = (
     _UniffiForeignBytes,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_from_bytes.restype = _UniffiRustBuffer
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_free.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rustbuffer_from_bytes.restype = _UniffiRustBuffer
+_UniffiLib.ffi_kaleidoswap_rustbuffer_free.argtypes = (
     _UniffiRustBuffer,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_free.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_reserve.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rustbuffer_free.restype = None
+_UniffiLib.ffi_kaleidoswap_rustbuffer_reserve.argtypes = (
     _UniffiRustBuffer,
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rustbuffer_reserve.restype = _UniffiRustBuffer
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u8.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rustbuffer_reserve.restype = _UniffiRustBuffer
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u8.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u8.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u8.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u8.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u8.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u8.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u8.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u8.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u8.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u8.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u8.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u8.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u8.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u8.restype = ctypes.c_uint8
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i8.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u8.restype = ctypes.c_uint8
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i8.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i8.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i8.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i8.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i8.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i8.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i8.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i8.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i8.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i8.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i8.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i8.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i8.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i8.restype = ctypes.c_int8
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u16.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i8.restype = ctypes.c_int8
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u16.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u16.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u16.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u16.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u16.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u16.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u16.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u16.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u16.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u16.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u16.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u16.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u16.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u16.restype = ctypes.c_uint16
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i16.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u16.restype = ctypes.c_uint16
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i16.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i16.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i16.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i16.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i16.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i16.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i16.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i16.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i16.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i16.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i16.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i16.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i16.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i16.restype = ctypes.c_int16
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i16.restype = ctypes.c_int16
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u32.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u32.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u32.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u32.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u32.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32.restype = ctypes.c_uint32
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i32.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u32.restype = ctypes.c_uint32
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i32.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i32.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i32.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i32.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i32.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i32.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i32.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i32.restype = ctypes.c_int32
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u64.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i32.restype = ctypes.c_int32
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u64.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u64.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_u64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u64.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u64.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_u64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u64.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_u64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u64.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_u64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u64.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u64.restype = ctypes.c_uint64
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i64.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_u64.restype = ctypes.c_uint64
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i64.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i64.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_i64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i64.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i64.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_i64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i64.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_i64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i64.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_i64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i64.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i64.restype = ctypes.c_int64
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_f32.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_i64.restype = ctypes.c_int64
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_f32.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_f32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_f32.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_f32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_f32.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_f32.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_f32.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_f32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_f32.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_f32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_f32.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_f32.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_f32.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_f32.restype = ctypes.c_float
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_f64.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_f32.restype = ctypes.c_float
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_f64.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_f64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_f64.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_f64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_f64.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_f64.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_f64.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_f64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_f64.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_f64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_f64.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_f64.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_f64.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_f64.restype = ctypes.c_double
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_f64.restype = ctypes.c_double
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_pointer.argtypes = (
-    ctypes.c_uint64,
-)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_pointer.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_pointer.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_pointer.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_pointer.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_pointer.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer.restype = ctypes.c_void_p
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer.restype = ctypes.c_void_p
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_rust_buffer.argtypes = (
-    ctypes.c_uint64,
-)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_rust_buffer.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer.argtypes = (
-    ctypes.c_uint64,
-)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_rust_buffer.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_rust_buffer.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer.restype = (
-    _UniffiRustBuffer
-)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer.restype = _UniffiRustBuffer
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_void.argtypes = (
     ctypes.c_uint64,
     _UNIFFI_RUST_FUTURE_CONTINUATION_CALLBACK,
     ctypes.c_uint64,
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_void.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_cancel_void.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void.argtypes = (ctypes.c_uint64,)
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void.restype = None
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void.argtypes = (
+_UniffiLib.ffi_kaleidoswap_rust_future_poll_void.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_void.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_cancel_void.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_free_void.argtypes = (ctypes.c_uint64,)
+_UniffiLib.ffi_kaleidoswap_rust_future_free_void.restype = None
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_void.argtypes = (
     ctypes.c_uint64,
     ctypes.POINTER(_UniffiRustCallStatus),
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void.restype = None
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_btc_chain_from_network.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_btc_chain_from_network.restype = (
+_UniffiLib.ffi_kaleidoswap_rust_future_complete_void.restype = None
+_UniffiLib.uniffi_kaleidoswap_checksum_func_btc_chain_from_network.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_func_btc_chain_from_network.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_lbtc_chain_from_network.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_func_lbtc_chain_from_network.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_func_lbtc_chain_from_network.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_new_rfq_id.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_resolve_lightning_address.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_func_new_rfq_id.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_func_new_rfq_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_func_resolve_lightning_address.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_func_resolve_lightning_address.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_chain_timeout_headroom.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_func_validate_reverse_timeout_headroom.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_hex.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_func_validate_chain_timeout_headroom.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_func_validate_chain_timeout_headroom.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_btcliketransaction_txid.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_func_validate_reverse_timeout_headroom.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_func_validate_reverse_timeout_headroom.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_btcliketransaction_hex.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_btcliketransaction_hex.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_bitcoin_tip_height.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_broadcast_tx.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_chainclient_liquid_tip_height.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_get.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_get.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_btcliketransaction_txid.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_btcliketransaction_txid.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_list.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_list.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_chainclient_bitcoin_tip_height.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_chainclient_bitcoin_tip_height.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_next_index.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_next_index.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_chainclient_broadcast_tx.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_chainclient_broadcast_tx.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_put.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_filestore_put.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_chainclient_liquid_tip_height.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_chainclient_liquid_tip_height.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_last_attribution.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_last_attribution.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_network.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_network.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_get.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_get.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_list.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_list.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_next_index.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_next_index.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_quote.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_quote.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_put.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_filestore_put.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_last_attribution.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_last_attribution.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_resume.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_resume.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_network.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_network.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_start.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_start.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_quote.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_kaleidoswap_swap.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_resume.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_resume.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_public.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_start.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_start.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_secret.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_keypair_secret.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_kaleidoswap_swap.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_keypair_public.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_keypair_public.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_keypair_secret.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_keypair_secret.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_get.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_get.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_list.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_list.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_next_index.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_next_index.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_get.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_get.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_put.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_memorystore_put.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_derive_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_derive_preimage.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_list.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_list.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_musig_nonce.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_musig_nonce.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_next_index.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_next_index.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_musig_partial_sign.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_musig_partial_sign.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_public_key.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_public_key.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_memorystore_put.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_sign_schnorr.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_mnemonicsigner_sign_schnorr.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_derive_preimage.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_nonce.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_nonce.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_partial_sign.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_musig_partial_sign.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_public_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_public_key.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_sign_schnorr.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_mnemonicsigner_sign_schnorr.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_phaselistener_on_phase.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_phaselistener_on_phase.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_phaselistener_on_phase.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_bytes.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_bytes.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_bytes.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_bytes.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_hash160.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_hash160.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_sha256.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_sha256.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_to_string.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preimage_to_string.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_hash160.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_hash160.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_finalize_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_finalize_claim.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_finalize_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_finalize_refund.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_template.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedliquidspend_template.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_sha256.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_sha256.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_begin_cooperative_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_begin_cooperative_refund.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_finalize_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_finalize_claim.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_finalize_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_finalize_refund.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_fund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_fund.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_to_string.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preimage_to_string.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_template.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_preparedrgbspend_template.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_claim.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_finalize_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedliquidspend_template.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_begin_cooperative_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_begin_cooperative_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_claim.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_finalize_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_fund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_fund.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_rgbcooperativerefund_complete.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_rgbcooperativerefund_complete.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_template.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_preparedrgbspend_template.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_complete.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_rgbcooperativerefund_request.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_action.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_action.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_rgbcooperativerefund_request.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_rgbcooperativerefund_request.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_id.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_id.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_phase.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_phase.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_action.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_action.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_id.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_id.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_phase.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_phase.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_protocol.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_protocol.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_record.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_record.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_refund.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_settled.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_settled.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_tick.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_tick.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_watch.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swap_watch.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_accept_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_accept_quote.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_protocol.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_protocol.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_api_key_environment.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_api_key_environment.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_record.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_record.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_api_key_id.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_api_key_id.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_refund.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_complete.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_complete.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_settled.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_settled.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_quote.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_tick.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_tick.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_watch.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swap_watch.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_request.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_atomic_request.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_accept_quote.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_check_mrh.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_check_mrh.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_environment.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_environment.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_api_key_id.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_card.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_card.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_complete.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_quote.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_card_raw.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_card_raw.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_atomic_request.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_check_mrh.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_check_mrh.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_url.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_corridor_url.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_card_raw.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_corridor_url.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_create_chain_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_create_chain_swap.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_chain_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_chain_swap.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_reverse_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_reverse_swap.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_create_swap.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_create_reverse_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_create_reverse_swap.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_pairs.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_atomic_swap.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_pairs.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_txs.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_chain_txs.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_fee_estimation.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_fee_estimation.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_height.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_height.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_create_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_create_swap.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_mrh_bip21.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_mrh_bip21.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_nodes.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_nodes.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_atomic_pairs.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_atomic_pairs.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_quote.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_quote.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_atomic_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_atomic_swap.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_pairs.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_pairs.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_tx.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_reverse_tx.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_rgb_refund_partial_sig.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_rgb_refund_partial_sig.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_pairs.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_pairs.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_preimage.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_preimage.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_tx.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_submarine_tx.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_get_swap.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_chain_pairs.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_chain_pairs.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_last_attribution.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_last_attribution.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_org_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_org_key.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_chain_txs.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_chain_txs.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_receive.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_quote_lightning_send.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_recover_swap_auth.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_recover_swap_auth.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_rfq_status.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_rfq_status.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_fee_estimation.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_fee_estimation.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_swap_restore.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_swap_restore.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_height.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_height.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_swap_restore_index.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_swap_restore_index.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_ws.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapclient_ws.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_mrh_bip21.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_mrh_bip21.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_preimage.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_preimage.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_swap_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_derive_swap_key.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_master_xpub.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_master_xpub.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_swap_mnemonic.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapmasterkey_swap_mnemonic.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_claim.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_construct_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_claim.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_liquid_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_claim.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_cooperative_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_cooperative_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_prepare_rgb_refund.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_public_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_public_key.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_nodes.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_nodes.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_derive_preimage.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_sign_schnorr.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_sign_schnorr.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_quote.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_quote.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_nonce.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_nonce.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_pairs.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_pairs.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_partial_sign.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapsigner_musig_partial_sign.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_get.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_tx.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_tx.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_put.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_put.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_rgb_refund_partial_sig.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_rgb_refund_partial_sig.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_pairs.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_pairs.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_list.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_list.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_preimage.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_tx.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_submarine_tx.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_next_index.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapstore_next_index.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_swap.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_is_connected.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_last_attribution.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_last_attribution.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_run_ws_loop.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_run_ws_loop.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_org_key.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_org_key.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_shutdown.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_shutdown.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_receive.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_receive.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_send.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_send.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_recover_swap_auth.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_recover_swap_auth.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_subscribe_swap.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_subscribe_swap.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_updates.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsapi_updates.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_rfq_status.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_rfq_status.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_method_swapwsupdates_next.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_swap_restore.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_swap_restore.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_btcliketransaction_from_hex_bitcoin.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_chainclient_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_swap_restore_index.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_swap_restore_index.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_filestore_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_filestore_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_ws.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_ws.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_derive_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_derive_preimage.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_kaleidoswap_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_kaleidoswap_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_derive_swap_key.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_derive_swap_key.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_from_secret_key.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_from_secret_key.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_keypair_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_master_xpub.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_master_xpub.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_memorystore_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_memorystore_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_swap_mnemonic.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapmasterkey_swap_mnemonic.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_mnemonicsigner_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_mnemonicsigner_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_construct_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_construct_claim.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_from_bytes.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_from_bytes.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_preimage_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_construct_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_construct_refund.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_default.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_default.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_liquid_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_liquid_claim.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_liquid_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_liquid_refund.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_claim.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_maker.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_maker.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_org.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_kaleido_org.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapclient_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_cooperative_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_cooperative_refund.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_refund.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_prepare_rgb_refund.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_swap_mnemonic.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_swap_mnemonic.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_chain.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_restored.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_restored.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_reverse.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_submarine.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapscript_from_submarine.restype = ctypes.c_uint16
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapwsapi_new.argtypes = ()
-_UniffiLib.uniffi_kaleidorg_swap_sdk_checksum_constructor_swapwsapi_new.restype = (
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_submarine_cooperative_claim.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapscript_submarine_cooperative_claim.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_public_key.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_public_key.restype = (
     ctypes.c_uint16
 )
-_UniffiLib.ffi_kaleidorg_swap_sdk_uniffi_contract_version.argtypes = ()
-_UniffiLib.ffi_kaleidorg_swap_sdk_uniffi_contract_version.restype = ctypes.c_uint32
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_derive_preimage.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_derive_preimage.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_sign_schnorr.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_sign_schnorr.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_musig_nonce.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_musig_nonce.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_musig_partial_sign.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapsigner_musig_partial_sign.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_get.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_get.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_put.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_put.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_list.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_list.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_next_index.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapstore_next_index.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_is_connected.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_is_connected.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_run_ws_loop.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_run_ws_loop.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_shutdown.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_shutdown.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_subscribe_swap.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_subscribe_swap.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_updates.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsapi_updates.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsupdates_next.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapwsupdates_next.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_btcliketransaction_from_hex.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_btcliketransaction_from_hex.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_btcliketransaction_from_hex_bitcoin.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_btcliketransaction_from_hex_bitcoin.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_chainclient_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_chainclient_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_filestore_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_filestore_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_kaleidoswap_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_kaleidoswap_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_keypair_from_secret_key.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_keypair_from_secret_key.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_keypair_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_keypair_new.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_memorystore_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_memorystore_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_mnemonicsigner_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_mnemonicsigner_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_preimage_from_bytes.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_preimage_from_bytes.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_preimage_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_preimage_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_default.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_default.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_kaleido_maker.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_kaleido_maker.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_kaleido_org.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_kaleido_org.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapclient_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapmasterkey_from_swap_mnemonic.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapmasterkey_from_swap_mnemonic.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapmasterkey_from_wallet_mnemonic.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapmasterkey_from_wallet_mnemonic.restype = ctypes.c_uint16
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_chain.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_chain.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_restored.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_restored.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_reverse.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_reverse.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_submarine.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapscript_from_submarine.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapwsapi_new.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_constructor_swapwsapi_new.restype = (
+    ctypes.c_uint16
+)
+_UniffiLib.ffi_kaleidoswap_uniffi_contract_version.argtypes = ()
+_UniffiLib.ffi_kaleidoswap_uniffi_contract_version.restype = ctypes.c_uint32
 
 _uniffi_check_contract_api_version(_UniffiLib)
 # _uniffi_check_api_checksums(_UniffiLib)
@@ -15139,12 +14964,12 @@ class PhaseListenerImpl:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_phaselistener, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_phaselistener, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_phaselistener, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_phaselistener, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -15160,7 +14985,7 @@ class PhaseListenerImpl:
         _UniffiConverterTypeSwapPhase.check_lower(phase)
 
         _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_phaselistener_on_phase,
+            _UniffiLib.uniffi_kaleidoswap_fn_method_phaselistener_on_phase,
             self._uniffi_clone_pointer(),
             _UniffiConverterTypeSwapPhase.lower(phase),
         )
@@ -15199,7 +15024,7 @@ class _UniffiTraitImplPhaseListener:
     _uniffi_vtable = _UniffiVTableCallbackInterfacePhaseListener(on_phase, _uniffi_free)
     # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
     # or else bad things will happen when Rust tries to access it.
-    _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_phaselistener(
+    _UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_phaselistener(
         ctypes.byref(_uniffi_vtable)
     )
 
@@ -15368,13 +15193,11 @@ class SwapSignerImpl:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapsigner, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_swapsigner, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapsigner, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapsigner, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -15396,7 +15219,7 @@ class SwapSignerImpl:
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_public_key,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_public_key,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
@@ -15412,7 +15235,7 @@ class SwapSignerImpl:
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_derive_preimage,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_derive_preimage,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
@@ -15431,7 +15254,7 @@ class SwapSignerImpl:
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_sign_schnorr,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_sign_schnorr,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
                 _UniffiConverterString.lower(sighash),
@@ -15450,7 +15273,7 @@ class SwapSignerImpl:
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_nonce,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_musig_nonce,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
                 _UniffiConverterTypeMusigSession.lower(session),
@@ -15479,7 +15302,7 @@ class SwapSignerImpl:
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapsigner_musig_partial_sign,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapsigner_musig_partial_sign,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
                 _UniffiConverterTypeMusigSession.lower(session),
@@ -15649,7 +15472,7 @@ class _UniffiTraitImplSwapSigner:
     )
     # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
     # or else bad things will happen when Rust tries to access it.
-    _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapsigner(
+    _UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_swapsigner(
         ctypes.byref(_uniffi_vtable)
     )
 
@@ -15759,13 +15582,11 @@ class SwapStoreImpl:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapstore, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_swapstore, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapstore, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapstore, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -15783,7 +15604,7 @@ class SwapStoreImpl:
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_get,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_get,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(id),
             )
@@ -15796,7 +15617,7 @@ class SwapStoreImpl:
 
         _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_put,
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_put,
             self._uniffi_clone_pointer(),
             _UniffiConverterString.lower(id),
             _UniffiConverterString.lower(record_json),
@@ -15808,7 +15629,7 @@ class SwapStoreImpl:
         return _UniffiConverterSequenceString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_list,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_list,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -15823,7 +15644,7 @@ class SwapStoreImpl:
         return _UniffiConverterUInt64.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapstore_next_index,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapstore_next_index,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -15943,7 +15764,7 @@ class _UniffiTraitImplSwapStore:
     )
     # Send Rust a pointer to the VTable.  Note: this means we need to keep the struct alive forever,
     # or else bad things will happen when Rust tries to access it.
-    _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_init_callback_vtable_swapstore(
+    _UniffiLib.uniffi_kaleidoswap_fn_init_callback_vtable_swapstore(
         ctypes.byref(_uniffi_vtable)
     )
 
@@ -15999,13 +15820,12 @@ class BtcLikeTransaction:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_btcliketransaction, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_btcliketransaction, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_btcliketransaction,
-            self._pointer,
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_btcliketransaction, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16030,7 +15850,7 @@ class BtcLikeTransaction:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_btcliketransaction_from_hex,
             _UniffiConverterString.lower(hex),
             _UniffiConverterTypeTransactionChain.lower(chain),
         )
@@ -16047,7 +15867,7 @@ class BtcLikeTransaction:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_btcliketransaction_from_hex_bitcoin,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_btcliketransaction_from_hex_bitcoin,
             _UniffiConverterString.lower(hex),
         )
         return cls._make_instance_(pointer)
@@ -16057,7 +15877,7 @@ class BtcLikeTransaction:
     ) -> "str":
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_btcliketransaction_hex,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_btcliketransaction_hex,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16067,7 +15887,7 @@ class BtcLikeTransaction:
     ) -> "str":
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_btcliketransaction_txid,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_btcliketransaction_txid,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16143,7 +15963,7 @@ class ChainClient:
 
         self._pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_chainclient_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_chainclient_new,
             _UniffiConverterTypeClientConfig.lower(config),
         )
 
@@ -16152,12 +15972,12 @@ class ChainClient:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_chainclient, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_chainclient, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_chainclient, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_chainclient, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16179,12 +15999,12 @@ class ChainClient:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_bitcoin_tip_height(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_bitcoin_tip_height(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_u32,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_u32,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_u32,
             # lift function
             _UniffiConverterUInt32.lift,
             # Error FFI converter
@@ -16195,13 +16015,13 @@ class ChainClient:
         _UniffiConverterTypeBtcLikeTransaction.check_lower(tx)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_broadcast_tx(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_broadcast_tx(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeBtcLikeTransaction.lower(tx),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterString.lift,
             # Error FFI converter
@@ -16216,12 +16036,12 @@ class ChainClient:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_chainclient_liquid_tip_height(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_chainclient_liquid_tip_height(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_u32,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_u32,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_u32,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_u32,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_u32,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_u32,
             # lift function
             _UniffiConverterUInt32.lift,
             # Error FFI converter
@@ -16299,7 +16119,7 @@ class FileStore(
         _UniffiConverterString.check_lower(dir)
 
         self._pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_filestore_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_filestore_new,
             _UniffiConverterString.lower(dir),
         )
 
@@ -16307,13 +16127,11 @@ class FileStore(
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_filestore, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_filestore, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_filestore, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_filestore, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16331,7 +16149,7 @@ class FileStore(
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_get,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_filestore_get,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(id),
             )
@@ -16343,7 +16161,7 @@ class FileStore(
         return _UniffiConverterSequenceString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_list,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_filestore_list,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16354,7 +16172,7 @@ class FileStore(
         return _UniffiConverterUInt64.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_next_index,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_filestore_next_index,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16366,7 +16184,7 @@ class FileStore(
 
         _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_filestore_put,
+            _UniffiLib.uniffi_kaleidoswap_fn_method_filestore_put,
             self._uniffi_clone_pointer(),
             _UniffiConverterString.lower(id),
             _UniffiConverterString.lower(record_json),
@@ -16446,7 +16264,7 @@ class KaleidoSwap:
 
         self._pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_kaleidoswap_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_kaleidoswap_new,
             _UniffiConverterTypeKaleidoSwapOptions.lower(options),
         )
 
@@ -16455,12 +16273,12 @@ class KaleidoSwap:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_kaleidoswap, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_kaleidoswap, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_kaleidoswap, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_kaleidoswap, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16483,7 +16301,7 @@ class KaleidoSwap:
 
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_last_attribution,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_last_attribution,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16493,7 +16311,7 @@ class KaleidoSwap:
     ) -> "Network":
         return _UniffiConverterTypeNetwork.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_network,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_network,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16502,13 +16320,13 @@ class KaleidoSwap:
         _UniffiConverterTypeQuoteRequest.check_lower(request)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_quote(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_quote(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeQuoteRequest.lower(request),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeQuoteAnswer.lift,
             # Error FFI converter
@@ -16519,12 +16337,12 @@ class KaleidoSwap:
         self,
     ) -> "ResumeReport":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_resume(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_resume(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeResumeReport.lift,
             # Error FFI converter
@@ -16537,14 +16355,14 @@ class KaleidoSwap:
         _UniffiConverterTypeStartOptions.check_lower(options)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_start(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_start(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeQuote.lower(quote),
                 _UniffiConverterTypeStartOptions.lower(options),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypeSwap.lift,
             # Error FFI converter
@@ -16555,12 +16373,12 @@ class KaleidoSwap:
         _UniffiConverterString.check_lower(id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_kaleidoswap_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_kaleidoswap_swap(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypeSwap.lift,
             # Error FFI converter
@@ -16620,20 +16438,18 @@ class KeyPair:
         self,
     ):
         self._pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_keypair_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_keypair_new,
         )
 
     def __del__(self):
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_keypair, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_keypair, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_keypair, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_keypair, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16651,7 +16467,7 @@ class KeyPair:
 
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_keypair_from_secret_key,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_keypair_from_secret_key,
             _UniffiConverterTypeSecretKey.lower(secret),
         )
         return cls._make_instance_(pointer)
@@ -16661,7 +16477,7 @@ class KeyPair:
     ) -> "PublicKey":
         return _UniffiConverterTypePublicKey.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_public,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_keypair_public,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16671,7 +16487,7 @@ class KeyPair:
     ) -> "SecretKey":
         return _UniffiConverterTypeSecretKey.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_keypair_secret,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_keypair_secret,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16745,7 +16561,7 @@ class MemoryStore(
         self,
     ):
         self._pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_memorystore_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_memorystore_new,
         )
 
     def __del__(self):
@@ -16753,12 +16569,12 @@ class MemoryStore(
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_memorystore, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_memorystore, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_memorystore, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_memorystore, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16776,7 +16592,7 @@ class MemoryStore(
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_get,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_get,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(id),
             )
@@ -16788,7 +16604,7 @@ class MemoryStore(
         return _UniffiConverterSequenceString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_list,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_list,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16799,7 +16615,7 @@ class MemoryStore(
         return _UniffiConverterUInt64.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_next_index,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_next_index,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -16811,7 +16627,7 @@ class MemoryStore(
 
         _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_memorystore_put,
+            _UniffiLib.uniffi_kaleidoswap_fn_method_memorystore_put,
             self._uniffi_clone_pointer(),
             _UniffiConverterString.lower(id),
             _UniffiConverterString.lower(record_json),
@@ -16898,7 +16714,7 @@ class MnemonicSigner(
 
         self._pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_mnemonicsigner_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_mnemonicsigner_new,
             _UniffiConverterString.lower(mnemonic),
             _UniffiConverterOptionalString.lower(passphrase),
             _UniffiConverterTypeNetwork.lower(network),
@@ -16909,12 +16725,12 @@ class MnemonicSigner(
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_mnemonicsigner, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_mnemonicsigner, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_mnemonicsigner, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_mnemonicsigner, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -16932,7 +16748,7 @@ class MnemonicSigner(
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_derive_preimage,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_derive_preimage,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
@@ -16946,7 +16762,7 @@ class MnemonicSigner(
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_nonce,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_musig_nonce,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
                 _UniffiConverterTypeMusigSession.lower(session),
@@ -16971,7 +16787,7 @@ class MnemonicSigner(
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_musig_partial_sign,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_musig_partial_sign,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
                 _UniffiConverterTypeMusigSession.lower(session),
@@ -16986,7 +16802,7 @@ class MnemonicSigner(
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_public_key,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_public_key,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
@@ -17000,7 +16816,7 @@ class MnemonicSigner(
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_mnemonicsigner_sign_schnorr,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_mnemonicsigner_sign_schnorr,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
                 _UniffiConverterString.lower(sighash),
@@ -17074,20 +16890,18 @@ class Preimage:
         self,
     ):
         self._pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_preimage_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_preimage_new,
         )
 
     def __del__(self):
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preimage, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_preimage, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preimage, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_preimage, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -17106,7 +16920,7 @@ class Preimage:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_preimage_from_bytes,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_preimage_from_bytes,
             _UniffiConverterBytes.lower(vec),
         )
         return cls._make_instance_(pointer)
@@ -17116,7 +16930,7 @@ class Preimage:
     ) -> "typing.Optional[bytes]":
         return _UniffiConverterOptionalBytes.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_bytes,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preimage_bytes,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17126,7 +16940,7 @@ class Preimage:
     ) -> "str":
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_hash160,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preimage_hash160,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17136,7 +16950,7 @@ class Preimage:
     ) -> "str":
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_sha256,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preimage_sha256,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17146,7 +16960,7 @@ class Preimage:
     ) -> "typing.Optional[str]":
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preimage_to_string,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preimage_to_string,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17211,14 +17025,12 @@ class PreparedLiquidSpend:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedliquidspend,
-                pointer,
+                _UniffiLib.uniffi_kaleidoswap_fn_free_preparedliquidspend, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preparedliquidspend,
-            self._pointer,
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_preparedliquidspend, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -17242,7 +17054,7 @@ class PreparedLiquidSpend:
         return _UniffiConverterTypeBtcLikeTransaction.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_finalize_claim,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_finalize_claim,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeFundedLiquidPset.lower(funded_pset),
                 _UniffiConverterTypeKeyPair.lower(keys),
@@ -17260,7 +17072,7 @@ class PreparedLiquidSpend:
         return _UniffiConverterTypeBtcLikeTransaction.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_finalize_refund,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_finalize_refund,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeFundedLiquidPset.lower(funded_pset),
                 _UniffiConverterTypeKeyPair.lower(keys),
@@ -17272,7 +17084,7 @@ class PreparedLiquidSpend:
     ) -> "LiquidPsetTemplate":
         return _UniffiConverterTypeLiquidPsetTemplate.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedliquidspend_template,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedliquidspend_template,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17353,13 +17165,12 @@ class PreparedRgbSpend:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_preparedrgbspend, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_preparedrgbspend, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_preparedrgbspend,
-            self._pointer,
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_preparedrgbspend, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -17383,7 +17194,7 @@ class PreparedRgbSpend:
         return _UniffiConverterTypeRgbCooperativeRefund.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_begin_cooperative_refund,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_begin_cooperative_refund,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeColoredRgbPsbt.lower(colored_psbt),
                 _UniffiConverterTypeKeyPair.lower(keys),
@@ -17403,7 +17214,7 @@ class PreparedRgbSpend:
         return _UniffiConverterTypeFinalizedRgbSpend.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_claim,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_finalize_claim,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeColoredRgbPsbt.lower(colored_psbt),
                 _UniffiConverterTypeKeyPair.lower(keys),
@@ -17421,7 +17232,7 @@ class PreparedRgbSpend:
         return _UniffiConverterTypeFinalizedRgbSpend.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_finalize_refund,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_finalize_refund,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeColoredRgbPsbt.lower(colored_psbt),
                 _UniffiConverterTypeKeyPair.lower(keys),
@@ -17438,7 +17249,7 @@ class PreparedRgbSpend:
         return _UniffiConverterTypePreparedRgbSpend.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_fund,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_fund,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(funded_psbt),
             )
@@ -17449,7 +17260,7 @@ class PreparedRgbSpend:
     ) -> "RgbPsbtTemplate":
         return _UniffiConverterTypeRgbPsbtTemplate.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_preparedrgbspend_template,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_preparedrgbspend_template,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17513,14 +17324,12 @@ class RgbCooperativeRefund:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_rgbcooperativerefund,
-                pointer,
+                _UniffiLib.uniffi_kaleidoswap_fn_free_rgbcooperativerefund, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_rgbcooperativerefund,
-            self._pointer,
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_rgbcooperativerefund, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -17542,7 +17351,7 @@ class RgbCooperativeRefund:
         return _UniffiConverterTypeFinalizedRgbSpend.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_complete,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_rgbcooperativerefund_complete,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeRgbCooperativeRefundResponse.lower(response),
                 _UniffiConverterTypeKeyPair.lower(keys),
@@ -17554,7 +17363,7 @@ class RgbCooperativeRefund:
     ) -> "RgbCooperativeRefundRequest":
         return _UniffiConverterTypeRgbCooperativeRefundRequest.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_rgbcooperativerefund_request,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_rgbcooperativerefund_request,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17664,13 +17473,11 @@ class Swap:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swap, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_swap, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swap, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swap, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -17687,7 +17494,7 @@ class Swap:
     ) -> "SwapAction":
         return _UniffiConverterTypeSwapAction.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_action,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swap_action,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17697,7 +17504,7 @@ class Swap:
     ) -> "str":
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_id,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swap_id,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17707,7 +17514,7 @@ class Swap:
     ) -> "SwapPhase":
         return _UniffiConverterTypeSwapPhase.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_phase,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swap_phase,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17717,7 +17524,7 @@ class Swap:
     ) -> "Protocol":
         return _UniffiConverterTypeProtocol.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_protocol,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swap_protocol,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17727,7 +17534,7 @@ class Swap:
     ) -> "SwapRecord":
         return _UniffiConverterTypeSwapRecord.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_record,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swap_record,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -17736,12 +17543,12 @@ class Swap:
         self,
     ) -> "SwapRecord":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_refund(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swap_refund(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSwapRecord.lift,
             # Error FFI converter
@@ -17756,12 +17563,12 @@ class Swap:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_settled(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swap_settled(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSwapRecord.lift,
             # Error FFI converter
@@ -17776,12 +17583,12 @@ class Swap:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_tick(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swap_tick(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSwapRecord.lift,
             # Error FFI converter
@@ -17796,13 +17603,13 @@ class Swap:
         _UniffiConverterTypePhaseListener.check_lower(listener)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swap_watch(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swap_watch(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypePhaseListener.lower(listener),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSwapRecord.lift,
             # Error FFI converter
@@ -18169,7 +17976,7 @@ class SwapClient:
         _UniffiConverterOptionalUInt64.check_lower(timeout)
 
         self._pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_new,
             _UniffiConverterString.lower(base_url),
             _UniffiConverterOptionalUInt64.lower(timeout),
         )
@@ -18178,13 +17985,11 @@ class SwapClient:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapclient, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_swapclient, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapclient, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapclient, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -18214,7 +18019,7 @@ class SwapClient:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_default,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_default,
             _UniffiConverterTypeNetwork.lower(network),
         )
         return cls._make_instance_(pointer)
@@ -18258,7 +18063,7 @@ class SwapClient:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_maker,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_kaleido_maker,
             _UniffiConverterString.lower(maker_url),
             _UniffiConverterString.lower(api_key),
             _UniffiConverterOptionalUInt64.lower(timeout),
@@ -18296,7 +18101,7 @@ class SwapClient:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapclient_kaleido_org,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapclient_kaleido_org,
             _UniffiConverterString.lower(maker_url),
             _UniffiConverterString.lower(org_key),
             _UniffiConverterOptionalUInt64.lower(timeout),
@@ -18329,15 +18134,15 @@ class SwapClient:
         _UniffiConverterOptionalString.check_lower(swap_auth)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_accept_quote(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_accept_quote(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterUInt64.lower(amount_sat),
                 _UniffiConverterOptionalString.lower(swap_auth),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_void,
             # lift function
             lambda val: None,
             # Error FFI converter
@@ -18358,7 +18163,7 @@ class SwapClient:
 
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_environment,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_api_key_environment,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -18374,7 +18179,7 @@ class SwapClient:
 
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_api_key_id,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_api_key_id,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -18392,14 +18197,14 @@ class SwapClient:
         _UniffiConverterString.check_lower(completion_json)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_complete(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_complete(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterString.lower(completion_json),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeAtomicCompletion.lift,
             # Error FFI converter
@@ -18424,15 +18229,15 @@ class SwapClient:
         _UniffiConverterUInt64.check_lower(now_secs)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_quote(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_quote(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeAtomicQuoteRequest.lower(request),
                 _UniffiConverterTypeAtomicQuoteExpectations.lower(expectations),
                 _UniffiConverterUInt64.lower(now_secs),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeAtomicQuote.lift,
             # Error FFI converter
@@ -18461,15 +18266,15 @@ class SwapClient:
         _UniffiConverterSequenceTypeAtomicOutpoint.check_lower(wallet_outpoints)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_atomic_request(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_atomic_request(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterString.lower(request_json),
                 _UniffiConverterSequenceTypeAtomicOutpoint.lower(wallet_outpoints),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeAtomicProposal.lift,
             # Error FFI converter
@@ -18495,14 +18300,14 @@ class SwapClient:
         _UniffiConverterTypeChain.check_lower(chain)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_check_mrh(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_check_mrh(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(invoice),
                 _UniffiConverterTypeChain.lower(chain),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterOptionalTypeMrhDestination.lift,
             # Error FFI converter
@@ -18518,12 +18323,12 @@ class SwapClient:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_card(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterOptionalTypeCorridorCard.lift,
             # Error FFI converter
@@ -18539,12 +18344,12 @@ class SwapClient:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_card_raw(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_card_raw(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterOptionalString.lift,
             # Error FFI converter
@@ -18562,7 +18367,7 @@ class SwapClient:
         return _UniffiConverterString.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_corridor_url,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_corridor_url,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -18573,13 +18378,13 @@ class SwapClient:
         _UniffiConverterTypeCreateChainRequest.check_lower(swap_request)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_chain_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_chain_swap(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeCreateChainRequest.lower(swap_request),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeCreateChainResponse.lift,
             # Error FFI converter
@@ -18592,13 +18397,13 @@ class SwapClient:
         _UniffiConverterTypeCreateReverseRequest.check_lower(swap_request)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_reverse_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_reverse_swap(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeCreateReverseRequest.lower(swap_request),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeCreateReverseResponse.lift,
             # Error FFI converter
@@ -18611,13 +18416,13 @@ class SwapClient:
         _UniffiConverterTypeCreateSubmarineRequest.check_lower(swap_request)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_create_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_create_swap(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeCreateSubmarineRequest.lower(swap_request),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeCreateSubmarineResponse.lift,
             # Error FFI converter
@@ -18632,12 +18437,12 @@ class SwapClient:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_pairs(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_atomic_pairs(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterMapStringMapStringTypeAtomicPair.lift,
             # Error FFI converter
@@ -18652,12 +18457,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(swap_id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_atomic_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_atomic_swap(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeAtomicSwapStatus.lift,
             # Error FFI converter
@@ -18668,12 +18473,12 @@ class SwapClient:
         self,
     ) -> "GetChainPairsResponse":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_pairs(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_chain_pairs(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetChainPairsResponse.lift,
             # Error FFI converter
@@ -18684,12 +18489,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_chain_txs(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_chain_txs(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeChainSwapTxResp.lift,
             # Error FFI converter
@@ -18700,12 +18505,12 @@ class SwapClient:
         self,
     ) -> "GetFeeEstimationResponse":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_fee_estimation(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_fee_estimation(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetFeeEstimationResponse.lift,
             # Error FFI converter
@@ -18716,12 +18521,12 @@ class SwapClient:
         self,
     ) -> "HeightResponse":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_height(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_height(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeHeightResponse.lift,
             # Error FFI converter
@@ -18738,12 +18543,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(invoice)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_mrh_bip21(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_mrh_bip21(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(invoice)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeMrhResponse.lift,
             # Error FFI converter
@@ -18758,12 +18563,12 @@ class SwapClient:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_nodes(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_nodes(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetNodesResponse.lift,
             # Error FFI converter
@@ -18779,12 +18584,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(swap_id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_quote(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_quote(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetQuoteResponse.lift,
             # Error FFI converter
@@ -18795,12 +18600,12 @@ class SwapClient:
         self,
     ) -> "GetReversePairsResponse":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_pairs(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_pairs(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetReversePairsResponse.lift,
             # Error FFI converter
@@ -18811,12 +18616,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_reverse_tx(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_tx(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeReverseSwapTxResp.lift,
             # Error FFI converter
@@ -18833,15 +18638,15 @@ class SwapClient:
         _UniffiConverterString.check_lower(swap_auth)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_rgb_refund_partial_sig(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_rgb_refund_partial_sig(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterTypeRgbCooperativeRefundRequest.lower(request),
                 _UniffiConverterString.lower(swap_auth),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeRgbCooperativeRefundResponse.lift,
             # Error FFI converter
@@ -18852,12 +18657,12 @@ class SwapClient:
         self,
     ) -> "GetSubmarinePairsResponse":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_pairs(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_pairs(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetSubmarinePairsResponse.lift,
             # Error FFI converter
@@ -18868,12 +18673,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_preimage(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_preimage(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSubmarineSwapPreimageResp.lift,
             # Error FFI converter
@@ -18884,12 +18689,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_submarine_tx(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_submarine_tx(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSubmarineSwapTxResp.lift,
             # Error FFI converter
@@ -18905,12 +18710,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(swap_id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_get_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_swap(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeGetSwapResponse.lift,
             # Error FFI converter
@@ -18930,7 +18735,7 @@ class SwapClient:
 
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_last_attribution,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_last_attribution,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -18945,7 +18750,7 @@ class SwapClient:
 
         return _UniffiConverterOptionalString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_org_key,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_org_key,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -18961,13 +18766,13 @@ class SwapClient:
         _UniffiConverterTypeLightningReceiveRequest.check_lower(request)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_receive(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_receive(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeLightningReceiveRequest.lower(request),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeRfqAnswer.lift,
             # Error FFI converter
@@ -18985,13 +18790,13 @@ class SwapClient:
         _UniffiConverterTypeLightningSendRequest.check_lower(request)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_quote_lightning_send(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_send(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeLightningSendRequest.lower(request),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeRfqAnswer.lift,
             # Error FFI converter
@@ -19008,14 +18813,14 @@ class SwapClient:
         _UniffiConverterTypeKeyPair.check_lower(keys)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_recover_swap_auth(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_recover_swap_auth(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterTypeKeyPair.lower(keys),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterString.lift,
             # Error FFI converter
@@ -19031,12 +18836,12 @@ class SwapClient:
         _UniffiConverterString.check_lower(rfq_id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_rfq_status(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_rfq_status(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(rfq_id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterOptionalTypeRfqStatus.lift,
             # Error FFI converter
@@ -19062,15 +18867,15 @@ class SwapClient:
         _UniffiConverterOptionalUInt32.check_lower(gap_limit)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_swap_restore(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_swap_restore(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(xpub),
                 _UniffiConverterOptionalString.lower(derivation_path),
                 _UniffiConverterOptionalUInt32.lower(gap_limit),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterSequenceTypeSwapRestoreResponse.lift,
             # Error FFI converter
@@ -19095,15 +18900,15 @@ class SwapClient:
         _UniffiConverterOptionalUInt32.check_lower(gap_limit)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_swap_restore_index(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_swap_restore_index(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(xpub),
                 _UniffiConverterOptionalString.lower(derivation_path),
                 _UniffiConverterOptionalUInt32.lower(gap_limit),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSwapRestoreIndexResponse.lift,
             # Error FFI converter
@@ -19115,7 +18920,7 @@ class SwapClient:
     ) -> "SwapWsApi":
         return _UniffiConverterTypeSwapWsApi.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapclient_ws,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_ws,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -19222,12 +19027,12 @@ class SwapMasterKey:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapmasterkey, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_swapmasterkey, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapmasterkey, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapmasterkey, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -19256,7 +19061,7 @@ class SwapMasterKey:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_swap_mnemonic,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapmasterkey_from_swap_mnemonic,
             _UniffiConverterString.lower(mnemonic),
             _UniffiConverterOptionalString.lower(passphrase),
             _UniffiConverterTypeNetwork.lower(network),
@@ -19283,7 +19088,7 @@ class SwapMasterKey:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapmasterkey_from_wallet_mnemonic,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapmasterkey_from_wallet_mnemonic,
             _UniffiConverterString.lower(wallet_mnemonic),
             _UniffiConverterOptionalString.lower(passphrase),
             _UniffiConverterTypeNetwork.lower(network),
@@ -19301,7 +19106,7 @@ class SwapMasterKey:
         return _UniffiConverterTypePreimage.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_preimage,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_derive_preimage,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
@@ -19321,7 +19126,7 @@ class SwapMasterKey:
         return _UniffiConverterTypeKeyPair.lift(
             _uniffi_rust_call_with_error(
                 _UniffiConverterTypeError,
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_derive_swap_key,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_derive_swap_key,
                 self._uniffi_clone_pointer(),
                 _UniffiConverterUInt64.lower(index),
             )
@@ -19336,7 +19141,7 @@ class SwapMasterKey:
 
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_master_xpub,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_master_xpub,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -19350,7 +19155,7 @@ class SwapMasterKey:
 
         return _UniffiConverterString.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapmasterkey_swap_mnemonic,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapmasterkey_swap_mnemonic,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -19427,13 +19232,11 @@ class SwapScript:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapscript, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_swapscript, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapscript, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapscript, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -19464,7 +19267,7 @@ class SwapScript:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_chain,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_chain,
             _UniffiConverterTypeChain.lower(chain),
             _UniffiConverterTypeSide.lower(side),
             _UniffiConverterTypeChainSwapDetails.lower(chain_swap_details),
@@ -19491,7 +19294,7 @@ class SwapScript:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_restored,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_restored,
             _UniffiConverterTypeNetwork.lower(network),
             _UniffiConverterTypeSwapRestoreResponse.lower(restored_swap),
             _UniffiConverterTypePublicKey.lower(our_pubkey),
@@ -19515,7 +19318,7 @@ class SwapScript:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_reverse,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_reverse,
             _UniffiConverterTypeChain.lower(chain),
             _UniffiConverterTypeCreateReverseResponse.lower(reverse_response),
             _UniffiConverterTypePublicKey.lower(our_pubkey),
@@ -19538,7 +19341,7 @@ class SwapScript:
         # Call the (fallible) function before creating any half-baked object instances.
         pointer = _uniffi_rust_call_with_error(
             _UniffiConverterTypeError,
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapscript_from_submarine,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapscript_from_submarine,
             _UniffiConverterTypeChain.lower(chain),
             _UniffiConverterTypeCreateSubmarineResponse.lower(create_swap_response),
             _UniffiConverterTypePublicKey.lower(our_pubkey),
@@ -19553,14 +19356,14 @@ class SwapScript:
         _UniffiConverterTypeSwapTransactionParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_construct_claim(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_construct_claim(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypePreimage.lower(preimage),
                 _UniffiConverterTypeSwapTransactionParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypeBtcLikeTransaction.lift,
             # Error FFI converter
@@ -19573,13 +19376,13 @@ class SwapScript:
         _UniffiConverterTypeSwapTransactionParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_construct_refund(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_construct_refund(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeSwapTransactionParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypeBtcLikeTransaction.lift,
             # Error FFI converter
@@ -19592,13 +19395,13 @@ class SwapScript:
         _UniffiConverterTypeLiquidPsetParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_liquid_claim(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_liquid_claim(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeLiquidPsetParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypePreparedLiquidSpend.lift,
             # Error FFI converter
@@ -19611,13 +19414,13 @@ class SwapScript:
         _UniffiConverterTypeLiquidPsetParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_liquid_refund(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_liquid_refund(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeLiquidPsetParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypePreparedLiquidSpend.lift,
             # Error FFI converter
@@ -19628,13 +19431,13 @@ class SwapScript:
         _UniffiConverterTypeRgbPsbtParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_claim(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_claim(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeRgbPsbtParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypePreparedRgbSpend.lift,
             # Error FFI converter
@@ -19647,13 +19450,13 @@ class SwapScript:
         _UniffiConverterTypeRgbPsbtParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_cooperative_refund(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_cooperative_refund(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeRgbPsbtParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypePreparedRgbSpend.lift,
             # Error FFI converter
@@ -19664,13 +19467,13 @@ class SwapScript:
         _UniffiConverterTypeRgbPsbtParams.check_lower(params)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_prepare_rgb_refund(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_prepare_rgb_refund(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterTypeRgbPsbtParams.lower(params),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_pointer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_pointer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_pointer,
             # lift function
             _UniffiConverterTypePreparedRgbSpend.lift,
             # Error FFI converter
@@ -19689,16 +19492,16 @@ class SwapScript:
         _UniffiConverterTypeSwapClient.check_lower(boltz_api)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapscript_submarine_cooperative_claim(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapscript_submarine_cooperative_claim(
                 self._uniffi_clone_pointer(),
                 _UniffiConverterString.lower(swap_id),
                 _UniffiConverterTypeKeyPair.lower(keys),
                 _UniffiConverterString.lower(invoice),
                 _UniffiConverterTypeSwapClient.lower(boltz_api),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_void,
             # lift function
             lambda val: None,
             # Error FFI converter
@@ -19784,7 +19587,7 @@ class SwapWsApi:
         _UniffiConverterString.check_lower(ws_url)
 
         self._pointer = _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_constructor_swapwsapi_new,
+            _UniffiLib.uniffi_kaleidoswap_fn_constructor_swapwsapi_new,
             _UniffiConverterString.lower(ws_url),
         )
 
@@ -19792,13 +19595,11 @@ class SwapWsApi:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapwsapi, pointer
-            )
+            _uniffi_rust_call(_UniffiLib.uniffi_kaleidoswap_fn_free_swapwsapi, pointer)
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsapi, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapwsapi, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -19821,12 +19622,12 @@ class SwapWsApi:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_is_connected(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_is_connected(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_i8,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_i8,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_i8,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_i8,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_i8,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_i8,
             # lift function
             _UniffiConverterBool.lift,
             # Error FFI converter
@@ -19837,12 +19638,12 @@ class SwapWsApi:
         self,
     ) -> None:
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_run_ws_loop(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_run_ws_loop(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_void,
             # lift function
             lambda val: None,
             # Error FFI converter
@@ -19859,12 +19660,12 @@ class SwapWsApi:
         """
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_shutdown(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_shutdown(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_void,
             # lift function
             lambda val: None,
             # Error FFI converter
@@ -19875,12 +19676,12 @@ class SwapWsApi:
         _UniffiConverterString.check_lower(swap_id)
 
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_subscribe_swap(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_subscribe_swap(
                 self._uniffi_clone_pointer(), _UniffiConverterString.lower(swap_id)
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_void,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_void,
             # lift function
             lambda val: None,
             # Error FFI converter
@@ -19892,7 +19693,7 @@ class SwapWsApi:
     ) -> "SwapWsUpdates":
         return _UniffiConverterTypeSwapWsUpdates.lift(
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsapi_updates,
+                _UniffiLib.uniffi_kaleidoswap_fn_method_swapwsapi_updates,
                 self._uniffi_clone_pointer(),
             )
         )
@@ -19949,12 +19750,12 @@ class SwapWsUpdates:
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
             _uniffi_rust_call(
-                _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_free_swapwsupdates, pointer
+                _UniffiLib.uniffi_kaleidoswap_fn_free_swapwsupdates, pointer
             )
 
     def _uniffi_clone_pointer(self):
         return _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_clone_swapwsupdates, self._pointer
+            _UniffiLib.uniffi_kaleidoswap_fn_clone_swapwsupdates, self._pointer
         )
 
     # Used by alternative constructors or any methods which return this type.
@@ -19970,12 +19771,12 @@ class SwapWsUpdates:
         self,
     ) -> "SwapStatus":
         return await _uniffi_rust_call_async(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_method_swapwsupdates_next(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapwsupdates_next(
                 self._uniffi_clone_pointer(),
             ),
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-            _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
             # lift function
             _UniffiConverterTypeSwapStatus.lift,
             # Error FFI converter
@@ -20098,7 +19899,7 @@ def btc_chain_from_network(network: "Network") -> "Chain":
 
     return _UniffiConverterTypeChain.lift(
         _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_btc_chain_from_network,
+            _UniffiLib.uniffi_kaleidoswap_fn_func_btc_chain_from_network,
             _UniffiConverterTypeNetwork.lower(network),
         )
     )
@@ -20109,7 +19910,7 @@ def lbtc_chain_from_network(network: "Network") -> "Chain":
 
     return _UniffiConverterTypeChain.lift(
         _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_lbtc_chain_from_network,
+            _UniffiLib.uniffi_kaleidoswap_fn_func_lbtc_chain_from_network,
             _UniffiConverterTypeNetwork.lower(network),
         )
     )
@@ -20123,7 +19924,7 @@ def new_rfq_id() -> "str":
 
     return _UniffiConverterString.lift(
         _uniffi_rust_call(
-            _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_new_rfq_id,
+            _UniffiLib.uniffi_kaleidoswap_fn_func_new_rfq_id,
         )
     )
 
@@ -20139,13 +19940,13 @@ async def resolve_lightning_address(address: "str", amount_sat: "int") -> "str":
     _UniffiConverterUInt64.check_lower(amount_sat)
 
     return await _uniffi_rust_call_async(
-        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_resolve_lightning_address(
+        _UniffiLib.uniffi_kaleidoswap_fn_func_resolve_lightning_address(
             _UniffiConverterString.lower(address),
             _UniffiConverterUInt64.lower(amount_sat),
         ),
-        _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_poll_rust_buffer,
-        _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_complete_rust_buffer,
-        _UniffiLib.ffi_kaleidorg_swap_sdk_rust_future_free_rust_buffer,
+        _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+        _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+        _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
         # lift function
         _UniffiConverterString.lift,
         # Error FFI converter
@@ -20182,7 +19983,7 @@ def validate_chain_timeout_headroom(
 
     _uniffi_rust_call_with_error(
         _UniffiConverterTypeError,
-        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_chain_timeout_headroom,
+        _UniffiLib.uniffi_kaleidoswap_fn_func_validate_chain_timeout_headroom,
         _UniffiConverterTypeCreateChainResponse.lower(response),
         _UniffiConverterTypeChain.lower(from_chain),
         _UniffiConverterUInt32.lower(from_height),
@@ -20210,7 +20011,7 @@ def validate_reverse_timeout_headroom(
 
     _uniffi_rust_call_with_error(
         _UniffiConverterTypeError,
-        _UniffiLib.uniffi_kaleidorg_swap_sdk_fn_func_validate_reverse_timeout_headroom,
+        _UniffiLib.uniffi_kaleidoswap_fn_func_validate_reverse_timeout_headroom,
         _UniffiConverterTypeCreateReverseResponse.lower(response),
         _UniffiConverterUInt32.lower(current_height),
         _UniffiConverterUInt32.lower(min_headroom_blocks),

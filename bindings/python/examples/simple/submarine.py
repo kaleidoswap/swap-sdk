@@ -11,7 +11,7 @@ cannot pay. The engine-level version is ../advanced/submarine.py.
 import asyncio
 import os
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 NETWORK = sdk.Network.SIGNET
 # The store keeps every swap until it ends: claim and refund material, and the

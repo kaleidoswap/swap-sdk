@@ -9,12 +9,12 @@ import { ARCHIVES, sha256, validateManifest } from "./native-artifacts.mjs";
 
 const required = [
   "src/index.tsx",
-  "src/generated/kaleidorg_swap_sdk.ts",
+  "src/generated/kaleidoswap.ts",
   "react-native.config.js",
   "KaleidoswapSwapSdk.podspec",
   "android/CMakeLists.txt",
   "cpp/kaleidoswap-swap-sdk.cpp",
-  "cpp/generated/kaleidorg_swap_sdk.cpp",
+  "cpp/generated/kaleidoswap.cpp",
 ];
 const missing = [];
 for (const path of required) {
@@ -42,7 +42,7 @@ try {
 // `ubrn:fixup` adds the in-app refusal to `kaleidoMaker`. A module generated
 // without it (by running `ubrn` directly, say) would ship the secret-key
 // constructor unguarded.
-if (!isGuarded(await readFile("src/generated/kaleidorg_swap_sdk.ts", "utf8"))) {
+if (!isGuarded(await readFile("src/generated/kaleidoswap.ts", "utf8"))) {
   throw new Error(
     "refusing to pack a module whose kaleidoMaker is unguarded; run npm run ubrn:fixup",
   );

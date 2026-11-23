@@ -1,5 +1,5 @@
 // KaleidoSwap — the high-level surface. The phase machine, the pricing and
-// every check live in the Rust core (`kaleidorg_swap_sdk::kaleidoswap`) and
+// every check live in the Rust core (`kaleidoswap::kaleidoswap`) and
 // reach this package through the wasm binding; this file declares the types
 // callers write against and adapts the store and the signer they provide.
 

@@ -4,13 +4,16 @@ The Rust crate, Python distribution, and npm package use one public version.
 The first release line for this repository is `0.1.0`, and stable release tags
 use the form `vX.Y.Z`.
 
-The public package names, migrated to the `kaleidorg` identity:
+The public package names, one name on every registry:
 
-- Rust crate: `kaleidorg-swap-sdk`
-- Python distribution: `kaleidorg_swap_sdk` (normalized by PyPI to
-  `kaleidorg-swap-sdk`)
-- Python import: `kaleidorg_swap_sdk`
-- npm package: `@kaleidorg/swap-sdk`
+- Rust crate and import: `kaleidoswap`
+- Python distribution and import: `kaleidoswap`
+- npm packages: `kaleidoswap` and `kaleidoswap-react-native`
+
+Releases up to `0.16.0` shipped as `kaleidorg-swap-sdk` (crate, PyPI;
+import `kaleidorg_swap_sdk`), `@kaleidorg/swap-sdk` and
+`@kaleidorg/swap-sdk-react-native`. Those names stay published and are
+deprecated in favour of the ones above.
 
 ## Version commands
 
@@ -122,7 +125,7 @@ the `attestations` input when a password is set, so it is pinned to `false`.
 ## Publication order
 
 The GitHub release is published from the sealed ten-file bundle and finalized
-changelog **before** either registry. `@kaleidorg/swap-sdk-react-native`'s
+changelog **before** either registry. `kaleidoswap-react-native`'s
 `postinstall` downloads its iOS and Android archives from the GitHub release for
 its own version, so a package that reaches npm before that release exists
 resolves, installs, and then fails in `postinstall`. An npm publish cannot be
@@ -293,14 +296,15 @@ they are unreachable except from a job that environment gates.
 
 ### npm — `NPM_TOKEN`
 
-`@kaleidorg/swap-sdk` did not exist on npm when this pipeline was built, and
 npm configures trusted publishing from an existing package's settings, so a
-brand-new package could not be created by OIDC alone — which is the practical
-reason this pipeline uses a token. The package now exists, so that constraint is
-spent: migrating to trusted publishing is possible whenever someone wants to
+brand-new package cannot be created by OIDC alone — which is the practical
+reason this pipeline uses a token. `@kaleidorg/swap-sdk` was new when the
+pipeline was built, and `kaleidoswap` / `kaleidoswap-react-native` are new
+again with the rename: their first release needs the token. Once they exist,
+migrating to trusted publishing is possible whenever someone wants to
 retire the stored credential.
 
-1. An owner of the `@kaleidorg` scope creates an **automation** token with
+1. An owner of the `kaleidoswap` and `kaleidoswap-react-native` packages creates an **automation** token with
    publish rights (granular access tokens scoped to this package are preferable
    to a legacy classic token).
 2. Store it as `NPM_TOKEN` on the `release` environment. Never at repository
@@ -324,7 +328,7 @@ an unused privilege.
 
 ### PyPI — `PYPI_TOKEN`
 
-1. A PyPI account with upload rights for `kaleidorg-swap-sdk` creates an API
+1. A PyPI account with upload rights for `kaleidoswap` creates an API
    token. The project now exists, so scope the token to it rather than to the
    whole account — the account-scoped token the first upload required should not
    still be in use.
@@ -363,8 +367,8 @@ TAG="v$VERSION"
    make validate-release-readiness TAG="$TAG"
    ```
 
-2. Confirm `@kaleidorg/swap-sdk@$VERSION` and
-   `kaleidorg_swap_sdk==$VERSION` are still absent from npm and PyPI:
+2. Confirm `kaleidoswap@$VERSION` and
+   `kaleidoswap==$VERSION` are still absent from npm and PyPI:
 
    ```sh
    NPM_PUBLISH_ENABLED=false \
@@ -376,7 +380,7 @@ TAG="v$VERSION"
    ruleset, the `v*` release-environment policy, required reviewers, and
    `can_admins_bypass: false`.
 4. Have a second maintainer confirm `NPM_TOKEN` is present on the `release`
-   environment and scoped to publish `@kaleidorg/swap-sdk`. Set
+   environment and scoped to publish `kaleidoswap` and `kaleidoswap-react-native`. Set
    `NPM_PUBLISH_ENABLED=true`; production activation deliberately fails while
    this variable is false.
 5. To publish Python, confirm `PYPI_TOKEN` is present on the `release`
@@ -620,11 +624,11 @@ publisher succeeds and another fails:
 ## Rust distribution
 
 The Rust surface is **git-only**. Nothing in this pipeline runs `cargo package`
-or `cargo publish`, and `kaleidorg-swap-sdk` is unclaimed on crates.io.
+or `cargo publish`, and `kaleidoswap` is unclaimed on crates.io.
 Consumers take it by tag:
 
 ```toml
-kaleidorg-swap-sdk = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }
+kaleidoswap = { git = "https://github.com/kaleidoswap/swap-sdk", tag = "v0.6.0" }
 ```
 
 Pin the tag you actually want; `v0.6.0` is the latest published release at the
@@ -640,7 +644,7 @@ deliberate deferral rather than an oversight:
 1. `secp256k1_musig` is a git dependency as of `0.4.0`, and `cargo publish`
    rejects a git dependency outright. Resolving it means the `0.33.x` MuSig2
    migration described in that release's changelog entry, not a metadata change.
-2. `kaleidorg-swap-sdk-macros` is a path dependency and would have to be
+2. `kaleidoswap-macros` is a path dependency and would have to be
    published first.
 3. The "one synchronized version" contract covers three of the five crates. The
    root crate, Python distribution, and npm package share one public version;
@@ -662,8 +666,11 @@ new name was unclaimed, and `kaleidorg-swap-sdk` now holds `0.1.0` and `0.1.1`
 on PyPI. `0.1.0` reached PyPI but never reached npm, so it is permanently
 claimed there and absent from npm; see the `0.1.1` changelog entry.
 
+From `0.17.0` the distribution is `kaleidoswap`, matching the npm package and
+the crate; `kaleidorg-swap-sdk` keeps `0.1.0` through `0.16.0`.
+
 Public PyPI publishing is **enabled**: `PYPI_PUBLISH_ENABLED` is `true`, and
-`kaleidorg-swap-sdk` carries a release for every tagged version. The flag still
+`kaleidoswap` carries a release for every tagged version. The flag still
 defaults to off — absent or `false` — and the registry-completion gate then
 requires the publish and verify jobs to be `skipped`, with the Python artifacts
 validated in CI and shipped as GitHub release assets only. Read the live value

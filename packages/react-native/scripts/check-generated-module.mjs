@@ -17,7 +17,7 @@
  * complete. 0.11.0 shipped like this: the Android build read a stripped `.so`,
  * which has no symbol table for uniffi's library mode to read component
  * metadata from. Its index exported only `uniffiInitAsync`, so
- * `import { SwapClient } from "@kaleidorg/swap-sdk-react-native"` failed.
+ * `import { SwapClient } from "kaleidoswap-react-native"` failed.
  *
  * Run after each generation by `ubrn:fixup`, before packing by
  * `validate-package.mjs`, and against the packed tarball by
@@ -27,10 +27,10 @@ import { readFileSync } from "node:fs";
 import { argv, exit } from "node:process";
 
 /** The UniFFI namespace of the `bindings` crate, as ubrn names its files. */
-export const NAMESPACE = "kaleidorg_swap_sdk";
+export const NAMESPACE = "kaleidoswap";
 
 /** `Native` + the namespace in upper camel case, as ubrn names the C++ module. */
-const CPP_MODULE = "NativeKaleidorgSwapSdk";
+const CPP_MODULE = "NativeKaleidoswap";
 
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const BINDINGS = escape(`./generated/${NAMESPACE}`);

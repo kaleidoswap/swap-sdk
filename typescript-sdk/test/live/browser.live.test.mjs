@@ -40,7 +40,7 @@ const PAGE = `<!doctype html>
   try {
     const config = await (await fetch("/config")).json();
     const { SwapClient, SwapMasterKey, SwapScript, SwapWsApi, init } =
-      await import("/node_modules/@kaleidorg/swap-sdk/dist/index.js");
+      await import("/node_modules/kaleidoswap/dist/index.js");
     await init();
     const maker = location.origin + "/maker/v2";
     const esplora = location.origin + "/liquid";

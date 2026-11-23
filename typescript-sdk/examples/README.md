@@ -1,4 +1,4 @@
-# `@kaleidorg/swap-sdk` examples
+# `kaleidoswap` examples
 
 Runnable programs against the live KaleidoSwap **signet** maker, in two
 folders:
@@ -15,7 +15,7 @@ folders:
 ```sh
 cd typescript-sdk
 npm install && npm run build   # builds the dist/ the examples import
-cd examples && npm install     # links @kaleidorg/swap-sdk to the build above
+cd examples && npm install     # links kaleidoswap to the build above
 node advanced/01-pairs.ts
 ```
 
@@ -84,7 +84,7 @@ created on one chain and funded or watched on another.
   swap mnemonic in secure storage and persists the swap id, index, accepted pair
   card, create response and current state _before_ funding or paying.
 - **They stop at the Arkade leg.** `04` quotes the corridor; funding or claiming
-  the Arkade side needs an Ark wallet, which is the `@kaleidorg/swap-sdk/arkade`
+  the Arkade side needs an Ark wallet, which is the `kaleidoswap/arkade`
   venue's job.
 
 `advanced/02` and `advanced/03` write the create response to

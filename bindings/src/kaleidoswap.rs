@@ -1,5 +1,5 @@
 //! The high-level surface — `quote`, `start`, `resume` — for Python and React
-//! Native. Mirrors `kaleidorg_swap_sdk::kaleidoswap` record for record; the
+//! Native. Mirrors `kaleidoswap::kaleidoswap` record for record; the
 //! phase machine, the pricing and every check live there, so this file only
 //! carries values across the boundary.
 //!
@@ -11,15 +11,15 @@
 
 use std::sync::Arc;
 
-use kaleidorg_swap_sdk::kaleidoswap::{
+use kaleidoswap::kaleidoswap::{
     self as core, Amount, Asset, FeePolicy, Fees, Limits, Protocol, Quote, QuoteBinding,
     QuoteRefusalReason, QuoteRequest, Refusal, ReverseTimeoutHeadroom, StartOptions, SwapAction,
     SwapErrorCode, SwapPhase,
 };
-use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
+use kaleidoswap::util::secrets::Preimage as CorePreimage;
 
 use crate::boltz::Error;
-use kaleidorg_swap_sdk::network::Network;
+use kaleidoswap::network::Network;
 
 // ---------------------------------------------------------------------------
 // Enums and records, declared as the core declares them.
@@ -694,7 +694,7 @@ impl KaleidoSwap {
             api_key: options
                 .api_key
                 .as_deref()
-                .map(kaleidorg_swap_sdk::kaleido::ApiKey::parse)
+                .map(kaleidoswap::kaleido::ApiKey::parse)
                 .transpose()?,
             bitcoin_esplora_url: options.bitcoin_esplora_url,
             liquid_esplora_url: options.liquid_esplora_url,

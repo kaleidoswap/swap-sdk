@@ -23,7 +23,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { assertGlueLoadsCrate } from "./check-generated-module.mjs";
 import { validateManifest } from "./native-artifacts.mjs";
 
-const PACKAGE = "@kaleidorg/swap-sdk-react-native";
+const PACKAGE = "kaleidoswap-react-native";
 
 // Mirrors NPM_REQUIRED / NPM_ALLOWED_PREFIXES / NPM_FORBIDDEN in
 // scripts/react_native_release.py, which enforces the same inventory when the
@@ -36,7 +36,7 @@ const requiredPaths = [
   "react-native.config.js",
   "KaleidoswapSwapSdk.podspec",
   "android/CMakeLists.txt",
-  "cpp/generated/kaleidorg_swap_sdk.cpp",
+  "cpp/generated/kaleidoswap.cpp",
   "src/index.tsx",
   "src/arkade.ts",
   "lib/module/index.js",
@@ -92,7 +92,7 @@ function assertPackageContents(paths) {
   }
 }
 
-const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-react-native-npm-"));
+const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-react-native-npm-"));
 try {
   const paths = listTarball(tarballPath);
   assertPackageContents(paths);

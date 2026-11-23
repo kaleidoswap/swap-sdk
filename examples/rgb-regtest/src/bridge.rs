@@ -2,7 +2,7 @@
 use crate::{identity, pricefeed, support::*, wallet};
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{consensus, Psbt, Transaction};
-use kaleidorg_swap_sdk::swaps::rgb::{FinalizedRgbSpend, RgbLock, RgbPsbtTemplate};
+use kaleidoswap::swaps::rgb::{FinalizedRgbSpend, RgbLock, RgbPsbtTemplate};
 use ldk_server_client::ldk_server_grpc::api::*;
 use rgb_lib::{
     wallet::{

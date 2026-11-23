@@ -8,15 +8,15 @@
 
 use std::str::FromStr;
 
-use kaleidorg_swap_sdk::error::Error;
-use kaleidorg_swap_sdk::swaps::boltz::{BoltzApiClientV2, CreateReverseRequest};
-use kaleidorg_swap_sdk::swaps::kaleido::{
+use kaleidoswap::error::Error;
+use kaleidoswap::swaps::boltz::{BoltzApiClientV2, CreateReverseRequest};
+use kaleidoswap::swaps::kaleido::{
     ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, MakerAttribution, API_KEY_PREFIX,
 };
 
-use kaleidorg_swap_sdk::bitcoin::hashes::{sha256, Hash};
-use kaleidorg_swap_sdk::bitcoin::secp256k1::rand;
-use kaleidorg_swap_sdk::PublicKey;
+use kaleidoswap::bitcoin::hashes::{sha256, Hash};
+use kaleidoswap::bitcoin::secp256k1::rand;
+use kaleidoswap::PublicKey;
 
 /// A reverse-swap request whose payment hash is unique to this run.
 ///
@@ -189,7 +189,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    `Bearer` is a key, and one the maker cannot use is step 6's anonymous
     //    201. `ApiKey::parse` refuses to build either, so this goes out through
     //    a plain HTTP client.
-    let malformed = kaleidorg_swap_sdk::reqwest::Client::new()
+    let malformed = kaleidoswap::reqwest::Client::new()
         .post(format!("{maker_url}/swap/reverse"))
         .header("Authorization", "Basic dXNlcjpwYXNz")
         .json(&reverse_request("sdk-probe-malformed", run, 100_000))
@@ -199,7 +199,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let body = malformed.text().await?;
     assert_eq!(
         status,
-        kaleidorg_swap_sdk::reqwest::StatusCode::UNAUTHORIZED,
+        kaleidoswap::reqwest::StatusCode::UNAUTHORIZED,
         "a malformed Authorization was answered {status}, not 401: {body}"
     );
     assert!(
@@ -233,7 +233,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 response.id
             ),
             Err(Error::HTTPStatusNotSuccess(status, body))
-                if status == kaleidorg_swap_sdk::reqwest::StatusCode::BAD_REQUEST
+                if status == kaleidoswap::reqwest::StatusCode::BAD_REQUEST
                     && body["error"] == "pair_hash_mismatch" =>
             {
                 println!("\n8. anonymous hash on a keyed create refused: {status}")

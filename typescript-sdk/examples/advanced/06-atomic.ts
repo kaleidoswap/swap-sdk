@@ -31,7 +31,7 @@ import {
   SwapClient,
   init,
   type AtomicPairName,
-} from "@kaleidorg/swap-sdk";
+} from "kaleidoswap";
 
 import { die, makerUrl, network, optionalInt, required } from "./common.ts";
 

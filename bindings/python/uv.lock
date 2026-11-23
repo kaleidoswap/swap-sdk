@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.10"
 
 [[package]]
-name = "kaleidorg-swap-sdk"
+name = "kaleidoswap"
 version = "0.16.0"
 source = { virtual = "." }
 

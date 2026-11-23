@@ -21,14 +21,14 @@
 //! and `GET /v1/rfq/{rfq_id}` hang off the maker's origin. A client built for
 //! `https://maker/v2` reaches the corridor at `https://maker/v1/...`, which is
 //! what [`corridor_root_from_maker_url`] derives — and it is the one rule the
-//! TypeScript `@kaleidorg/swap-sdk/arkade` venue mirrors, so both entries
+//! TypeScript `kaleidoswap/arkade` venue mirrors, so both entries
 //! agree on the URL by construction.
 //!
 //! ## What this module does not do
 //!
 //! Nothing here touches Arkade itself. A send needs the lockup funded from an
 //! Ark wallet and a receive needs the lockup claimed with one; both are the
-//! venue's job (`@kaleidorg/swap-sdk/arkade`), which needs `@arkade-os/sdk`.
+//! venue's job (`kaleidoswap/arkade`), which needs `@arkade-os/sdk`.
 //! This module is the half every runtime can carry without that dependency:
 //! quote, verify, track — enough for a server or a Python host to price and
 //! monitor a corridor swap, and for a wallet to decide whether a quote is one

@@ -251,7 +251,7 @@ pub async fn resolve_lightning_address(
     let amount_sat = opt_u64_arg(Some(amount_sat), "amountSat")?
         .filter(|amount| *amount > 0 && amount.checked_mul(1_000).is_some())
         .ok_or_else(|| arg_err("amountSat must be positive and fit in millisatoshis"))?;
-    kaleidorg_swap_sdk::util::lnurl::resolve_lightning_address(&address, amount_sat)
+    kaleidoswap::util::lnurl::resolve_lightning_address(&address, amount_sat)
         .await
         .map_err(core_err)
 }
@@ -262,8 +262,8 @@ pub async fn resolve_lightning_address(
 // incrementally on top of these.
 // ============================================================================
 
-use kaleidorg_swap_sdk::network::Network;
-use kaleidorg_swap_sdk::util::secrets::{Preimage, SwapMasterKey};
+use kaleidoswap::network::Network;
+use kaleidoswap::util::secrets::{Preimage, SwapMasterKey};
 
 /// A derived swap key, returned to JS as `{ publicKey, secretKey }` (hex).
 #[derive(serde::Serialize)]
@@ -384,7 +384,7 @@ impl WasmSwapMasterKey {
 #[wasm_bindgen]
 pub struct WasmMnemonicSigner {
     master: SwapMasterKey,
-    nonces: kaleidorg_swap_sdk::swaps::signing::MusigNonces,
+    nonces: kaleidoswap::swaps::signing::MusigNonces,
 }
 
 #[derive(serde::Deserialize)]
@@ -403,24 +403,21 @@ fn parse_hex32(hex: &str, what: &str) -> Result<[u8; 32], JsValue> {
 
 fn parse_musig_session(
     value: JsValue,
-) -> Result<kaleidorg_swap_sdk::swaps::signing::MusigSession, JsValue> {
+) -> Result<kaleidoswap::swaps::signing::MusigSession, JsValue> {
     let session: JsMusigSession = serde_wasm_bindgen::from_value(value).map_err(arg_err)?;
     let [a, b] = <[String; 2]>::try_from(session.pubkeys)
         .map_err(|_| arg_err("a MuSig2 session has two public keys"))?;
-    let key = |hex: &str| {
-        kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey::from_str(hex).map_err(arg_err)
-    };
-    Ok(kaleidorg_swap_sdk::swaps::signing::MusigSession {
+    let key =
+        |hex: &str| kaleidoswap::bitcoin::secp256k1::PublicKey::from_str(hex).map_err(arg_err);
+    Ok(kaleidoswap::swaps::signing::MusigSession {
         pubkeys: [key(&a)?, key(&b)?],
         tweak: parse_hex32(&session.tweak, "tweak")?,
         sighash: parse_hex32(&session.sighash, "sighash")?,
     })
 }
 
-fn parse_public_nonce(
-    hex: &str,
-) -> Result<kaleidorg_swap_sdk::kaleidoswap::musig::PublicNonce, JsValue> {
-    kaleidorg_swap_sdk::kaleidoswap::musig::PublicNonce::from_str(hex)
+fn parse_public_nonce(hex: &str) -> Result<kaleidoswap::kaleidoswap::musig::PublicNonce, JsValue> {
+    kaleidoswap::kaleidoswap::musig::PublicNonce::from_str(hex)
         .map_err(|e| arg_err(format!("public nonce: {e:?}")))
 }
 
@@ -476,10 +473,7 @@ impl WasmMnemonicSigner {
     #[wasm_bindgen(js_name = signSchnorr)]
     pub fn sign_schnorr(&self, index: u64, sighash: StringArg) -> Result<String, JsValue> {
         let sighash = parse_hex32(&str_arg(sighash, "sighash")?, "sighash")?;
-        Ok(
-            kaleidorg_swap_sdk::swaps::signing::sign_schnorr(&self.keys(index)?, sighash)
-                .to_string(),
-        )
+        Ok(kaleidoswap::swaps::signing::sign_schnorr(&self.keys(index)?, sighash).to_string())
     }
 
     /// Starts a MuSig2 signature for `session`: generates and keeps a secret
@@ -537,19 +531,19 @@ fn parse_network(s: &str) -> Result<Network, JsValue> {
 // hand-written interfaces.
 // ============================================================================
 
-use kaleidorg_swap_sdk::atomic;
-use kaleidorg_swap_sdk::boltz::{
+use kaleidoswap::atomic;
+use kaleidoswap::boltz::{
     BoltzApiClientV2, CreateChainRequest, CreateReverseRequest, CreateSubmarineRequest,
 };
-use kaleidorg_swap_sdk::corridor;
+use kaleidoswap::corridor;
 // The organization-key client is deprecated, and still exported.
 #[allow(deprecated)]
-use kaleidorg_swap_sdk::kaleido::{
+use kaleidoswap::kaleido::{
     ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions, KaleidoOrgClient,
     KaleidoOrgClientOptions, OrgKey,
 };
 
-fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
+fn core_err(e: kaleidoswap::error::Error) -> JsValue {
     let error = js_sys::Error::new(&e.message());
     set_code(&error, &e.name());
     error.into()
@@ -560,14 +554,8 @@ fn core_err(e: kaleidorg_swap_sdk::error::Error) -> JsValue {
 fn asset_from_boltz(
     s: &str,
     network: &str,
-) -> Result<
-    (
-        kaleidorg_swap_sdk::network::Chain,
-        kaleidorg_swap_sdk::network::Currency,
-    ),
-    JsValue,
-> {
-    use kaleidorg_swap_sdk::network::{Chain, Currency};
+) -> Result<(kaleidoswap::network::Chain, kaleidoswap::network::Currency), JsValue> {
+    use kaleidoswap::network::{Chain, Currency};
 
     let net = parse_network(network)?;
     match s {
@@ -582,7 +570,7 @@ fn asset_from_boltz(
             "ARKD is bitcoin on Arkade, and this SDK cannot build or verify an \
              Arkade VHTLC through the Boltz-shaped create routes. Use the Intents \
              corridor instead: quoteLightningSend() / quoteLightningReceive() on \
-             this client for the quote, and @kaleidorg/swap-sdk/arkade to fund or \
+             this client for the quote, and kaleidoswap/arkade to fund or \
              claim the lockup",
         )),
         other => Err(arg_err(format!("unsupported Boltz asset '{other}'"))),
@@ -591,12 +579,12 @@ fn asset_from_boltz(
 
 /// Require an explicit local contract pin before any RGB create request.
 fn rgb_contract_before_create(
-    from: kaleidorg_swap_sdk::network::Currency,
-    to: kaleidorg_swap_sdk::network::Currency,
+    from: kaleidoswap::network::Currency,
+    to: kaleidoswap::network::Currency,
     reverse: bool,
     contract_id: Option<&str>,
 ) -> Result<Option<&str>, JsValue> {
-    use kaleidorg_swap_sdk::network::Currency;
+    use kaleidoswap::network::Currency;
     if from != Currency::UsdtRgb && to != Currency::UsdtRgb {
         return Ok(None);
     }
@@ -626,7 +614,7 @@ pub fn new_rfq_id() -> String {
 #[cfg(test)]
 mod boltz_asset_tests {
     use super::*;
-    use kaleidorg_swap_sdk::network::{BitcoinChain, Chain, Currency, LiquidChain};
+    use kaleidoswap::network::{BitcoinChain, Chain, Currency, LiquidChain};
 
     /// `ARKD` is a symbol the maker publishes, so a caller reading the
     /// catalogue arrives here holding a route it was shown. The refusal has
@@ -640,7 +628,7 @@ mod boltz_asset_tests {
             .unwrap_or_default();
         assert!(message.contains("Intents corridor"), "{message}");
         assert!(message.contains("quoteLightningReceive"), "{message}");
-        assert!(message.contains("@kaleidorg/swap-sdk/arkade"), "{message}");
+        assert!(message.contains("kaleidoswap/arkade"), "{message}");
     }
 
     #[test]
@@ -1221,28 +1209,27 @@ impl BoltzClient {
         )?;
         // The pin resolves before any I/O, so a missing one never creates a
         // swap; the maker's pair card is then only cross-checked against it.
-        let expected_asset_context =
-            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
-                from_chain,
-                to_chain,
-                from_currency,
-                to_currency,
-                lusdt_asset_id.as_deref(),
-            )
-            .map_err(core_err)?
-            {
-                Some(trusted) => {
-                    let pair_card = self
-                        .inner
-                        .get_submarine_pairs()
-                        .await
-                        .map_err(core_err)?
-                        .expected_liquid_asset_context(from_currency, to_currency)
-                        .map_err(core_err)?;
-                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
-                }
-                None => None,
-            };
+        let expected_asset_context = match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            lusdt_asset_id.as_deref(),
+        )
+        .map_err(core_err)?
+        {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_submarine_pairs()
+                    .await
+                    .map_err(core_err)?
+                    .expected_liquid_asset_context(from_currency, to_currency)
+                    .map_err(core_err)?;
+                Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+            }
+            None => None,
+        };
         // A pinned pairHash binds the response to the card the caller
         // accepted; a card the maker has since replaced is refused.
         let accepted_pair = match req.pair_hash.as_deref() {
@@ -1266,8 +1253,7 @@ impl BoltzClient {
                 &req.refund_public_key,
                 chain,
                 contract_id,
-                rgb_max_htlc_sat
-                    .unwrap_or(kaleidorg_swap_sdk::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
+                rgb_max_htlc_sat.unwrap_or(kaleidoswap::swaps::rgb::DEFAULT_MAX_SUBMARINE_HTLC_SAT),
             )
             .map_err(core_err)?;
         } else {
@@ -1310,36 +1296,35 @@ impl BoltzClient {
         )?;
         // The pin resolves before any I/O, so a missing one never creates a
         // swap; the maker's pair card is then only cross-checked against it.
-        let expected_asset_context =
-            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
-                from_chain,
-                to_chain,
-                from_currency,
-                to_currency,
-                lusdt_asset_id.as_deref(),
-            )
-            .map_err(core_err)?
-            {
-                Some(trusted) => {
-                    let pair_card = self
-                        .inner
-                        .get_reverse_pairs()
-                        .await
-                        .map_err(core_err)?
-                        .expected_liquid_asset_context(from_currency, to_currency)
-                        .map_err(core_err)?;
-                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
-                }
-                None => None,
-            };
+        let expected_asset_context = match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            lusdt_asset_id.as_deref(),
+        )
+        .map_err(core_err)?
+        {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_reverse_pairs()
+                    .await
+                    .map_err(core_err)?
+                    .expected_liquid_asset_context(from_currency, to_currency)
+                    .map_err(core_err)?;
+                Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+            }
+            None => None,
+        };
         // Validate the returned tree/address regardless of request form: derive
         // the payment hash from `preimage_hash` or, in the invoice form, from the
         // invoice itself. Never hand back an unvalidated response to fund.
         let preimage = if let Some(hash) = preimage_hash {
-            kaleidorg_swap_sdk::util::secrets::Preimage::from_sha256_str(&hash.to_string())
+            kaleidoswap::util::secrets::Preimage::from_sha256_str(&hash.to_string())
                 .map_err(core_err)?
         } else if let Some(inv) = &invoice {
-            kaleidorg_swap_sdk::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
+            kaleidoswap::util::secrets::Preimage::from_invoice_str(inv).map_err(core_err)?
         } else {
             return Err(arg_err(
                 "reverse swap request needs preimageHash or invoice",
@@ -1409,38 +1394,37 @@ impl BoltzClient {
         };
         let (from_chain, from_currency) = asset_from_boltz(&req.from, &network)?;
         let (to_chain, to_currency) = asset_from_boltz(&req.to, &network)?;
-        if from_currency == kaleidorg_swap_sdk::network::Currency::UsdtRgb
-            || to_currency == kaleidorg_swap_sdk::network::Currency::UsdtRgb
+        if from_currency == kaleidoswap::network::Currency::UsdtRgb
+            || to_currency == kaleidoswap::network::Currency::UsdtRgb
         {
             return Err(arg_err("USDT-RGB chain swaps are unsupported"));
         }
         // The pin resolves before any I/O, so a missing one never creates a
         // swap; the maker's pair card is then only cross-checked against it.
-        let expected_asset_context =
-            match kaleidorg_swap_sdk::LiquidAssetContext::trusted_lusdt_for_swap(
-                from_chain,
-                to_chain,
-                from_currency,
-                to_currency,
-                lusdt_asset_id.as_deref(),
-            )
-            .map_err(core_err)?
-            {
-                Some(trusted) => {
-                    let pair_card = self
-                        .inner
-                        .get_chain_pairs()
-                        .await
-                        .map_err(core_err)?
-                        .expected_liquid_asset_context(from_currency, to_currency)
-                        .map_err(core_err)?;
-                    Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
-                }
-                None => None,
-            };
+        let expected_asset_context = match kaleidoswap::LiquidAssetContext::trusted_lusdt_for_swap(
+            from_chain,
+            to_chain,
+            from_currency,
+            to_currency,
+            lusdt_asset_id.as_deref(),
+        )
+        .map_err(core_err)?
+        {
+            Some(trusted) => {
+                let pair_card = self
+                    .inner
+                    .get_chain_pairs()
+                    .await
+                    .map_err(core_err)?
+                    .expected_liquid_asset_context(from_currency, to_currency)
+                    .map_err(core_err)?;
+                Some(trusted.cross_check_pair_card(pair_card).map_err(core_err)?)
+            }
+            None => None,
+        };
         let (from_asset_context, to_asset_context) = match (from_currency, to_currency) {
-            (kaleidorg_swap_sdk::network::Currency::LUsdt, _) => (expected_asset_context, None),
-            (_, kaleidorg_swap_sdk::network::Currency::LUsdt) => (None, expected_asset_context),
+            (kaleidoswap::network::Currency::LUsdt, _) => (expected_asset_context, None),
+            (_, kaleidoswap::network::Currency::LUsdt) => (None, expected_asset_context),
             _ => (None, None),
         };
         // A pinned pairHash binds the response to the card the caller
@@ -1761,31 +1745,31 @@ impl BoltzClient {
 // `WasmSwapMasterKey.deriveSwapKey` (returns { publicKey, secretKey } hex).
 // ============================================================================
 
-use kaleidorg_swap_sdk::bitcoin::hex::DisplayHex as _;
-use kaleidorg_swap_sdk::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
-use kaleidorg_swap_sdk::bitcoin::PublicKey;
-use kaleidorg_swap_sdk::boltz::{
+use kaleidoswap::bitcoin::hex::DisplayHex as _;
+use kaleidoswap::bitcoin::secp256k1::{Keypair, Secp256k1, SecretKey};
+use kaleidoswap::bitcoin::PublicKey;
+use kaleidoswap::boltz::{
     ChainSwapDetails, CreateChainResponse, CreateReverseResponse, CreateSubmarineResponse, Side,
 };
-use kaleidorg_swap_sdk::fees::Fee;
-use kaleidorg_swap_sdk::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
-use kaleidorg_swap_sdk::network::Chain;
-use kaleidorg_swap_sdk::swaps::liquid::{
+use kaleidoswap::fees::Fee;
+use kaleidoswap::network::esplora::{EsploraBitcoinClient, EsploraLiquidClient};
+use kaleidoswap::network::Chain;
+use kaleidoswap::swaps::liquid::{
     FundedLiquidPset, PreparedLiquidSpend as CorePreparedLiquidSpend,
 };
-use kaleidorg_swap_sdk::swaps::magic_routing;
-use kaleidorg_swap_sdk::swaps::rgb::{
+use kaleidoswap::swaps::magic_routing;
+use kaleidoswap::swaps::rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
     PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,
     RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
     RgbSpendFunding as CoreRgbSpendFunding,
 };
-use kaleidorg_swap_sdk::swaps::{
+use kaleidoswap::swaps::{
     BtcLikeTransaction as CoreBtcLikeTransaction, ChainClient as CoreChainClient,
     LiquidPsetParams as CoreLiquidPsetParams, RgbPsbtParams as CoreRgbPsbtParams,
     SwapScript as CoreSwapScript, SwapTransactionParams, TransactionOptions,
 };
-use kaleidorg_swap_sdk::util::secrets::Preimage as CorePreimage;
+use kaleidoswap::util::secrets::Preimage as CorePreimage;
 use std::str::FromStr as _;
 
 // Name the argument these parse. The upstream messages say nothing about which
@@ -1898,8 +1882,8 @@ struct ClaimPolicyParams {
 
 impl ClaimPolicyParams {
     fn apply(&self, options: TransactionOptions) -> TransactionOptions {
-        let defaults = kaleidorg_swap_sdk::swaps::ClaimPolicy::default();
-        options.with_claim_policy(kaleidorg_swap_sdk::swaps::ClaimPolicy {
+        let defaults = kaleidoswap::swaps::ClaimPolicy::default();
+        options.with_claim_policy(kaleidoswap::swaps::ClaimPolicy {
             min_confirmations: self.min_confirmations.unwrap_or(defaults.min_confirmations),
             allow_zero_conf: self.allow_zero_conf.unwrap_or(defaults.allow_zero_conf),
             claim_safety_margin_blocks: self.claim_safety_margin_blocks,
@@ -1959,8 +1943,8 @@ impl TxParams {
             self.esplora_timeout_secs,
         )
     }
-    fn boltz(&self) -> kaleidorg_swap_sdk::boltz::BoltzApiClientV2 {
-        kaleidorg_swap_sdk::boltz::BoltzApiClientV2::new(
+    fn boltz(&self) -> kaleidoswap::boltz::BoltzApiClientV2 {
+        kaleidoswap::boltz::BoltzApiClientV2::new(
             self.boltz_base_url.clone(),
             self.boltz_timeout_secs.map(std::time::Duration::from_secs),
         )
@@ -2008,8 +1992,8 @@ impl LiquidPsetParams {
         )
     }
 
-    fn boltz(&self) -> kaleidorg_swap_sdk::boltz::BoltzApiClientV2 {
-        kaleidorg_swap_sdk::boltz::BoltzApiClientV2::new(
+    fn boltz(&self) -> kaleidoswap::boltz::BoltzApiClientV2 {
+        kaleidoswap::boltz::BoltzApiClientV2::new(
             self.boltz_base_url.clone(),
             self.boltz_timeout_secs.map(std::time::Duration::from_secs),
         )
@@ -2640,10 +2624,10 @@ impl BtcLikeTransaction {
     pub fn hex(&self) -> String {
         match &self.inner {
             CoreBtcLikeTransaction::Bitcoin(tx) => {
-                kaleidorg_swap_sdk::bitcoin::consensus::serialize(tx).to_lower_hex_string()
+                kaleidoswap::bitcoin::consensus::serialize(tx).to_lower_hex_string()
             }
             CoreBtcLikeTransaction::Liquid(tx) => {
-                kaleidorg_swap_sdk::elements::encode::serialize(tx).to_lower_hex_string()
+                kaleidoswap::elements::encode::serialize(tx).to_lower_hex_string()
             }
         }
     }
@@ -2693,7 +2677,7 @@ impl BtcLikeTransaction {
 // the same object while the loop is pending.
 // ============================================================================
 
-use kaleidorg_swap_sdk::boltz::{BoltzWsApi as CoreBoltzWsApi, BoltzWsConfig, SwapStatus};
+use kaleidoswap::boltz::{BoltzWsApi as CoreBoltzWsApi, BoltzWsConfig, SwapStatus};
 use tokio::sync::{broadcast, Mutex as TokioMutex};
 
 /// Boltz WebSocket status stream.
@@ -2825,7 +2809,7 @@ pub fn validate_chain_timeout_headroom(
 
 // ============================================================================
 // KaleidoSwap — the high-level surface. `quote`, `start`, `resume` over the
-// core phase machine (`kaleidorg_swap_sdk::kaleidoswap`); this section only
+// core phase machine (`kaleidoswap::kaleidoswap`); this section only
 // carries values across the boundary.
 //
 // The store and the signer are JS objects the application provides:
@@ -2839,7 +2823,7 @@ pub fn validate_chain_timeout_headroom(
 // bigint) so `JSON.stringify` and IndexedDB both take them unchanged.
 // ============================================================================
 
-use kaleidorg_swap_sdk::kaleidoswap as hl;
+use kaleidoswap::kaleidoswap as hl;
 
 /// wasm32-unknown-unknown is single-threaded; a `JsValue` never leaves the
 /// thread that made it. The core traits ask for `Send + Sync` because the
@@ -2978,11 +2962,11 @@ impl hl::SwapSigner for JsSigner {
     async fn public_key(
         &self,
         index: u64,
-    ) -> Result<kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey, hl::SwapError> {
+    ) -> Result<kaleidoswap::bitcoin::secp256k1::PublicKey, hl::SwapError> {
         let hex = js_string(self, "publicKey", &[JsValue::from(index)])
             .await
             .map_err(hl_signer_err)?;
-        kaleidorg_swap_sdk::bitcoin::secp256k1::PublicKey::from_str(&hex).map_err(hl_signer_err)
+        kaleidoswap::bitcoin::secp256k1::PublicKey::from_str(&hex).map_err(hl_signer_err)
     }
     async fn derive_preimage(&self, index: u64) -> Result<CorePreimage, hl::SwapError> {
         let out = call_js(&self.0 .0, "derivePreimage", &[JsValue::from(index)])
@@ -2996,7 +2980,7 @@ impl hl::SwapSigner for JsSigner {
         &self,
         index: u64,
         sighash: [u8; 32],
-    ) -> Result<kaleidorg_swap_sdk::bitcoin::secp256k1::schnorr::Signature, hl::SwapError> {
+    ) -> Result<kaleidoswap::bitcoin::secp256k1::schnorr::Signature, hl::SwapError> {
         let args = [
             JsValue::from(index),
             JsValue::from_str(&sighash.to_lower_hex_string()),
@@ -3004,8 +2988,7 @@ impl hl::SwapSigner for JsSigner {
         let hex = js_string(self, "signSchnorr", &args)
             .await
             .map_err(hl_signer_err)?;
-        kaleidorg_swap_sdk::bitcoin::secp256k1::schnorr::Signature::from_str(&hex)
-            .map_err(hl_signer_err)
+        kaleidoswap::bitcoin::secp256k1::schnorr::Signature::from_str(&hex).map_err(hl_signer_err)
     }
     async fn musig_nonce(
         &self,

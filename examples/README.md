@@ -64,12 +64,12 @@ Create the swap mnemonic once from the wallet mnemonic, persist the resulting
 `SwapMasterKey` securely, and reuse it:
 
 ```rust
-use kaleidorg_swap_sdk::network::Network;
-use kaleidorg_swap_sdk::util::secrets::SwapMasterKey;
+use kaleidoswap::network::Network;
+use kaleidoswap::util::secrets::SwapMasterKey;
 
 let master = SwapMasterKey::new(wallet_mnemonic, wallet_passphrase, Network::Mainnet)?;
 println!("persist this swap mnemonic securely: {}", master.mnemonic);
-# Ok::<(), kaleidorg_swap_sdk::error::Error>(())
+# Ok::<(), kaleidoswap::error::Error>(())
 ```
 
 ## Submarine: L-USDT to BTC Lightning

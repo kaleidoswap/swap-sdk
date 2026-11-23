@@ -1,9 +1,9 @@
 [package]
-name = "kaleidorg-swap-sdk-macros"
+name = "kaleidoswap-macros"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
-description = "Proc macros for kaleidorg-swap-sdk"
+description = "Proc macros for kaleidoswap"
 repository = "https://github.com/kaleidoswap/swap-sdk"
 include = ["/src/**", "/Cargo.toml"]
 

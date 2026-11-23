@@ -3,7 +3,7 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "@kaleidorg/swap-sdk-react-native": ["./src/index.tsx"]
+      "kaleidoswap-react-native": ["./src/index.tsx"]
     }
   },
   "include": ["examples"]

@@ -104,7 +104,7 @@ export function allowsMissingNativeLibraries(env = process.env) {
  */
 export function unreachableArchiveError({ archive, url, version, reason }) {
   return [
-    `${archive} could not be downloaded for @kaleidorg/swap-sdk-react-native@${version}`,
+    `${archive} could not be downloaded for kaleidoswap-react-native@${version}`,
     `  from ${url}`,
     `  ${reason}`,
     "",
@@ -124,7 +124,7 @@ export function unreachableArchiveError({ archive, url, version, reason }) {
 export function unreachableArchiveWarning({ archive, url, version, reason }) {
   return [
     "",
-    "  ┌─ @kaleidorg/swap-sdk-react-native ─────────────────────────────────",
+    "  ┌─ kaleidoswap-react-native ─────────────────────────────────",
     `  │ WARNING: installed WITHOUT its native libraries (${version}),`,
     "  │ because KALEIDO_SWAP_SDK_ALLOW_MISSING_NATIVE is set.",
     "  │",
@@ -148,13 +148,13 @@ export function unreachableArchiveWarning({ archive, url, version, reason }) {
  */
 export const ANDROID_ABIS = ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"];
 export const ANDROID_LIBRARIES = ANDROID_ABIS.map(
-  (abi) => `android/src/main/jniLibs/${abi}/libkaleidorg_swap_sdk.so`,
+  (abi) => `android/src/main/jniLibs/${abi}/libkaleidoswap.so`,
 );
 export const IOS_FRAMEWORK = "build/KaleidoSwapSdk.xcframework";
 export const IOS_LIBRARIES = [
   `${IOS_FRAMEWORK}/Info.plist`,
-  `${IOS_FRAMEWORK}/ios-arm64/libkaleidorg_swap_sdk.a`,
-  `${IOS_FRAMEWORK}/ios-arm64_x86_64-simulator/libkaleidorg_swap_sdk.a`,
+  `${IOS_FRAMEWORK}/ios-arm64/libkaleidoswap.a`,
+  `${IOS_FRAMEWORK}/ios-arm64_x86_64-simulator/libkaleidoswap.a`,
 ];
 export const NATIVE_LIBRARIES = [...ANDROID_LIBRARIES, ...IOS_LIBRARIES];
 

@@ -27,7 +27,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { assertNativeLibraries } from "./native-artifacts.mjs";
 
-const PACKAGE = "@kaleidorg/swap-sdk-react-native";
+const PACKAGE = "kaleidoswap-react-native";
 
 const { values } = parseArgs({
   options: {
@@ -46,7 +46,7 @@ const delaySeconds = Number(values.delay);
 
 const NOT_VISIBLE_YET = /E404|ETARGET|No matching version|notarget/;
 
-const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-react-native-install-"));
+const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-react-native-install-"));
 try {
   writeFileSync(join(consumerRoot, "package.json"), JSON.stringify({ private: true }));
   for (let attempt = 1; attempt <= attempts; attempt += 1) {

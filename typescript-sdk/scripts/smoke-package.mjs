@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { packJson } from "./npm-pack.mjs";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
-const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidorg-swap-sdk-npm-"));
+const consumerRoot = mkdtempSync(join(tmpdir(), "kaleidoswap-npm-"));
 const suppliedTarball = process.argv[2];
 let tarballPath = suppliedTarball
   ? isAbsolute(suppliedTarball)
@@ -93,7 +93,7 @@ try {
   // for the node entry's sake, which makes a stray `node:fs` import in the shared
   // source typecheck cleanly, and the browser smoke test only runs on release.
   const browserEntry = readFileSync(
-    join(consumerRoot, "node_modules/@kaleidorg/swap-sdk/dist/index.js"),
+    join(consumerRoot, "node_modules/kaleidoswap/dist/index.js"),
     "utf8",
   );
   const nodeSpecifier = browserEntry.match(/["']node:[\w/.-]+["']/);
@@ -110,7 +110,7 @@ try {
   // else in CI resolves through either field.
   const manifest = JSON.parse(
     readFileSync(
-      join(consumerRoot, "node_modules/@kaleidorg/swap-sdk/package.json"),
+      join(consumerRoot, "node_modules/kaleidoswap/package.json"),
       "utf8",
     ),
   );
@@ -138,7 +138,7 @@ try {
         ...conditions.map((condition) => `--conditions=${condition}`),
         "--input-type=module",
         "-e",
-        'process.stdout.write(import.meta.resolve("@kaleidorg/swap-sdk"))',
+        'process.stdout.write(import.meta.resolve("kaleidoswap"))',
       ],
       { cwd: consumerRoot, encoding: "utf8" },
     );
@@ -164,7 +164,7 @@ try {
       [
         "--input-type=module",
         "-e",
-        'process.stdout.write(import.meta.resolve("@kaleidorg/swap-sdk/arkade"))',
+        'process.stdout.write(import.meta.resolve("kaleidoswap/arkade"))',
       ],
       { cwd: consumerRoot, encoding: "utf8" },
     );
@@ -182,7 +182,7 @@ try {
     [
       "--input-type=module",
       "-e",
-      'const m = await import("@kaleidorg/swap-sdk/pay-through"); if (typeof m.PayThroughClient !== "function") throw new Error("./pay-through does not export PayThroughClient");',
+      'const m = await import("kaleidoswap/pay-through"); if (typeof m.PayThroughClient !== "function") throw new Error("./pay-through does not export PayThroughClient");',
     ],
     { cwd: consumerRoot, stdio: "inherit" },
   );
@@ -191,8 +191,8 @@ try {
     join(consumerRoot, "smoke.mjs"),
     `
       import { BtcLikeTransaction, SwapMasterKey, init, toJson, canClaim, canRefund,
-        refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap } from "@kaleidorg/swap-sdk";
-      import { esploraFeeEstimates, esploraTipHeight } from "@kaleidorg/swap-sdk/chain-data";
+        refundSubmarineSwap, refundChainSwap, claimReverseSwap, claimChainSwap } from "kaleidoswap";
+      import { esploraFeeEstimates, esploraTipHeight } from "kaleidoswap/chain-data";
 
       const fees = await esploraFeeEstimates("https://esplora.example/api", {
         fetch: async () => new Response('{"2":0.1}'),
@@ -242,7 +242,7 @@ try {
   writeFileSync(
     join(consumerRoot, "transaction-types.mts"),
     `
-      import { BtcLikeTransaction } from "@kaleidorg/swap-sdk";
+      import { BtcLikeTransaction } from "kaleidoswap";
       const tx: BtcLikeTransaction = BtcLikeTransaction.fromHex("00", "bitcoin");
       BtcLikeTransaction.fromHex("00", "liquid");
       const hex: string = tx.hex();
@@ -283,7 +283,7 @@ try {
         init,
         initWithModule,
         wasmUrl,
-      } from "@kaleidorg/swap-sdk";
+      } from "kaleidoswap";
 
       const [mode] = process.argv.slice(2);
       if (mode === "bytes") {

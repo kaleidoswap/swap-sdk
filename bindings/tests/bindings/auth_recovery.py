@@ -5,7 +5,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import kaleidorg_swap_sdk as sdk
+import kaleidoswap as sdk
 
 SWAP_ID = "01KZZYB138E7C3HZX7Q1YBGAQG"
 AUTH = "a1" * 32
