@@ -26,6 +26,11 @@ The React Native package's optional `./arkade` entry still re-exports
 `@kaleidorg/swap-sdk/arkade` below 0.14, the last line built on
 `@arkade-os/sdk` 0.4.
 
+### Changed — dependencies
+
+- `Cargo.lock` moves to url 2.5.9 and form_urlencoded 1.2.3. Lockfile only; no
+  manifest changes.
+
 ## [0.16.0] - 2026-11-20
 
 ### The `kld_` partner key is public, and carries the partner fee
