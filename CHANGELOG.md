@@ -13,6 +13,8 @@ changes.
   refundAddress })` quotes and starts in one call. A refusal rejects with a
   `SwapError` (`PAIR_UNAVAILABLE`, `AMOUNT_OUT_OF_LIMITS` or
   `MAKER_REJECTED`). `swap(id)` still looks a swap up.
+- `kaleido.swap(quote, options)` starts what `quote` priced: `start`, taking
+  the answer as returned, so a refusal rejects there with the same codes.
 - `quote` also takes `{ from, to }` with exactly one of `fromAmount`,
   `toAmount` or `invoice`, the words a `Quote` answers with.
 - `Swap` gains `deposit` (`{ kind: "lightning", invoice }` or

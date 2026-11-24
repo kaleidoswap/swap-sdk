@@ -137,6 +137,20 @@ a `SwapError`: `PAIR_UNAVAILABLE`, `AMOUNT_OUT_OF_LIMITS` or `MAKER_REJECTED`.
 `quote` takes the same `from`/`to` spelling, and `{ pay, receive, amount }`
 works as before.
 
+To show the price first, quote and then swap the answer:
+
+```ts
+const quote = await kaleido.quote({
+  from: "bitcoin:BTC",
+  to: "lightning:BTC",
+  invoice,
+});
+const swap = await kaleido.swap(quote, { refundAddress });
+```
+
+`swap(quote, options)` is `start`, and takes the answer as `quote` returned
+it: a refusal rejects there with the same codes.
+
 ### Quote
 
 Both sides are yours to name, each an `Asset` string: `<layer>:<asset>`.

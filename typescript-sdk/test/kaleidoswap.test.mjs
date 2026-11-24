@@ -844,6 +844,29 @@ test("swap(request): destination and refund address reach start's checks", async
   );
 });
 
+test("swap(quote): starts what quote priced, and rejects a refusal coded", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  const quote = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    fromAmount: 50_000,
+  });
+  await assert.rejects(
+    k.swap(quote, { destination: "not an address" }),
+    (error) => isSwapError(error) && error.code !== "MAKER_REJECTED",
+  );
+  const refusal = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    fromAmount: 1,
+  });
+  await assert.rejects(
+    k.swap(refusal, { destination: "anything" }),
+    (error) => isSwapError(error) && error.code === "AMOUNT_OUT_OF_LIMITS",
+  );
+});
+
 test("options: mnemonic stands in for signer, and exactly one is required", async (t) => {
   stubMaker(t);
   const base = {

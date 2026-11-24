@@ -533,6 +533,12 @@ export interface KaleidoSwap {
    * `PAIR_UNAVAILABLE`, `AMOUNT_OUT_OF_LIMITS` or `MAKER_REJECTED`.
    */
   swap(request: SwapRequest): Promise<Swap>;
+  /**
+   * Starts the swap a {@link quote} priced: `start` under the name of what
+   * it does. Takes the answer as `quote` returned it, so a refusal rejects
+   * here with the same codes and the caller need not tell the two apart.
+   */
+  swap(quote: QuoteAnswer, options?: StartOptions): Promise<Swap>;
 
   /**
    * Picks every non-terminal record out of the store, asks the maker where
@@ -826,17 +832,25 @@ export function makeCreateKaleidoSwap(
       },
       quote,
       start,
-      async swap(request: string | SwapRequest) {
+      async swap(
+        request: string | SwapRequest | QuoteAnswer,
+        startOptions?: StartOptions,
+      ) {
         if (typeof request === "string")
           return wrapSwap(await inner.swap(request));
-        const { destination, refundAddress, ...terms } = request;
-        const answer = await quote(terms);
+        let answer: QuoteAnswer;
+        if ("kind" in request) answer = request;
+        else {
+          const { destination, refundAddress, ...terms } = request;
+          answer = await quote(terms);
+          startOptions = { destination, refundAddress };
+        }
         if (!isQuote(answer))
           throw swapError(
             REFUSAL_CODES[answer.reason] ?? "MAKER_REJECTED",
             `${answer.reason}: ${answer.message}`,
           );
-        return start(answer, { destination, refundAddress });
+        return start(answer, startOptions);
       },
       async resume() {
         const report = await inner.resume();
