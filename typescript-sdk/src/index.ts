@@ -1173,6 +1173,7 @@ export * from "./kaleidoswap.js";
 export const createKaleidoSwap = makeCreateKaleidoSwap({
   init: () => init(),
   KaleidoSwap: WasmKaleidoSwap as unknown as WasmKaleidoSwapCore["KaleidoSwap"],
+  mnemonicSigner: (mnemonic, network) => mnemonicSigner(mnemonic, network),
 });
 
 /** The wasm class behind {@link createKaleidoSwap}, for the Node entry to bind to its own `init`. */

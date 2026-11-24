@@ -99,6 +99,44 @@ step (claiming what is claimable, refunding what is refundable) and returns a
 `resume()`. Follow each swap in `resumed` to the end with `settled()` or
 `phases()`; `resume()` does not wait for funding or confirmations.
 
+### A swap in one call
+
+`swap(request)` is `quote` then `start` for a caller who does not need to show
+the price first. It names both sides as a quote answers, `from` and `to`, with
+exactly one of `fromAmount`, `toAmount` or `invoice`. `mnemonic` stands in for
+`signer: mnemonicSigner(...)`, and on Node `store` may be a directory.
+
+```ts
+import { createKaleidoSwap } from "kaleidoswap";
+
+const kaleido = await createKaleidoSwap({
+  network: "signet",
+  store: storeDir,
+  mnemonic: swapMnemonic,
+});
+
+const swap = await kaleido.swap({
+  from: "bitcoin:BTC",
+  to: "lightning:BTC",
+  invoice,
+  refundAddress,
+});
+
+console.log(swap.deposit); // { kind: "onchain", address, amount, uri }
+for await (const status of swap.updates()) console.log(status);
+await swap.completed();
+```
+
+`swap.deposit` is what to send, told apart by `kind`: `"lightning"` with an
+`invoice`, or `"onchain"` with an `address`, an `amount` and, when the maker
+gave one that names exactly those, a BIP21 `uri`. `swap.status` and
+`updates()` report one of six states (`waiting_for_payment`, `processing`,
+`completed`, `refunding`, `refunded`, `failed`); `phase` and `phases()` keep
+the full detail. `completed()` is `settled()`. A refusal rejects `swap()` with
+a `SwapError`: `PAIR_UNAVAILABLE`, `AMOUNT_OUT_OF_LIMITS` or `MAKER_REJECTED`.
+`quote` takes the same `from`/`to` spelling, and `{ pay, receive, amount }`
+works as before.
+
 ### Quote
 
 Both sides are yours to name, each an `Asset` string: `<layer>:<asset>`.

@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added — TypeScript: a swap in one call
+
+Additions to the high-level surface of the npm package; nothing existing
+changes.
+
+- `kaleido.swap({ from, to, fromAmount | toAmount | invoice, destination,
+  refundAddress })` quotes and starts in one call. A refusal rejects with a
+  `SwapError` (`PAIR_UNAVAILABLE`, `AMOUNT_OUT_OF_LIMITS` or
+  `MAKER_REJECTED`). `swap(id)` still looks a swap up.
+- `quote` also takes `{ from, to }` with exactly one of `fromAmount`,
+  `toAmount` or `invoice`, the words a `Quote` answers with.
+- `Swap` gains `deposit` (`{ kind: "lightning", invoice }` or
+  `{ kind: "onchain", address, amount, uri? }`), `status` and `updates()`
+  (six states, see `statusOf`), and `completed()`.
+- `createKaleidoSwap` takes `mnemonic` in place of `signer`, and on the Node
+  entry a directory path as `store`.
+
 ## [0.17.0] - 2026-11-23
 
 ### One name on every registry: `kaleidoswap`
