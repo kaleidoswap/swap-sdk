@@ -14,6 +14,7 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import {
   init as initWithSource,
   makeCreateKaleidoSwap,
+  mnemonicSigner,
   swapError,
   toJson,
   wasmKaleidoSwapClass,
@@ -29,6 +30,8 @@ export * from "./index.js";
 export const createKaleidoSwap = makeCreateKaleidoSwap({
   init: () => init(),
   KaleidoSwap: wasmKaleidoSwapClass,
+  mnemonicSigner: (mnemonic, network) => mnemonicSigner(mnemonic, network),
+  fileStore: (dir) => new FileStore(dir),
 });
 
 /**

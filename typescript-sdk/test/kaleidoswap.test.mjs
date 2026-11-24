@@ -11,7 +11,12 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { MemoryStore, isQuote, isSwapError } from "../dist/kaleidoswap.js";
+import {
+  MemoryStore,
+  isQuote,
+  isSwapError,
+  statusOf,
+} from "../dist/kaleidoswap.js";
 import {
   FileStore,
   SwapMasterKey,
@@ -777,4 +782,150 @@ test("FileStore: a swap id never names a path outside the directory", async () =
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+const MNEMONIC =
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+test("quote: from/to and fromAmount, toAmount or invoice price like pay/receive", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  const old = await k.quote({
+    pay: "lightning:BTC",
+    receive: "liquid:BTC",
+    amount: { pay: 50_000 },
+  });
+  const terms = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    fromAmount: 50_000,
+  });
+  assert.deepEqual({ ...terms, expiresAt: 0n }, { ...old, expiresAt: 0n });
+  const landed = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    toAmount: 49_450,
+  });
+  assert.equal(landed.toAmount, 49_450n);
+  const submarine = await k.quote({
+    from: "bitcoin:BTC",
+    to: "lightning:BTC",
+    invoice: signetInvoice(),
+  });
+  assert.equal(submarine.protocol ?? submarine.reason, "boltz-submarine");
+  assert.equal(submarine.fromAmount, 50_200n);
+  for (const amounts of [{}, { fromAmount: 50_000, toAmount: 49_450 }])
+    await assert.rejects(
+      k.quote({ from: "lightning:BTC", to: "liquid:BTC", ...amounts }),
+      (error) => isSwapError(error) && error.code === "INVALID_AMOUNT",
+    );
+});
+
+test("swap(request): a refusal rejects coded, before anything is created", async (t) => {
+  const requests = stubMaker(t);
+  const k = await kaleido();
+  await assert.rejects(
+    k.swap({ from: "lightning:BTC", to: "liquid:BTC", fromAmount: 1 }),
+    (error) => isSwapError(error) && error.code === "AMOUNT_OUT_OF_LIMITS",
+  );
+  await assert.rejects(
+    k.swap({ from: "lightning:BTC", to: "liquid:USDT", fromAmount: 50_000 }),
+    (error) => isSwapError(error) && error.code === "PAIR_UNAVAILABLE",
+  );
+  assert.ok(requests.every((request) => request.method === "GET"));
+});
+
+test("swap(request): destination and refund address reach start's checks", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  await assert.rejects(
+    k.swap({ from: "lightning:BTC", to: "liquid:BTC", fromAmount: 50_000 }),
+    (error) => isSwapError(error) && error.code === "INVALID_DESTINATION",
+  );
+});
+
+test("swap(quote): starts what quote priced, and rejects a refusal coded", async (t) => {
+  stubMaker(t);
+  const k = await kaleido();
+  const quote = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    fromAmount: 50_000,
+  });
+  await assert.rejects(
+    k.swap(quote, { destination: "not an address" }),
+    (error) => isSwapError(error) && error.code !== "MAKER_REJECTED",
+  );
+  const refusal = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    fromAmount: 1,
+  });
+  await assert.rejects(
+    k.swap(refusal, { destination: "anything" }),
+    (error) => isSwapError(error) && error.code === "AMOUNT_OUT_OF_LIMITS",
+  );
+});
+
+test("options: mnemonic stands in for signer, and exactly one is required", async (t) => {
+  stubMaker(t);
+  const base = {
+    network: "signet",
+    store: new MemoryStore(),
+    makerUrl: "https://maker.example/v2",
+  };
+  const k = await createKaleidoSwap({ ...base, mnemonic: MNEMONIC });
+  const answer = await k.quote({
+    from: "lightning:BTC",
+    to: "liquid:BTC",
+    fromAmount: 50_000,
+  });
+  assert.ok(isQuote(answer));
+  await assert.rejects(createKaleidoSwap(base), TypeError);
+  await assert.rejects(
+    createKaleidoSwap({ ...base, mnemonic: MNEMONIC, signer: SIGNER }),
+    TypeError,
+  );
+});
+
+test("options: store as a directory is a FileStore on the Node entry", async (t) => {
+  stubMaker(t);
+  const dir = await mkdtemp(join(tmpdir(), "kaleido-store-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const k = await createKaleidoSwap({
+    network: "signet",
+    store: dir,
+    mnemonic: MNEMONIC,
+    makerUrl: "https://maker.example/v2",
+  });
+  assert.deepEqual((await k.resume()).resumed, []);
+});
+
+test("statusOf: every phase has one of the six statuses", () => {
+  assert.deepEqual(
+    [
+      "created",
+      "awaiting_funding",
+      "funded",
+      "locked",
+      "claiming",
+      "settled",
+      "refundable",
+      "refunding",
+      "refunded",
+      "failed",
+    ].map(statusOf),
+    [
+      "waiting_for_payment",
+      "waiting_for_payment",
+      "processing",
+      "processing",
+      "processing",
+      "completed",
+      "refunding",
+      "refunding",
+      "refunded",
+      "failed",
+    ],
+  );
 });

@@ -108,8 +108,18 @@ export interface SwapSigner {
 
 export interface KaleidoSwapOptions {
   network: Network;
-  store: SwapStore;
-  signer: SwapSigner;
+  /**
+   * Where swaps are kept until they end. A {@link SwapStore}, or on the Node
+   * entry a directory path, which becomes a `FileStore` over it.
+   */
+  store: SwapStore | string;
+  /** Who signs. Give this or `mnemonic`, not both. */
+  signer?: SwapSigner;
+  /**
+   * The swap mnemonic, for a caller who holds it in memory: shorthand for
+   * `signer: mnemonicSigner(mnemonic, network)`.
+   */
+  mnemonic?: string;
   /** The maker's `/v2` base URL. Defaults per network exactly as `SwapClient.forNetwork` does. */
   makerUrl?: string;
   /**
@@ -198,6 +208,22 @@ export interface QuoteRequest {
   receive: Asset;
   amount: QuoteAmount;
 }
+
+/**
+ * The same request in the words a {@link Quote} answers with: `from` and `to`,
+ * and exactly one of `fromAmount` (what you pay), `toAmount` (what lands) or
+ * `invoice` (the Lightning invoice the maker pays).
+ */
+export interface SwapTerms {
+  from: Asset;
+  to: Asset;
+  fromAmount?: Amount;
+  toAmount?: Amount;
+  invoice?: string;
+}
+
+/** {@link SwapTerms} plus where the swap lands and where a refund goes: one call's worth. */
+export interface SwapRequest extends SwapTerms, StartOptions {}
 
 /** The wire a quote rides on. Informational; the caller never picks one. */
 export type Protocol =
@@ -335,11 +361,58 @@ export interface SwapAction {
   zeroConfLimit?: bigint;
 }
 
+/**
+ * Where a swap stands, for a caller who shows it to a user. Each
+ * {@link SwapPhase} maps to one; see {@link statusOf}.
+ */
+export type SwapStatus =
+  | "waiting_for_payment"
+  | "processing"
+  | "completed"
+  | "refunding"
+  | "refunded"
+  | "failed";
+
+export function statusOf(phase: SwapPhase): SwapStatus {
+  switch (phase) {
+    case "created":
+    case "awaiting_funding":
+      return "waiting_for_payment";
+    case "funded":
+    case "locked":
+    case "claiming":
+      return "processing";
+    case "settled":
+      return "completed";
+    case "refundable":
+    case "refunding":
+      return "refunding";
+    case "refunded":
+      return "refunded";
+    case "failed":
+      return "failed";
+  }
+}
+
+/** What you send to fund the swap: {@link SwapAction} told apart by `kind`. */
+export type SwapDeposit =
+  | { kind: "lightning"; invoice: string }
+  | { kind: "onchain"; address: string; amount: bigint; uri?: string };
+
 export interface Swap {
   readonly id: string;
   readonly protocol: Protocol;
   readonly phase: SwapPhase;
   readonly action: SwapAction;
+  /** {@link phase} as one of six states. */
+  readonly status: SwapStatus;
+  /** What to pay or fund, or `undefined` once there is nothing left to send. */
+  readonly deposit: SwapDeposit | undefined;
+
+  /** {@link phases} as statuses: each status once, ending on a terminal one. */
+  updates(signal?: AbortSignal): AsyncIterable<SwapStatus>;
+  /** {@link settled} under the name {@link SwapStatus} uses. */
+  completed(signal?: AbortSignal): Promise<SwapRecord>;
 
   /** Phase transitions as they happen; ends on a terminal phase. */
   phases(signal?: AbortSignal): AsyncIterable<SwapPhase>;
@@ -442,7 +515,7 @@ export interface KaleidoSwap {
    */
   readonly lastAttribution: MakerAttribution | undefined;
 
-  quote(request: QuoteRequest): Promise<QuoteAnswer>;
+  quote(request: QuoteRequest | SwapTerms): Promise<QuoteAnswer>;
 
   /**
    * Creates the swap against `quote`, verifies the lockup against our own
@@ -454,6 +527,18 @@ export interface KaleidoSwap {
 
   /** A swap this instance or an earlier one started, by id. */
   swap(id: string): Promise<Swap>;
+  /**
+   * `quote` then `start` in one call, for a caller who does not need to show
+   * the price first. A refusal rejects with a {@link SwapError}:
+   * `PAIR_UNAVAILABLE`, `AMOUNT_OUT_OF_LIMITS` or `MAKER_REJECTED`.
+   */
+  swap(request: SwapRequest): Promise<Swap>;
+  /**
+   * Starts the swap a {@link quote} priced: `start` under the name of what
+   * it does. Takes the answer as `quote` returned it, so a refusal rejects
+   * here with the same codes and the caller need not tell the two apart.
+   */
+  swap(quote: QuoteAnswer, options?: StartOptions): Promise<Swap>;
 
   /**
    * Picks every non-terminal record out of the store, asks the maker where
@@ -530,6 +615,10 @@ export interface WasmSwap {
 export interface WasmKaleidoSwapCore {
   init(): Promise<void>;
   KaleidoSwap: new (options: unknown) => WasmKaleidoSwap;
+  /** Builds the signer for the `mnemonic` option. */
+  mnemonicSigner(mnemonic: string, network: Network): SwapSigner;
+  /** Builds the store for a `store` given as a directory; absent where there is no filesystem. */
+  fileStore?(dir: string): SwapStore;
 }
 
 /** An amount in any accepted form, as the `bigint` the binding takes. */
@@ -552,6 +641,44 @@ function amountToBigint(value: Amount, what: string): bigint {
   throw invalid(`is not an integer: ${value}`);
 }
 
+function depositOf(action: SwapAction): SwapDeposit | undefined {
+  if (action.invoice !== undefined)
+    return { kind: "lightning", invoice: action.invoice };
+  if (action.fundingAddress !== undefined && action.fundingAmount !== undefined)
+    return {
+      kind: "onchain",
+      address: action.fundingAddress,
+      amount: action.fundingAmount,
+      ...(action.bip21 !== undefined && { uri: action.bip21 }),
+    };
+  return undefined;
+}
+
+/** A request in either spelling, as the `{ pay, receive, amount }` the core takes. */
+function quoteRequestOf(request: QuoteRequest | SwapTerms): QuoteRequest {
+  if (!("from" in request) && !("to" in request)) return request;
+  const { from, to, fromAmount, toAmount, invoice } = request as SwapTerms;
+  const given = [
+    fromAmount !== undefined && { pay: fromAmount },
+    toAmount !== undefined && { receive: toAmount },
+    invoice !== undefined && { invoice },
+  ].filter((amount): amount is QuoteAmount => amount !== false);
+  if (given.length !== 1)
+    throw swapError(
+      "INVALID_AMOUNT",
+      "give exactly one of fromAmount, toAmount or invoice",
+    );
+  return { pay: from, receive: to, amount: given[0] };
+}
+
+const REFUSAL_CODES: Record<Refusal["reason"], SwapErrorCode> = {
+  pair_unavailable: "PAIR_UNAVAILABLE",
+  amount_below_min: "AMOUNT_OUT_OF_LIMITS",
+  amount_above_max: "AMOUNT_OUT_OF_LIMITS",
+  no_liquidity: "MAKER_REJECTED",
+  maker_paused: "MAKER_REJECTED",
+};
+
 function wrapSwap(inner: WasmSwap): Swap {
   return {
     get id() {
@@ -566,9 +693,23 @@ function wrapSwap(inner: WasmSwap): Swap {
     get action() {
       return inner.action;
     },
+    get status() {
+      return statusOf(inner.phase);
+    },
+    get deposit() {
+      return depositOf(inner.action);
+    },
     record: () => inner.record(),
     refund: () => inner.refund(),
     settled: (signal) => raceAbort(inner.settled(), signal),
+    completed: (signal) => raceAbort(inner.settled(), signal),
+    async *updates(signal) {
+      let last: SwapStatus | undefined;
+      for await (const phase of this.phases(signal)) {
+        const status = statusOf(phase);
+        if (status !== last) yield (last = status);
+      }
+    },
     async *phases(signal) {
       const queue: SwapPhase[] = [];
       let wake: (() => void) | undefined;
@@ -642,7 +783,46 @@ export function makeCreateKaleidoSwap(
 ): (options: KaleidoSwapOptions) => Promise<KaleidoSwap> {
   return async (options) => {
     await core.init();
-    const inner = new core.KaleidoSwap(options);
+    const { mnemonic, ...rest } = options;
+    if ((mnemonic === undefined) === (options.signer === undefined))
+      throw new TypeError("give exactly one of signer or mnemonic");
+    let store = options.store;
+    if (typeof store === "string") {
+      if (!core.fileStore)
+        throw new TypeError(
+          "store as a directory path needs the Node entry; pass a SwapStore",
+        );
+      store = core.fileStore(store);
+    }
+    const inner = new core.KaleidoSwap({
+      ...rest,
+      store,
+      signer: options.signer ?? core.mnemonicSigner(mnemonic!, options.network),
+    });
+    const quote = async (
+      request: QuoteRequest | SwapTerms,
+    ): Promise<QuoteAnswer> => {
+      const { pay, receive, amount: given } = quoteRequestOf(request);
+      const amount = given as QuoteAmount | undefined;
+      if (typeof amount !== "object" || amount === null)
+        throw swapError(
+          "INVALID_AMOUNT",
+          "amount is required: { pay }, { receive } or { invoice }",
+        );
+      const wire = {
+        pay,
+        receive,
+        amount:
+          "pay" in amount
+            ? { pay: amountToBigint(amount.pay, "amount.pay") }
+            : "receive" in amount
+              ? { receive: amountToBigint(amount.receive, "amount.receive") }
+              : amount,
+      };
+      return (await inner.quote(wire)) as QuoteAnswer;
+    };
+    const start = async (answer: Quote, startOptions?: StartOptions) =>
+      wrapSwap(await inner.start(answer, startOptions));
     return {
       get network() {
         return options.network;
@@ -650,29 +830,27 @@ export function makeCreateKaleidoSwap(
       get lastAttribution() {
         return inner.lastAttribution;
       },
-      async quote(request) {
-        const amount = request.amount as QuoteAmount | undefined;
-        if (typeof amount !== "object" || amount === null)
+      quote,
+      start,
+      async swap(
+        request: string | SwapRequest | QuoteAnswer,
+        startOptions?: StartOptions,
+      ) {
+        if (typeof request === "string")
+          return wrapSwap(await inner.swap(request));
+        let answer: QuoteAnswer;
+        if ("kind" in request) answer = request;
+        else {
+          const { destination, refundAddress, ...terms } = request;
+          answer = await quote(terms);
+          startOptions = { destination, refundAddress };
+        }
+        if (!isQuote(answer))
           throw swapError(
-            "INVALID_AMOUNT",
-            "amount is required: { pay }, { receive } or { invoice }",
+            REFUSAL_CODES[answer.reason] ?? "MAKER_REJECTED",
+            `${answer.reason}: ${answer.message}`,
           );
-        const wire = {
-          ...request,
-          amount:
-            "pay" in amount
-              ? { pay: amountToBigint(amount.pay, "amount.pay") }
-              : "receive" in amount
-                ? { receive: amountToBigint(amount.receive, "amount.receive") }
-                : amount,
-        };
-        return (await inner.quote(wire)) as QuoteAnswer;
-      },
-      async start(quote, startOptions) {
-        return wrapSwap(await inner.start(quote, startOptions));
-      },
-      async swap(id) {
-        return wrapSwap(await inner.swap(id));
+        return start(answer, startOptions);
       },
       async resume() {
         const report = await inner.resume();
