@@ -1,17 +1,19 @@
 //! The caller owns RGB state; the SDK never imports a wallet or creates a proof.
 use crate::support::*;
 use anyhow::{bail, ensure, Context, Result};
+use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
 use bitcoin::{Address, Amount, OutPoint, Psbt, Sequence, Transaction, TxIn, TxOut, Witness};
 use kaleidoswap::swaps::rgb::{
-    ColoredRgbPsbt, FinalizedRgbSpend, PreparedRgbSpend, RgbAllocation, RgbLock, RgbPsbtTemplate,
+    ColoredRgbPsbt, FinalizedRgbSpend, PreparedRgbSpend, RgbAllocation, RgbLock,
+    RgbLockConsignment, RgbPsbtTemplate,
 };
 use rgb_lib::{
-    utils::script_buf_from_recipient_id,
+    no_wallet::script_buf_from_recipient_id,
     wallet::{
         rust_only::{AssetColoringInfo, ColoringInfo, PsbtOpExpiry, PsbtOpPrepareResult},
         Online, Recipient, RgbWalletOpsOffline, WitnessData,
     },
-    Assignment, ContractId, Wallet,
+    Assignment, ContractId, Encryption, Wallet,
 };
 use serde_json::json;
 use std::{collections::HashMap, str::FromStr};
@@ -31,6 +33,7 @@ pub fn send(
             1,
             now() + 3600,
             None,
+            None,
         )?
         .txid)
 }
@@ -46,12 +49,49 @@ pub fn lock(wallet: &mut Wallet, online: Online, instructions: &RgbLock) -> Resu
                 amount_sat: instructions.htlc_sat,
                 blinding: Some(instructions.blinding.parse()?),
             }),
-            transport_endpoints: instructions.transport_endpoints.clone(),
+            // Proxy protocol 1.0 has no lookup by recipient id: the lock goes to
+            // no proxy, and its consignment is handed to the maker (`hand_over`).
+            transport_endpoints: vec![],
+            public_key: None,
+            encryption: Encryption::Unsupported,
+            expiration_timestamp: None,
         },
     )
 }
+/// The lock's consignment and HTLC output, for the maker's
+/// `POST /v2/swap/submarine/{id}/rgb-lock`.
+pub fn hand_over(
+    wallet: &Wallet,
+    instructions: &RgbLock,
+    tx: &Transaction,
+) -> Result<RgbLockConsignment> {
+    let txid = tx.compute_txid().to_string();
+    let script = bitcoin::ScriptBuf::from_bytes(hex::decode(&instructions.script_pubkey)?);
+    let vout = tx
+        .output
+        .iter()
+        .position(|o| o.script_pubkey == script)
+        .context("lock output")?;
+    let path = wallet.get_send_consignment_path(&instructions.asset_id, &txid);
+    let consignment =
+        std::fs::read(&path).with_context(|| format!("lock consignment {}", path.display()))?;
+    Ok(RgbLockConsignment {
+        consignment: STANDARD.encode(consignment),
+        txid,
+        vout: vout.try_into()?,
+    })
+}
 pub fn destination(wallet: &mut Wallet) -> Result<String> {
-    let receive = wallet.witness_receive(None, Assignment::Any, now() + 3600, vec![], 1)?;
+    let receive = wallet.witness_receive(
+        None,
+        None,
+        Assignment::Any,
+        now() + 3600,
+        vec![],
+        1,
+        None,
+        None,
+    )?;
     let script = script_buf_from_recipient_id(receive.recipient_id)?.context("witness script")?;
     Ok(Address::from_script(&script, bitcoin::Network::Regtest)?.to_string())
 }

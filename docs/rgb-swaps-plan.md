@@ -39,8 +39,15 @@ RGB wallet, and the SDK owns everything about the HTLC:
 | Step | Who | What |
 |---|---|---|
 | Create, validate | SDK | Tree, keys, hashlock, timelock, address, `scriptPubkey`, `recipientId`, amount, contract id, `htlcSat` |
-| 2a lock | wallet | rgb-lib `send` (donation) to the validated `RgbLockInstructions` |
-| 2b accept lock | wallet | `fetch_and_accept_transfer_by_recipient_id` (or the split fetch + `accept_transfer_pinned`), then `save_new_asset` |
+| 2a lock | wallet | rgb-lib `send` (donation, no transport endpoint) to the validated `RgbLockInstructions` |
+| 2a hand over | SDK | `post_submarine_rgb_lock`: the lock consignment, txid and HTLC vout to `POST /v2/swap/submarine/{id}/rgb-lock` |
+| 2b fetch lock | SDK | `get_reverse_rgb_lock`: the maker's consignment from `GET /v2/swap/reverse/{id}/rgb-lock` |
+| 2b accept lock | wallet | `accept_htlc_consignment` pinned to `recipientId`, then `save_new_asset` |
+
+RGB proxy protocol 1.0 (rgb-lib 0.11.2) has no lookup by recipient id, so lock
+consignments move over the maker API, authenticated with the swap's
+`swapAuth` (maker PR #1074). A submarine taker may post again to replace a
+consignment rgb-lib refused, until the pay deadline.
 | Spend template | SDK | Unsigned PSBT: HTLC input, `OP_RETURN` (vout 0), colored payout (vout 1) |
 | Fund (optional) | wallet | Add BTC inputs and change after vout 1, sign nothing yet |
 | Color | wallet | `psbt_op_prepare_with_expiry(output_map {1: amount})` |
@@ -67,7 +74,6 @@ No request changes: the taker sends the Boltz request with
   "htlcSat": 1000,               // sats on the HTLC output
   "claimFeeRate": 5,             // reverse only: the claim fee rate htlcSat funds
   "scriptPubkey": "5120…",       // == address / lockupAddress script
-  "transportEndpoints": ["rpcs://…/json-rpc"],
   "minConfirmations": 1
 }
 ```
@@ -109,8 +115,8 @@ The response is rejected unless all of these hold:
    `rgb_max_htlc_sat`, or the wasm submarine create method's fourth argument.
    Never derive the cap from the response. On a reverse swap, `claimFeeRate` is present and
    `htlcSat` funds a self-funded claim at that rate with ≥ 546 sat left over.
-7. `minConfirmations ≥ 1`, and every transport endpoint is `rpc://` or
-   `rpcs://`.
+7. `minConfirmations ≥ 1`. (Makers before #1074 also sent
+   `transportEndpoints`; the SDK ignores it.)
 8. `blinding` parses as a `u64`.
 
 A BTC (non-RGB) response that carries an `rgb` object is rejected too.

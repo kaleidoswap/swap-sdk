@@ -848,6 +848,13 @@ def _uniffi_check_api_checksums(lib):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
+    if (
+        lib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_rgb_lock()
+        != 19724
+    ):
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
     if lib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_tx() != 52014:
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
@@ -879,6 +886,13 @@ def _uniffi_check_api_checksums(lib):
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
     if lib.uniffi_kaleidoswap_checksum_method_swapclient_last_attribution() != 40697:
+        raise InternalError(
+            "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
+        )
+    if (
+        lib.uniffi_kaleidoswap_checksum_method_swapclient_post_submarine_rgb_lock()
+        != 19910
+    ):
         raise InternalError(
             "UniFFI API checksum mismatch: try cleaning and rebuilding your project"
         )
@@ -2131,6 +2145,14 @@ _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_pairs.argtypes = 
 _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_pairs.restype = (
     ctypes.c_uint64
 )
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_rgb_lock.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_rgb_lock.restype = (
+    ctypes.c_uint64
+)
 _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_tx.argtypes = (
     ctypes.c_void_p,
     _UniffiRustBuffer,
@@ -2176,6 +2198,15 @@ _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_last_attribution.argtypes = (
 )
 _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_last_attribution.restype = (
     _UniffiRustBuffer
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_post_submarine_rgb_lock.argtypes = (
+    ctypes.c_void_p,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+    _UniffiRustBuffer,
+)
+_UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_post_submarine_rgb_lock.restype = (
+    ctypes.c_uint64
 )
 _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_quote_lightning_receive.argtypes = (
     ctypes.c_void_p,
@@ -3044,6 +3075,8 @@ _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_pairs.argty
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_pairs.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_rgb_lock.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_rgb_lock.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_tx.argtypes = ()
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_get_reverse_tx.restype = (
     ctypes.c_uint16
@@ -3068,6 +3101,8 @@ _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_last_attribution.argtyp
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_last_attribution.restype = (
     ctypes.c_uint16
 )
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_post_submarine_rgb_lock.argtypes = ()
+_UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_post_submarine_rgb_lock.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_receive.argtypes = ()
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_receive.restype = ctypes.c_uint16
 _UniffiLib.uniffi_kaleidoswap_checksum_method_swapclient_quote_lightning_send.argtypes = ()
@@ -5846,7 +5881,8 @@ class CreateReverseResponse:
     swap_auth: "typing.Optional[str]"
     """
     Per-swap taker credential the KaleidoSwap maker issues once on
-    creation. No reverse-swap route needs it today; persist it anyway.
+    creation. A `USDT-RGB` lock hand-over (`get_reverse_rgb_lock`) needs
+    it; persist it with the swap.
     """
 
     rgb: "typing.Optional[RgbLock]"
@@ -6156,7 +6192,8 @@ class CreateSubmarineResponse:
     swap_auth: "typing.Optional[str]"
     """
     Per-swap taker credential the KaleidoSwap maker issues once on
-    creation. No submarine-swap route needs it today; persist it anyway.
+    creation. A `USDT-RGB` lock hand-over (`post_submarine_rgb_lock`) and
+    cooperative refunds need it; persist it with the swap.
     """
 
     rgb: "typing.Optional[RgbLock]"
@@ -9530,7 +9567,6 @@ class RgbLock:
     htlc_sat: "int"
     claim_fee_rate: "typing.Optional[int]"
     script_pubkey: "str"
-    transport_endpoints: "typing.List[str]"
     min_confirmations: "int"
 
     def __init__(
@@ -9544,7 +9580,6 @@ class RgbLock:
         htlc_sat: "int",
         claim_fee_rate: "typing.Optional[int]",
         script_pubkey: "str",
-        transport_endpoints: "typing.List[str]",
         min_confirmations: "int",
     ):
         if cooperative_refund is _DEFAULT:
@@ -9558,11 +9593,10 @@ class RgbLock:
         self.htlc_sat = htlc_sat
         self.claim_fee_rate = claim_fee_rate
         self.script_pubkey = script_pubkey
-        self.transport_endpoints = transport_endpoints
         self.min_confirmations = min_confirmations
 
     def __str__(self):
-        return "RgbLock(cooperative_refund={}, asset_id={}, amount={}, recipient_id={}, blinding={}, htlc_sat={}, claim_fee_rate={}, script_pubkey={}, transport_endpoints={}, min_confirmations={})".format(
+        return "RgbLock(cooperative_refund={}, asset_id={}, amount={}, recipient_id={}, blinding={}, htlc_sat={}, claim_fee_rate={}, script_pubkey={}, min_confirmations={})".format(
             self.cooperative_refund,
             self.asset_id,
             self.amount,
@@ -9571,7 +9605,6 @@ class RgbLock:
             self.htlc_sat,
             self.claim_fee_rate,
             self.script_pubkey,
-            self.transport_endpoints,
             self.min_confirmations,
         )
 
@@ -9592,8 +9625,6 @@ class RgbLock:
             return False
         if self.script_pubkey != other.script_pubkey:
             return False
-        if self.transport_endpoints != other.transport_endpoints:
-            return False
         if self.min_confirmations != other.min_confirmations:
             return False
         return True
@@ -9611,7 +9642,6 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
             htlc_sat=_UniffiConverterUInt64.read(buf),
             claim_fee_rate=_UniffiConverterOptionalUInt64.read(buf),
             script_pubkey=_UniffiConverterString.read(buf),
-            transport_endpoints=_UniffiConverterSequenceString.read(buf),
             min_confirmations=_UniffiConverterUInt8.read(buf),
         )
 
@@ -9625,7 +9655,6 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.check_lower(value.htlc_sat)
         _UniffiConverterOptionalUInt64.check_lower(value.claim_fee_rate)
         _UniffiConverterString.check_lower(value.script_pubkey)
-        _UniffiConverterSequenceString.check_lower(value.transport_endpoints)
         _UniffiConverterUInt8.check_lower(value.min_confirmations)
 
     @staticmethod
@@ -9638,8 +9667,59 @@ class _UniffiConverterTypeRgbLock(_UniffiConverterRustBuffer):
         _UniffiConverterUInt64.write(value.htlc_sat, buf)
         _UniffiConverterOptionalUInt64.write(value.claim_fee_rate, buf)
         _UniffiConverterString.write(value.script_pubkey, buf)
-        _UniffiConverterSequenceString.write(value.transport_endpoints, buf)
         _UniffiConverterUInt8.write(value.min_confirmations, buf)
+
+
+class RgbLockConsignment:
+    """
+    An RGB HTLC lock's consignment (base64) and the witness output it anchors
+    the lock to, handed over through the maker API.
+    """
+
+    consignment: "str"
+    txid: "str"
+    vout: "int"
+
+    def __init__(self, *, consignment: "str", txid: "str", vout: "int"):
+        self.consignment = consignment
+        self.txid = txid
+        self.vout = vout
+
+    def __str__(self):
+        return "RgbLockConsignment(consignment={}, txid={}, vout={})".format(
+            self.consignment, self.txid, self.vout
+        )
+
+    def __eq__(self, other):
+        if self.consignment != other.consignment:
+            return False
+        if self.txid != other.txid:
+            return False
+        if self.vout != other.vout:
+            return False
+        return True
+
+
+class _UniffiConverterTypeRgbLockConsignment(_UniffiConverterRustBuffer):
+    @staticmethod
+    def read(buf):
+        return RgbLockConsignment(
+            consignment=_UniffiConverterString.read(buf),
+            txid=_UniffiConverterString.read(buf),
+            vout=_UniffiConverterUInt32.read(buf),
+        )
+
+    @staticmethod
+    def check_lower(value):
+        _UniffiConverterString.check_lower(value.consignment)
+        _UniffiConverterString.check_lower(value.txid)
+        _UniffiConverterUInt32.check_lower(value.vout)
+
+    @staticmethod
+    def write(value, buf):
+        _UniffiConverterString.write(value.consignment, buf)
+        _UniffiConverterString.write(value.txid, buf)
+        _UniffiConverterUInt32.write(value.vout, buf)
 
 
 class RgbPsbtParams:
@@ -17822,6 +17902,14 @@ class SwapClientProtocol(typing.Protocol):
     ):
         raise NotImplementedError
 
+    def get_reverse_rgb_lock(self, swap_id: "str", swap_auth: "str"):
+        """
+        The maker's RGB lock consignment of a reverse swap, once it has sent
+        its lock. Accept it with rgb-lib's `accept_htlc_consignment`.
+        """
+
+        raise NotImplementedError
+
     def get_reverse_tx(self, id: "str"):
         raise NotImplementedError
 
@@ -17858,6 +17946,18 @@ class SwapClientProtocol(typing.Protocol):
         this client's partner key, `"none"` when it did not recognise the key
         (unknown, revoked or for the other environment) and answered with the
         public price, unattributed. `None` until a response carried it.
+        """
+
+        raise NotImplementedError
+
+    def post_submarine_rgb_lock(
+        self, swap_id: "str", lock: "RgbLockConsignment", swap_auth: "str"
+    ):
+        """
+        Hand the maker a submarine's RGB lock consignment. The taker's rgb-lib
+        `send` locks with no transport endpoint, so this is how the maker gets
+        it; post again to replace a consignment rgb-lib refused, until the pay
+        deadline.
         """
 
         raise NotImplementedError
@@ -18534,6 +18634,33 @@ class SwapClient:
             _UniffiConverterTypeError,
         )
 
+    async def get_reverse_rgb_lock(
+        self, swap_id: "str", swap_auth: "str"
+    ) -> "RgbLockConsignment":
+        """
+        The maker's RGB lock consignment of a reverse swap, once it has sent
+        its lock. Accept it with rgb-lib's `accept_htlc_consignment`.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterString.check_lower(swap_auth)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_get_reverse_rgb_lock(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterString.lower(swap_auth),
+            ),
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_rust_buffer,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_rust_buffer,
+            # lift function
+            _UniffiConverterTypeRgbLockConsignment.lift,
+            # Error FFI converter
+            _UniffiConverterTypeError,
+        )
+
     async def get_reverse_tx(self, id: "str") -> "ReverseSwapTxResp":
         _UniffiConverterString.check_lower(id)
 
@@ -18660,6 +18787,38 @@ class SwapClient:
                 _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_last_attribution,
                 self._uniffi_clone_pointer(),
             )
+        )
+
+    async def post_submarine_rgb_lock(
+        self, swap_id: "str", lock: "RgbLockConsignment", swap_auth: "str"
+    ) -> None:
+        """
+        Hand the maker a submarine's RGB lock consignment. The taker's rgb-lib
+        `send` locks with no transport endpoint, so this is how the maker gets
+        it; post again to replace a consignment rgb-lib refused, until the pay
+        deadline.
+        """
+
+        _UniffiConverterString.check_lower(swap_id)
+
+        _UniffiConverterTypeRgbLockConsignment.check_lower(lock)
+
+        _UniffiConverterString.check_lower(swap_auth)
+
+        return await _uniffi_rust_call_async(
+            _UniffiLib.uniffi_kaleidoswap_fn_method_swapclient_post_submarine_rgb_lock(
+                self._uniffi_clone_pointer(),
+                _UniffiConverterString.lower(swap_id),
+                _UniffiConverterTypeRgbLockConsignment.lower(lock),
+                _UniffiConverterString.lower(swap_auth),
+            ),
+            _UniffiLib.ffi_kaleidoswap_rust_future_poll_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_complete_void,
+            _UniffiLib.ffi_kaleidoswap_rust_future_free_void,
+            # lift function
+            lambda val: None,
+            # Error FFI converter
+            _UniffiConverterTypeError,
         )
 
     async def quote_lightning_receive(
@@ -20038,6 +20197,7 @@ __all__ = [
     "RgbCooperativeRefundRequest",
     "RgbCooperativeRefundResponse",
     "RgbLock",
+    "RgbLockConsignment",
     "RgbPsbtParams",
     "RgbPsbtTemplate",
     "StartOptions",

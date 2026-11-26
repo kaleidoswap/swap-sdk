@@ -102,6 +102,8 @@ try {
     await persist(tag, { key, response, before });
     lock = await call('lock', { lock: response.rgb });
     await persist(`${tag}-lock`, lock);
+    // The lock went to no proxy: hand its consignment to the maker.
+    await client.postSubmarineRgbLock(response.id, lock.handover, response.swapAuth);
     await waitStatus(response.id, 'invoice.pending');
     pendingHoldHash = hold.sha256;
   }

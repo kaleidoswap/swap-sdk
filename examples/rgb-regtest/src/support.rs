@@ -3,8 +3,8 @@ use bitcoin::{consensus, Transaction};
 use ldk_server_client::{client::LdkServerClient, ldk_server_grpc::api::*};
 use rgb_lib::{
     wallet::{
-        DatabaseType, Online, OnlineOptions, RgbWalletOpsOffline, RgbWalletOpsOnline,
-        SinglesigKeys, WalletData,
+        DatabaseType, IndexerConfig, Online, OnlineOptions, RgbWalletOpsOffline,
+        RgbWalletOpsOnline, SinglesigKeys, WalletData,
     },
     AssetSchema, BitcoinNetwork, Wallet,
 };
@@ -65,7 +65,7 @@ pub fn private_json(path: &Path, value: &impl serde::Serialize) -> Result<()> {
 }
 pub fn open_wallet(dir: &Path, mnemonic: &str) -> Result<Wallet> {
     fs::create_dir_all(dir)?;
-    let keys = rgb_lib::restore_keys(
+    let keys = rgb_lib::keys::restore_keys(
         BitcoinNetwork::Regtest,
         mnemonic.to_owned(),
         Default::default(),
@@ -77,16 +77,21 @@ pub fn open_wallet(dir: &Path, mnemonic: &str) -> Result<Wallet> {
             database_type: DatabaseType::Sqlite,
             max_allocations_per_utxo: 1,
             supported_schemas: vec![AssetSchema::Nia, AssetSchema::Cfa, AssetSchema::Ifa],
-            reuse_addresses: false,
+            allow_reckless_schemas: false,
         },
         SinglesigKeys::from_keys(&keys, None),
     )?)
 }
 pub fn online(wallet: &mut Wallet) -> Result<Online> {
     Ok(wallet.go_online(OnlineOptions {
-        indexer_url: ESPLORA.into(),
+        indexer_config: IndexerConfig::Esplora {
+            url: ESPLORA.into(),
+        },
         skip_consistency_check: false,
         vanilla_sync_lookback: 20,
+        failed_witness_receive_grace_secs: 0,
+        proxy_auth_keys: Default::default(),
+        evm_chains: Default::default(),
     })?)
 }
 pub async fn get(path: &str) -> Result<Value> {

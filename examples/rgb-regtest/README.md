@@ -1,7 +1,8 @@
 # SDK + rgb-lib live swaps on regtest
 
-This native example exercises the SDK against maker `49c6ce2` and rgb-lib
-`dbdf82d`. Bitcoin Core, Esplora, RGB consignments, SQLite wallet state,
+This native example exercises the SDK against maker `250a612` (maker PR #1074,
+until it merges) and rgb-lib `d085a5e` (kaleidoswap/rgb-lib `next/0.11.2-rc.2`,
+upstream 0.11.2-rc.2). Bitcoin Core, Esplora, RGB consignments, SQLite wallet state,
 PostgreSQL, the maker daemon and both Lightning nodes are real. A local gRPC
 price feed supplies BTC/USDT quotes at 100000 plus 0.000001 per tick. This
 tiny change avoids the maker's intentional stale-quote cutoff for an unchanged
@@ -9,20 +10,27 @@ price. The issued NIA has 6 decimals and the ticker USDT; it is a regtest test
 asset.
 
 The crate has its own workspace and lockfile. rgb-lib is not added to the
-SDK's dependencies or wasm build. The crate's secp256k1 source patch unifies
-the SDK's pinned beta with RGB consensus's registry beta; both link the same
-native library. RGB consensus is pinned to the compatible prerelease.
+SDK's dependencies or wasm build. RGB consensus is pinned to the compatible
+prerelease.
+
+RGB proxy protocol 1.0 has no lookup by recipient id, so HTLC lock consignments
+do not travel through the proxy. The taker's lock goes to no transport endpoint
+and the SDK posts its consignment to `POST /v2/swap/submarine/{id}/rgb-lock`;
+for a reverse swap the SDK reads the maker's from
+`GET /v2/swap/reverse/{id}/rgb-lock` and the wallet accepts it with
+`accept_htlc_consignment`. The proxy (`rgb-proxy-server` 0.4.0) still carries
+the bootstrap's inventory transfer to the maker wallet.
 
 ## Run
 
 Requirements: Docker Compose, OpenSSL, Rust 1.96, a native maker binary with
 `ldk-server`, and the pinned LDK server Docker image. From a **separate** maker
-checkout at `49c6ce2e9554eea0d819fd3bbd267af6db45b1c0`:
+checkout at `250a612e10aa33d5a3ba301836b9b03a7f2e819f`:
 
 ```sh
 git clone https://github.com/kaleidoswap/kaleidoswap-maker-rs.git maker-rgb-regtest
 cd maker-rgb-regtest
-git checkout --detach 49c6ce2e9554eea0d819fd3bbd267af6db45b1c0
+git checkout --detach 250a612e10aa33d5a3ba301836b9b03a7f2e819f
 cargo +1.96.0 build --locked -p maker-bin --bin kaleidoswap-maker --features ldk-server
 docker build -f e2e/Dockerfile.ldk-server -t km-e2e/ldk-server:pinned .
 ```
@@ -219,7 +227,7 @@ the recorded report is evidence of that run, not an SDK unit-test fixture.
 The cooperative refund example attaches to an existing `serve` supervisor and
 wallets, and exercises the same authenticated submarine `/refund` endpoint.
 It requires the companion maker and the rgb-lib `validate_htlc_spend` addition,
-pinned by the wallet bridge at `dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f`; the maker uses its own locked dependency.
+pinned by the wallet bridge at `d085a5e6e20339c196cee950d2ae99bb5843c5a4`; the maker uses its own locked dependency.
 Build the native components from the coordinated branches:
 
 ```sh

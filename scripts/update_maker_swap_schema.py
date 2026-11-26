@@ -26,6 +26,8 @@ PATHS = {
     "/v2/swap/{id}",
     "/v2/swap/restore",
     "/v2/swap/restore/index",
+    "/v2/swap/submarine/{id}/rgb-lock",
+    "/v2/swap/reverse/{id}/rgb-lock",
 }
 
 

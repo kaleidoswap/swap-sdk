@@ -1260,19 +1260,24 @@ impl BoltzApiClientV2 {
 
     /// Make a GET request. Returns the Response
     async fn get_response(&self, end_point: &str) -> Result<MakerResponse, Error> {
-        self.get_response_at(format!("{}/{}", self.base_url, end_point))
+        self.get_response_at(format!("{}/{}", self.base_url, end_point), None)
             .await
     }
 
     /// GET an absolute URL with every guard a `/v2` GET gets. Split out so
     /// the corridor, which lives beside `/v2` rather than under it, reaches
     /// the same origin through the same checks instead of a second client.
-    async fn get_response_at(&self, url: String) -> Result<MakerResponse, Error> {
+    async fn get_response_at(
+        &self,
+        url: String,
+        swap_auth: Option<&str>,
+    ) -> Result<MakerResponse, Error> {
         let req_builder = self.http_client.get(&url);
         let req_builder = self.maybe_add_timeout(req_builder);
+        let req_builder = Self::maybe_add_swap_auth(req_builder, swap_auth)?;
         let req_builder = self.maybe_add_api_key(req_builder, &url)?;
         let response = self.send(req_builder).await?;
-        self.reject_credential_leaking_redirect(&response, self.credentials_sent(None))?;
+        self.reject_credential_leaking_redirect(&response, self.credentials_sent(swap_auth))?;
         self.record_attribution(&response, false);
         Ok(response)
     }
@@ -1818,7 +1823,7 @@ impl BoltzApiClientV2 {
     /// A verifier must preserve all fields, numeric precision and member order.
     pub async fn corridor_card_raw(&self) -> Result<Option<String>, Error> {
         let response = self
-            .get_response_at(format!("{}/v1/card", self.corridor_root()?))
+            .get_response_at(format!("{}/v1/card", self.corridor_root()?), None)
             .await?;
         let status = response.status();
         let body = response.into_text();
@@ -1891,7 +1896,7 @@ impl BoltzApiClientV2 {
     /// until [`corridor::RfqState::is_terminal`].
     pub async fn rfq_status(&self, rfq_id: &str) -> Result<Option<corridor::RfqStatus>, Error> {
         let url = format!("{}/v1/rfq/{rfq_id}", self.corridor_root()?);
-        let response = self.get_response_at(url).await?;
+        let response = self.get_response_at(url, None).await?;
         match Self::parse_json_response::<corridor::RfqStatus>(response) {
             Ok(status) => Ok(Some(status)),
             Err(Error::HTTPStatusNotSuccess(status, _))
@@ -2037,6 +2042,69 @@ impl BoltzApiClientV2 {
             Some(swap_auth),
         )
         .await
+    }
+
+    /// Hand the maker a submarine's RGB lock consignment:
+    /// `POST /v2/swap/submarine/{id}/rgb-lock`.
+    ///
+    /// The taker's rgb-lib `send` locks with no transport endpoint, so the
+    /// consignment reaches no proxy; this is how the maker gets it. The maker
+    /// accepts it once the lock has `minConfirmations`. Posting again replaces
+    /// an earlier consignment while the lock is unverified, so a taker whose
+    /// consignment rgb-lib refused can post another until the pay deadline. A
+    /// `409 rgb_lock_closed` means the lock is already verified, or refused for
+    /// good.
+    pub async fn post_submarine_rgb_lock(
+        &self,
+        id: &str,
+        lock: &super::rgb::RgbLockConsignment,
+        swap_auth: &str,
+    ) -> Result<(), Error> {
+        if swap_auth.is_empty() {
+            return Err(Error::Protocol(
+                "RGB lock hand-over requires swapAuth".into(),
+            ));
+        }
+        let response = self
+            .post_response(
+                &format!("swap/submarine/{id}/rgb-lock"),
+                serde_json::to_value(lock)?,
+                Some(swap_auth),
+            )
+            .await?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(Error::HTTPStatusNotSuccess(
+                status,
+                Self::parse_value(response.into_text()),
+            ));
+        }
+        Ok(())
+    }
+
+    /// The maker's RGB lock consignment of a reverse swap:
+    /// `GET /v2/swap/reverse/{id}/rgb-lock`.
+    ///
+    /// Available once the maker has sent its lock; a `404 rgb_lock_not_found`
+    /// before that. Check `txid` and `vout` against the lock output, then
+    /// accept the consignment with rgb-lib's `accept_htlc_consignment`.
+    pub async fn get_reverse_rgb_lock(
+        &self,
+        id: &str,
+        swap_auth: &str,
+    ) -> Result<super::rgb::RgbLockConsignment, Error> {
+        if swap_auth.is_empty() {
+            return Err(Error::Protocol(
+                "RGB lock hand-over requires swapAuth".into(),
+            ));
+        }
+        let response = self
+            .get_response_at(
+                format!("{}/swap/reverse/{id}/rgb-lock", self.base_url),
+                Some(swap_auth),
+            )
+            .await?;
+        Self::parse_json_response(response)
     }
 
     pub async fn get_submarine_partial_sig(
@@ -2484,7 +2552,8 @@ pub struct CreateSubmarineResponse {
     pub fee_asset_id: Option<String>,
     /// Per-swap taker credential, returned on creation by the
     /// KaleidoSwap maker. Pass it to cooperative refunds through
-    /// [`crate::swaps::TransactionOptions::with_swap_auth`]. Persist it with
+    /// [`crate::swaps::TransactionOptions::with_swap_auth`], and on a
+    /// `USDT-RGB` route to [`BoltzApiClientV2::post_submarine_rgb_lock`]. Persist it with
     /// the swap, or recover it with [`BoltzApiClientV2::recover_swap_auth`].
     /// See [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -3404,9 +3473,9 @@ pub struct CreateReverseResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_asset_id: Option<String>,
     /// Per-swap taker credential, returned on creation by the
-    /// KaleidoSwap maker. No reverse-swap route needs it today; it is captured
-    /// so a caller can persist it with the swap rather than lose it. See
-    /// [`CreateChainResponse::swap_auth`].
+    /// KaleidoSwap maker. On a `USDT-RGB` route,
+    /// [`BoltzApiClientV2::get_reverse_rgb_lock`] needs it; persist it with the
+    /// swap rather than lose it. See [`CreateChainResponse::swap_auth`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub swap_auth: Option<String>,
     /// The RGB allocation the maker locks, on a KaleidoSwap `USDT-RGB` route.
@@ -5984,6 +6053,83 @@ mod tests {
                 assert!(body.get("swapAuth").is_none());
             }
         }
+    }
+
+    #[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+    #[tokio::test]
+    async fn rgb_lock_hand_over_routes_carry_swap_auth() {
+        use crate::swaps::rgb::RgbLockConsignment;
+        let auth = "b2".repeat(32);
+        let id = "01KZZYB138E7C3HZX7Q1YBGAQG";
+        let lock = RgbLockConsignment {
+            consignment: "Y29uc2lnbm1lbnQ=".into(),
+            txid: "11".repeat(32),
+            vout: 1,
+        };
+
+        // Submarine: the maker answers 202 with no body.
+        let (url, maker) = capture_one_request_answering(
+            b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\n\r\n".to_vec(),
+        );
+        BoltzApiClientV2::new(url, None)
+            .post_submarine_rgb_lock(id, &lock, &auth)
+            .await
+            .unwrap();
+        let request = maker.join().unwrap();
+        let lower = request.to_lowercase();
+        assert!(lower.starts_with(&format!(
+            "post /v2/swap/submarine/{}/rgb-lock ",
+            id.to_lowercase()
+        )));
+        assert!(lower.contains(&format!("x-swap-auth: {auth}")));
+        let body: Value = serde_json::from_str(request.split("\r\n\r\n").nth(1).unwrap()).unwrap();
+        assert_eq!(body, serde_json::to_value(&lock).unwrap());
+
+        // A closed lock is the maker's 409, kept as a status error.
+        let reply = r#"{"error":"rgb_lock_closed"}"#;
+        let (url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{reply}",
+                reply.len()
+            )
+            .into_bytes(),
+        );
+        let err = BoltzApiClientV2::new(url, None)
+            .post_submarine_rgb_lock(id, &lock, &auth)
+            .await
+            .unwrap_err();
+        maker.join().unwrap();
+        assert!(
+            matches!(&err, Error::HTTPStatusNotSuccess(status, body)
+                if status.as_u16() == 409 && body["error"] == "rgb_lock_closed"),
+            "expected the maker's 409, got {err:?}",
+        );
+
+        // Reverse: an authenticated GET returning the consignment.
+        let reply = serde_json::to_string(&lock).unwrap();
+        let (url, maker) = capture_one_request_answering(
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{reply}",
+                reply.len()
+            )
+            .into_bytes(),
+        );
+        let fetched = BoltzApiClientV2::new(url, None)
+            .get_reverse_rgb_lock(id, &auth)
+            .await
+            .unwrap();
+        assert_eq!(fetched, lock);
+        let lower = maker.join().unwrap().to_lowercase();
+        assert!(lower.starts_with(&format!(
+            "get /v2/swap/reverse/{}/rgb-lock ",
+            id.to_lowercase()
+        )));
+        assert!(lower.contains(&format!("x-swap-auth: {auth}")));
+
+        // Neither route goes out without the credential.
+        let client = BoltzApiClientV2::new(BOLTZ_REGTEST.to_string(), None);
+        assert!(client.post_submarine_rgb_lock(id, &lock, "").await.is_err());
+        assert!(client.get_reverse_rgb_lock(id, "").await.is_err());
     }
 
     #[test]

@@ -16,7 +16,7 @@ services:
     command: ["--network=regtest", "--daemon-rpc-addr=bitcoind:18443", "--cookie=user:pass", "--http-addr=0.0.0.0:3002", "--electrum-rpc-addr=0.0.0.0:50001", "--jsonrpc-import"]
     ports: ["127.0.0.1:23002:3002"]
   proxy:
-    image: ghcr.io/rgb-tools/rgb-proxy-server:0.3.0
+    image: ghcr.io/rgb-tools/rgb-proxy-server:0.4.0
     ports: ["127.0.0.1:23000:3000"]
   postgres:
     image: postgres:16-alpine

@@ -305,6 +305,13 @@ The caller's rgb-lib wallet funds submarine locks and validates reverse lock
 consignments. The SDK validates the HTLC, builds the claim/refund PSBT and signs
 its script path. RGB proof validation and wallet state remain in rgb-lib.
 
+Lock consignments move over the maker API, not an RGB proxy. A submarine taker
+locks with no transport endpoint and posts the consignment with
+`client.post_submarine_rgb_lock(swap_id, RgbLockConsignment(consignment=…,
+txid=…, vout=…), swap_auth)`. A reverse taker reads the maker's with
+`client.get_reverse_rgb_lock(swap_id, swap_auth)` and accepts it with rgb-lib's
+`accept_htlc_consignment`.
+
 `SwapScript.prepare_rgb_claim` / `prepare_rgb_refund` take `RgbPsbtParams`:
 `output_address`, `funding`, `max_fee` (sats), `swap_id`, `chain_client`,
 `boltz_api`, and optional `lockup_tx`. Parse a lock transaction with

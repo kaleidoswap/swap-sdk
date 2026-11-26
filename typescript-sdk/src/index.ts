@@ -66,6 +66,7 @@ export type {
   Leaf,
   SwapTree,
   RgbLock,
+  RgbLockConsignment,
   SubSwapStates,
   RevSwapStates,
   ChainSwapStates,

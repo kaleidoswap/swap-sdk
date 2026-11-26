@@ -20,6 +20,7 @@ use kaleidoswap::{
 };
 use ldk_server_client::ldk_server_grpc::api::*;
 use rgb_lib::{
+    no_wallet::Invoice,
     wallet::{rust_only::ExpectedTransfer, Online, Recipient, RgbWalletOpsOffline, WitnessData},
     AssetSchema, Assignment, BitcoinNetwork, Wallet,
 };
@@ -60,11 +61,11 @@ async fn bootstrap() -> Result<()> {
         "existing run: preserve recovery state; use a fresh private stack to bootstrap again"
     );
     let maker_mnemonic =
-        rgb_lib::generate_keys(BitcoinNetwork::Regtest, Default::default()).mnemonic;
+        rgb_lib::keys::generate_keys(BitcoinNetwork::Regtest, Default::default()).mnemonic;
     let taker_mnemonic =
-        rgb_lib::generate_keys(BitcoinNetwork::Regtest, Default::default()).mnemonic;
+        rgb_lib::keys::generate_keys(BitcoinNetwork::Regtest, Default::default()).mnemonic;
     let reverse_mnemonic =
-        rgb_lib::generate_keys(BitcoinNetwork::Regtest, Default::default()).mnemonic;
+        rgb_lib::keys::generate_keys(BitcoinNetwork::Regtest, Default::default()).mnemonic;
     let mut id = json!({"makerMnemonic":maker_mnemonic,"takerMnemonic":taker_mnemonic,"reverseMnemonic":reverse_mnemonic});
     private_json(&root().join("identity.json"), &id)?;
     let mut maker = rgb!(open_wallet(&root().join("rgb-maker"), &maker_mnemonic))?;
@@ -84,20 +85,35 @@ async fn bootstrap() -> Result<()> {
         .asset_id;
     id["assetId"] = json!(asset);
     private_json(&root().join("identity.json"), &id)?;
-    let receive =
-        rgb!(maker.witness_receive(None, Assignment::Any, now() + 3600, vec![PROXY.into()], 1))?;
+    // Proxy protocol 1.0 reserves the recipient id on the proxy (so the receive
+    // is online) and the sender takes the recipient's key, encryption and expiry
+    // from the invoice.
+    let receive = rgb!(maker.witness_receive(
+        Some(mo),
+        None,
+        Assignment::Any,
+        now() + 3600,
+        vec![PROXY.into()],
+        1,
+        None,
+        None
+    ))?;
+    let invoice = Invoice::new(receive.invoice)?.invoice_data();
     rgb!(wallet::send(
         &mut taker,
         to,
         &asset,
         Recipient {
-            recipient_id: receive.recipient_id,
+            recipient_id: invoice.recipient_id,
             assignment: Assignment::Fungible(INVENTORY),
             witness_data: Some(WitnessData {
                 amount_sat: 1000,
                 blinding: None
             }),
-            transport_endpoints: vec![PROXY.into()]
+            transport_endpoints: vec![PROXY.into()],
+            public_key: invoice.public_key,
+            encryption: invoice.encryption,
+            expiration_timestamp: invoice.expiration_timestamp,
         }
     ))?;
     mine(1).await?;
@@ -154,6 +170,16 @@ async fn submarine(
         .context("validated lock output")?;
     let op = OutPoint::new(tx.compute_txid(), vout.try_into()?);
     ensure!(prevout.value.to_sat() == lock.htlc_sat, "lock sats");
+    // The lock went to no proxy: hand its consignment to the maker.
+    let handed = rgb!(wallet::hand_over(wallet, lock, &tx))?;
+    ensure!(handed.vout == op.vout, "handed-over lock output");
+    let auth = response
+        .swap_auth
+        .as_deref()
+        .context("submarine swapAuth")?;
+    sdk(api
+        .post_submarine_rgb_lock(&response.id, &handed, auth)
+        .await)?;
     Ok((response, key, op, prevout.clone()))
 }
 async fn run() -> Result<()> {
@@ -329,11 +355,19 @@ async fn run() -> Result<()> {
     mine(1).await?;
     let lock = reverse.rgb.as_ref().context("reverse RGB")?;
     let blinding = lock.blinding.parse()?;
-    let (consignment, assignments) = rgb!(receiver.fetch_and_accept_transfer_by_recipient_id(
+    // The maker hands its lock consignment over on the maker API.
+    let auth = reverse.swap_auth.as_deref().context("reverse swapAuth")?;
+    let handed = sdk(api.get_reverse_rgb_lock(&reverse.id, auth).await)?;
+    ensure!(
+        handed.txid == cop.txid.to_string() && handed.vout == cop.vout,
+        "the handed-over consignment is for another output"
+    );
+    let (consignment, assignments) = rgb!(receiver.accept_htlc_consignment(
         ro,
+        handed.consignment,
+        handed.txid,
+        handed.vout,
         lock.recipient_id.clone(),
-        lock.recipient_id.clone(),
-        &lock.transport_endpoints[0],
         blinding,
         lock.min_confirmations,
         ExpectedTransfer {
@@ -398,7 +432,7 @@ async fn run() -> Result<()> {
         maker_remaining + remaining + lock.amount == ISSUED,
         "asset conservation"
     );
-    let report = json!({"makerRevision":"49c6ce2e9554eea0d819fd3bbd267af6db45b1c0","rgbLibRevision":"96f039d975cf2a83712c3c0a90e703621d445425","network":"regtest","priceFeed":"deterministic BTC/USDT 100000 + 0.000001 per tick","assetId":asset,"issued":ISSUED,
+    let report = json!({"makerRevision":"250a612e10aa33d5a3ba301836b9b03a7f2e819f","rgbLibRevision":"d085a5e6e20339c196cee950d2ae99bb5843c5a4","network":"regtest","priceFeed":"deterministic BTC/USDT 100000 + 0.000001 per tick","assetId":asset,"issued":ISSUED,
         "submarine":{"id":happy.id,"lockTxid":happy_op.txid.to_string(),"amount":happy.expected_amount,"status":"transaction.claimed","lightningPaymentSucceeded":true},
         "refund":{"id":refund.id,"lockTxid":rop.txid.to_string(),"refundTxid":tx.compute_txid().to_string(),"amount":refund.expected_amount,"earlyRejectReason":"non-final","feeInputs":tx.input.len()-1,"rgbBalanceRestored":true},
         "reverse":{"id":reverse.id,"lockTxid":cop.txid.to_string(),"claimTxid":claim.compute_txid().to_string(),"amount":lock.amount,"htlcSat":lock.htlc_sat,"feeSat":lock.htlc_sat-claim.output[1].value.to_sat(),"payoutSat":claim.output[1].value.to_sat(),"walletBtcBefore":0,"inputCount":claim.input.len(),"status":"invoice.settled","lightningPaymentSucceeded":true},

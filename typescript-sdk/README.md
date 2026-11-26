@@ -714,6 +714,12 @@ consignment for a reverse swap. The SDK validates the Bitcoin HTLC and RGB lock
 instructions, but rgb-lib validates the asset proofs. `rgb.amount` is in contract
 units (six decimals for USDT-RGB); `rgb.htlcSat` is Bitcoin satoshis.
 
+Lock consignments move over the maker API, not an RGB proxy. A submarine taker
+locks with no transport endpoint and posts the consignment with
+`client.postSubmarineRgbLock(swapId, { consignment, txid, vout }, swapAuth)`. A
+reverse taker reads the maker's with `client.getReverseRgbLock(swapId, swapAuth)`
+and accepts it with rgb-lib's `accept_htlc_consignment`.
+
 Reconstruct the validated response using `SwapScript.fromReverse` or
 `fromSubmarine`, then call `prepareRgbClaim` or `prepareRgbRefund` with:
 

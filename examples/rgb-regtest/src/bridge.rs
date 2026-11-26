@@ -2,7 +2,7 @@
 use crate::{identity, pricefeed, support::*, wallet};
 use anyhow::{bail, ensure, Context, Result};
 use bitcoin::{consensus, Psbt, Transaction};
-use kaleidoswap::swaps::rgb::{FinalizedRgbSpend, RgbLock, RgbPsbtTemplate};
+use kaleidoswap::swaps::rgb::{FinalizedRgbSpend, RgbLock, RgbLockConsignment, RgbPsbtTemplate};
 use ldk_server_client::ldk_server_grpc::api::*;
 use rgb_lib::{
     wallet::{
@@ -108,7 +108,11 @@ impl Bridge {
                 let txid = tokio::task::block_in_place(|| wallet::lock(w, online, &lock))?;
                 mine(1).await?;
                 let tx = transaction(&txid).await?;
-                Ok(json!({"txid":txid,"hex":hex::encode(consensus::serialize(&tx))}))
+                // The lock went to no proxy; the caller hands this to the maker.
+                let handover = wallet::hand_over(w, &lock, &tx)?;
+                Ok(
+                    json!({"txid":txid,"hex":hex::encode(consensus::serialize(&tx)),"handover":handover}),
+                )
             }
             "destination" => Ok(json!(tokio::task::block_in_place(|| wallet::destination(
                 w
@@ -134,12 +138,19 @@ impl Bridge {
                 let lock: RgbLock = serde_json::from_value(v["lock"].clone())?;
                 ensure!(lock.asset_id == self.asset, "asset pin");
                 let blinding = lock.blinding.parse()?;
+                // The maker's consignment, from `GET /v2/swap/reverse/{id}/rgb-lock`.
+                let handed: RgbLockConsignment = serde_json::from_value(v["handed"].clone())?;
+                ensure!(
+                    handed.txid == field(v, "txid")?,
+                    "the handed-over consignment is for another transaction"
+                );
                 let (consignment, assignments) = tokio::task::block_in_place(|| {
-                    w.fetch_and_accept_transfer_by_recipient_id(
+                    w.accept_htlc_consignment(
                         online,
+                        handed.consignment,
+                        handed.txid,
+                        handed.vout,
                         lock.recipient_id.clone(),
-                        lock.recipient_id.clone(),
-                        &lock.transport_endpoints[0],
                         blinding,
                         lock.min_confirmations,
                         ExpectedTransfer {

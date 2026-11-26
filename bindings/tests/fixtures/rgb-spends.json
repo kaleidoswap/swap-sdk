@@ -26,10 +26,7 @@
           "htlcSat": 1521,
           "minConfirmations": 1,
           "recipientId": "bcrt:wvout:Bakf8YeK-~bx0Ync-GZxoKgP-NDh3DIe-r7R8aOA-PidxK4f-M5E1Nug",
-          "scriptPubkey": "5120a91ff1878afdbc74627706671a0a80f3438770c87abed1f1a3803e27712b87cc",
-          "transportEndpoints": [
-            "rpc://127.0.0.1:3000/json-rpc"
-          ]
+          "scriptPubkey": "5120a91ff1878afdbc74627706671a0a80f3438770c87abed1f1a3803e27712b87cc"
         },
         "swapTree": {
           "claimLeaf": {
@@ -62,10 +59,7 @@
           "htlcSat": 1000,
           "minConfirmations": 1,
           "recipientId": "bcrt:wvout:Bda3ycfq-YE2u1Io-glQ02Rd-5LAvc9U-UO2hYN9-~6wlDYz-eIkJCjA",
-          "scriptPubkey": "5120d6b7c9c7ea604daed48a20950d3645de4b02f73d5143b685837dffac250d8cde",
-          "transportEndpoints": [
-            "rpc://127.0.0.1:3000/json-rpc"
-          ]
+          "scriptPubkey": "5120d6b7c9c7ea604daed48a20950d3645de4b02f73d5143b685837dffac250d8cde"
         },
         "swapTree": {
           "claimLeaf": {
