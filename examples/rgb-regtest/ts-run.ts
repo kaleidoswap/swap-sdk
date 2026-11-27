@@ -84,7 +84,7 @@ const client = new SwapClient(maker, 30n);
 const report: Record<string, any> = {
   makerRevision: process.env.RGB_MAKER_REVISION,
   sdkRevision: process.env.RGB_SDK_REVISION,
-  rgbLibRevision: 'dbdf82dac3ffd2a41b1ec3cc9b410c5a4fa56f2f',
+  rgbLibRevision: 'b3405cbf59cf417985308fb013b0f3305aeda1d2',
   network: 'regtest', bindings: 'TypeScript facade + WebAssembly',
 };
 try {
@@ -103,6 +103,9 @@ try {
     await persist(tag, { key, response });
     const lock = await call('lock', { lock: response.rgb });
     await persist(`${tag}-lock`, lock);
+    // The lock went to no proxy: hand its consignment to the maker.
+    assert(response.swapAuth, 'the maker issues swapAuth');
+    await client.postSubmarineRgbLock(response.id, lock.handover, response.swapAuth);
     return { response, key, lock };
   }
   const invoice = await call('invoice');
@@ -172,7 +175,9 @@ try {
     return { key, preimage, response, paid, lock };
   }
   const rev = await reverse(2n, 'reverse');
-  await call('accept', { wallet: 'reverse', lock: rev.response.rgb, txid: rev.lock.id });
+  assert(rev.response.swapAuth, 'the maker issues swapAuth');
+  const handed = await client.getReverseRgbLock(rev.response.id, rev.response.swapAuth);
+  await call('accept', { wallet: 'reverse', lock: rev.response.rgb, txid: rev.lock.id, handed });
   const claimScript = SwapScript.fromReverse('bitcoin', 'regtest', rev.response, rev.key.publicKey);
   const claimSpend = await claimScript.prepareRgbClaim({
     outputAddress: await call('destination', { wallet: 'reverse' }),

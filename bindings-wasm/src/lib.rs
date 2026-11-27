@@ -35,6 +35,8 @@ extern "C" {
     pub type SwapRestoreResponsesJs;
     #[wasm_bindgen(typescript_type = "SwapRestoreIndexResponse")]
     pub type SwapRestoreIndexResponseJs;
+    #[wasm_bindgen(typescript_type = "RgbLockConsignment")]
+    pub type RgbLockConsignmentJs;
 }
 
 fn to_typed_js<T: serde::Serialize, J: JsCast>(value: &T) -> Result<J, JsValue> {
@@ -1529,6 +1531,45 @@ impl BoltzClient {
         )
     }
 
+    /// Hand the maker a submarine's RGB lock consignment. The taker's rgb-lib
+    /// `send` locks with no transport endpoint, so this is how the maker gets
+    /// it; post again to replace a consignment rgb-lib refused, until the pay
+    /// deadline.
+    #[wasm_bindgen(js_name = postSubmarineRgbLock)]
+    pub async fn post_submarine_rgb_lock(
+        &self,
+        swap_id: StringArg,
+        lock: RgbLockConsignmentJs,
+        swap_auth: StringArg,
+    ) -> Result<(), JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        let lock: RgbLockConsignment = from_js(lock.into())?;
+        self.inner
+            .post_submarine_rgb_lock(&id, &lock, &auth)
+            .await
+            .map_err(core_err)
+    }
+
+    /// The maker's RGB lock consignment of a reverse swap, once it has sent
+    /// its lock. Accept it with rgb-lib's `accept_htlc_consignment`.
+    #[wasm_bindgen(js_name = getReverseRgbLock)]
+    pub async fn get_reverse_rgb_lock(
+        &self,
+        swap_id: StringArg,
+        swap_auth: StringArg,
+    ) -> Result<RgbLockConsignmentJs, JsValue> {
+        let id = str_arg(swap_id, "swapId")?;
+        let auth = str_arg(swap_auth, "swapAuth")?;
+        to_typed_js(
+            &self
+                .inner
+                .get_reverse_rgb_lock(&id, &auth)
+                .await
+                .map_err(core_err)?,
+        )
+    }
+
     /// Accept a chain-swap re-quote at `amountSat`.
     ///
     /// `swapAuth` is the per-swap credential the KaleidoSwap maker returned as
@@ -1644,7 +1685,7 @@ use kaleidoswap::swaps::magic_routing;
 use kaleidoswap::swaps::rgb::{
     ColoredRgbPsbt, FinalizedRgbSpend as CoreFinalizedRgbSpend,
     PreparedRgbSpend as CorePreparedRgbSpend, RgbCooperativeRefund as CoreRgbCooperativeRefund,
-    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse,
+    RgbCooperativeRefundRequest, RgbCooperativeRefundResponse, RgbLockConsignment,
     RgbSpendFunding as CoreRgbSpendFunding,
 };
 use kaleidoswap::swaps::{

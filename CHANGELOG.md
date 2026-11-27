@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING — USDT-RGB lock consignments move over the maker API
+
+RGB proxy protocol 1.0 (rgb-lib 0.11.2) has no lookup by recipient id, so the
+maker (kaleidoswap-maker-rs#1074) stopped exchanging HTLC lock consignments
+through a proxy and dropped `transportEndpoints` from the `rgb` object of a
+create response.
+
+- `RgbLock.transport_endpoints` and `RgbHtlcContext.transport_endpoints` are
+  removed, with the check that every endpoint was `rpc://` or `rpcs://`. A
+  `transportEndpoints` from an older maker is ignored.
+- Added `RgbLockConsignment` (`consignment`, base64; `txid`; `vout`) and two
+  client methods, both authenticated with the swap's `swapAuth`:
+  - `post_submarine_rgb_lock` / `postSubmarineRgbLock`: a submarine taker
+    locks with rgb-lib's `send` and no transport endpoint, then hands the
+    consignment to `POST /v2/swap/submarine/{id}/rgb-lock`. Posting again
+    replaces a consignment rgb-lib refused, until the pay deadline.
+  - `get_reverse_rgb_lock` / `getReverseRgbLock`: a reverse taker reads the
+    maker's consignment from `GET /v2/swap/reverse/{id}/rgb-lock` and accepts
+    it with rgb-lib's `accept_htlc_consignment`.
+- `examples/rgb-regtest` pins rgb-lib to kaleidoswap/rgb-lib `b3405cb`
+  (the fork merged onto upstream master, 0.11.2-rc.2) and uses the two routes.
+
 ## [0.17.0] - 2026-11-23
 
 ### One name on every registry: `kaleidoswap`

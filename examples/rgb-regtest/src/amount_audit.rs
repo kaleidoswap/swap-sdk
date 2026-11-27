@@ -3,7 +3,7 @@ use crate::{identity, support::*};
 use anyhow::{ensure, Context, Result};
 use ldk_server_client::{ldk_server_grpc::api::*, ldk_server_grpc::types::payment_kind};
 use rgb_lib::{
-    wallet::{AssetFilter, RgbWalletOpsOffline, RgbWalletOpsOnline},
+    wallet::{AssetFilter, RgbWalletOpsOffline, RgbWalletOpsOnline, TransferScope},
     Assignment,
 };
 use serde_json::{json, Value};
@@ -61,7 +61,7 @@ pub async fn run() -> Result<()> {
                         .context("expected")?,
                 "wallet differs from initial audit"
             );
-            let transfers = w.list_transfers(AssetFilter::Id(asset.into()), None)?;
+            let transfers = w.list_transfers(AssetFilter::Id(asset.into()), TransferScope::All)?;
             let transfers=transfers.into_iter().map(|t| -> Result<Value> {Ok(json!({"txid":t.txid,"kind":format!("{:?}",t.kind),"status":format!("{:?}",t.status),"amounts":t.assignments.iter().map(fungible).collect::<Result<Vec<_>>>()?}))}).collect::<Result<Vec<_>>>()?;
             let spends = if name == "maker" {
                 vec!["submarine", "reverseRefund"]

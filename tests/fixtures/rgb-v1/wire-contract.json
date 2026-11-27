@@ -101,9 +101,6 @@
           "blinding": "4420872638298704050",
           "htlcSat": 1000,
           "scriptPubkey": "5120a0649c8fa19c84987ebc77c052ebef98ec7beec2c279200dedbc08ce837367bc",
-          "transportEndpoints": [
-            "rpc://proxy.test/json-rpc"
-          ],
           "minConfirmations": 1
         }
       }
@@ -143,9 +140,6 @@
           "htlcSat": 1521,
           "claimFeeRate": 5,
           "scriptPubkey": "51207e86c46b1792f6512ac1f2d637d4a64577b22be93cf96b13111449a73c74e4f5",
-          "transportEndpoints": [
-            "rpc://proxy.test/json-rpc"
-          ],
           "minConfirmations": 1
         }
       }

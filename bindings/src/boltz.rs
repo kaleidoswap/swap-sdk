@@ -12,7 +12,7 @@ use kaleidoswap::kaleido::{ApiKey, KaleidoMakerClient, KaleidoMakerClientOptions
 use kaleidoswap::network::{Chain, Currency, Network};
 use kaleidoswap::swaps::boltz::*;
 use kaleidoswap::swaps::magic_routing::{self, MrhDestination};
-use kaleidoswap::swaps::RgbLock;
+use kaleidoswap::swaps::{RgbLock, RgbLockConsignment};
 use kaleidoswap::util::secrets::Preimage;
 use kaleidoswap::LiquidAssetContext;
 use std::collections::HashMap;
@@ -572,6 +572,34 @@ impl SwapClient {
             .await?)
     }
 
+    /// Hand the maker a submarine's RGB lock consignment. The taker's rgb-lib
+    /// `send` locks with no transport endpoint, so this is how the maker gets
+    /// it; post again to replace a consignment rgb-lib refused, until the pay
+    /// deadline.
+    #[uniffi::method]
+    pub async fn post_submarine_rgb_lock(
+        &self,
+        swap_id: &str,
+        lock: RgbLockConsignment,
+        swap_auth: &str,
+    ) -> Result<(), Error> {
+        Ok(self
+            .inner
+            .post_submarine_rgb_lock(swap_id, &lock, swap_auth)
+            .await?)
+    }
+
+    /// The maker's RGB lock consignment of a reverse swap, once it has sent
+    /// its lock. Accept it with rgb-lib's `accept_htlc_consignment`.
+    #[uniffi::method]
+    pub async fn get_reverse_rgb_lock(
+        &self,
+        swap_id: &str,
+        swap_auth: &str,
+    ) -> Result<RgbLockConsignment, Error> {
+        Ok(self.inner.get_reverse_rgb_lock(swap_id, swap_auth).await?)
+    }
+
     /// The maker's Lightning nodes, keyed by implementation (`LND`, `CLN`).
     #[uniffi::method]
     pub async fn get_nodes(&self) -> Result<GetNodesResponse, Error> {
@@ -874,8 +902,16 @@ pub struct RgbLock {
     pub htlc_sat: u64,
     pub claim_fee_rate: Option<u64>,
     pub script_pubkey: String,
-    pub transport_endpoints: Vec<String>,
     pub min_confirmations: u8,
+}
+
+/// An RGB HTLC lock's consignment (base64) and the witness output it anchors
+/// the lock to, handed over through the maker API.
+#[uniffi::remote(Record)]
+pub struct RgbLockConsignment {
+    pub consignment: String,
+    pub txid: String,
+    pub vout: u32,
 }
 
 #[uniffi::remote(Record)]
@@ -899,7 +935,8 @@ pub struct CreateSubmarineResponse {
     pub asset_id: Option<String>,
     pub fee_asset_id: Option<String>,
     /// Per-swap taker credential the KaleidoSwap maker issues once on
-    /// creation. No submarine-swap route needs it today; persist it anyway.
+    /// creation. A `USDT-RGB` lock hand-over (`post_submarine_rgb_lock`) and
+    /// cooperative refunds need it; persist it with the swap.
     pub swap_auth: Option<String>,
     /// The RGB allocation to lock, on a `USDT-RGB` route.
     pub rgb: Option<RgbLock>,
@@ -919,7 +956,8 @@ pub struct CreateReverseResponse {
     pub asset_id: Option<String>,
     pub fee_asset_id: Option<String>,
     /// Per-swap taker credential the KaleidoSwap maker issues once on
-    /// creation. No reverse-swap route needs it today; persist it anyway.
+    /// creation. A `USDT-RGB` lock hand-over (`get_reverse_rgb_lock`) needs
+    /// it; persist it with the swap.
     pub swap_auth: Option<String>,
     /// The RGB allocation the maker locks, on a `USDT-RGB` route.
     pub rgb: Option<RgbLock>,

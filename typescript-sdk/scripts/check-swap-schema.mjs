@@ -44,6 +44,7 @@ const names = {
   SwapTree: "SwapTree",
   Leaf: "SwapLeaf",
   RgbLock: "RgbLock",
+  RgbLockConsignment: "RgbLockConsignment",
   InternalHopRef: "InternalHopRef",
   Webhook: "WebhookConfig",
 };
@@ -71,6 +72,8 @@ for (const [path, request, status, response] of [
     "200",
     ref("SwapRestoreIndexResponse"),
   ],
+  ["submarine/{id}/rgb-lock", "RgbLockConsignment", "202", null],
+  ["reverse/{id}/rgb-lock", null, "200", ref("RgbLockConsignment")],
 ]) {
   assert.deepEqual(
     contract.routes[`/v2/swap/${path}`],

@@ -22,8 +22,7 @@ assetId: string,
  */
 amount: bigint,
 /**
- * rgb-lib witness recipient id of the HTLC script, the proxy key the
- * lock consignment is posted under.
+ * rgb-lib witness recipient id of the HTLC script.
  */
 recipientId: string,
 /**
@@ -44,13 +43,23 @@ claimFeeRate?: bigint,
  */
 scriptPubkey: string,
 /**
- * RGB proxy endpoints the lock consignment is posted to.
- */
-transportEndpoints: Array<string>,
-/**
  * Confirmations the lock needs before the other side acts on it.
  */
 minConfirmations: number, };
+
+export type RgbLockConsignment = {
+/**
+ * The rgb-lib transfer consignment, base64.
+ */
+consignment: string,
+/**
+ * The lock transaction id.
+ */
+txid: string,
+/**
+ * The HTLC output of the lock transaction.
+ */
+vout: number, };
 
 export type InternalHopRef = { payeeId: string, };
 
@@ -68,7 +77,8 @@ export type CreateSubmarineResponse = { internalHop?: InternalHopRef, acceptZero
 /**
  * Per-swap taker credential, returned on creation by the
  * KaleidoSwap maker. Pass it to cooperative refunds through
- * [`crate::swaps::TransactionOptions::with_swap_auth`]. Persist it with
+ * [`crate::swaps::TransactionOptions::with_swap_auth`], and on a
+ * `USDT-RGB` route to [`BoltzApiClientV2::post_submarine_rgb_lock`]. Persist it with
  * the swap, or recover it with [`BoltzApiClientV2::recover_swap_auth`].
  * See [`CreateChainResponse::swap_auth`].
  */
@@ -106,9 +116,9 @@ pairHash?: string | null, };
 export type CreateReverseResponse = { id: string, invoice?: string, swapTree: SwapTree, lockupAddress: string, refundPublicKey: string, timeoutBlockHeight: number, onchainAmount: bigint, blindingKey?: string, assetId?: string, feeAssetId?: string,
 /**
  * Per-swap taker credential, returned on creation by the
- * KaleidoSwap maker. No reverse-swap route needs it today; it is captured
- * so a caller can persist it with the swap rather than lose it. See
- * [`CreateChainResponse::swap_auth`].
+ * KaleidoSwap maker. On a `USDT-RGB` route,
+ * [`BoltzApiClientV2::get_reverse_rgb_lock`] needs it; persist it with the
+ * swap rather than lose it. See [`CreateChainResponse::swap_auth`].
  */
 swapAuth?: string,
 /**

@@ -2,7 +2,8 @@
   "source": {
     "repository": "kaleidoswap/kaleidoswap-maker-rs",
     "revision": "823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d",
-    "file": "openapi.yaml"
+    "file": "openapi.yaml",
+    "patch": "kaleidoswap-maker-rs#1074 at 250a612e10aa33d5a3ba301836b9b03a7f2e819f: the rgb-lock routes, RgbLockConsignment, and RgbLock without transportEndpoints"
   },
   "routes": {
     "/v2/swap/chain": {
@@ -48,6 +49,14 @@
         }
       }
     },
+    "/v2/swap/reverse/{id}/rgb-lock": {
+      "request": null,
+      "responses": {
+        "200": {
+          "$ref": "#/components/schemas/RgbLockConsignment"
+        }
+      }
+    },
     "/v2/swap/submarine": {
       "request": {
         "$ref": "#/components/schemas/CreateSubmarineRequest"
@@ -56,6 +65,14 @@
         "201": {
           "$ref": "#/components/schemas/SubmarineCreateResponse"
         }
+      }
+    },
+    "/v2/swap/submarine/{id}/rgb-lock": {
+      "request": {
+        "$ref": "#/components/schemas/RgbLockConsignment"
+      },
+      "responses": {
+        "202": null
       }
     },
     "/v2/swap/{id}": {
@@ -837,7 +854,6 @@
         "blinding",
         "htlcSat",
         "scriptPubkey",
-        "transportEndpoints",
         "minConfirmations"
       ],
       "properties": {
@@ -881,14 +897,30 @@
         },
         "scriptPubkey": {
           "type": "string"
-        },
-        "transportEndpoints": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
         }
       }
+    },
+    "RgbLockConsignment": {
+      "type": "object",
+      "required": [
+        "consignment",
+        "txid",
+        "vout"
+      ],
+      "properties": {
+        "consignment": {
+          "type": "string"
+        },
+        "txid": {
+          "type": "string"
+        },
+        "vout": {
+          "type": "integer",
+          "format": "int32",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
     },
     "SubmarineCreateResponse": {
       "type": "object",

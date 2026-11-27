@@ -11,7 +11,7 @@ on:
       maker_ref:
         description: kaleidoswap-maker-rs revision to build the maker and LDK image from
         required: true
-        default: 823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d
+        default: 250a612e10aa33d5a3ba301836b9b03a7f2e819f
 
 permissions:
   contents: read
