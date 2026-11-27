@@ -84,7 +84,7 @@ const client = new SwapClient(maker, 30n);
 const report: Record<string, any> = {
   makerRevision: process.env.RGB_MAKER_REVISION,
   sdkRevision: process.env.RGB_SDK_REVISION,
-  rgbLibRevision: 'd085a5e6e20339c196cee950d2ae99bb5843c5a4',
+  rgbLibRevision: 'b3405cbf59cf417985308fb013b0f3305aeda1d2',
   network: 'regtest', bindings: 'TypeScript facade + WebAssembly',
 };
 try {

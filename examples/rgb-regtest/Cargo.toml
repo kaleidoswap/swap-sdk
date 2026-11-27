@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 kaleidoswap = { path = "../.." }
-rgb-lib = { git = "https://github.com/kaleidoswap/rgb-lib", rev = "d085a5e6e20339c196cee950d2ae99bb5843c5a4", default-features = false, features = ["esplora"] }
+rgb-lib = { git = "https://github.com/kaleidoswap/rgb-lib", rev = "b3405cbf59cf417985308fb013b0f3305aeda1d2", default-features = false, features = ["esplora"] }
 ldk-server-client = { git = "https://github.com/kaleidoswap/kaleidoswap-maker-rs", rev = "823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d" }
 maker-connector-grpc = { git = "https://github.com/kaleidoswap/kaleidoswap-maker-rs", rev = "823d56774baa8c8c45c13ba0802b7c0e5bb3ee6d" }
 # rgb-lib's pre-release invoice dependency otherwise selects incompatible stable consensus.

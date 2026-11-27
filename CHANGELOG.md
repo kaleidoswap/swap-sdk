@@ -23,8 +23,8 @@ create response.
   - `get_reverse_rgb_lock` / `getReverseRgbLock`: a reverse taker reads the
     maker's consignment from `GET /v2/swap/reverse/{id}/rgb-lock` and accepts
     it with rgb-lib's `accept_htlc_consignment`.
-- `examples/rgb-regtest` pins rgb-lib to kaleidoswap/rgb-lib `d085a5e`
-  (upstream 0.11.2-rc.2) and uses the two routes.
+- `examples/rgb-regtest` pins rgb-lib to kaleidoswap/rgb-lib `b3405cb`
+  (the fork merged onto upstream master, 0.11.2-rc.2) and uses the two routes.
 
 ## [0.17.0] - 2026-11-23
 

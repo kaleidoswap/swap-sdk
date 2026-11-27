@@ -96,6 +96,7 @@ async fn bootstrap() -> Result<()> {
         vec![PROXY.into()],
         1,
         None,
+        None,
         None
     ))?;
     let invoice = Invoice::new(receive.invoice)?.invoice_data();
@@ -432,7 +433,7 @@ async fn run() -> Result<()> {
         maker_remaining + remaining + lock.amount == ISSUED,
         "asset conservation"
     );
-    let report = json!({"makerRevision":"250a612e10aa33d5a3ba301836b9b03a7f2e819f","rgbLibRevision":"d085a5e6e20339c196cee950d2ae99bb5843c5a4","network":"regtest","priceFeed":"deterministic BTC/USDT 100000 + 0.000001 per tick","assetId":asset,"issued":ISSUED,
+    let report = json!({"makerRevision":"250a612e10aa33d5a3ba301836b9b03a7f2e819f","rgbLibRevision":"b3405cbf59cf417985308fb013b0f3305aeda1d2","network":"regtest","priceFeed":"deterministic BTC/USDT 100000 + 0.000001 per tick","assetId":asset,"issued":ISSUED,
         "submarine":{"id":happy.id,"lockTxid":happy_op.txid.to_string(),"amount":happy.expected_amount,"status":"transaction.claimed","lightningPaymentSucceeded":true},
         "refund":{"id":refund.id,"lockTxid":rop.txid.to_string(),"refundTxid":tx.compute_txid().to_string(),"amount":refund.expected_amount,"earlyRejectReason":"non-final","feeInputs":tx.input.len()-1,"rgbBalanceRestored":true},
         "reverse":{"id":reverse.id,"lockTxid":cop.txid.to_string(),"claimTxid":claim.compute_txid().to_string(),"amount":lock.amount,"htlcSat":lock.htlc_sat,"feeSat":lock.htlc_sat-claim.output[1].value.to_sat(),"payoutSat":claim.output[1].value.to_sat(),"walletBtcBefore":0,"inputCount":claim.input.len(),"status":"invoice.settled","lightningPaymentSucceeded":true},

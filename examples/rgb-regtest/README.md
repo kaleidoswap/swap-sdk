@@ -1,8 +1,8 @@
 # SDK + rgb-lib live swaps on regtest
 
 This native example exercises the SDK against maker `250a612` (maker PR #1074,
-until it merges) and rgb-lib `d085a5e` (kaleidoswap/rgb-lib `next/0.11.2-rc.2`,
-upstream 0.11.2-rc.2). Bitcoin Core, Esplora, RGB consignments, SQLite wallet state,
+until it merges) and rgb-lib `b3405cb` (kaleidoswap/rgb-lib `next/0.11.2-rc.2`,
+the fork merged onto upstream master `f4971e0`, 0.11.2-rc.2). Bitcoin Core, Esplora, RGB consignments, SQLite wallet state,
 PostgreSQL, the maker daemon and both Lightning nodes are real. A local gRPC
 price feed supplies BTC/USDT quotes at 100000 plus 0.000001 per tick. This
 tiny change avoids the maker's intentional stale-quote cutoff for an unchanged
@@ -227,7 +227,7 @@ the recorded report is evidence of that run, not an SDK unit-test fixture.
 The cooperative refund example attaches to an existing `serve` supervisor and
 wallets, and exercises the same authenticated submarine `/refund` endpoint.
 It requires the companion maker and the rgb-lib `validate_htlc_spend` addition,
-pinned by the wallet bridge at `d085a5e6e20339c196cee950d2ae99bb5843c5a4`; the maker uses its own locked dependency.
+pinned by the wallet bridge at `b3405cbf59cf417985308fb013b0f3305aeda1d2`; the maker uses its own locked dependency.
 Build the native components from the coordinated branches:
 
 ```sh

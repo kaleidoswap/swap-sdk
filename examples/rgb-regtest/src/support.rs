@@ -78,6 +78,8 @@ pub fn open_wallet(dir: &Path, mnemonic: &str) -> Result<Wallet> {
             max_allocations_per_utxo: 1,
             supported_schemas: vec![AssetSchema::Nia, AssetSchema::Cfa, AssetSchema::Ifa],
             allow_reckless_schemas: false,
+            address_reuse_vanilla: false,
+            address_reuse_colored_auto: false,
         },
         SinglesigKeys::from_keys(&keys, None),
     )?)

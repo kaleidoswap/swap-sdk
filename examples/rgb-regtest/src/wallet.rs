@@ -91,6 +91,7 @@ pub fn destination(wallet: &mut Wallet) -> Result<String> {
         1,
         None,
         None,
+        None,
     )?;
     let script = script_buf_from_recipient_id(receive.recipient_id)?.context("witness script")?;
     Ok(Address::from_script(&script, bitcoin::Network::Regtest)?.to_string())
